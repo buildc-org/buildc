@@ -11,10 +11,9 @@ pub struct Decl {
     pub span: SourceSpan,
 }
 
-pub struct Sink {
-    pub name: String,
+pub struct Collect {
     pub file: String,
-    pub path: String,
+    pub into: String,
     pub span: SourceSpan,
 }
 
@@ -33,7 +32,7 @@ pub struct Module {
     pub provides_files: Vec<Decl>,
     pub requires_files: Vec<Decl>,
     pub flavour: Option<String>,
-    pub sinks: Vec<Sink>,
+    pub collects: Vec<Collect>,
     pub secrets: Vec<Decl>,
     pub args: Vec<Decl>,
     pub options: Vec<Opt>,
@@ -98,7 +97,7 @@ impl Module {
             provides_files: Vec::new(),
             requires_files: Vec::new(),
             flavour: entry.flavour.clone(),
-            sinks: Vec::new(),
+            collects: Vec::new(),
             secrets: Vec::new(),
             args: Vec::new(),
             options: Vec::new(),
@@ -198,33 +197,31 @@ impl Module {
                         }
                     }
                 }
-                "sink" => {
-                    let sink_name = string_args(node).first().map(|s| s.to_string());
-                    let sink_file = prop(node, "file");
-                    let sink_path = prop(node, "path");
-                    let missing = if sink_name.is_none() {
-                        Some("a name")
-                    } else if sink_file.is_none() {
-                        Some("file=, the filename a contributing module ships")
-                    } else if sink_path.is_none() {
-                        Some("path=, where it lands in the image")
-                    } else if !sink_path.is_some_and(|p| p.starts_with('/')) {
-                        Some("an absolute path=")
-                    } else {
-                        None
-                    };
-                    match missing {
-                        None => module.sinks.push(Sink {
-                            name: sink_name.unwrap_or_default(),
-                            file: sink_file.unwrap_or_default().to_string(),
-                            path: sink_path.unwrap_or_default().to_string(),
-                            span: node.name().span(),
-                        }),
-                        Some(missing) => issues.push(
-                            Issue::new(format!("`sink` needs {missing}"), &file, &text)
-                                .at(node.name().span(), "incomplete sink")
-                                .help("`sink \"justfile\" file=\"justfile.inc\" path=\"/usr/share/goojust/justfile.apps\"`"),
-                        ),
+                "collects" => {
+                    let collected = string_args(node).first().map(|s| s.to_string());
+                    let into = prop(node, "into");
+                    match (collected, into) {
+                        (Some(collected), Some(into)) if into.starts_with('/') => {
+                            module.collects.push(Collect {
+                                file: collected,
+                                into: into.to_string(),
+                                span: node.name().span(),
+                            })
+                        }
+                        (collected, into) => {
+                            let missing = if collected.is_none() {
+                                "the filename it collects"
+                            } else if into.is_none() {
+                                "into=, where the build puts them"
+                            } else {
+                                "an absolute into="
+                            };
+                            issues.push(
+                                Issue::new(format!("`collects` needs {missing}"), &file, &text)
+                                    .at(node.name().span(), "incomplete")
+                                    .help("`collects \"justfile.inc\" into=\"/usr/share/goojust/justfile.apps\"`"),
+                            );
+                        }
                     }
                 }
                 "option" => {
@@ -465,7 +462,7 @@ pub fn check_graph(modules: &[Module], root: &Path, issues: &mut Issues) {
     }
 }
 
-fn sinks_on_disk(root: &Path) -> BTreeMap<String, String> {
+fn collectors_on_disk(root: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let modules = root.join("modules");
     let mut dirs = vec![modules.clone()];
@@ -494,8 +491,12 @@ fn sinks_on_disk(root: &Path) -> BTreeMap<String, String> {
                 .unwrap_or(&path)
                 .display()
                 .to_string();
-            for node in doc.nodes().iter().filter(|n| n.name().value() == "sink") {
-                if let Some(file) = prop(node, "file") {
+            for node in doc
+                .nodes()
+                .iter()
+                .filter(|n| n.name().value() == "collects")
+            {
+                if let Some(file) = string_args(node).first() {
                     out.insert(file.to_string(), name.clone());
                 }
             }
@@ -504,68 +505,62 @@ fn sinks_on_disk(root: &Path) -> BTreeMap<String, String> {
     out
 }
 
-pub fn resolve_sinks(
+pub fn resolve_collects(
     modules: &[Module],
     root: &Path,
     issues: &mut Issues,
 ) -> BTreeMap<String, Vec<(String, String)>> {
-    let mut by_name: BTreeMap<&str, &Module> = BTreeMap::new();
     let mut by_file: BTreeMap<&str, &Module> = BTreeMap::new();
     for module in modules {
-        for sink in &module.sinks {
-            for (key, map, what) in [
-                (sink.name.as_str(), &mut by_name, "name"),
-                (sink.file.as_str(), &mut by_file, "filename"),
-            ] {
-                if let Some(first) = map.get(key) {
-                    issues.push(
-                        Issue::new(
-                            format!("two enabled modules declare a sink with the {what} `{key}`"),
-                            &module.file,
-                            &module.text,
-                        )
-                        .at(sink.span, "declared again here")
-                        .help(format!("already declared by `{}`", first.path)),
-                    );
-                } else {
-                    map.insert(key, module);
-                }
+        for collect in &module.collects {
+            if let Some(first) = by_file.get(collect.file.as_str()) {
+                issues.push(
+                    Issue::new(
+                        format!("two enabled modules collect `{}`", collect.file),
+                        &module.file,
+                        &module.text,
+                    )
+                    .at(collect.span, "collected again here")
+                    .help(format!("already collected by `{}`", first.path)),
+                );
+            } else {
+                by_file.insert(collect.file.as_str(), module);
             }
         }
     }
 
-    let on_disk = sinks_on_disk(root);
+    let on_disk = collectors_on_disk(root);
     let mut out: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
 
     for module in modules {
         let dir = root.join("modules").join(&module.path);
-        for (file, owner) in &on_disk {
+        for (file, collector) in &on_disk {
             if !dir.join(file).is_file() {
                 continue;
             }
             match by_file.get(file.as_str()) {
-                Some(sink_owner) => {
-                    let path = sink_owner
-                        .sinks
+                Some(enabled) => {
+                    let into = enabled
+                        .collects
                         .iter()
-                        .find(|s| &s.file == file)
-                        .map(|s| s.path.clone())
+                        .find(|c| &c.file == file)
+                        .map(|c| c.into.clone())
                         .unwrap_or_default();
                     out.entry(module.path.clone())
                         .or_default()
-                        .push((file.clone(), path));
+                        .push((file.clone(), into));
                 }
                 None => issues.push(
                     Issue::new(
                         format!(
-                            "`{}` ships a {file} but nothing enabled aggregates it",
+                            "`{}` ships a {file} but nothing enabled collects it",
                             module.path
                         ),
                         &module.file,
                         &module.text,
                     )
                     .help(format!(
-                        "`{owner}` declares that sink; add it to modules.kdl, or drop the {file}"
+                        "`{collector}` collects it; add it to modules.kdl, or drop the {file}"
                     )),
                 ),
             }

@@ -26,7 +26,7 @@ generate:
 clean:
     #!/usr/bin/bash
     set -eoux pipefail
-    rm -rf _build* output/ Containerfile.generated
+    rm -rf _build* output/
 
 [group('Utility')]
 [private]

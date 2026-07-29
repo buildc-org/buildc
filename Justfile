@@ -186,7 +186,7 @@ rebuild-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_r
 rebuild-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "raw" "disk_config/disk.toml")
 
 [group('Build Virtual Machine Image')]
-rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag $flavour=`./scripts/flavours.sh installer`: (build target_image tag flavour)
+rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag $flavour="none": (build target_image tag flavour)
     just build-iso "${target_image}" "${tag}" "${flavour}"
 
 _run-vm $target_image $tag $type:

@@ -1,5 +1,6 @@
 use crate::diag::{Issue, Issues};
 use crate::list::{Entry, List};
+use crate::options::{self, Opt, Variant};
 use kdl::{KdlDocument, KdlNode};
 use miette::SourceSpan;
 use std::collections::BTreeMap;
@@ -25,6 +26,9 @@ pub struct Module {
     pub provides_files: Vec<Decl>,
     pub requires_files: Vec<Decl>,
     pub flavour: Option<String>,
+    pub options: Vec<Opt>,
+    pub variants: Vec<Variant>,
+    pub resolved: Vec<(String, String)>,
 }
 
 const FAMILIES: [&str; 1] = ["fedora"];
@@ -77,6 +81,9 @@ impl Module {
             provides_files: Vec::new(),
             requires_files: Vec::new(),
             flavour: entry.flavour.clone(),
+            options: Vec::new(),
+            variants: Vec::new(),
+            resolved: Vec::new(),
             file: file.clone(),
             text: text.clone(),
         };
@@ -95,7 +102,10 @@ impl Module {
                         if !FAMILIES.contains(&family) {
                             issues.push(
                                 Issue::new(format!("unknown base family `{family}`"), &file, &text)
-                                    .at(node.name().span(), "not a family this repository builds on")
+                                    .at(
+                                        node.name().span(),
+                                        "not a family this repository builds on",
+                                    )
                                     .help(format!("known families: {}", FAMILIES.join(", "))),
                             );
                         }
@@ -131,7 +141,10 @@ impl Module {
                                     &file,
                                     &text,
                                 )
-                                .at(node.name().span(), "a contract file is an exact path in the image"),
+                                .at(
+                                    node.name().span(),
+                                    "a contract file is an exact path in the image",
+                                ),
                             );
                         }
                         let decl = Decl {
@@ -142,6 +155,38 @@ impl Module {
                             module.provides_files.push(decl);
                         } else {
                             module.requires_files.push(decl);
+                        }
+                    }
+                }
+                "option" => {
+                    if let Some(opt) = options::parse_option(node, &file, &text, issues) {
+                        if module.options.iter().any(|o| o.name == opt.name) {
+                            issues.push(
+                                Issue::new(
+                                    format!("option `{}` is declared twice", opt.name),
+                                    &file,
+                                    &text,
+                                )
+                                .at(opt.span, "already declared above"),
+                            );
+                        } else {
+                            module.options.push(opt);
+                        }
+                    }
+                }
+                "variant" => {
+                    if let Some(variant) = options::parse_variant(node, &file, &text, issues) {
+                        if module.variants.iter().any(|v| v.name == variant.name) {
+                            issues.push(
+                                Issue::new(
+                                    format!("variant `{}` is declared twice", variant.name),
+                                    &file,
+                                    &text,
+                                )
+                                .at(variant.span, "already declared above"),
+                            );
+                        } else {
+                            module.variants.push(variant);
                         }
                     }
                 }
@@ -165,6 +210,16 @@ impl Module {
                     .help("a module has to say which base families it can build on, so a portability gap surfaces at lint rather than mid-build"),
             );
         }
+
+        module.resolved = options::resolve(
+            &module.options,
+            &module.variants,
+            &file,
+            &text,
+            entry,
+            list,
+            issues,
+        );
 
         Some(module)
     }
@@ -273,7 +328,10 @@ pub fn check_graph(modules: &[Module], root: &Path, issues: &mut Issues) {
                 };
                 issues.push(
                     Issue::new(
-                        format!("`{}` {kind} `{}`, which nothing enabled provides", module.path, decl.name),
+                        format!(
+                            "`{}` {kind} `{}`, which nothing enabled provides",
+                            module.path, decl.name
+                        ),
                         &module.file,
                         &module.text,
                     )

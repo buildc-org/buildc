@@ -1,5 +1,6 @@
 mod diag;
 mod list;
+mod module;
 mod render;
 
 use list::List;
@@ -54,6 +55,12 @@ fn main() -> ExitCode {
         }
     };
 
+    let modules: Vec<module::Module> = list
+        .entries
+        .iter()
+        .filter_map(|entry| module::Module::load(entry, &list, &root, &mut issues))
+        .collect();
+
     let output = match command {
         "flavours" => lines(list.flavours.iter().map(|f| f.name.clone())),
         "default-flavour" => lines(list.default_flavour().map(str::to_string)),
@@ -81,7 +88,7 @@ fn main() -> ExitCode {
     if command == "check" {
         eprintln!(
             "manifest: {} modules, {} flavours",
-            list.entries.len(),
+            modules.len(),
             list.flavours.len()
         );
     }

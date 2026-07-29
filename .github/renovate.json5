@@ -1,0 +1,49 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+  ],
+
+  "rebaseWhen": "never",
+
+  "timezone": "Etc/UTC",
+  "schedule": ["before 6am"],
+
+  "packageRules": [
+    {
+      "matchPackageNames": ["*"],
+      "groupName": "scheduled updates",
+      "automerge": true,
+    },
+    {
+      "enabled": false,
+      "matchUpdateTypes": ["digest", "pinDigest", "pin"],
+      "matchDepTypes": ["container"],
+      "matchFileNames": [".github/workflows/**.yaml", ".github/workflows/**.yml"],
+    },
+    {
+      "matchPackageNames": ["quay.io/fedora/fedora-bootc"],
+      "pinDigests": false,
+    },
+  ],
+
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Version-tagged pins in module versions.sh",
+      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/versions\\.sh$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>github-releases|github-tags) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n\\w+=\"(?<currentValue>[^\"]+)\"",
+      ],
+    },
+    {
+      "customType": "regex",
+      "description": "Commit-pinned deps in module versions.sh",
+      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/versions\\.sh$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>git-refs) depName=(?<depName>\\S+)\\n\\w+=\"(?<currentDigest>[^\"]+)\"",
+      ],
+      "currentValueTemplate": "master",
+    },
+  ],
+}

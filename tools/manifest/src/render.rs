@@ -48,7 +48,7 @@ pub fn section(
     }
 
     for entry in &list.entries {
-        let dir = root.join("modules").join(&entry.path);
+        let dir = root.join("modules").join(entry.dir());
         if !dir.is_dir() {
             issues.push(
                 Issue::new(
@@ -97,8 +97,8 @@ pub fn section(
 
         if dir.join("finalize.sh").is_file() {
             finalize.push(match &entry.flavour {
-                Some(f) => format!("{}:{f}", entry.path),
-                None => entry.path.clone(),
+                Some(f) => format!("{}:{f}", entry.dir()),
+                None => entry.dir(),
             });
         }
     }
@@ -205,6 +205,9 @@ pub fn summary(list: &List, modules: &[Module], target: Option<&str>) -> String 
         if let Some(variant) = &entry.variant {
             let _ = write!(name, " `variant={variant}`");
         }
+        if let Some(remote) = &entry.remote {
+            let _ = write!(name, " `remote={}`", remote.git_ref);
+        }
         let options: Vec<String> = module
             .map(|m| m.resolved.as_slice())
             .unwrap_or_default()
@@ -253,13 +256,38 @@ pub fn assets(list: &List, modules: &[Module], target: Option<&str>) -> String {
                 "{}|{}|modules/{}/module.kdl|{}|{}|{}|{}",
                 module.path,
                 asset.name,
-                module.path,
+                module.dir,
                 asset.version.as_deref().unwrap_or_default(),
                 asset.sha256.as_deref().unwrap_or_default(),
                 asset.from.as_str(),
                 asset.url_resolved().unwrap_or_default(),
             );
         }
+    }
+    out
+}
+
+pub fn remotes(list: &List) -> String {
+    let mut out = String::new();
+    let mut seen: Vec<&str> = Vec::new();
+    for entry in &list.entries {
+        let Some(remote) = &entry.remote else {
+            continue;
+        };
+        if seen.contains(&entry.path.as_str()) {
+            continue;
+        }
+        seen.push(&entry.path);
+        let _ = writeln!(
+            out,
+            "{}|modules/{}|{}|{}|{}|{}",
+            entry.path,
+            entry.dir(),
+            remote.git_ref,
+            remote.sha256,
+            remote.url_resolved(),
+            remote.path.clone().unwrap_or_default(),
+        );
     }
     out
 }
@@ -384,7 +412,7 @@ fn standard(
 
     let packages_cmd = packages_install(module, base_family);
 
-    let path = &entry.path;
+    let path = entry.dir();
     let mut out = String::new();
     let _ = write!(
         out,
@@ -478,7 +506,8 @@ fn fragment(
     let mut out = String::new();
     let _ = write!(
         out,
-        "# verbatim from modules/{path}/Containerfile.inc:\n{}",
+        "# verbatim from modules/{}/Containerfile.inc:\n{}",
+        entry.dir(),
         body.trim_end_matches('\n')
     );
     out

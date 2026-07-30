@@ -5,6 +5,7 @@ mod module;
 mod options;
 mod order;
 mod overlay;
+mod remote;
 mod render;
 
 use list::List;
@@ -31,6 +32,8 @@ says otherwise.
                     when no target is given
   assets [target]   every pinned asset, pipe separated: module, name,
                     manifest, version, sha256, hash source, resolved URL
+  remotes           every out-of-tree module pin, pipe separated: name,
+                    directory, ref, sha256, resolved URL, subtree path
   find-provider <abs-path> [target]
                     the module that provides a contract file path; nothing
                     when none does. Per target when one is given, because
@@ -89,6 +92,15 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
+    if command == "remotes" {
+        let output = render::remotes(&list);
+        if issues.report(&list_display) {
+            return ExitCode::FAILURE;
+        }
+        print!("{output}");
+        return ExitCode::SUCCESS;
+    }
 
     let mut modules: Vec<module::Module> = list
         .entries

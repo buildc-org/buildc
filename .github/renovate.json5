@@ -54,5 +54,13 @@
       ],
       "currentValueTemplate": "master",
     },
+    {
+      "customType": "regex",
+      "description": "Out-of-tree module pins in modules.kdl",
+      "managerFilePatterns": ["/^modules\\.kdl$/"],
+      "matchStrings": [
+        "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*ref \"(?<currentValue>[^\"]+)\"",
+      ],
+    },
   ],
 }

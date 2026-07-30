@@ -1,4 +1,5 @@
 use crate::diag::{Issue, Issues};
+use crate::remote::{self, Remote, REMOTE_DIR};
 use kdl::{KdlDocument, KdlNode, KdlValue};
 use miette::SourceSpan;
 
@@ -29,7 +30,17 @@ pub struct Entry {
     pub flavour: Option<String>,
     pub variant: Option<String>,
     pub options: Vec<(String, Vec<KdlValue>, SourceSpan)>,
+    pub remote: Option<Remote>,
     pub span: SourceSpan,
+}
+
+impl Entry {
+    pub fn dir(&self) -> String {
+        match self.remote {
+            Some(_) => format!("{REMOTE_DIR}/{}", self.path),
+            None => self.path.clone(),
+        }
+    }
 }
 
 pub struct List {
@@ -39,8 +50,6 @@ pub struct List {
     pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
 }
-
-const RESERVED: [&str; 3] = ["source", "ref", "sha256"];
 
 fn is_flavour_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -390,14 +399,6 @@ impl List {
             let Some(key) = entry.name().map(|n| n.value()) else {
                 continue; 
             };
-            if RESERVED.contains(&key) {
-                issues.push(
-                    Issue::new(format!("`{key}` is reserved and not implemented"), file, text)
-                        .at(entry.span(), "cannot be used yet")
-                        .help("source, ref and sha256 are claimed for out-of-tree modules so that adding them later is not a format change"),
-                );
-                continue;
-            }
             match key {
                 "variant" => match entry.value().as_string() {
                     Some(v) => variant = Some(v.to_string()),
@@ -414,29 +415,47 @@ impl List {
             }
         }
 
-        let options = node
-            .children()
-            .map(|c| c.nodes())
-            .unwrap_or_default()
-            .iter()
-            .map(|opt| {
-                (
-                    opt.name().value().to_string(),
-                    opt.entries()
-                        .iter()
-                        .filter(|e| e.name().is_none())
-                        .map(|e| e.value().clone())
-                        .collect(),
-                    opt.name().span(),
-                )
-            })
-            .collect();
+        let mut options = Vec::new();
+        let mut pin: Option<Remote> = None;
+        for child in node.children().map(|c| c.nodes()).unwrap_or_default() {
+            if child.name().value() == "source" {
+                if let Some(first) = pin.as_ref().map(|p| p.span) {
+                    issues.push(
+                        Issue::new(format!("`{path}` is pinned twice"), file, text)
+                            .at(first, "first here")
+                            .at(child.name().span(), "and again here"),
+                    );
+                    continue;
+                }
+                pin = remote::parse(child, file, text, issues);
+                continue;
+            }
+            options.push((
+                child.name().value().to_string(),
+                child
+                    .entries()
+                    .iter()
+                    .filter(|e| e.name().is_none())
+                    .map(|e| e.value().clone())
+                    .collect(),
+                child.name().span(),
+            ));
+        }
+
+        if pin.is_some() && !is_flavour_name(&path) {
+            issues.push(
+                Issue::new(format!("invalid module name `{path}`"), file, text)
+                    .at(node.name().span(), "must be lowercase letters, digits and dashes, starting with a letter")
+                    .help(format!("a pinned module is fetched into modules/{REMOTE_DIR}/<name>, so its name is one path segment rather than a path")),
+            );
+        }
 
         Some(Entry {
             path,
             flavour,
             variant,
             options,
+            remote: pin,
             span: node.name().span(),
         })
     }

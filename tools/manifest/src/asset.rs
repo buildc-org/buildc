@@ -300,7 +300,7 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
     Some(asset)
 }
 
-fn check_renovate(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
+pub fn check_renovate(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
     let span = node.name().span();
     let mut datasource = None;
     let mut dep_name = None;

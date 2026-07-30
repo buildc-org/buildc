@@ -6,5 +6,7 @@ provides "kernel-devel"
 provides-file "/usr/share/buildc/sb_cert.der"
 provides-file "/usr/lib/buildc/kernel-package"
 
+collects "dracut.modules" into="/usr/lib/buildc/dracut.modules"
+
 arg "KERNEL"
 secret "mok_privkey"

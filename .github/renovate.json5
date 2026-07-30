@@ -30,18 +30,18 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Version-tagged pins in module versions.sh",
-      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/versions\\.sh$/"],
+      "description": "Version-tagged asset pins in module.kdl",
+      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>github-releases|github-tags) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n\\w+=\"(?<currentValue>[^\"]+)\"",
+        "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*version \"(?<currentValue>[^\"]+)\"",
       ],
     },
     {
       "customType": "regex",
-      "description": "Commit-pinned deps in module versions.sh",
-      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/versions\\.sh$/"],
+      "description": "Commit-pinned asset pins in module.kdl",
+      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>git-refs) depName=(?<depName>\\S+)\\n\\w+=\"(?<currentDigest>[^\"]+)\"",
+        "renovate datasource=\"(?<datasource>git-refs)\" depName=\"(?<depName>[^\"]+)\"\\s*\\n\\s*version \"(?<currentDigest>[^\"]+)\"",
       ],
       "currentValueTemplate": "master",
     },

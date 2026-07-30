@@ -71,6 +71,7 @@ pub fn section(
         if let Some(flavour) = &entry.flavour {
             let _ = writeln!(out, "# ---- [{flavour}] ----");
         }
+        let _ = writeln!(out, "# ---- {} ----", entry.path);
         let _ = write!(out, "{}\n\n", blocks.join("\n\n"));
 
         if dir.join("finalize.sh").is_file() {
@@ -157,15 +158,7 @@ fn phase(file: &str, below_modules: bool) -> String {
 }
 
 pub fn summary(list: &List, modules: &[Module], target: Option<&str>) -> String {
-    let included: Vec<&Entry> = list
-        .entries
-        .iter()
-        .filter(|e| match (&e.flavour, target) {
-            (None, _) => true,
-            (Some(_), None) => true,
-            (Some(gate), Some(target)) => gate == target,
-        })
-        .collect();
+    let included: Vec<&Entry> = list.entries.iter().filter(|e| in_target(e, target)).collect();
     let gated = included.iter().filter(|e| e.flavour.is_some()).count();
 
     let mut out = String::new();
@@ -211,6 +204,45 @@ fn cell(text: &str) -> String {
     text.replace('|', "\\|")
 }
 
+fn in_target(entry: &Entry, target: Option<&str>) -> bool {
+    match (&entry.flavour, target) {
+        (None, _) => true,
+        (Some(_), None) => true,
+        (Some(gate), Some(target)) => gate == target,
+    }
+}
+
+pub fn assets(list: &List, modules: &[Module], target: Option<&str>) -> String {
+    let mut out = String::new();
+    let mut seen: Vec<(&str, &str)> = Vec::new();
+    for entry in list.entries.iter().filter(|e| in_target(e, target)) {
+        let Some(module) = modules
+            .iter()
+            .find(|m| m.path == entry.path && m.flavour == entry.flavour)
+        else {
+            continue;
+        };
+        for asset in &module.assets {
+            if seen.contains(&(module.path.as_str(), asset.name.as_str())) {
+                continue;
+            }
+            seen.push((module.path.as_str(), asset.name.as_str()));
+            let _ = writeln!(
+                out,
+                "{}|{}|modules/{}/module.kdl|{}|{}|{}|{}",
+                module.path,
+                asset.name,
+                module.path,
+                asset.version.as_deref().unwrap_or_default(),
+                asset.sha256.as_deref().unwrap_or_default(),
+                asset.from.as_str(),
+                asset.url_resolved().unwrap_or_default(),
+            );
+        }
+    }
+    out
+}
+
 fn standard(
     entry: &Entry,
     module: Option<&Module>,
@@ -229,6 +261,13 @@ fn standard(
             .map(|(file, into)| format!("{file}={into}"))
             .collect();
         let _ = write!(env, "MODULE_COLLECT=\"{}\" ", pairs.join(" "));
+    }
+
+    let mut assets = String::new();
+    for asset in module.map(|m| m.assets.as_slice()).unwrap_or_default() {
+        for (name, value) in asset.env() {
+            let _ = write!(assets, "{name}=\"{value}\" \\\n    ");
+        }
     }
 
     let mut secrets = String::new();
@@ -253,13 +292,12 @@ fn standard(
     let mut out = String::new();
     let _ = write!(
         out,
-        "# ---- {path} ----\n\
-         RUN --mount=type=bind,from=ctx,source=/modules/{path},target=/ctx/modules/{path} \\\n    \
+        "RUN --mount=type=bind,from=ctx,source=/modules/{path},target=/ctx/modules/{path} \\\n    \
          --mount=type=bind,from=ctx,source=/lib,target=/ctx/lib \\\n    \
          --mount=type=cache,target=/var/cache \\\n    \
          --mount=type=cache,target=/var/log \\\n    \
          --mount=type=tmpfs,target=/tmp \\\n    \
-         {secrets}{env}bash /ctx/lib/run-module.sh /ctx/modules/{path}"
+         {secrets}{assets}{env}bash /ctx/lib/run-module.sh /ctx/modules/{path}"
     );
     out
 }
@@ -321,7 +359,7 @@ fn fragment(
     let mut out = String::new();
     let _ = write!(
         out,
-        "# ---- {path} (verbatim from modules/{path}/Containerfile.inc) ----\n{}",
+        "# verbatim from modules/{path}/Containerfile.inc:\n{}",
         body.trim_end_matches('\n')
     );
     out

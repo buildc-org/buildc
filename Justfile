@@ -104,7 +104,7 @@ generate-mok-key dir=(env("HOME") + "/.local/share/buildc"):
         echo "  1. No module provides /usr/share/buildc/sb_cert.der — copy the cert into the"
         echo "     kernel module's files/ overlay at the path it declares."
     fi
-    echo "  2. Commit that cert, and add MOK_PRIVATE_KEY as a GitHub Actions secret (contents of $KEY)."
+    echo "  2. Commit that cert, and add MOK_PRIVKEY as a GitHub Actions secret (contents of $KEY)."
     echo "  3. After deploying a signed image, on the target machine run:"
     echo "       sudo mokutil --import /usr/share/buildc/sb_cert.der"
     echo "     then reboot and follow the MokManager enrollment prompt."

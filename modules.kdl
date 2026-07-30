@@ -6,7 +6,6 @@ modules {
     module "base"
     module "core/auto-updates"
     module "core/system-just-scripts"
-    module "core/goojust"
     module "core/flatpak"
     module "core/brew"
     module "core/cli-tools"
@@ -25,7 +24,6 @@ modules {
     module "hardware/yubikey"
 
     module "de/kde-desktop"
-    module "de/buildc-plasma-settings"
     module "de/bazaar"
 
     module "media-codecs"
@@ -41,6 +39,9 @@ modules {
     module "apps/trivalent"
     module "apps/vscodium"
     module "apps/bitwarden"
+
+    module "core/goojust"
+    module "de/buildc-plasma-settings"
 
     flavour "dev" {
         module "dev-tools"

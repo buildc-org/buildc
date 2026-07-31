@@ -4,6 +4,19 @@ use miette::SourceSpan;
 
 pub const NO_FLAVOUR: &str = "none";
 
+pub struct Base {
+    pub image: String,
+    pub family: String,
+    pub provides: Vec<Decl>,
+    pub provides_files: Vec<Decl>,
+    pub span: SourceSpan,
+}
+
+pub struct Decl {
+    pub name: String,
+    pub span: SourceSpan,
+}
+
 pub struct Flavour {
     pub name: String,
     pub default: bool,
@@ -22,6 +35,7 @@ pub struct Entry {
 pub struct List {
     pub file: String,
     pub text: String,
+    pub base: Option<Base>,
     pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
 }
@@ -44,6 +58,14 @@ fn string_arg(node: &KdlNode) -> Option<&str> {
         .and_then(|e| e.value().as_string())
 }
 
+fn string_args(node: &KdlNode) -> Vec<&str> {
+    node.entries()
+        .iter()
+        .filter(|e| e.name().is_none())
+        .filter_map(|e| e.value().as_string())
+        .collect()
+}
+
 impl List {
     pub fn load(path: &str) -> Result<(Self, Issues), Box<Issue>> {
         let text = std::fs::read_to_string(path)
@@ -56,6 +78,7 @@ impl List {
         let mut list = List {
             file: file.to_string(),
             text: text.clone(),
+            base: None,
             flavours: Vec::new(),
             entries: Vec::new(),
         };
@@ -71,13 +94,14 @@ impl List {
 
         for node in doc.nodes() {
             match node.name().value() {
+                "base" => list.parse_base(node, &mut issues),
                 "flavours" => list.parse_flavours(node, &mut issues),
                 "modules" => list.parse_modules(node, &mut issues),
                 other => issues.push(
                     Issue::new(format!("unknown top-level node `{other}`"), file, &text)
                         .at(node.name().span(), "not part of the schema")
                         .help(
-                            "modules.kdl holds an optional `flavours` block and a `modules` block",
+                            "modules.kdl holds a `base` node, an optional `flavours` block and a `modules` block",
                         ),
                 ),
             }
@@ -90,8 +114,101 @@ impl List {
             );
         }
 
+        if list.base.is_none() && !doc.nodes().iter().any(|n| n.name().value() == "base") {
+            issues.push(
+                Issue::new(format!("{file} has no `base` node"), file, &text).help(
+                    "`base \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\" }`, \
+                     naming the image every layer builds on",
+                ),
+            );
+        }
+
         list.check_flavours(&mut issues);
         (list, issues)
+    }
+
+    fn parse_base(&mut self, node: &KdlNode, issues: &mut Issues) {
+        let (file, text) = (self.file.clone(), self.text.clone());
+
+        if let Some(first) = &self.base {
+            issues.push(
+                Issue::new("`base` is declared twice", &file, &text)
+                    .at(first.span, "first here")
+                    .at(node.name().span(), "and again here")
+                    .help("an image builds on one base; a second family is a second image"),
+            );
+            return;
+        }
+
+        let Some(image) = string_arg(node) else {
+            issues.push(
+                Issue::new("`base` needs an image reference", &file, &text)
+                    .at(node.name().span(), "no image given")
+                    .help("`base \"quay.io/fedora/fedora-bootc:44\"`, emitted verbatim as the generated FROM"),
+            );
+            return;
+        };
+
+        let mut base = Base {
+            image: image.to_string(),
+            family: String::new(),
+            provides: Vec::new(),
+            provides_files: Vec::new(),
+            span: node.name().span(),
+        };
+
+        for child in node.children().map(|c| c.nodes()).unwrap_or_default() {
+            let names = || {
+                string_args(child)
+                    .iter()
+                    .map(|name| Decl {
+                        name: name.to_string(),
+                        span: child.name().span(),
+                    })
+                    .collect::<Vec<_>>()
+            };
+            match child.name().value() {
+                "family" => match string_arg(child) {
+                    Some(f) => base.family = f.to_string(),
+                    None => issues.push(
+                        Issue::new("`family` needs a name", &file, &text)
+                            .at(child.name().span(), "no family given")
+                            .help("`family \"fedora\"`, matched against each module's `supports`"),
+                    ),
+                },
+                "provides" => base.provides.extend(names()),
+                "provides-file" => base.provides_files.extend(names()),
+                other => issues.push(
+                    Issue::new(format!("unknown base property `{other}`"), &file, &text)
+                        .at(child.name().span(), "not part of the schema")
+                        .help("a base accepts `family`, `provides` and `provides-file`"),
+                ),
+            }
+        }
+
+        if base.family.is_empty() {
+            issues.push(
+                Issue::new("`base` declares no `family`", &file, &text)
+                    .at(base.span, "no family")
+                    .help("every module declares which families it `supports`, and the two are checked against each other"),
+            );
+        }
+
+        for decl in &base.provides_files {
+            if !decl.name.starts_with('/') {
+                issues.push(
+                    Issue::new(
+                        format!("`{}` is not an absolute path", decl.name),
+                        &file,
+                        &text,
+                    )
+                    .at(decl.span, "`provides-file` takes absolute paths")
+                    .help("the path is checked on the finished image, where nothing has a working directory"),
+                );
+            }
+        }
+
+        self.base = Some(base);
     }
 
     fn parse_flavours(&mut self, block: &KdlNode, issues: &mut Issues) {

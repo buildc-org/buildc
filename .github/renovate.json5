@@ -30,6 +30,15 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Base image reference in modules.kdl",
+      "managerFilePatterns": ["/^modules\\.kdl$/"],
+      "datasourceTemplate": "docker",
+      "matchStrings": [
+        "base \"(?<depName>[^\":]+):(?<currentValue>[^\"]+)\"",
+      ],
+    },
+    {
+      "customType": "regex",
       "description": "Version-tagged asset pins in module.kdl",
       "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/"],
       "matchStrings": [

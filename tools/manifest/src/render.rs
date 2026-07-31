@@ -20,6 +20,7 @@ pub fn section(
     modules: &[Module],
     collected: &BTreeMap<String, Vec<(String, String)>>,
     root: &Path,
+    base_family: &str,
     issues: &mut Issues,
 ) -> String {
     let mut out = String::new();
@@ -62,7 +63,12 @@ pub fn section(
             blocks.push(fragment(entry, &inc, flavour_arg_emitted, list, issues));
         }
         if module.is_none_or(|m| m.standard_layer) {
-            blocks.push(standard(entry, module, collected.get(&entry.path)));
+            blocks.push(standard(
+                entry,
+                module,
+                collected.get(&entry.path),
+                base_family,
+            ));
         }
         if inc.is_file() && fragment_after {
             blocks.push(fragment(entry, &inc, flavour_arg_emitted, list, issues));
@@ -303,6 +309,7 @@ fn standard(
     entry: &Entry,
     module: Option<&Module>,
     collected: Option<&Vec<(String, String)>>,
+    base_family: &str,
 ) -> String {
     let mut env = String::new();
     if let Some(flavour) = &entry.flavour {
@@ -344,7 +351,7 @@ fn standard(
         env.insert_str(0, &format!("{name}=${{{name}}} "));
     }
 
-    let packages_cmd = packages_install(module);
+    let packages_cmd = packages_install(module, base_family);
 
     let path = &entry.path;
     let mut out = String::new();
@@ -360,13 +367,13 @@ fn standard(
     out
 }
 
-fn packages_install(module: Option<&Module>) -> String {
+fn packages_install(module: Option<&Module>, base_family: &str) -> String {
     let groups = match module {
         Some(m) if !m.packages.is_empty() => m.packages.as_slice(),
         _ => return String::new(),
     };
     let mut out = String::new();
-    for group in groups {
+    for group in groups.iter().filter(|g| g.family == base_family) {
         let pkgs = group.packages.join(" ");
         match &group.enablerepo {
             Some(repo) => {

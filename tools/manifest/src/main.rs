@@ -8,7 +8,7 @@ mod overlay;
 mod render;
 
 use list::List;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "\
@@ -93,9 +93,11 @@ fn main() -> ExitCode {
         .filter_map(|entry| module::Module::load(entry, &list, &root, &mut issues))
         .collect();
 
+    let base_family = base_family(&root);
+
     let order = order::sort(&list, &modules, &mut issues);
     order::apply(&mut list, &mut modules, &order);
-    module::check_graph(&modules, &root, &mut issues);
+    module::check_graph(&modules, &root, &base_family, &mut issues);
     overlay::check(&modules, &root, &mut issues);
     let collected = module::resolve_collects(&modules, &root, &mut issues);
 
@@ -189,4 +191,34 @@ fn lines(items: impl IntoIterator<Item = String>) -> String {
         .map(|s| s + "\n")
         .collect::<Vec<_>>()
         .concat()
+}
+
+fn base_family(root: &Path) -> String {
+    if let Ok(family) = std::env::var("BASE_FAMILY") {
+        if !family.is_empty() {
+            return family;
+        }
+    }
+    let template = root.join("Containerfile.template");
+    if let Ok(text) = std::fs::read_to_string(&template) {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("FROM ") {
+                let image = trimmed
+                    .strip_prefix("FROM ")
+                    .unwrap_or(trimmed)
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("");
+                if let Some(family) = image
+                    .split('/')
+                    .find(|seg| *seg == "fedora")
+                    .map(|s| s.to_string())
+                {
+                    return family;
+                }
+            }
+        }
+    }
+    "fedora".to_string()
 }

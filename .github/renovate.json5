@@ -30,8 +30,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Base image reference in modules.kdl",
-      "managerFilePatterns": ["/^modules\\.kdl$/"],
+      "description": "Base image reference in image.kdl",
+      "managerFilePatterns": ["/^image\\.kdl$/"],
       "datasourceTemplate": "docker",
       "matchStrings": [
         "base \"(?<depName>[^\":]+):(?<currentValue>[^\"]+)\"",
@@ -56,8 +56,8 @@
     },
     {
       "customType": "regex",
-      "description": "Out-of-tree module pins in modules.kdl",
-      "managerFilePatterns": ["/^modules\\.kdl$/"],
+      "description": "Out-of-tree module pins in image.kdl",
+      "managerFilePatterns": ["/^image\\.kdl$/"],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*ref \"(?<currentValue>[^\"]+)\"",
       ],

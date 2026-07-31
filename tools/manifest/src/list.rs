@@ -110,7 +110,7 @@ impl List {
                     Issue::new(format!("unknown top-level node `{other}`"), file, &text)
                         .at(node.name().span(), "not part of the schema")
                         .help(
-                            "modules.kdl holds a `base` node, an optional `flavours` block and a `modules` block",
+                            "image.kdl holds a `base` node, an optional `flavours` block and a `modules` block",
                         ),
                 ),
             }

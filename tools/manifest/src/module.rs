@@ -31,6 +31,7 @@ pub struct Module {
     pub requires: Vec<Decl>,
     pub after: Vec<Decl>,
     pub provides_files: Vec<Decl>,
+    pub provides_files_build_only: Vec<String>,
     pub requires_files: Vec<Decl>,
     pub overrides: Vec<Decl>,
     pub flavour: Option<String>,
@@ -100,6 +101,7 @@ impl Module {
             requires: Vec::new(),
             after: Vec::new(),
             provides_files: Vec::new(),
+            provides_files_build_only: Vec::new(),
             requires_files: Vec::new(),
             overrides: Vec::new(),
             flavour: entry.flavour.clone(),
@@ -162,6 +164,38 @@ impl Module {
                     }
                 }
                 kind @ ("provides-file" | "requires-file" | "overrides") => {
+                    let build_only = match node
+                        .entries()
+                        .iter()
+                        .find(|e| e.name().map(|n| n.value()) == Some("build-only"))
+                    {
+                        None => false,
+                        Some(entry) if kind != "provides-file" => {
+                            issues.push(
+                                Issue::new(
+                                    format!("`build-only` is not a `{kind}` property"),
+                                    &file,
+                                    &text,
+                                )
+                                .at(entry.span(), "only `provides-file` declares a lifetime"),
+                            );
+                            false
+                        }
+                        Some(entry) => match entry.value().as_bool() {
+                            Some(value) => value,
+                            None => {
+                                issues.push(
+                                    Issue::new(
+                                        format!("`build-only` takes #true or #false"),
+                                        &file,
+                                        &text,
+                                    )
+                                    .at(entry.span(), "not a boolean"),
+                                );
+                                false
+                            }
+                        },
+                    };
                     for path in string_args(node) {
                         if !path.starts_with('/') {
                             issues.push(
@@ -178,7 +212,12 @@ impl Module {
                             span: node.name().span(),
                         };
                         match kind {
-                            "provides-file" => module.provides_files.push(decl),
+                            "provides-file" => {
+                                if build_only {
+                                    module.provides_files_build_only.push(path.to_string());
+                                }
+                                module.provides_files.push(decl);
+                            }
                             "requires-file" => module.requires_files.push(decl),
                             _ => module.overrides.push(decl),
                         }

@@ -5,6 +5,17 @@ use miette::SourceSpan;
 
 pub const NO_FLAVOUR: &str = "none";
 
+pub struct Image {
+    pub id: String,
+    pub name: String,
+    pub pretty_name: String,
+    pub url: String,
+    pub issues_url: String,
+    pub logo: String,
+    pub watermark: String,
+    pub span: SourceSpan,
+}
+
 pub struct Base {
     pub image: String,
     pub family: String,
@@ -46,6 +57,7 @@ impl Entry {
 pub struct List {
     pub file: String,
     pub text: String,
+    pub image: Option<Image>,
     pub base: Option<Base>,
     pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
@@ -87,6 +99,7 @@ impl List {
         let mut list = List {
             file: file.to_string(),
             text: text.clone(),
+            image: None,
             base: None,
             flavours: Vec::new(),
             entries: Vec::new(),
@@ -103,6 +116,7 @@ impl List {
 
         for node in doc.nodes() {
             match node.name().value() {
+                "image" => list.parse_image(node, &mut issues),
                 "base" => list.parse_base(node, &mut issues),
                 "flavours" => list.parse_flavours(node, &mut issues),
                 "modules" => list.parse_modules(node, &mut issues),
@@ -110,7 +124,7 @@ impl List {
                     Issue::new(format!("unknown top-level node `{other}`"), file, &text)
                         .at(node.name().span(), "not part of the schema")
                         .help(
-                            "image.kdl holds a `base` node, an optional `flavours` block and a `modules` block",
+                            "image.kdl holds an `image` node, a `base` node, an optional `flavours` block and a `modules` block",
                         ),
                 ),
             }
@@ -120,6 +134,15 @@ impl List {
             issues.push(
                 Issue::new(format!("{file} has no `modules` block"), file, &text)
                     .help("an image with no modules is almost certainly a mistake; the block is required even when empty"),
+            );
+        }
+
+        if list.image.is_none() && !doc.nodes().iter().any(|n| n.name().value() == "image") {
+            issues.push(
+                Issue::new(format!("{file} has no `image` node"), file, &text).help(
+                    "`image \"name\" { name \"Name\" }`, what the image calls itself in \
+                     os-release and what it publishes as",
+                ),
             );
         }
 
@@ -134,6 +157,97 @@ impl List {
 
         list.check_flavours(&mut issues);
         (list, issues)
+    }
+
+    fn parse_image(&mut self, node: &KdlNode, issues: &mut Issues) {
+        let (file, text) = (self.file.clone(), self.text.clone());
+
+        if let Some(first) = &self.image {
+            issues.push(
+                Issue::new("`image` is declared twice", &file, &text)
+                    .at(first.span, "first here")
+                    .at(node.name().span(), "and again here")
+                    .help("one file describes one image; a second identity is a second image"),
+            );
+            return;
+        }
+
+        let Some(id) = string_arg(node) else {
+            issues.push(
+                Issue::new("`image` needs a name", &file, &text)
+                    .at(node.name().span(), "no name given")
+                    .help("`image \"buildc\"`, the machine name it publishes and boots under"),
+            );
+            return;
+        };
+
+        let mut image = Image {
+            id: id.to_string(),
+            name: String::new(),
+            pretty_name: String::new(),
+            url: String::new(),
+            issues_url: String::new(),
+            logo: String::new(),
+            watermark: String::new(),
+            span: node.name().span(),
+        };
+
+        if !is_flavour_name(&image.id) {
+            issues.push(
+                Issue::new(format!("invalid image name `{}`", image.id), &file, &text)
+                    .at(image.span, "must be lowercase letters, digits and dashes, starting with a letter")
+                    .help("it becomes an image tag, a cache tag and the default hostname, all of which restrict it"),
+            );
+        }
+
+        for child in node.children().map(|c| c.nodes()).unwrap_or_default() {
+            let value = |field: &str, issues: &mut Issues| match string_arg(child) {
+                Some(v) => v.to_string(),
+                None => {
+                    issues.push(
+                        Issue::new(format!("`{field}` needs a value"), &file, &text)
+                            .at(child.name().span(), "nothing given"),
+                    );
+                    String::new()
+                }
+            };
+            match child.name().value() {
+                "name" => image.name = value("name", issues),
+                "pretty-name" => image.pretty_name = value("pretty-name", issues),
+                "url" => image.url = value("url", issues),
+                "issues-url" => image.issues_url = value("issues-url", issues),
+                "logo" => image.logo = value("logo", issues),
+                "watermark" => image.watermark = value("watermark", issues),
+                other => issues.push(
+                    Issue::new(format!("unknown image property `{other}`"), &file, &text)
+                        .at(child.name().span(), "not part of the schema")
+                        .help(
+                            "an image accepts `name`, `pretty-name`, `url`, `issues-url`, \
+                             `logo` and `watermark`",
+                        ),
+                ),
+            }
+        }
+
+        if image.name.is_empty() {
+            issues.push(
+                Issue::new("`image` declares no `name`", &file, &text)
+                    .at(image.span, "no name")
+                    .help("`name \"Buildc\"` is os-release NAME, which the boot menu and the desktop read"),
+            );
+        }
+
+        for (field, path) in [("logo", &image.logo), ("watermark", &image.watermark)] {
+            if !path.is_empty() && !path.starts_with("brand/") {
+                issues.push(
+                    Issue::new(format!("`{field}` is not under brand/"), &file, &text)
+                        .at(image.span, "brand assets live in brand/")
+                        .help("the build context carries brand/ for them; a path anywhere else is not in it"),
+                );
+            }
+        }
+
+        self.image = Some(image);
     }
 
     fn parse_base(&mut self, node: &KdlNode, issues: &mut Issues) {

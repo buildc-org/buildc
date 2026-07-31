@@ -1,3 +1,0 @@
-docker:
-  ghcr.io/buildc-org:
-    use-sigstore-attachments: true

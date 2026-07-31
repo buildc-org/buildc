@@ -1,4 +1,4 @@
-export image_name := env("IMAGE_NAME", "buildc")
+export image_name := env("IMAGE_NAME", `./scripts/flavours.sh image none`)
 export default_tag := env("DEFAULT_TAG", "latest")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
 
@@ -71,7 +71,7 @@ buildkit-reset:
     ./scripts/build.sh --reset
 
 [group('Secure Boot')]
-generate-mok-key dir=(env("HOME") + "/.local/share/buildc"):
+generate-mok-key dir=(env("HOME") + "/.local/share/" + `./scripts/manifest.sh image-id`):
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -88,7 +88,7 @@ generate-mok-key dir=(env("HOME") + "/.local/share/buildc"):
     openssl req -x509 -newkey rsa:2048 \
         -keyout "$KEY" -nodes -days 36500 \
         -outform DER -out "$CERT" \
-        -subj "/CN=buildc Secure Boot Module Signing/"
+        -subj "/CN=$(./scripts/manifest.sh image-name) Secure Boot Module Signing/"
     chmod 600 "$KEY"
 
     echo
@@ -97,16 +97,16 @@ generate-mok-key dir=(env("HOME") + "/.local/share/buildc"):
     echo "Public cert: $CERT"
     echo
     echo "Next steps:"
-    cert_path="$(./scripts/manifest.sh find-provider "/usr/share/buildc/sb_cert.der")"
+    cert_path="$(./scripts/manifest.sh find-provider "/usr/share/secureboot/sb_cert.der")"
     if [ -n "${cert_path}" ]; then
-        echo "  1. cp $CERT modules/${cert_path}/files/usr/share/buildc/sb_cert.der"
+        echo "  1. cp $CERT modules/${cert_path}/files/usr/share/secureboot/sb_cert.der"
     else
-        echo "  1. No module provides /usr/share/buildc/sb_cert.der — copy the cert into the"
+        echo "  1. No module provides /usr/share/secureboot/sb_cert.der — copy the cert into the"
         echo "     kernel module's files/ overlay at the path it declares."
     fi
     echo "  2. Commit that cert, and add MOK_PRIVKEY as a GitHub Actions secret (contents of $KEY)."
     echo "  3. After deploying a signed image, on the target machine run:"
-    echo "       sudo mokutil --import /usr/share/buildc/sb_cert.der"
+    echo "       sudo mokutil --import /usr/share/secureboot/sb_cert.der"
     echo "     then reboot and follow the MokManager enrollment prompt."
 
 _rootful_load_image $target_image=image_name $tag=default_tag:

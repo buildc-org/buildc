@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues};
-use crate::list::{Entry, List, NO_FLAVOUR};
+use crate::list::{Entry, Image, List, NO_FLAVOUR};
 use crate::module::Module;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -12,6 +12,27 @@ ARG FLAVOUR";
 const IMAGE_VERSION_ARG: &str = "\
 # ---- image version ----
 ARG IMAGE_VERSION=dev";
+
+fn identity(image: Option<&Image>) -> Vec<(&'static str, String)> {
+    let mut vars: Vec<(&'static str, String)> = Vec::new();
+    if let Some(image) = image {
+        for (name, value) in [
+            ("IMAGE_ID", &image.id),
+            ("IMAGE_NAME", &image.name),
+            ("IMAGE_PRETTY_NAME", &image.pretty_name),
+            ("IMAGE_URL", &image.url),
+            ("IMAGE_ISSUES_URL", &image.issues_url),
+            ("IMAGE_LOGO", &image.logo),
+            ("IMAGE_WATERMARK", &image.watermark),
+        ] {
+            if !value.is_empty() {
+                vars.push((name, value.clone()));
+            }
+        }
+    }
+    vars.push(("IMAGE_REGISTRY", String::new()));
+    vars
+}
 
 const MODULE_SLOT: u32 = 50;
 
@@ -44,7 +65,7 @@ pub fn section(
 
     let phases = phases(root, issues);
     for (_, file) in phases.iter().filter(|(number, _)| *number < MODULE_SLOT) {
-        let _ = write!(out, "{}\n\n", phase(file, false));
+        let _ = write!(out, "{}\n\n", phase(file, false, ""));
     }
 
     for entry in &list.entries {
@@ -116,8 +137,35 @@ pub fn section(
 
     let _ = write!(out, "{IMAGE_VERSION_ARG}\n\n");
 
+    if let Some(image) = &list.image {
+        for path in [&image.logo, &image.watermark] {
+            if !path.is_empty() && !root.join(path).is_file() {
+                issues.push(
+                    Issue::new(format!("`{path}` does not exist"), &list.file, &list.text)
+                        .at(image.span, "declared brand asset")
+                        .help("the path is relative to the repository root"),
+                );
+            }
+        }
+    }
+
+    let identity = identity(list.image.as_ref());
+    let _ = write!(
+        out,
+        "# ---- image identity ----\n"
+    );
+    for (name, value) in &identity {
+        let _ = write!(out, "ARG {name}=\"{value}\"\n");
+    }
+    out.push('\n');
+
+    let identity_env: String = identity
+        .iter()
+        .map(|(name, _)| format!("{name}=\"${{{name}}}\" "))
+        .collect();
+
     for (_, file) in phases.iter().filter(|(number, _)| *number >= MODULE_SLOT) {
-        let _ = write!(out, "{}\n\n", phase(file, true));
+        let _ = write!(out, "{}\n\n", phase(file, true, &identity_env));
     }
 
     out
@@ -155,7 +203,7 @@ fn phases(root: &Path, issues: &mut Issues) -> Vec<(u32, String)> {
     out
 }
 
-fn phase(file: &str, below_modules: bool) -> String {
+fn phase(file: &str, below_modules: bool, identity_env: &str) -> String {
     let mut out = format!(
         "# ---- phase {file} ----\n\
          RUN --mount=type=bind,from=ctx,source=/{file},target=/ctx/{file} \\\n    "
@@ -163,6 +211,7 @@ fn phase(file: &str, below_modules: bool) -> String {
     if below_modules {
         out.push_str("--mount=type=bind,from=ctx,source=/lib,target=/ctx/lib \\\n    ");
         out.push_str("--mount=type=bind,from=ctx,source=/modules,target=/ctx/modules \\\n    ");
+        out.push_str("--mount=type=bind,from=ctx,source=/brand,target=/ctx/brand \\\n    ");
     }
     out.push_str(
         "--mount=type=cache,target=/var/cache \\\n    \
@@ -171,8 +220,9 @@ fn phase(file: &str, below_modules: bool) -> String {
     );
     if below_modules {
         out.push_str(
-            "FLAVOUR=${FLAVOUR} IMAGE_VERSION=${IMAGE_VERSION} FINALIZE_ORDER=\"${FINALIZE_ORDER}\" ",
+            "FLAVOUR=${FLAVOUR} IMAGE_VERSION=${IMAGE_VERSION} FINALIZE_ORDER=\"${FINALIZE_ORDER}\" \\\n    ",
         );
+        out.push_str(identity_env);
     }
     let _ = write!(out, "/ctx/{file}");
     out

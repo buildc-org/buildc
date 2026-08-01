@@ -26,6 +26,12 @@ pub struct Collect {
     pub span: SourceSpan,
 }
 
+pub struct VerifyException {
+    pub class: String,
+    pub unit: String,
+    pub span: SourceSpan,
+}
+
 pub struct Module {
     #[allow(dead_code)]
     pub path: String,
@@ -43,6 +49,7 @@ pub struct Module {
     pub provides_files_build_only: Vec<String>,
     pub requires_files: Vec<Decl>,
     pub overrides: Vec<Decl>,
+    pub verify_exceptions: Vec<VerifyException>,
     pub flavour: Option<String>,
     pub collects: Vec<Collect>,
     pub secrets: Vec<Decl>,
@@ -57,6 +64,8 @@ pub struct Module {
 }
 
 const FAMILIES: [&str; 1] = ["fedora"];
+
+const VERIFY_CLASSES: [&str; 2] = ["mount-not-found", "man-page-missing"];
 
 const TOKEN_HELP: &str = "package names and repo IDs are emitted straight into the RUN line, so they are limited to letters, digits and . _ + : -; anything else belongs in module.sh, where it can be quoted deliberately";
 
@@ -152,6 +161,7 @@ impl Module {
             provides_files_build_only: Vec::new(),
             requires_files: Vec::new(),
             overrides: Vec::new(),
+            verify_exceptions: Vec::new(),
             flavour: entry.flavour.clone(),
             collects: Vec::new(),
             secrets: Vec::new(),
@@ -289,6 +299,94 @@ impl Module {
                             module.secrets.push(decl);
                         } else {
                             module.args.push(decl);
+                        }
+                    }
+                }
+                "allow-verify" => {
+                    let span = node.name().span();
+                    let class = string_args(node).first().map(|s| s.to_string());
+                    let mut unit = None;
+                    for prop in node.entries() {
+                        let Some(key) = prop.name().map(|n| n.value()) else {
+                            continue; 
+                        };
+                        match key {
+                            "unit" => match prop.value().as_string() {
+                                Some(v) => unit = Some(v.to_string()),
+                                None => issues.push(
+                                    Issue::new("`unit` must be a string", &file, &text)
+                                        .at(prop.span(), "not a string"),
+                                ),
+                            },
+                            other => issues.push(
+                                Issue::new(
+                                    format!("unknown `allow-verify` property `{other}`"),
+                                    &file,
+                                    &text,
+                                )
+                                .at(prop.span(), "not part of the schema")
+                                .help("`allow-verify` accepts `unit`"),
+                            ),
+                        }
+                    }
+
+                    match (class, unit) {
+                        (Some(class), Some(unit)) => {
+                            if !VERIFY_CLASSES.contains(&class.as_str()) {
+                                issues.push(
+                                    Issue::new(
+                                        format!("`{class}` is not a verify diagnostic class"),
+                                        &file,
+                                        &text,
+                                    )
+                                    .at(span, "not one of the known classes")
+                                    .help(format!(
+                                        "known classes: {}. They are named rather than written as regexes, and lib/validate-image.sh holds the pattern each one stands for",
+                                        VERIFY_CLASSES.join(", ")
+                                    )),
+                                );
+                            } else if let Some(dup) = module
+                                .verify_exceptions
+                                .iter()
+                                .find(|e| e.class == class && e.unit == unit)
+                            {
+                                issues.push(
+                                    Issue::new(
+                                        format!("`{class}` is allowed twice on `{unit}`"),
+                                        &file,
+                                        &text,
+                                    )
+                                    .at(dup.span, "first here")
+                                    .at(span, "and again here"),
+                                );
+                            } else {
+                                module.verify_exceptions.push(VerifyException {
+                                    class,
+                                    unit,
+                                    span,
+                                });
+                            }
+                        }
+                        (class, unit) => {
+                            let missing = if class.is_none() {
+                                "a diagnostic class"
+                            } else if unit.is_none() {
+                                "unit=, the unit it applies to"
+                            } else {
+                                "both a class and a unit"
+                            };
+                            issues.push(
+                                Issue::new(
+                                    format!("`allow-verify` needs {missing}"),
+                                    &file,
+                                    &text,
+                                )
+                                .at(span, "incomplete")
+                                .help(
+                                    "`allow-verify \"man-page-missing\" unit=\"plasmalogin.service\"`, \
+                                     which accepts one diagnostic on one unit rather than image-wide",
+                                ),
+                            );
                         }
                     }
                 }

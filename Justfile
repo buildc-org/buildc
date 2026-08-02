@@ -1,4 +1,4 @@
-export image_name := env("IMAGE_NAME", `./scripts/flavours.sh image none`)
+export image_name := env("IMAGE_NAME", `./scripts/targets.sh image "$(./scripts/targets.sh ungated)"`)
 export default_tag := env("DEFAULT_TAG", "latest")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
 
@@ -50,17 +50,17 @@ sudoif command *args:
     }
     sudoif {{ command }} {{ args }}
 
-build $target_image=image_name $tag=default_tag $flavour=`./scripts/flavours.sh default` $kernel="": (_build "buildkit" target_image tag flavour kernel)
+build $target_image=image_name $tag=default_tag $target=`./scripts/targets.sh default` $kernel="": (_build "buildkit" target_image tag target kernel)
 
 [group('Utility')]
-build-buildah $target_image=image_name $tag=default_tag $flavour=`./scripts/flavours.sh default` $kernel="": (_build "buildah" target_image tag flavour kernel)
+build-buildah $target_image=image_name $tag=default_tag $target=`./scripts/targets.sh default` $kernel="": (_build "buildah" target_image tag target kernel)
 
 [private]
-_build backend $target_image $tag $flavour $kernel:
+_build backend $target_image $tag $target $kernel:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    args=(--backend "{{ backend }}" --flavour "${flavour}" --tag "${target_image}:${tag}")
+    args=(--backend "{{ backend }}" --target "${target}" --tag "${target_image}:${tag}")
     if [[ -n "${kernel}" ]]; then
         args+=(--kernel "${kernel}")
     fi
@@ -71,7 +71,7 @@ buildkit-reset:
     ./scripts/build.sh --reset
 
 [group('Secure Boot')]
-generate-mok-key dir=(env("HOME") + "/.local/share/" + `./scripts/manifest.sh image-id`):
+generate-mok-key dir=(env("HOME") + "/.local/share/" + `./scripts/manifest.sh default-image`):
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -174,13 +174,13 @@ build-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_bui
 build-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_build-bib target_image tag "raw" "disk_config/disk.toml")
 
 [group('Build Virtual Machine Image')]
-build-iso $target_image=("localhost/" + image_name) $tag=default_tag $flavour="":
+build-iso $target_image=("localhost/" + image_name) $tag=default_tag $target="":
     #!/usr/bin/env bash
     set -euo pipefail
 
     args=()
-    if [[ -n "${flavour}" ]]; then
-        args+=(--flavour "${flavour}")
+    if [[ -n "${target}" ]]; then
+        args+=(--target "${target}")
     fi
     config="$(./scripts/render-iso-config.sh "${args[@]}")"
     just _build-bib "${target_image}" "${tag}" iso "${config}"
@@ -192,8 +192,8 @@ rebuild-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_r
 rebuild-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "raw" "disk_config/disk.toml")
 
 [group('Build Virtual Machine Image')]
-rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag $flavour="none": (build target_image tag flavour)
-    just build-iso "${target_image}" "${tag}" "${flavour}"
+rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag $target=`./scripts/targets.sh ungated`: (build target_image tag target)
+    just build-iso "${target_image}" "${tag}" "${target}"
 
 _run-vm $target_image $tag $type:
     #!/usr/bin/bash

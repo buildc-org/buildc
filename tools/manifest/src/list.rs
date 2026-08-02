@@ -5,6 +5,30 @@ use miette::SourceSpan;
 
 pub const NO_FLAVOUR: &str = "none";
 
+pub struct Target {
+    pub image: String,
+    pub flavour: String,
+}
+
+impl Target {
+    pub fn parse(text: &str) -> Option<Self> {
+        let (image, flavour) = text.split_once('/')?;
+        if image.is_empty() || flavour.is_empty() || flavour.contains('/') {
+            return None;
+        }
+        Some(Target {
+            image: image.to_string(),
+            flavour: flavour.to_string(),
+        })
+    }
+}
+
+impl std::fmt::Display for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.image, self.flavour)
+    }
+}
+
 pub struct Image {
     pub id: String,
     pub name: String,
@@ -724,9 +748,35 @@ impl List {
             .or_else(|| self.default_flavour())
     }
 
-    pub fn targets(&self) -> Vec<String> {
-        let mut out = vec![NO_FLAVOUR.to_string()];
-        out.extend(self.flavours.iter().map(|f| f.name.clone()));
+    pub fn targets(&self) -> Vec<Target> {
+        let mut out = Vec::new();
+        for image in self.images() {
+            out.push(Target {
+                image: image.id.clone(),
+                flavour: NO_FLAVOUR.to_string(),
+            });
+            out.extend(self.flavours.iter().map(|f| Target {
+                image: image.id.clone(),
+                flavour: f.name.clone(),
+            }));
+        }
         out
+    }
+
+    pub fn default_target(&self) -> Option<Target> {
+        self.default_image().map(|image| Target {
+            image: image.id.clone(),
+            flavour: self
+                .default_flavour()
+                .unwrap_or(NO_FLAVOUR)
+                .to_string(),
+        })
+    }
+
+    pub fn pr_target(&self) -> Option<Target> {
+        self.default_image().map(|image| Target {
+            image: image.id.clone(),
+            flavour: self.pr_flavour().unwrap_or(NO_FLAVOUR).to_string(),
+        })
     }
 }

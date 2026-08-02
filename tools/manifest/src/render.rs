@@ -148,7 +148,7 @@ pub fn section(
     let identity = identity(image);
     let _ = write!(
         out,
-        "# ---- image identity ----\n"
+        "# ---- image identity ----\n",
     );
     for (name, value) in &identity {
         let _ = write!(out, "ARG {name}=\"{value}\"\n");
@@ -316,24 +316,27 @@ pub fn assets(image: &Image, modules: &[Module], target: Option<&str>) -> String
 pub fn remotes(list: &List) -> String {
     let mut out = String::new();
     let mut seen: Vec<&str> = Vec::new();
-    for entry in list.images.iter().flat_map(|i| i.entries.iter()) {
-        let Some(remote) = &entry.remote else {
-            continue;
-        };
-        if seen.contains(&entry.path.as_str()) {
-            continue;
+    for image in &list.images {
+        for entry in &image.entries {
+            let Some(remote) = &entry.remote else {
+                continue;
+            };
+            if seen.contains(&entry.path.as_str()) {
+                continue;
+            }
+            seen.push(&entry.path);
+            let _ = writeln!(
+                out,
+                "{}|modules/{}|{}|{}|{}|{}|{}",
+                entry.path,
+                entry.dir(),
+                remote.git_ref,
+                remote.sha256,
+                remote.url_resolved(),
+                remote.path.clone().unwrap_or_default(),
+                image.file,
+            );
         }
-        seen.push(&entry.path);
-        let _ = writeln!(
-            out,
-            "{}|modules/{}|{}|{}|{}|{}",
-            entry.path,
-            entry.dir(),
-            remote.git_ref,
-            remote.sha256,
-            remote.url_resolved(),
-            remote.path.clone().unwrap_or_default(),
-        );
     }
     out
 }

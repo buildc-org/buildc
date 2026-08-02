@@ -493,7 +493,7 @@ impl Module {
                 other => issues.push(
                     Issue::new(format!("unknown node `{other}`"), &file, &text)
                         .at(node.name().span(), "not part of the schema")
-                        .help("modules/SCHEMA.md documents every node a manifest may hold"),
+                        .help("SCHEMA.md documents every node a manifest may hold"),
                 ),
             }
         }

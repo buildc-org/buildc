@@ -701,6 +701,14 @@ impl List {
         }
     }
 
+    pub fn images(&self) -> Vec<&Image> {
+        self.image.iter().collect()
+    }
+
+    pub fn default_image(&self) -> Option<&Image> {
+        self.image.as_ref()
+    }
+
     pub fn default_flavour(&self) -> Option<&str> {
         self.flavours
             .iter()

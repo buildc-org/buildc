@@ -1,11 +1,11 @@
 use crate::diag::{Issue, Issues};
-use crate::list::{Entry, List};
+use crate::list::{Entry, Image};
 use crate::module::Module;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 
-pub fn sort(list: &List, modules: &[Module], issues: &mut Issues) -> Vec<usize> {
-    let by_entry: Vec<Option<&Module>> = list
+pub fn sort(image: &Image, modules: &[Module], issues: &mut Issues) -> Vec<usize> {
+    let by_entry: Vec<Option<&Module>> = image
         .entries
         .iter()
         .map(|e| {
@@ -23,7 +23,7 @@ pub fn sort(list: &List, modules: &[Module], issues: &mut Issues) -> Vec<usize> 
         }
     }
 
-    let n = list.entries.len();
+    let n = image.entries.len();
     let mut waits_on: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (index, module) in by_entry.iter().enumerate() {
         let Some(module) = module else { continue };
@@ -80,20 +80,20 @@ pub fn sort(list: &List, modules: &[Module], issues: &mut Issues) -> Vec<usize> 
     }
 
     if order.len() < n {
-        report_cycle(list, &by_entry, &waits_on, &remaining, issues);
+        report_cycle(image, &by_entry, &waits_on, &remaining, issues);
         order.extend((0..n).filter(|index| remaining[*index] > 0));
     }
     order
 }
 
-pub fn apply(list: &mut List, modules: &mut [Module], order: &[usize]) {
-    let mut taken: Vec<Option<Entry>> = list.entries.drain(..).map(Some).collect();
-    list.entries = order
+pub fn apply(image: &mut Image, modules: &mut [Module], order: &[usize]) {
+    let mut taken: Vec<Option<Entry>> = image.entries.drain(..).map(Some).collect();
+    image.entries = order
         .iter()
         .filter_map(|&index| taken[index].take())
         .collect();
     modules.sort_by_key(|m| {
-        list.entries
+        image.entries
             .iter()
             .position(|e| e.path == m.path && e.flavour == m.flavour)
             .unwrap_or(usize::MAX)
@@ -101,18 +101,18 @@ pub fn apply(list: &mut List, modules: &mut [Module], order: &[usize]) {
 }
 
 fn report_cycle(
-    list: &List,
+    image: &Image,
     by_entry: &[Option<&Module>],
     waits_on: &[Vec<usize>],
     remaining: &[usize],
     issues: &mut Issues,
 ) {
     let name = |index: usize| match by_entry[index].and_then(|m| m.flavour.as_deref()) {
-        Some(flavour) => format!("{} [{flavour}]", list.entries[index].path),
-        None => list.entries[index].path.clone(),
+        Some(flavour) => format!("{} [{flavour}]", image.entries[index].path),
+        None => image.entries[index].path.clone(),
     };
 
-    let mut issue = Issue::new("the module graph has a cycle", &list.file, &list.text).help(
+    let mut issue = Issue::new("the module graph has a cycle", &image.file, &image.text).help(
         "a requirement implies ordering, so a cycle has no build order at all; \
          drop one of the edges, or split the module that closes it",
     );
@@ -126,7 +126,7 @@ fn report_cycle(
             .map(|&provider| format!("`{}`", name(provider)))
             .collect();
         issue = issue.at(
-            list.entries[index].span,
+            image.entries[index].span,
             format!("waits on {}", blocked.join(", ")),
         );
     }

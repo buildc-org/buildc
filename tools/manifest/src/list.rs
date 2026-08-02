@@ -30,6 +30,8 @@ impl std::fmt::Display for Target {
 }
 
 pub struct Image {
+    pub file: String,
+    pub text: String,
     pub id: String,
     pub name: String,
     pub pretty_name: String,
@@ -37,6 +39,9 @@ pub struct Image {
     pub issues_url: String,
     pub logo: String,
     pub watermark: String,
+    pub base: Option<Base>,
+    pub flavours: Vec<Flavour>,
+    pub entries: Vec<Entry>,
     pub span: SourceSpan,
 }
 
@@ -87,11 +92,8 @@ impl Entry {
 pub struct List {
     pub file: String,
     pub text: String,
-    pub image: Option<Image>,
-    pub base: Option<Base>,
-    pub flavours: Vec<Flavour>,
+    pub images: Vec<Image>,
     pub workflows: Vec<WorkflowToggle>,
-    pub entries: Vec<Entry>,
 }
 
 fn is_flavour_name(name: &str) -> bool {
@@ -130,11 +132,8 @@ impl List {
         let mut list = List {
             file: file.to_string(),
             text: text.clone(),
-            image: None,
-            base: None,
-            flavours: Vec::new(),
+            images: Vec::new(),
             workflows: Vec::new(),
-            entries: Vec::new(),
         };
 
         let doc: KdlDocument = match text.parse() {
@@ -149,91 +148,63 @@ impl List {
         for node in doc.nodes() {
             match node.name().value() {
                 "image" => list.parse_image(node, &mut issues),
-                "base" => list.parse_base(node, &mut issues),
-                "flavours" => list.parse_flavours(node, &mut issues),
                 "workflows" => list.parse_workflows(node, &mut issues),
-                "modules" => list.parse_modules(node, &mut issues),
                 other => issues.push(
                     Issue::new(format!("unknown top-level node `{other}`"), file, &text)
                         .at(node.name().span(), "not part of the schema")
                         .help(
-                            "image.kdl holds an `image` node, a `base` node, optional `flavours` and `workflows` blocks and a `modules` block",
+                            "an image file holds one `image` node; `base`, `flavours` and \
+                             `modules` are declared inside it, because they are what the \
+                             image is rather than what the repository is",
                         ),
                 ),
             }
         }
 
-        if !doc.nodes().iter().any(|n| n.name().value() == "modules") {
+        if !doc.nodes().iter().any(|n| n.name().value() == "image") {
             issues.push(
-                Issue::new(format!("{file} has no `modules` block"), file, &text)
-                    .help("an image with no modules is almost certainly a mistake; the block is required even when empty"),
-            );
-        }
-
-        if list.image.is_none() && !doc.nodes().iter().any(|n| n.name().value() == "image") {
-            issues.push(
-                Issue::new(format!("{file} has no `image` node"), file, &text).help(
-                    "`image \"name\" { name \"Name\" }`, what the image calls itself in \
-                     os-release and what it publishes as",
+                Issue::new(format!("{file} declares no image"), file, &text).help(
+                    "`image { name \"Name\" }`, what the image calls itself in os-release \
+                     and what it publishes as",
                 ),
             );
         }
 
-        if list.base.is_none() && !doc.nodes().iter().any(|n| n.name().value() == "base") {
-            issues.push(
-                Issue::new(format!("{file} has no `base` node"), file, &text).help(
-                    "`base \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\" }`, \
-                     naming the image every layer builds on",
-                ),
-            );
-        }
-
-        list.check_flavours(&mut issues);
         (list, issues)
     }
 
     fn parse_image(&mut self, node: &KdlNode, issues: &mut Issues) {
         let (file, text) = (self.file.clone(), self.text.clone());
 
-        if let Some(first) = &self.image {
+        if let Some(stray) = string_arg(node) {
             issues.push(
-                Issue::new("`image` is declared twice", &file, &text)
-                    .at(first.span, "first here")
-                    .at(node.name().span(), "and again here")
-                    .help("one file describes one image; a second identity is a second image"),
+                Issue::new("`image` takes no argument", &file, &text)
+                    .at(node.name().span(), "the name belongs in the block")
+                    .help(format!(
+                        "`image {{ id \"{stray}\" }}` is the machine name, and `name` is the \
+                         human one it derives from when absent"
+                    )),
             );
-            return;
         }
 
-        let Some(id) = string_arg(node) else {
-            issues.push(
-                Issue::new("`image` needs a name", &file, &text)
-                    .at(node.name().span(), "no name given")
-                    .help("`image \"buildc\"`, the machine name it publishes and boots under"),
-            );
-            return;
-        };
-
         let mut image = Image {
-            id: id.to_string(),
+            file: file.clone(),
+            text: text.clone(),
+            id: String::new(),
             name: String::new(),
             pretty_name: String::new(),
             url: String::new(),
             issues_url: String::new(),
             logo: String::new(),
             watermark: String::new(),
+            base: None,
+            flavours: Vec::new(),
+            entries: Vec::new(),
             span: node.name().span(),
         };
 
-        if !is_flavour_name(&image.id) {
-            issues.push(
-                Issue::new(format!("invalid image name `{}`", image.id), &file, &text)
-                    .at(image.span, "must be lowercase letters, digits and dashes, starting with a letter")
-                    .help("it becomes an image tag, a cache tag and the default hostname, all of which restrict it"),
-            );
-        }
-
-        for child in node.children().map(|c| c.nodes()).unwrap_or_default() {
+        let children = node.children().map(|c| c.nodes()).unwrap_or_default();
+        for child in children {
             let value = |field: &str, issues: &mut Issues| match string_arg(child) {
                 Some(v) => v.to_string(),
                 None => {
@@ -245,20 +216,30 @@ impl List {
                 }
             };
             match child.name().value() {
+                "id" => image.id = value("id", issues),
                 "name" => image.name = value("name", issues),
                 "pretty-name" => image.pretty_name = value("pretty-name", issues),
                 "url" => image.url = value("url", issues),
                 "issues-url" => image.issues_url = value("issues-url", issues),
                 "logo" => image.logo = value("logo", issues),
                 "watermark" => image.watermark = value("watermark", issues),
+                "base" => image.parse_base(child, issues),
+                "flavours" => image.parse_flavours(child, issues),
+                "modules" => {}
                 other => issues.push(
                     Issue::new(format!("unknown image property `{other}`"), &file, &text)
                         .at(child.name().span(), "not part of the schema")
                         .help(
-                            "an image accepts `name`, `pretty-name`, `url`, `issues-url`, \
-                             `logo` and `watermark`",
+                            "an image accepts `id`, `name`, `pretty-name`, `url`, \
+                             `issues-url`, `logo` and `watermark`, and the `base`, \
+                             `flavours` and `modules` blocks",
                         ),
                 ),
+            }
+        }
+        for child in children {
+            if child.name().value() == "modules" {
+                image.parse_modules(child, issues);
             }
         }
 
@@ -267,6 +248,28 @@ impl List {
                 Issue::new("`image` declares no `name`", &file, &text)
                     .at(image.span, "no name")
                     .help("`name \"Buildc\"` is os-release NAME, which the boot menu and the desktop read"),
+            );
+        }
+
+        if image.id.is_empty() {
+            image.id = image.name.to_lowercase().replace(' ', "-");
+            if !image.name.is_empty() && !is_flavour_name(&image.id) {
+                issues.push(
+                    Issue::new(
+                        format!("`{}` does not derive a usable image name", image.name),
+                        &file,
+                        &text,
+                    )
+                    .at(image.span, "no `id`, and `name` does not lowercase into one")
+                    .help("declare `id \"something\"`: lowercase letters, digits and dashes, starting with a letter"),
+                );
+                image.id = String::new();
+            }
+        } else if !is_flavour_name(&image.id) {
+            issues.push(
+                Issue::new(format!("invalid image name `{}`", image.id), &file, &text)
+                    .at(image.span, "must be lowercase letters, digits and dashes, starting with a letter")
+                    .help("it becomes an image tag, a cache tag and the default hostname, all of which restrict it"),
             );
         }
 
@@ -280,9 +283,32 @@ impl List {
             }
         }
 
-        self.image = Some(image);
+        if image.base.is_none() && !children.iter().any(|c| c.name().value() == "base") {
+            issues.push(
+                Issue::new("`image` declares no `base`", &file, &text)
+                    .at(image.span, "nothing to build on")
+                    .help(
+                        "`base \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\" }`, \
+                         naming the image every layer builds on",
+                    ),
+            );
+        }
+
+        if !children.iter().any(|c| c.name().value() == "modules") {
+            issues.push(
+                Issue::new("`image` has no `modules` block", &file, &text)
+                    .at(image.span, "nothing in it")
+                    .help("an image with no modules is almost certainly a mistake; the block is required even when empty"),
+            );
+        }
+
+        image.check_flavours(issues);
+        self.images.push(image);
     }
 
+}
+
+impl Image {
     fn parse_base(&mut self, node: &KdlNode, issues: &mut Issues) {
         let (file, text) = (self.file.clone(), self.text.clone());
 
@@ -444,86 +470,6 @@ impl List {
                 continue;
             }
             self.flavours.push(flavour);
-        }
-    }
-
-    fn parse_workflows(&mut self, block: &KdlNode, issues: &mut Issues) {
-        let (file, text) = (self.file.clone(), self.text.clone());
-        let Some(children) = block.children() else {
-            issues.push(
-                Issue::new("`workflows` has no workflows in it", &file, &text)
-                    .at(block.name().span(), "empty block")
-                    .help("omit the block entirely; every workflow in .github/workflows/ runs unless something here says otherwise"),
-            );
-            return;
-        };
-
-        for node in children.nodes() {
-            let name = node.name().value().to_string();
-            let span = node.name().span();
-
-            if let Some(dup) = self.workflows.iter().find(|w| w.name == name) {
-                issues.push(
-                    Issue::new(format!("workflow `{name}` is declared twice"), &file, &text)
-                        .at(dup.span, "first here")
-                        .at(span, "and again here")
-                        .help("one workflow is either on or off; two answers means the file below wins silently"),
-                );
-                continue;
-            }
-
-            let mut enabled: Option<bool> = None;
-            let mut stated = false;
-            for entry in node.entries() {
-                let Some(key) = entry.name().map(|n| n.value()) else {
-                    issues.push(
-                        Issue::new("a workflow takes no arguments", &file, &text)
-                            .at(entry.span(), "unexpected value")
-                            .help("the file stem is the node name: `smoke-test enabled=#false`"),
-                    );
-                    continue;
-                };
-                match key {
-                    "enabled" => {
-                        stated = true;
-                        match entry.value().as_bool() {
-                            Some(v) => enabled = Some(v),
-                            None => issues.push(
-                                Issue::new("`enabled` must be #true or #false", &file, &text)
-                                    .at(entry.span(), "not a boolean"),
-                            ),
-                        }
-                    }
-                    other => issues.push(
-                        Issue::new(format!("unknown workflow property `{other}`"), &file, &text)
-                            .at(entry.span(), "not part of the schema")
-                            .help("a workflow accepts `enabled`"),
-                    ),
-                }
-            }
-
-            let Some(enabled) = enabled else {
-                if !stated {
-                    issues.push(
-                        Issue::new(
-                            format!("`{name}` says nothing about whether it runs"),
-                            &file,
-                            &text,
-                        )
-                        .at(span, "no `enabled`")
-                        .help(format!(
-                            "`{name} enabled=#false` turns it off; a workflow nobody wants to change belongs outside this block"
-                        )),
-                    );
-                }
-                continue;
-            };
-
-            self.workflows.push(WorkflowToggle {
-                name,
-                enabled,
-                span,
-            });
         }
     }
 
@@ -725,14 +671,6 @@ impl List {
         }
     }
 
-    pub fn images(&self) -> Vec<&Image> {
-        self.image.iter().collect()
-    }
-
-    pub fn default_image(&self) -> Option<&Image> {
-        self.image.as_ref()
-    }
-
     pub fn default_flavour(&self) -> Option<&str> {
         self.flavours
             .iter()
@@ -748,6 +686,97 @@ impl List {
             .or_else(|| self.default_flavour())
     }
 
+}
+
+impl List {
+    fn parse_workflows(&mut self, block: &KdlNode, issues: &mut Issues) {
+        let (file, text) = (self.file.clone(), self.text.clone());
+        let Some(children) = block.children() else {
+            issues.push(
+                Issue::new("`workflows` has no workflows in it", &file, &text)
+                    .at(block.name().span(), "empty block")
+                    .help("omit the block entirely; every workflow in .github/workflows/ runs unless something here says otherwise"),
+            );
+            return;
+        };
+
+        for node in children.nodes() {
+            let name = node.name().value().to_string();
+            let span = node.name().span();
+
+            if let Some(dup) = self.workflows.iter().find(|w| w.name == name) {
+                issues.push(
+                    Issue::new(format!("workflow `{name}` is declared twice"), &file, &text)
+                        .at(dup.span, "first here")
+                        .at(span, "and again here")
+                        .help("one workflow is either on or off; two answers means the file below wins silently"),
+                );
+                continue;
+            }
+
+            let mut enabled: Option<bool> = None;
+            let mut stated = false;
+            for entry in node.entries() {
+                let Some(key) = entry.name().map(|n| n.value()) else {
+                    issues.push(
+                        Issue::new("a workflow takes no arguments", &file, &text)
+                            .at(entry.span(), "unexpected value")
+                            .help("the file stem is the node name: `smoke-test enabled=#false`"),
+                    );
+                    continue;
+                };
+                match key {
+                    "enabled" => {
+                        stated = true;
+                        match entry.value().as_bool() {
+                            Some(v) => enabled = Some(v),
+                            None => issues.push(
+                                Issue::new("`enabled` must be #true or #false", &file, &text)
+                                    .at(entry.span(), "not a boolean"),
+                            ),
+                        }
+                    }
+                    other => issues.push(
+                        Issue::new(format!("unknown workflow property `{other}`"), &file, &text)
+                            .at(entry.span(), "not part of the schema")
+                            .help("a workflow accepts `enabled`"),
+                    ),
+                }
+            }
+
+            let Some(enabled) = enabled else {
+                if !stated {
+                    issues.push(
+                        Issue::new(
+                            format!("`{name}` says nothing about whether it runs"),
+                            &file,
+                            &text,
+                        )
+                        .at(span, "no `enabled`")
+                        .help(format!(
+                            "`{name} enabled=#false` turns it off; a workflow nobody wants to change belongs outside this block"
+                        )),
+                    );
+                }
+                continue;
+            };
+
+            self.workflows.push(WorkflowToggle {
+                name,
+                enabled,
+                span,
+            });
+        }
+    }
+
+    pub fn images(&self) -> Vec<&Image> {
+        self.images.iter().collect()
+    }
+
+    pub fn default_image(&self) -> Option<&Image> {
+        self.images.first()
+    }
+
     pub fn targets(&self) -> Vec<Target> {
         let mut out = Vec::new();
         for image in self.images() {
@@ -755,7 +784,7 @@ impl List {
                 image: image.id.clone(),
                 flavour: NO_FLAVOUR.to_string(),
             });
-            out.extend(self.flavours.iter().map(|f| Target {
+            out.extend(image.flavours.iter().map(|f| Target {
                 image: image.id.clone(),
                 flavour: f.name.clone(),
             }));
@@ -766,17 +795,14 @@ impl List {
     pub fn default_target(&self) -> Option<Target> {
         self.default_image().map(|image| Target {
             image: image.id.clone(),
-            flavour: self
-                .default_flavour()
-                .unwrap_or(NO_FLAVOUR)
-                .to_string(),
+            flavour: image.default_flavour().unwrap_or(NO_FLAVOUR).to_string(),
         })
     }
 
     pub fn pr_target(&self) -> Option<Target> {
         self.default_image().map(|image| Target {
             image: image.id.clone(),
-            flavour: self.pr_flavour().unwrap_or(NO_FLAVOUR).to_string(),
+            flavour: image.pr_flavour().unwrap_or(NO_FLAVOUR).to_string(),
         })
     }
 }

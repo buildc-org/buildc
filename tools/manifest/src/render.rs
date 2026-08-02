@@ -13,21 +13,19 @@ const IMAGE_VERSION_ARG: &str = "\
 # ---- image version ----
 ARG IMAGE_VERSION=dev";
 
-fn identity(image: Option<&Image>) -> Vec<(&'static str, String)> {
+fn identity(image: &Image) -> Vec<(&'static str, String)> {
     let mut vars: Vec<(&'static str, String)> = Vec::new();
-    if let Some(image) = image {
-        for (name, value) in [
-            ("IMAGE_ID", &image.id),
-            ("IMAGE_NAME", &image.name),
-            ("IMAGE_PRETTY_NAME", &image.pretty_name),
-            ("IMAGE_URL", &image.url),
-            ("IMAGE_ISSUES_URL", &image.issues_url),
-            ("IMAGE_LOGO", &image.logo),
-            ("IMAGE_WATERMARK", &image.watermark),
-        ] {
-            if !value.is_empty() {
-                vars.push((name, value.clone()));
-            }
+    for (name, value) in [
+        ("IMAGE_ID", &image.id),
+        ("IMAGE_NAME", &image.name),
+        ("IMAGE_PRETTY_NAME", &image.pretty_name),
+        ("IMAGE_URL", &image.url),
+        ("IMAGE_ISSUES_URL", &image.issues_url),
+        ("IMAGE_LOGO", &image.logo),
+        ("IMAGE_WATERMARK", &image.watermark),
+    ] {
+        if !value.is_empty() {
+            vars.push((name, value.clone()));
         }
     }
     vars.push(("IMAGE_REGISTRY", String::new()));
@@ -37,7 +35,7 @@ fn identity(image: Option<&Image>) -> Vec<(&'static str, String)> {
 const MODULE_SLOT: u32 = 50;
 
 pub fn section(
-    list: &List,
+    image: &Image,
     modules: &[Module],
     collected: &BTreeMap<String, Vec<(String, String)>>,
     root: &Path,
@@ -47,9 +45,9 @@ pub fn section(
     let mut flavour_arg_emitted = false;
     let mut finalize: Vec<String> = Vec::new();
 
-    let base_family = list.base.as_ref().map_or("", |b| b.family.as_str());
+    let base_family = image.base.as_ref().map_or("", |b| b.family.as_str());
 
-    if let Some(base) = &list.base {
+    if let Some(base) = &image.base {
         let _ = write!(
             out,
             "### Base Image\n\
@@ -68,14 +66,14 @@ pub fn section(
         let _ = write!(out, "{}\n\n", phase(file, false, ""));
     }
 
-    for entry in &list.entries {
+    for entry in &image.entries {
         let dir = root.join("modules").join(entry.dir());
         if !dir.is_dir() {
             issues.push(
                 Issue::new(
                     format!("`{}` does not resolve to a module directory", entry.path),
-                    &list.file,
-                    &list.text,
+                    &image.file,
+                    &image.text,
                 )
                 .at(entry.span, "no such module")
                 .help(format!("expected {}", dir.display())),
@@ -96,7 +94,7 @@ pub fn section(
         let mut blocks: Vec<String> = Vec::new();
         let fragment_after = module.is_some_and(|m| m.fragment_after);
         if inc.is_file() && !fragment_after {
-            blocks.push(fragment(entry, &inc, flavour_arg_emitted, list, issues));
+            blocks.push(fragment(entry, &inc, flavour_arg_emitted, image, issues));
         }
         if module.is_none_or(|m| m.standard_layer) {
             blocks.push(standard(
@@ -107,7 +105,7 @@ pub fn section(
             ));
         }
         if inc.is_file() && fragment_after {
-            blocks.push(fragment(entry, &inc, flavour_arg_emitted, list, issues));
+            blocks.push(fragment(entry, &inc, flavour_arg_emitted, image, issues));
         }
 
         if let Some(flavour) = &entry.flavour {
@@ -137,19 +135,17 @@ pub fn section(
 
     let _ = write!(out, "{IMAGE_VERSION_ARG}\n\n");
 
-    if let Some(image) = &list.image {
-        for path in [&image.logo, &image.watermark] {
-            if !path.is_empty() && !root.join(path).is_file() {
-                issues.push(
-                    Issue::new(format!("`{path}` does not exist"), &list.file, &list.text)
-                        .at(image.span, "declared brand asset")
-                        .help("the path is relative to the repository root"),
-                );
-            }
+    for path in [&image.logo, &image.watermark] {
+        if !path.is_empty() && !root.join(path).is_file() {
+            issues.push(
+                Issue::new(format!("`{path}` does not exist"), &image.file, &image.text)
+                    .at(image.span, "declared brand asset")
+                    .help("the path is relative to the repository root"),
+            );
         }
     }
 
-    let identity = identity(list.image.as_ref());
+    let identity = identity(image);
     let _ = write!(
         out,
         "# ---- image identity ----\n"
@@ -228,8 +224,8 @@ fn phase(file: &str, below_modules: bool, identity_env: &str) -> String {
     out
 }
 
-pub fn summary(list: &List, modules: &[Module], target: Option<&str>) -> String {
-    let included: Vec<&Entry> = list.entries.iter().filter(|e| in_target(e, target)).collect();
+pub fn summary(image: &Image, modules: &[Module], target: Option<&str>) -> String {
+    let included: Vec<&Entry> = image.entries.iter().filter(|e| in_target(e, target)).collect();
     let gated = included.iter().filter(|e| e.flavour.is_some()).count();
 
     let mut out = String::new();
@@ -286,10 +282,10 @@ fn in_target(entry: &Entry, target: Option<&str>) -> bool {
     }
 }
 
-pub fn assets(list: &List, modules: &[Module], target: Option<&str>) -> String {
+pub fn assets(image: &Image, modules: &[Module], target: Option<&str>) -> String {
     let mut out = String::new();
     let mut seen: Vec<(&str, &str)> = Vec::new();
-    for entry in list.entries.iter().filter(|e| in_target(e, target)) {
+    for entry in image.entries.iter().filter(|e| in_target(e, target)) {
         let Some(module) = modules
             .iter()
             .find(|m| m.path == entry.path && m.flavour == entry.flavour)
@@ -320,7 +316,7 @@ pub fn assets(list: &List, modules: &[Module], target: Option<&str>) -> String {
 pub fn remotes(list: &List) -> String {
     let mut out = String::new();
     let mut seen: Vec<&str> = Vec::new();
-    for entry in &list.entries {
+    for entry in list.images.iter().flat_map(|i| i.entries.iter()) {
         let Some(remote) = &entry.remote else {
             continue;
         };
@@ -343,12 +339,12 @@ pub fn remotes(list: &List) -> String {
 }
 
 pub fn find_provider(
-    list: &List,
+    image: &Image,
     modules: &[Module],
     file_path: &str,
     target: Option<&str>,
 ) -> String {
-    for entry in list.entries.iter().filter(|e| in_target(e, target)) {
+    for entry in image.entries.iter().filter(|e| in_target(e, target)) {
         let Some(module) = modules
             .iter()
             .find(|m| m.path == entry.path && m.flavour == entry.flavour)
@@ -362,10 +358,10 @@ pub fn find_provider(
     String::new()
 }
 
-pub fn secrets(list: &List, modules: &[Module], target: Option<&str>) -> String {
+pub fn secrets(image: &Image, modules: &[Module], target: Option<&str>) -> String {
     let mut seen: Vec<&str> = Vec::new();
     let mut out = String::new();
-    for entry in list.entries.iter().filter(|e| in_target(e, target)) {
+    for entry in image.entries.iter().filter(|e| in_target(e, target)) {
         let Some(module) = modules
             .iter()
             .find(|m| m.path == entry.path && m.flavour == entry.flavour)
@@ -383,17 +379,17 @@ pub fn secrets(list: &List, modules: &[Module], target: Option<&str>) -> String 
     out
 }
 
-pub fn contract_files(list: &List, modules: &[Module], target: Option<&str>) -> String {
+pub fn contract_files(image: &Image, modules: &[Module], target: Option<&str>) -> String {
     let mut seen: Vec<&str> = Vec::new();
     let mut out = String::new();
-    for decl in list.base.iter().flat_map(|b| b.provides_files.iter()) {
+    for decl in image.base.iter().flat_map(|b| b.provides_files.iter()) {
         if seen.contains(&decl.name.as_str()) {
             continue;
         }
         seen.push(&decl.name);
         let _ = writeln!(out, "{}", decl.name);
     }
-    for entry in list.entries.iter().filter(|e| in_target(e, target)) {
+    for entry in image.entries.iter().filter(|e| in_target(e, target)) {
         let Some(module) = modules
             .iter()
             .find(|m| m.path == entry.path && m.flavour == entry.flavour)
@@ -414,10 +410,10 @@ pub fn contract_files(list: &List, modules: &[Module], target: Option<&str>) -> 
     out
 }
 
-pub fn verify_exceptions(list: &List, modules: &[Module], target: Option<&str>) -> String {
+pub fn verify_exceptions(image: &Image, modules: &[Module], target: Option<&str>) -> String {
     let mut seen: Vec<(&str, &str)> = Vec::new();
     let mut out = String::new();
-    for entry in list.entries.iter().filter(|e| in_target(e, target)) {
+    for entry in image.entries.iter().filter(|e| in_target(e, target)) {
         let Some(module) = modules
             .iter()
             .find(|m| m.path == entry.path && m.flavour == entry.flavour)
@@ -524,7 +520,7 @@ fn fragment(
     entry: &Entry,
     inc: &Path,
     flavour_arg_emitted: bool,
-    list: &List,
+    image: &Image,
     issues: &mut Issues,
 ) -> String {
     let body = std::fs::read_to_string(inc).unwrap_or_default();
@@ -534,8 +530,8 @@ fn fragment(
         issues.push(
             Issue::new(
                 format!("`{path}` expands FLAVOUR above the flavour gate"),
-                &list.file,
-                &list.text,
+                &image.file,
+                &image.text,
             )
             .at(entry.span, "listed above the first flavour-gated module")
             .help("ARG FLAVOUR is declared directly above the first gated entry, so a fragment before it would expand to an empty string"),
@@ -553,8 +549,8 @@ fn fragment(
             Some(d) => issues.push(
                 Issue::new(
                     format!("`{path}` is listed under `{flavour}` but its fragment gates on `{d}`"),
-                    &list.file,
-                    &list.text,
+                    &image.file,
+                    &image.text,
                 )
                 .at(entry.span, "listed here"),
             ),
@@ -563,8 +559,8 @@ fn fragment(
                     format!(
                         "`{path}` is listed under `{flavour}` but its fragment sets no FLAVOUR_GATE"
                     ),
-                    &list.file,
-                    &list.text,
+                    &image.file,
+                    &image.text,
                 )
                 .at(entry.span, "the flavour gate would be silently ignored")
                 .help(

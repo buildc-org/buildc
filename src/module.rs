@@ -1,10 +1,9 @@
 use crate::asset::{self, Asset};
-use crate::diag::{Issue, Issues};
+use crate::diag::{Issue, Issues, Source, Span};
 use crate::disk::Disk;
 use crate::list::{Entry, Image};
 use crate::options::{self, Opt, Variant};
 use kdl::{KdlDocument, KdlNode};
-use miette::SourceSpan;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -13,38 +12,37 @@ pub struct PackageGroup {
     pub family: String,
     pub packages: Vec<String>,
     pub enablerepo: Option<String>,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Decl {
     pub name: String,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Collect {
     pub file: String,
     pub into: String,
     pub priority: u32,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Contribution {
     pub file: String,
     pub priority: u32,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct VerifyException {
     pub class: String,
     pub unit: String,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Module {
     pub path: String,
     pub dir: String,
-    pub file: String,
-    pub text: String,
+    pub src: Source,
     pub description: String,
     pub supports: Vec<String>,
     pub provides: Vec<Decl>,
@@ -98,7 +96,7 @@ enum Priority {
     Set(u32),
 }
 
-fn priority(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Priority {
+fn priority(node: &KdlNode, src: &Source, issues: &mut Issues) -> Priority {
     let Some(entry) = node
         .entries()
         .iter()
@@ -110,7 +108,7 @@ fn priority(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Prio
         Some(value) if (0..=9999).contains(&value) => Priority::Set(value as u32),
         _ => {
             issues.push(
-                Issue::new("`priority` is a number from 0 to 9999", file, text)
+                Issue::new("`priority` is a number from 0 to 9999", src)
                     .at(entry.span(), "not a priority")
                     .help("it becomes the NNNN in the staged filename, so four digits is the whole range there is"),
             );
@@ -140,8 +138,7 @@ impl Module {
             issues.push(
                 Issue::new(
                     format!("`{}` is pinned but also exists in tree", entry.path),
-                    &image.file,
-                    &image.text,
+                    &image.src,
                 )
                 .at(entry.span, "two modules would answer to this name")
                 .help(format!(
@@ -159,8 +156,7 @@ impl Module {
             issues.push(
                 Issue::new(
                     format!("`{}` has no module.kdl", entry.path),
-                    &image.file,
-                    &image.text,
+                    &image.src,
                 )
                 .at(entry.span, "every module needs a manifest")
                 .help(match entry.remote {
@@ -174,11 +170,12 @@ impl Module {
             return None;
         };
 
+        let src = &Source::new(&file, text.clone());
         let doc: KdlDocument = match text.parse() {
             Ok(doc) => doc,
             Err(err) => {
                 eprintln!("{:?}", miette::Report::new(err));
-                issues.push(Issue::new(format!("{file} is not valid KDL"), &file, &text));
+                issues.push(Issue::new(format!("{file} is not valid KDL"), src));
                 return None;
             }
         };
@@ -209,17 +206,16 @@ impl Module {
             fragment: std::fs::read_to_string(dir.join("Containerfile.inc")).ok(),
             fragment_after: false,
             standard_layer: true,
-            file: file.clone(),
-            text: text.clone(),
+            src: src.clone(),
         };
 
-        let mut fragment_span: Option<SourceSpan> = None;
+        let mut fragment_span: Option<Span> = None;
         for node in doc.nodes() {
             match node.name().value() {
                 "description" => match string_args(node).first() {
                     Some(d) if !d.is_empty() => module.description = d.to_string(),
                     _ => issues.push(
-                        Issue::new("`description` needs a string", &file, &text)
+                        Issue::new("`description` needs a string", src)
                             .at(node.name().span(), "no description given"),
                     ),
                 },
@@ -227,7 +223,7 @@ impl Module {
                     for family in string_args(node) {
                         if !FAMILIES.contains(&family) {
                             issues.push(
-                                Issue::new(format!("unknown base family `{family}`"), &file, &text)
+                                Issue::new(format!("unknown base family `{family}`"), src)
                                     .at(
                                         node.name().span(),
                                         "not a family this repository builds on",
@@ -243,12 +239,12 @@ impl Module {
                         .iter()
                         .map(|c| Decl {
                             name: c.to_string(),
-                            span: node.name().span(),
+                            span: node.name().span().into(),
                         })
                         .collect::<Vec<_>>();
                     if decls.is_empty() {
                         issues.push(
-                            Issue::new(format!("`{kind}` needs a capability name"), &file, &text)
+                            Issue::new(format!("`{kind}` needs a capability name"), src)
                                 .at(node.name().span(), "nothing named"),
                         );
                     }
@@ -267,12 +263,8 @@ impl Module {
                         None => false,
                         Some(entry) if kind != "provides-file" => {
                             issues.push(
-                                Issue::new(
-                                    format!("`build-only` is not a `{kind}` property"),
-                                    &file,
-                                    &text,
-                                )
-                                .at(entry.span(), "only `provides-file` declares a lifetime"),
+                                Issue::new(format!("`build-only` is not a `{kind}` property"), src)
+                                    .at(entry.span(), "only `provides-file` declares a lifetime"),
                             );
                             false
                         }
@@ -280,12 +272,8 @@ impl Module {
                             Some(value) => value,
                             None => {
                                 issues.push(
-                                    Issue::new(
-                                        format!("`build-only` takes #true or #false"),
-                                        &file,
-                                        &text,
-                                    )
-                                    .at(entry.span(), "not a boolean"),
+                                    Issue::new(format!("`build-only` takes #true or #false"), src)
+                                        .at(entry.span(), "not a boolean"),
                                 );
                                 false
                             }
@@ -294,17 +282,13 @@ impl Module {
                     for path in string_args(node) {
                         if !path.starts_with('/') {
                             issues.push(
-                                Issue::new(
-                                    format!("`{path}` is not an absolute path"),
-                                    &file,
-                                    &text,
-                                )
-                                .at(node.name().span(), "an exact path in the image"),
+                                Issue::new(format!("`{path}` is not an absolute path"), src)
+                                    .at(node.name().span(), "an exact path in the image"),
                             );
                         }
                         let decl = Decl {
                             name: path.to_string(),
-                            span: node.name().span(),
+                            span: node.name().span().into(),
                         };
                         match kind {
                             "provides-file" => {
@@ -322,14 +306,14 @@ impl Module {
                     let names = string_args(node);
                     if names.is_empty() {
                         issues.push(
-                            Issue::new(format!("`{kind}` needs a name"), &file, &text)
+                            Issue::new(format!("`{kind}` needs a name"), src)
                                 .at(node.name().span(), "nothing named"),
                         );
                     }
                     for name in names {
                         let decl = Decl {
                             name: name.to_string(),
-                            span: node.name().span(),
+                            span: node.name().span().into(),
                         };
                         if kind == "secret" {
                             module.secrets.push(decl);
@@ -339,7 +323,7 @@ impl Module {
                     }
                 }
                 "allow-verify" => {
-                    let span = node.name().span();
+                    let span: Span = node.name().span().into();
                     let class = string_args(node).first().map(|s| s.to_string());
                     let mut unit = None;
                     for prop in node.entries() {
@@ -350,15 +334,14 @@ impl Module {
                             "unit" => match prop.value().as_string() {
                                 Some(v) => unit = Some(v.to_string()),
                                 None => issues.push(
-                                    Issue::new("`unit` must be a string", &file, &text)
+                                    Issue::new("`unit` must be a string", src)
                                         .at(prop.span(), "not a string"),
                                 ),
                             },
                             other => issues.push(
                                 Issue::new(
                                     format!("unknown `allow-verify` property `{other}`"),
-                                    &file,
-                                    &text,
+                                    src,
                                 )
                                 .at(prop.span(), "not part of the schema")
                                 .help("`allow-verify` accepts `unit`"),
@@ -372,8 +355,7 @@ impl Module {
                                 issues.push(
                                     Issue::new(
                                         format!("`{class}` is not a verify diagnostic class"),
-                                        &file,
-                                        &text,
+                                        src,
                                     )
                                     .at(span, "not one of the known classes")
                                     .help(format!(
@@ -389,8 +371,7 @@ impl Module {
                                 issues.push(
                                     Issue::new(
                                         format!("`{class}` is allowed twice on `{unit}`"),
-                                        &file,
-                                        &text,
+                                        src,
                                     )
                                     .at(dup.span, "first here")
                                     .at(span, "and again here"),
@@ -414,8 +395,7 @@ impl Module {
                             issues.push(
                                 Issue::new(
                                     format!("`allow-verify` needs {missing}"),
-                                    &file,
-                                    &text,
+                                    src,
                                 )
                                 .at(span, "incomplete")
                                 .help(
@@ -429,7 +409,7 @@ impl Module {
                 "collects" => {
                     let collected = string_args(node).first().map(|s| s.to_string());
                     let into = prop(node, "into");
-                    let priority = priority(node, &file, &text, issues);
+                    let priority = priority(node, src, issues);
                     match (collected, into, priority) {
                         (Some(collected), Some(into), Priority::Set(priority))
                             if into.starts_with('/') =>
@@ -438,7 +418,7 @@ impl Module {
                                 file: collected,
                                 into: into.to_string(),
                                 priority,
-                                span: node.name().span(),
+                                span: node.name().span().into(),
                             })
                         }
                         (_, _, Priority::Invalid) => {}
@@ -453,7 +433,7 @@ impl Module {
                                 "an absolute into="
                             };
                             issues.push(
-                                Issue::new(format!("`collects` needs {missing}"), &file, &text)
+                                Issue::new(format!("`collects` needs {missing}"), src)
                                     .at(node.name().span(), "incomplete")
                                     .help("`collects \"justfile.inc\" into=\"/usr/share/just/justfile.apps\" priority=500`"),
                             );
@@ -462,15 +442,14 @@ impl Module {
                 }
                 "contributes" => {
                     let contributed = string_args(node).first().map(|s| s.to_string());
-                    let priority = priority(node, &file, &text, issues);
+                    let priority = priority(node, src, issues);
                     match (contributed, priority) {
                         (Some(contributed), Priority::Set(priority)) => {
                             if !dir.join(&contributed).is_file() {
                                 issues.push(
                                     Issue::new(
                                         format!("`{}` orders a {contributed} it does not ship", entry.path),
-                                        &file,
-                                        &text,
+                                        src,
                                     )
                                     .at(node.name().span(), "nothing to order")
                                     .help("shipping the file is what contributes it; this node only says where it lands"),
@@ -479,19 +458,15 @@ impl Module {
                                 module.contributes.iter().find(|c| c.file == contributed)
                             {
                                 issues.push(
-                                    Issue::new(
-                                        format!("`{contributed}` is ordered twice"),
-                                        &file,
-                                        &text,
-                                    )
-                                    .at(dup.span, "first here")
-                                    .at(node.name().span(), "and again here"),
+                                    Issue::new(format!("`{contributed}` is ordered twice"), src)
+                                        .at(dup.span, "first here")
+                                        .at(node.name().span(), "and again here"),
                                 );
                             } else {
                                 module.contributes.push(Contribution {
                                     file: contributed,
                                     priority,
-                                    span: node.name().span(),
+                                    span: node.name().span().into(),
                                 });
                             }
                         }
@@ -503,7 +478,7 @@ impl Module {
                                 "priority=, which is the only thing it declares"
                             };
                             issues.push(
-                                Issue::new(format!("`contributes` needs {missing}"), &file, &text)
+                                Issue::new(format!("`contributes` needs {missing}"), src)
                                     .at(node.name().span(), "incomplete")
                                     .help("`contributes \"justfile.inc\" priority=900`, for a module that has to land after the rest"),
                             );
@@ -513,36 +488,31 @@ impl Module {
                 "fragment" => {
                     if let Some(first) = fragment_span {
                         issues.push(
-                            Issue::new("`fragment` is declared twice", &file, &text)
+                            Issue::new("`fragment` is declared twice", src)
                                 .at(first, "first here")
                                 .at(node.name().span(), "and again here"),
                         );
                         continue;
                     }
-                    fragment_span = Some(node.name().span());
+                    fragment_span = Some(node.name().span().into());
                     if module.fragment.is_none() {
                         issues.push(
                             Issue::new(
                                 format!("`{}` declares `fragment` but ships no Containerfile.inc", entry.path),
-                                &file,
-                                &text,
+                                src,
                             )
                             .at(node.name().span(), "nothing to place")
                             .help("shipping the file is what adds a fragment; this node only says where it goes"),
                         );
                     }
-                    module.parse_fragment(node, &file, &text, issues);
+                    module.parse_fragment(node, src, issues);
                 }
                 "option" => {
-                    if let Some(opt) = options::parse_option(node, &file, &text, issues) {
+                    if let Some(opt) = options::parse_option(node, src, issues) {
                         if module.options.iter().any(|o| o.name == opt.name) {
                             issues.push(
-                                Issue::new(
-                                    format!("option `{}` is declared twice", opt.name),
-                                    &file,
-                                    &text,
-                                )
-                                .at(opt.span, "already declared above"),
+                                Issue::new(format!("option `{}` is declared twice", opt.name), src)
+                                    .at(opt.span, "already declared above"),
                             );
                         } else {
                             module.options.push(opt);
@@ -550,13 +520,12 @@ impl Module {
                     }
                 }
                 "asset" => {
-                    if let Some(pin) = asset::parse(node, &file, &text, issues) {
+                    if let Some(pin) = asset::parse(node, src, issues) {
                         if module.assets.iter().any(|a| a.name == pin.name) {
                             issues.push(
                                 Issue::new(
                                     format!("asset `{}` is declared twice", pin.name),
-                                    &file,
-                                    &text,
+                                    src,
                                 )
                                 .at(pin.span, "already declared above")
                                 .help("two assets under one name would resolve to the same ASSET_* env"),
@@ -567,13 +536,12 @@ impl Module {
                     }
                 }
                 "variant" => {
-                    if let Some(variant) = options::parse_variant(node, &file, &text, issues) {
+                    if let Some(variant) = options::parse_variant(node, src, issues) {
                         if module.variants.iter().any(|v| v.name == variant.name) {
                             issues.push(
                                 Issue::new(
                                     format!("variant `{}` is declared twice", variant.name),
-                                    &file,
-                                    &text,
+                                    src,
                                 )
                                 .at(variant.span, "already declared above"),
                             );
@@ -582,9 +550,9 @@ impl Module {
                         }
                     }
                 }
-                "packages" => module.parse_packages(node, &file, &text, issues),
+                "packages" => module.parse_packages(node, src, issues),
                 other => issues.push(
-                    Issue::new(format!("unknown node `{other}`"), &file, &text)
+                    Issue::new(format!("unknown node `{other}`"), src)
                         .at(node.name().span(), "not part of the schema")
                         .help("SCHEMA.md documents every node a manifest may hold"),
                 ),
@@ -593,7 +561,7 @@ impl Module {
 
         if module.description.is_empty() {
             issues.push(
-                Issue::new(format!("`{}` declares no description", entry.path), &file, &text)
+                Issue::new(format!("`{}` declares no description", entry.path), src)
                     .help("one line, present tense, no trailing period; it names the module in the resolved build summary"),
             );
         }
@@ -622,8 +590,7 @@ impl Module {
                             "`{}` declares `{kind} \"{name}\"` with no standard layer to carry it",
                             entry.path
                         ),
-                        &file,
-                        &text,
+                        src,
                     )
                     .at(span, "nowhere to land")
                     .help("`standard-layer #false` makes the fragment the whole layer, so it has to spell out its own mounts, args and env; drop one or the other"),
@@ -633,7 +600,7 @@ impl Module {
 
         if module.supports.is_empty() {
             issues.push(
-                Issue::new(format!("`{}` declares no `supports`", entry.path), &file, &text)
+                Issue::new(format!("`{}` declares no `supports`", entry.path), src)
                     .help("a module has to say which base families it can build on, so a portability gap surfaces at lint rather than mid-build"),
             );
         }
@@ -643,8 +610,7 @@ impl Module {
                 issues.push(
                     Issue::new(
                         format!("`{}` declares both a `repo` file and `packages`", entry.path),
-                        &file,
-                        &text,
+                        src,
                     )
                     .at(group.span, "installed before the repo file is sourced")
                     .help("run-module.sh sources `repo` after the generated install, so call `dnf5 install -y` in module.sh instead"),
@@ -652,25 +618,18 @@ impl Module {
             }
         }
 
-        module.resolved = options::resolve(
-            &module.options,
-            &module.variants,
-            &file,
-            &text,
-            entry,
-            image,
-            issues,
-        );
+        module.resolved =
+            options::resolve(&module.options, &module.variants, src, entry, image, issues);
 
         Some(module)
     }
 
-    fn parse_fragment(&mut self, node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
-        let mut position_span = None;
+    fn parse_fragment(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
+        let mut position_span: Option<Span> = None;
         for prop in node.entries() {
             let Some(key) = prop.name().map(|n| n.value()) else {
                 issues.push(
-                    Issue::new("`fragment` takes no arguments", file, text)
+                    Issue::new("`fragment` takes no arguments", src)
                         .at(prop.span(), "unexpected value")
                         .help("`fragment position=\"after\"`"),
                 );
@@ -680,10 +639,10 @@ impl Module {
                 "position" => match prop.value().as_string() {
                     Some(p @ ("before" | "after")) => {
                         self.fragment_after = p == "after";
-                        position_span = Some(prop.span());
+                        position_span = Some(prop.span().into());
                     }
                     _ => issues.push(
-                        Issue::new("`position` must be \"before\" or \"after\"", file, text)
+                        Issue::new("`position` must be \"before\" or \"after\"", src)
                             .at(prop.span(), "not a position")
                             .help("before, the default, puts the fragment above the generated block; after puts it below"),
                     ),
@@ -691,12 +650,12 @@ impl Module {
                 "standard-layer" => match prop.value().as_bool() {
                     Some(v) => self.standard_layer = v,
                     None => issues.push(
-                        Issue::new("`standard-layer` must be #true or #false", file, text)
+                        Issue::new("`standard-layer` must be #true or #false", src)
                             .at(prop.span(), "not a boolean"),
                     ),
                 },
                 other => issues.push(
-                    Issue::new(format!("unknown fragment property `{other}`"), file, text)
+                    Issue::new(format!("unknown fragment property `{other}`"), src)
                         .at(prop.span(), "not part of the schema")
                         .help("a fragment accepts `position` and `standard-layer`"),
                 ),
@@ -708,8 +667,7 @@ impl Module {
                 issues.push(
                     Issue::new(
                         "`position` says nothing without a standard layer",
-                        file,
-                        text,
+                        src,
                     )
                     .at(span, "there is nothing to be before or after")
                     .help("`standard-layer #false` makes the fragment the only thing this module emits"),
@@ -718,7 +676,7 @@ impl Module {
         }
     }
 
-    fn parse_packages(&mut self, node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
+    fn parse_packages(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
         let Some(children) = node.children() else {
             return;
         };
@@ -726,7 +684,7 @@ impl Module {
             let family = child.name().value().to_string();
             if family.is_empty() {
                 issues.push(
-                    Issue::new("a family name is required inside `packages`", file, text)
+                    Issue::new("a family name is required inside `packages`", src)
                         .at(child.name().span(), "empty name")
                         .help("`packages { fedora \"pkg1\" \"pkg2\" }`"),
                 );
@@ -734,8 +692,11 @@ impl Module {
             }
             if !FAMILIES.contains(&family.as_str()) {
                 issues.push(
-                    Issue::new(format!("unknown base family `{family}`"), file, text)
-                        .at(child.name().span(), "not a family this repository builds on")
+                    Issue::new(format!("unknown base family `{family}`"), src)
+                        .at(
+                            child.name().span(),
+                            "not a family this repository builds on",
+                        )
                         .help(format!("known families: {}", FAMILIES.join(", "))),
                 );
                 continue;
@@ -744,7 +705,7 @@ impl Module {
             for arg in child.entries().iter().filter(|e| e.name().is_none()) {
                 let Some(value) = arg.value().as_string() else {
                     issues.push(
-                        Issue::new("a package name has to be a string", file, text)
+                        Issue::new("a package name has to be a string", src)
                             .at(arg.span(), "not a string")
                             .help("quote it: `fedora \"7zip\"`"),
                     );
@@ -752,7 +713,7 @@ impl Module {
                 };
                 if let Some(problem) = bad_token(value) {
                     issues.push(
-                        Issue::new(format!("package name `{value}` {problem}"), file, text)
+                        Issue::new(format!("package name `{value}` {problem}"), src)
                             .at(arg.span(), "would not survive the RUN line")
                             .help(TOKEN_HELP),
                     );
@@ -762,12 +723,8 @@ impl Module {
             }
             if packages.is_empty() {
                 issues.push(
-                    Issue::new(
-                        format!("`{family}` has no packages listed"),
-                        file,
-                        text,
-                    )
-                    .at(child.name().span(), "nothing to install"),
+                    Issue::new(format!("`{family}` has no packages listed"), src)
+                        .at(child.name().span(), "nothing to install"),
                 );
                 continue;
             }
@@ -780,25 +737,21 @@ impl Module {
                     "enablerepo" => match entry.value().as_string() {
                         Some(v) if !v.is_empty() => match bad_token(v) {
                             Some(problem) => issues.push(
-                                Issue::new(format!("repo ID `{v}` {problem}"), file, text)
+                                Issue::new(format!("repo ID `{v}` {problem}"), src)
                                     .at(entry.span(), "would not survive the RUN line")
                                     .help(TOKEN_HELP),
                             ),
                             None => enablerepo = Some(v.to_string()),
                         },
                         _ => issues.push(
-                            Issue::new("`enablerepo` needs a repo ID string", file, text)
+                            Issue::new("`enablerepo` needs a repo ID string", src)
                                 .at(entry.span(), "not a string"),
                         ),
                     },
                     other => issues.push(
-                        Issue::new(
-                            format!("unknown property `{other}` in packages block"),
-                            file,
-                            text,
-                        )
-                        .at(entry.span(), "not part of the schema")
-                        .help("a family entry in `packages` accepts `enablerepo`"),
+                        Issue::new(format!("unknown property `{other}` in packages block"), src)
+                            .at(entry.span(), "not part of the schema")
+                            .help("a family entry in `packages` accepts `enablerepo`"),
                     ),
                 }
             }
@@ -806,7 +759,7 @@ impl Module {
                 family,
                 packages,
                 enablerepo,
-                span: child.name().span(),
+                span: child.name().span().into(),
             });
         }
     }
@@ -838,8 +791,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                         "`{}` provides `{cap}`, which the base image already provides",
                         module.path
                     ),
-                    &module.file,
-                    &module.text,
+                    &module.src,
                 )
                 .at(
                     module
@@ -848,12 +800,12 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                         .chain(module.provides_files.iter())
                         .find(|d| &d.name == cap)
                         .map(|d| d.span)
-                        .unwrap_or_else(|| (0usize, 0usize).into()),
+                        .unwrap_or_default(),
                     "already provided by the base",
                 )
                 .help(format!(
                     "the `base` node in {} declares it. Drop it from the module, or drop it from the base if the base no longer carries it",
-                    image.file
+                    image.src.name()
                 )),
             );
         }
@@ -865,7 +817,9 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
         .map(|b| b.family.as_str())
         .filter(|f| !f.is_empty());
     for module in image.modules() {
-        let Some(base_family) = base_family else { break };
+        let Some(base_family) = base_family else {
+            break;
+        };
         if !module.supports.iter().any(|f| f == base_family) {
             let supported = module.supports.join(", ");
             issues.push(
@@ -874,8 +828,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                         "`{}` does not support the `{base_family}` base family",
                         module.path
                     ),
-                    &module.file,
-                    &module.text,
+                    &module.src,
                 )
                 .help(if supported.is_empty() {
                     "add `supports \"fedora\"` to the manifest".to_string()
@@ -893,14 +846,13 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
             issues.push(
                 Issue::new(
                     format!("`{capability}` is provided by more than one enabled module"),
-                    &first.file,
-                    &first.text,
+                    &first.src,
                 )
                 .at(
                     first.provides.iter().chain(first.provides_files.iter())
                         .find(|d| d.name == **capability)
                         .map(|d| d.span)
-                        .unwrap_or_else(|| (0usize, 0usize).into()),
+                        .unwrap_or_default(),
                     "also provided elsewhere",
                 )
                 .help(format!(
@@ -928,8 +880,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                     "`{}` ships SELinux policy without requiring `{MAC_POLICY}`",
                     module.path
                 ),
-                &module.file,
-                &module.text,
+                &module.src,
             )
             .help(format!(
                 "add `requires \"{MAC_POLICY}\"`; lib/run-module.sh compiles selinux/*.te against the base image's policy store"
@@ -957,7 +908,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                     ),
                     None => format!(
                         "no module in the repository declares `provides {:?}`, and neither does the `base` node in {}",
-                        decl.name, image.file
+                        decl.name, image.src.name()
                     ),
                 };
                 issues.push(
@@ -966,8 +917,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                             "`{}` {kind} `{}`, which nothing enabled provides",
                             module.path, decl.name
                         ),
-                        &module.file,
-                        &module.text,
+                        &module.src,
                     )
                     .at(decl.span, "unsatisfied")
                     .help(help),
@@ -984,8 +934,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                                     "`{}` {kind} `{}`, which only `{}` provides and only on the `{provider_flavour}` flavour",
                                     module.path, decl.name, provider.path
                                 ),
-                                &module.file,
-                                &module.text,
+                                &module.src,
                             )
                             .at(decl.span, "unsatisfied on every other target")
                             .help("either gate this module to the same flavour, or move the provider out of the flavour block"),
@@ -1000,17 +949,20 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
 pub fn check_fragments(image: &Image, issues: &mut Issues) {
     let mut gated = false;
     for entry in &image.entries {
-        let Some(module) = &entry.module else { continue };
+        let Some(module) = &entry.module else {
+            continue;
+        };
         gated |= entry.flavour.is_some();
-        let Some(body) = &module.fragment else { continue };
+        let Some(body) = &module.fragment else {
+            continue;
+        };
         let path = &entry.path;
 
         if !gated && (body.contains("${FLAVOUR}") || body.contains("$FLAVOUR")) {
             issues.push(
                 Issue::new(
                     format!("`{path}` expands FLAVOUR above the flavour gate"),
-                    &image.file,
-                    &image.text,
+                    &image.src,
                 )
                 .at(entry.span, "listed above the first flavour-gated module")
                 .help("ARG FLAVOUR is declared directly above the first gated entry, so a fragment before it would expand to an empty string"),
@@ -1030,8 +982,7 @@ pub fn check_fragments(image: &Image, issues: &mut Issues) {
             Some(d) => issues.push(
                 Issue::new(
                     format!("`{path}` is listed under `{flavour}` but its fragment gates on `{d}`"),
-                    &image.file,
-                    &image.text,
+                    &image.src,
                 )
                 .at(entry.span, "listed here"),
             ),
@@ -1040,8 +991,7 @@ pub fn check_fragments(image: &Image, issues: &mut Issues) {
                     format!(
                         "`{path}` is listed under `{flavour}` but its fragment sets no FLAVOUR_GATE"
                     ),
-                    &image.file,
-                    &image.text,
+                    &image.src,
                 )
                 .at(entry.span, "the flavour gate would be silently ignored")
                 .help(
@@ -1076,8 +1026,7 @@ pub fn resolve_collects(
                 issues.push(
                     Issue::new(
                         format!("two enabled modules collect `{}`", collect.file),
-                        &module.file,
-                        &module.text,
+                        &module.src,
                     )
                     .at(collect.span, "collected again here")
                     .help(format!("already collected by `{}`", first.path)),
@@ -1120,8 +1069,7 @@ pub fn resolve_collects(
                                     "`{}` ships a {file} with no standard layer to collect it from",
                                     module.path
                                 ),
-                                &module.file,
-                                &module.text,
+                                &module.src,
                             )
                             .help(format!(
                                 "`standard-layer #false` makes the fragment the whole layer, so it has to append the file to {into} itself"
@@ -1143,8 +1091,7 @@ pub fn resolve_collects(
                             "`{}` ships a {file} but nothing enabled collects it",
                             module.path
                         ),
-                        &module.file,
-                        &module.text,
+                        &module.src,
                     )
                     .help(format!(
                         "`{collector}` collects it; add it to this image, or drop the {file}"

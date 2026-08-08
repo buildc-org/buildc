@@ -1,7 +1,6 @@
 use crate::asset::check_renovate;
-use crate::diag::{Issue, Issues};
+use crate::diag::{Issue, Issues, Source, Span};
 use kdl::KdlNode;
-use miette::SourceSpan;
 
 pub const REMOTE_DIR: &str = ".remote";
 
@@ -12,7 +11,7 @@ pub struct Remote {
     pub git_ref: String,
     pub sha256: String,
     pub path: Option<String>,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 impl Remote {
@@ -35,11 +34,11 @@ fn datasource(node: &KdlNode) -> Option<&str> {
         .and_then(|e| e.value().as_string())
 }
 
-pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Option<Remote> {
-    let span = node.name().span();
+pub fn parse(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Remote> {
+    let span: Span = node.name().span().into();
     let Some(url) = string_arg(node).map(str::to_string) else {
         issues.push(
-            Issue::new("`source` needs a URL", file, text)
+            Issue::new("`source` needs a URL", src)
                 .at(span, "no URL given")
                 .help("`source \"https://host/owner/repo/archive/{ref}.tar.gz\" { ... }`"),
         );
@@ -53,8 +52,7 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
                     "unknown source property `{}`",
                     entry.name().map(|n| n.value()).unwrap_or_default()
                 ),
-                file,
-                text,
+                src,
             )
             .at(entry.span(), "not part of the schema")
             .help("a source carries its fields as child nodes, not properties"),
@@ -69,19 +67,19 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
         span,
     };
 
-    let mut manual: Option<SourceSpan> = None;
-    let mut renovate: Option<SourceSpan> = None;
-    let mut ref_span: Option<SourceSpan> = None;
+    let mut manual: Option<Span> = None;
+    let mut renovate: Option<Span> = None;
+    let mut ref_span: Option<Span> = None;
     let mut previous: Option<&str> = None;
 
     for child in node.children().map(|c| c.nodes()).unwrap_or_default() {
         let kind = child.name().value();
-        let child_span = child.name().span();
+        let child_span: Span = child.name().span().into();
         let string = |issues: &mut Issues| match string_arg(child) {
             Some(v) if !v.is_empty() => Some(v.to_string()),
             _ => {
                 issues.push(
-                    Issue::new(format!("`{kind}` needs a value"), file, text)
+                    Issue::new(format!("`{kind}` needs a value"), src)
                         .at(child_span, "nothing given"),
                 );
                 None
@@ -91,10 +89,10 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
         match kind {
             "renovate" => {
                 renovate = Some(child_span);
-                check_renovate(child, file, text, issues);
+                check_renovate(child, src, issues);
                 if datasource(child) == Some("git-refs") {
                     issues.push(
-                        Issue::new("`git-refs` does not track a module pin", file, text)
+                        Issue::new("`git-refs` does not track a module pin", src)
                             .at(child_span, "no custom manager matches it")
                             .help("github-tags or github-releases, against the publishing repository's per-module tags; a repository with no tags is pinned `manual`"),
                     );
@@ -104,7 +102,7 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
                 manual = Some(child_span);
                 if string_arg(child).unwrap_or_default().is_empty() {
                     issues.push(
-                        Issue::new("`manual` needs a reason", file, text)
+                        Issue::new("`manual` needs a reason", src)
                             .at(child_span, "no reason given")
                             .help("say why nothing tracks this pin, or the next reader takes the absence for an oversight"),
                     );
@@ -115,7 +113,7 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
                 remote.git_ref = string(issues).unwrap_or_default();
                 if renovate.is_some() && previous != Some("renovate") {
                     issues.push(
-                        Issue::new("something sits between `renovate` and `ref`", file, text)
+                        Issue::new("something sits between `renovate` and `ref`", src)
                             .at(child_span, "has to be the line directly below `renovate`")
                             .help("Renovate matches the two together, so anything between them stops the pin being tracked, silently"),
                     );
@@ -124,7 +122,7 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
             "sha256" => remote.sha256 = string(issues).unwrap_or_default(),
             "path" => remote.path = string(issues),
             other => issues.push(
-                Issue::new(format!("unknown node `{other}` in a source"), file, text)
+                Issue::new(format!("unknown node `{other}` in a source"), src)
                     .at(child_span, "not part of the schema")
                     .help("a source holds `renovate` or `manual`, `ref`, `sha256` and `path`"),
             ),
@@ -134,12 +132,12 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
 
     match (renovate, manual) {
         (Some(_), Some(manual)) => issues.push(
-            Issue::new("the pin is declared both tracked and manual", file, text)
+            Issue::new("the pin is declared both tracked and manual", src)
                 .at(manual, "pick one")
                 .help("`renovate` says Renovate bumps this ref, `manual` says nothing does and why"),
         ),
         (None, None) => issues.push(
-            Issue::new("the pin says nothing about how it is kept current", file, text)
+            Issue::new("the pin says nothing about how it is kept current", src)
                 .at(span, "needs `renovate` or `manual`")
                 .help("`renovate datasource=\"github-tags\" depName=\"owner/repo\"`, or `manual \"why nothing tracks it\"`"),
         ),
@@ -148,7 +146,7 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
 
     if ref_span.is_none() {
         issues.push(
-            Issue::new("the pin declares no `ref`", file, text)
+            Issue::new("the pin declares no `ref`", src)
                 .at(span, "nothing pinned")
                 .help("an exact tag or commit; a moving ref would make the build depend on when it ran"),
         );
@@ -156,35 +154,35 @@ pub fn parse(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Opt
 
     if remote.sha256.is_empty() {
         issues.push(
-            Issue::new("the pin declares no `sha256`", file, text)
+            Issue::new("the pin declares no `sha256`", src)
                 .at(span, "nothing to verify the archive against")
                 .help("a remote module is arbitrary shell running as root in the build, so the content hash is required, not optional"),
         );
     } else if remote.sha256.len() != 64 || !remote.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
         issues.push(
-            Issue::new("the pin has a malformed sha256", file, text)
+            Issue::new("the pin has a malformed sha256", src)
                 .at(span, "not 64 hex digits")
                 .help("sha256sum output, lowercase"),
         );
     } else if remote.sha256.chars().any(|c| c.is_ascii_uppercase()) {
         issues.push(
-            Issue::new("the pin has an uppercase sha256", file, text)
+            Issue::new("the pin has an uppercase sha256", src)
                 .at(span, "lowercase, as sha256sum writes it")
                 .help("the checksum workflow rewrites this line by matching the pinned value, so its case has to be the one sha256sum produces"),
         );
     }
 
-    check_url(&remote, renovate.is_some(), file, text, issues);
-    check_path(&remote, file, text, issues);
+    check_url(&remote, renovate.is_some(), src, issues);
+    check_path(&remote, src, issues);
 
     Some(remote)
 }
 
-fn check_url(remote: &Remote, tracked: bool, file: &str, text: &str, issues: &mut Issues) {
+fn check_url(remote: &Remote, tracked: bool, src: &Source, issues: &mut Issues) {
     let url = &remote.url;
     if !url.starts_with("https://") && !url.starts_with("file://") {
         issues.push(
-            Issue::new("the source URL is not https", file, text)
+            Issue::new("the source URL is not https", src)
                 .at(remote.span, "unencrypted or unsupported scheme")
                 .help("https://, or file:// for a local archive"),
         );
@@ -199,8 +197,7 @@ fn check_url(remote: &Remote, tracked: bool, file: &str, text: &str, issues: &mu
             issues.push(
                 Issue::new(
                     format!("the source URL has an unknown placeholder {placeholder}"),
-                    file,
-                    text,
+                    src,
                 )
                 .at(remote.span, "not substituted")
                 .help("a source URL expands `{ref}` and nothing else"),
@@ -210,7 +207,7 @@ fn check_url(remote: &Remote, tracked: bool, file: &str, text: &str, issues: &mu
 
     if tracked && !url.contains("{ref}") {
         issues.push(
-            Issue::new("the source URL does not expand `{ref}`", file, text)
+            Issue::new("the source URL does not expand `{ref}`", src)
                 .at(remote.span, "a bump would fetch the same archive")
                 .help("put `{ref}` in the URL, or mark the pin `manual` if the URL genuinely does not follow the ref"),
         );
@@ -219,7 +216,7 @@ fn check_url(remote: &Remote, tracked: bool, file: &str, text: &str, issues: &mu
     let resolved = remote.url_resolved();
     if !ARCHIVES.iter().any(|ext| resolved.ends_with(ext)) {
         issues.push(
-            Issue::new("the source is not a tar archive", file, text)
+            Issue::new("the source is not a tar archive", src)
                 .at(remote.span, "cannot be extracted")
                 .help(format!(
                     "one of {}; the fetch strips the archive's leading directory, which is a tar option",
@@ -231,7 +228,7 @@ fn check_url(remote: &Remote, tracked: bool, file: &str, text: &str, issues: &mu
     for (what, value) in [("URL", resolved.as_str()), ("ref", remote.git_ref.as_str())] {
         if value.contains(['|', '"', '\'', '\\', '$', '`', ' ', '\n', '\t']) {
             issues.push(
-                Issue::new(format!("the {what} contains a shell metacharacter"), file, text)
+                Issue::new(format!("the {what} contains a shell metacharacter"), src)
                     .at(remote.span, "not usable in the fetch")
                     .help("pins are passed to the fetch as pipe-separated fields, so quotes, spaces, pipes and expansions are rejected"),
             );
@@ -239,7 +236,7 @@ fn check_url(remote: &Remote, tracked: bool, file: &str, text: &str, issues: &mu
     }
 }
 
-fn check_path(remote: &Remote, file: &str, text: &str, issues: &mut Issues) {
+fn check_path(remote: &Remote, src: &Source, issues: &mut Issues) {
     let Some(path) = &remote.path else {
         return;
     };
@@ -254,7 +251,7 @@ fn check_path(remote: &Remote, file: &str, text: &str, issues: &mut Issues) {
     };
     if let Some(reason) = bad {
         issues.push(
-            Issue::new(format!("invalid subtree path `{path}`"), file, text)
+            Issue::new(format!("invalid subtree path `{path}`"), src)
                 .at(remote.span, reason)
                 .help("`path \"modules/module-name\"`, the module's directory inside the repository"),
         );

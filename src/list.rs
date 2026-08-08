@@ -1,8 +1,8 @@
-use crate::diag::{Issue, Issues};
+use crate::diag::{Issue, Issues, Source, Span};
 use crate::module::Module;
+use crate::options::{self, Value};
 use crate::remote::{self, Remote, REMOTE_DIR};
-use kdl::{KdlDocument, KdlNode, KdlValue};
-use miette::SourceSpan;
+use kdl::{KdlDocument, KdlNode};
 use std::path::Path;
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -30,8 +30,7 @@ impl std::fmt::Display for Target {
 }
 
 pub struct Image {
-    pub file: String,
-    pub text: String,
+    pub src: Source,
     pub id: String,
     pub name: String,
     pub pretty_name: String,
@@ -40,7 +39,7 @@ pub struct Image {
     pub base: Option<Base>,
     pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Base {
@@ -49,34 +48,34 @@ pub struct Base {
     pub provides: Vec<Decl>,
     pub provides_files: Vec<Decl>,
     pub signed: bool,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Decl {
     pub name: String,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Flavour {
     pub name: String,
     pub default: bool,
     pub pr_build: bool,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct WorkflowToggle {
     pub name: String,
     pub enabled: bool,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 pub struct Entry {
     pub path: String,
     pub flavour: Option<String>,
     pub variant: Option<String>,
-    pub options: Vec<(String, Vec<KdlValue>, SourceSpan)>,
+    pub options: Vec<(String, Vec<Value>, Span)>,
     pub remote: Option<Remote>,
-    pub span: SourceSpan,
+    pub span: Span,
     pub module: Option<Module>,
 }
 
@@ -96,8 +95,7 @@ pub struct List {
     pub pr_image_id: Option<String>,
     pub schema_version: Option<u32>,
     schema_version_seen: bool,
-    pub repo_file: String,
-    pub repo_text: String,
+    pub repo_src: Source,
     pub files: Vec<String>,
 }
 
@@ -144,8 +142,7 @@ impl List {
             pr_image_id: None,
             schema_version: None,
             schema_version_seen: false,
-            repo_file: root.join(REPO_FILE).display().to_string(),
-            repo_text: String::new(),
+            repo_src: Source::new(root.join(REPO_FILE).display().to_string(), ""),
             files: Vec::new(),
         };
 
@@ -165,8 +162,7 @@ impl List {
             Err(err) => {
                 issues.push(Issue::new(
                     format!("cannot read {}: {err}", root.display()),
-                    &list.repo_file,
-                    "",
+                    &list.repo_src,
                 ));
                 return (list, issues);
             }
@@ -178,24 +174,26 @@ impl List {
             let text = match std::fs::read_to_string(root.join(name)) {
                 Ok(text) => text,
                 Err(err) => {
-                    issues.push(Issue::new(format!("cannot read {path}: {err}"), &path, ""));
+                    issues.push(Issue::new(
+                        format!("cannot read {path}: {err}"),
+                        &Source::new(&path, ""),
+                    ));
                     continue;
                 }
             };
             list.files.push(path.clone());
+            let src = Source::new(&path, text.clone());
             if name == REPO_FILE {
-                list.repo_file = path.clone();
-                list.repo_text = text.clone();
+                list.repo_src = src.clone();
             }
-            list.parse_file(&path, text, name == REPO_FILE, &mut issues);
+            list.parse_file(&src, &text, name == REPO_FILE, &mut issues);
         }
 
         if !names.iter().any(|n| n != REPO_FILE) {
             issues.push(
                 Issue::new(
                     format!("{} declares no image", root.display()),
-                    &list.repo_file,
-                    "",
+                    &list.repo_src,
                 )
                 .help(
                     "an image is a `.kdl` file at the repository root holding one `image` \
@@ -208,29 +206,29 @@ impl List {
         (list, issues)
     }
 
-    fn parse_file(&mut self, file: &str, text: String, is_repo: bool, issues: &mut Issues) {
+    fn parse_file(&mut self, src: &Source, text: &str, is_repo: bool, issues: &mut Issues) {
         let doc: KdlDocument = match text.parse() {
             Ok(doc) => doc,
             Err(err) => {
                 eprintln!("{:?}", miette::Report::new(err));
-                issues.push(Issue::new(format!("{file} is not valid KDL"), file, &text));
+                issues.push(Issue::new(format!("{} is not valid KDL", src.name()), src));
                 return;
             }
         };
 
         for node in doc.nodes() {
             match (is_repo, node.name().value()) {
-                (false, "image") => self.parse_image(node, file, &text, issues),
-                (true, "workflows") => self.parse_workflows(node, file, &text, issues),
+                (false, "image") => self.parse_image(node, src, issues),
+                (true, "workflows") => self.parse_workflows(node, src, issues),
                 (true, "default-image") => {
                     self.default_image_id = string_arg(node).map(str::to_string);
                 }
                 (true, "pr-image") => {
                     self.pr_image_id = string_arg(node).map(str::to_string);
                 }
-                (true, "schema-version") => self.parse_schema_version(node, file, &text, issues),
+                (true, "schema-version") => self.parse_schema_version(node, src, issues),
                 (true, other) => issues.push(
-                    Issue::new(format!("unknown node `{other}` in {REPO_FILE}"), file, &text)
+                    Issue::new(format!("unknown node `{other}` in {REPO_FILE}"), src)
                         .at(node.name().span(), "not part of the schema")
                         .help(
                             "repo.kdl holds `schema-version`, `default-image`, `pr-image` \
@@ -239,7 +237,7 @@ impl List {
                         ),
                 ),
                 (false, other) => issues.push(
-                    Issue::new(format!("unknown top-level node `{other}`"), file, &text)
+                    Issue::new(format!("unknown top-level node `{other}`"), src)
                         .at(node.name().span(), "not part of the schema")
                         .help(format!(
                             "every root .kdl but {REPO_FILE} is one `image` node; `base`, \
@@ -252,7 +250,7 @@ impl List {
 
         if !is_repo && !doc.nodes().iter().any(|n| n.name().value() == "image") {
             issues.push(
-                Issue::new(format!("{file} declares no image"), file, &text).help(format!(
+                Issue::new(format!("{} declares no image", src.name()), src).help(format!(
                     "every root .kdl but {REPO_FILE} holds one `image` node: \
                      `image {{ name \"Name\" }}`, what the image calls itself in os-release \
                      and what it publishes as"
@@ -261,7 +259,7 @@ impl List {
         }
     }
 
-    fn parse_schema_version(&mut self, node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
+    fn parse_schema_version(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
         self.schema_version_seen = true;
         let declared = node
             .entries()
@@ -275,8 +273,7 @@ impl List {
             Some(version) => issues.push(
                 Issue::new(
                     format!("this repository is written against schema version {version}"),
-                    file,
-                    text,
+                    src,
                 )
                 .at(node.name().span(), format!("this tool knows {SCHEMA_VERSION}"))
                 .help(if version > i128::from(SCHEMA_VERSION) {
@@ -286,7 +283,7 @@ impl List {
                 }),
             ),
             None => issues.push(
-                Issue::new("`schema-version` needs a number", file, text)
+                Issue::new("`schema-version` needs a number", src)
                     .at(node.name().span(), "not a version")
                     .help(format!("`schema-version {SCHEMA_VERSION}`")),
             ),
@@ -303,11 +300,12 @@ impl List {
                     issues.push(
                         Issue::new(
                             format!("`{}` is declared by two files", image.id),
-                            &image.file,
-                            &image.text,
+                            &image.src,
                         )
-                        .at(image.span, format!("also declared in {}", other.file))
-                        .help("two images cannot publish under one name; declare `id` on one of them"),
+                        .at(image.span, format!("also declared in {}", other.src.name()))
+                        .help(
+                            "two images cannot publish under one name; declare `id` on one of them",
+                        ),
                     );
                 }
             }
@@ -318,15 +316,14 @@ impl List {
                         issues.push(
                             Issue::new(
                                 format!("two builds would publish as `{published}`"),
-                                &image.file,
-                                &image.text,
+                                &image.src,
                             )
                             .at(flavour.span, "this flavour")
                             .at(image.span, "of this image")
                             .help(format!(
                                 "the image declared in {} publishes under that name too; \
                                  rename one of them",
-                                other.file
+                                other.src.name()
                             )),
                         );
                     }
@@ -338,8 +335,7 @@ impl List {
             issues.push(
                 Issue::new(
                     format!("{REPO_FILE} declares no `schema-version`"),
-                    &self.repo_file,
-                    &self.repo_text,
+                    &self.repo_src,
                 )
                 .help(format!(
                     "`schema-version {SCHEMA_VERSION}`, so a tool from a different release \
@@ -352,9 +348,11 @@ impl List {
             match &self.default_image_id {
                 None => issues.push(
                     Issue::new(
-                        format!("{} images are declared and none is the default", self.images.len()),
-                        &self.repo_file,
-                        &self.repo_text,
+                        format!(
+                            "{} images are declared and none is the default",
+                            self.images.len()
+                        ),
+                        &self.repo_src,
                     )
                     .help(format!(
                         "`default-image \"{}\"` in {REPO_FILE}, naming which one a build \
@@ -365,8 +363,7 @@ impl List {
                 Some(id) if !self.images.iter().any(|i| &i.id == id) => issues.push(
                     Issue::new(
                         format!("`default-image` names `{id}`, which is not a declared image"),
-                        &self.repo_file,
-                        &self.repo_text,
+                        &self.repo_src,
                     )
                     .help(format!(
                         "images: {}",
@@ -386,8 +383,7 @@ impl List {
                 issues.push(
                     Issue::new(
                         format!("`pr-image` names `{id}`, which is not a declared image"),
-                        &self.repo_file,
-                        &self.repo_text,
+                        &self.repo_src,
                     )
                     .help("a pull request builds one target, of one declared image"),
                 );
@@ -395,12 +391,10 @@ impl List {
         }
     }
 
-    fn parse_image(&mut self, node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
-        let (file, text) = (file.to_string(), text.to_string());
-
+    fn parse_image(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
         if let Some(stray) = string_arg(node) {
             issues.push(
-                Issue::new("`image` takes no argument", &file, &text)
+                Issue::new("`image` takes no argument", src)
                     .at(node.name().span(), "the name belongs in the block")
                     .help(format!(
                         "`image {{ id \"{stray}\" }}` is the machine name, and `name` is the \
@@ -410,8 +404,7 @@ impl List {
         }
 
         let mut image = Image {
-            file: file.clone(),
-            text: text.clone(),
+            src: src.clone(),
             id: String::new(),
             name: String::new(),
             pretty_name: String::new(),
@@ -420,7 +413,7 @@ impl List {
             base: None,
             flavours: Vec::new(),
             entries: Vec::new(),
-            span: node.name().span(),
+            span: node.name().span().into(),
         };
 
         let children = node.children().map(|c| c.nodes()).unwrap_or_default();
@@ -429,7 +422,7 @@ impl List {
                 Some(v) => v.to_string(),
                 None => {
                     issues.push(
-                        Issue::new(format!("`{field}` needs a value"), &file, &text)
+                        Issue::new(format!("`{field}` needs a value"), src)
                             .at(child.name().span(), "nothing given"),
                     );
                     String::new()
@@ -445,7 +438,7 @@ impl List {
                 "flavours" => image.parse_flavours(child, issues),
                 "modules" => {}
                 other => issues.push(
-                    Issue::new(format!("unknown image property `{other}`"), &file, &text)
+                    Issue::new(format!("unknown image property `{other}`"), src)
                         .at(child.name().span(), "not part of the schema")
                         .help(
                             "an image accepts `id`, `name`, `pretty-name`, `url` \
@@ -463,7 +456,7 @@ impl List {
 
         if image.name.is_empty() {
             issues.push(
-                Issue::new("`image` declares no `name`", &file, &text)
+                Issue::new("`image` declares no `name`", src)
                     .at(image.span, "no name")
                     .help("`name \"Buildc\"` is os-release NAME, which the boot menu and the desktop read"),
             );
@@ -475,8 +468,7 @@ impl List {
                 issues.push(
                     Issue::new(
                         format!("`{}` does not derive a usable image name", image.name),
-                        &file,
-                        &text,
+                        src,
                     )
                     .at(image.span, "no `id`, and `name` does not lowercase into one")
                     .help("declare `id \"something\"`: lowercase letters, digits and dashes, starting with a letter"),
@@ -485,7 +477,7 @@ impl List {
             }
         } else if !is_flavour_name(&image.id) {
             issues.push(
-                Issue::new(format!("invalid image name `{}`", image.id), &file, &text)
+                Issue::new(format!("invalid image name `{}`", image.id), src)
                     .at(image.span, "must be lowercase letters, digits and dashes, starting with a letter")
                     .help("it becomes an image tag, a cache tag and the default hostname, all of which restrict it"),
             );
@@ -493,7 +485,7 @@ impl List {
 
         if image.base.is_none() && !children.iter().any(|c| c.name().value() == "base") {
             issues.push(
-                Issue::new("`image` declares no `base`", &file, &text)
+                Issue::new("`image` declares no `base`", src)
                     .at(image.span, "nothing to build on")
                     .help(
                         "`base \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\" }`, \
@@ -504,7 +496,7 @@ impl List {
 
         if !children.iter().any(|c| c.name().value() == "modules") {
             issues.push(
-                Issue::new("`image` has no `modules` block", &file, &text)
+                Issue::new("`image` has no `modules` block", src)
                     .at(image.span, "nothing in it")
                     .help("an image with no modules is almost certainly a mistake; the block is required even when empty"),
             );
@@ -513,7 +505,6 @@ impl List {
         image.check_flavours(issues);
         self.images.push(image);
     }
-
 }
 
 impl Image {
@@ -522,11 +513,11 @@ impl Image {
     }
 
     fn parse_base(&mut self, node: &KdlNode, issues: &mut Issues) {
-        let (file, text) = (self.file.clone(), self.text.clone());
+        let src = &self.src.clone();
 
         if let Some(first) = &self.base {
             issues.push(
-                Issue::new("`base` is declared twice", &file, &text)
+                Issue::new("`base` is declared twice", src)
                     .at(first.span, "first here")
                     .at(node.name().span(), "and again here")
                     .help("an image builds on one base; a second family is a second image"),
@@ -536,7 +527,7 @@ impl Image {
 
         let Some(image) = string_arg(node) else {
             issues.push(
-                Issue::new("`base` needs an image reference", &file, &text)
+                Issue::new("`base` needs an image reference", src)
                     .at(node.name().span(), "no image given")
                     .help("`base \"quay.io/fedora/fedora-bootc:44\"`, emitted verbatim as the generated FROM"),
             );
@@ -549,7 +540,7 @@ impl Image {
             provides: Vec::new(),
             provides_files: Vec::new(),
             signed: false,
-            span: node.name().span(),
+            span: node.name().span().into(),
         };
 
         for child in node.children().map(|c| c.nodes()).unwrap_or_default() {
@@ -558,7 +549,7 @@ impl Image {
                     .iter()
                     .map(|name| Decl {
                         name: name.to_string(),
-                        span: child.name().span(),
+                        span: child.name().span().into(),
                     })
                     .collect::<Vec<_>>()
             };
@@ -566,7 +557,7 @@ impl Image {
                 "family" => match string_arg(child) {
                     Some(f) => base.family = f.to_string(),
                     None => issues.push(
-                        Issue::new("`family` needs a name", &file, &text)
+                        Issue::new("`family` needs a name", src)
                             .at(child.name().span(), "no family given")
                             .help("`family \"fedora\"`, matched against each module's `supports`"),
                     ),
@@ -576,13 +567,13 @@ impl Image {
                 "signed" => match bool_arg(child) {
                     Some(v) => base.signed = v,
                     None => issues.push(
-                        Issue::new("`signed` needs #true or #false", &file, &text)
+                        Issue::new("`signed` needs #true or #false", src)
                             .at(child.name().span(), "not a boolean")
                             .help("`signed #false` records that this base publishes no cosign signature; base-sig-probe.yml keeps it current"),
                     ),
                 },
                 other => issues.push(
-                    Issue::new(format!("unknown base property `{other}`"), &file, &text)
+                    Issue::new(format!("unknown base property `{other}`"), src)
                         .at(child.name().span(), "not part of the schema")
                         .help("a base accepts `family`, `provides`, `provides-file` and `signed`"),
                 ),
@@ -591,7 +582,7 @@ impl Image {
 
         if base.family.is_empty() {
             issues.push(
-                Issue::new("`base` declares no `family`", &file, &text)
+                Issue::new("`base` declares no `family`", src)
                     .at(base.span, "no family")
                     .help("every module declares which families it `supports`, and the two are checked against each other"),
             );
@@ -602,8 +593,7 @@ impl Image {
                 issues.push(
                     Issue::new(
                         format!("`{}` is not an absolute path", decl.name),
-                        &file,
-                        &text,
+                        src,
                     )
                     .at(decl.span, "`provides-file` takes absolute paths")
                     .help("the path is checked on the finished image, where nothing has a working directory"),
@@ -615,10 +605,10 @@ impl Image {
     }
 
     fn parse_flavours(&mut self, block: &KdlNode, issues: &mut Issues) {
-        let (file, text) = (self.file.clone(), self.text.clone());
+        let src = &self.src.clone();
         let Some(children) = block.children() else {
             issues.push(
-                Issue::new("`flavours` has no flavours in it", &file, &text)
+                Issue::new("`flavours` has no flavours in it", src)
                     .at(block.name().span(), "empty block")
                     .help("omit the block entirely to build one unnamed image"),
             );
@@ -630,19 +620,19 @@ impl Image {
             let mut flavour = Flavour {
                 default: false,
                 pr_build: false,
-                span: node.name().span(),
+                span: node.name().span().into(),
                 name,
             };
 
             if !is_flavour_name(&flavour.name) {
                 issues.push(
-                    Issue::new(format!("invalid flavour name `{}`", flavour.name), &file, &text)
+                    Issue::new(format!("invalid flavour name `{}`", flavour.name), src)
                         .at(flavour.span, "must be lowercase letters, digits and dashes, starting with a letter")
                         .help("a flavour name reaches an image name, a cache tag and a build arg, all of which restrict it"),
                 );
             } else if flavour.name == NO_FLAVOUR {
                 issues.push(
-                    Issue::new(format!("`{NO_FLAVOUR}` is reserved"), &file, &text)
+                    Issue::new(format!("`{NO_FLAVOUR}` is reserved"), src)
                         .at(flavour.span, "not usable as a flavour name")
                         .help("`none` names the ungated build, which is published unsuffixed and needs no declaration"),
                 );
@@ -651,7 +641,7 @@ impl Image {
             for entry in node.entries() {
                 let Some(key) = entry.name().map(|n| n.value()) else {
                     issues.push(
-                        Issue::new("a flavour takes no arguments", &file, &text)
+                        Issue::new("a flavour takes no arguments", src)
                             .at(entry.span(), "unexpected value")
                             .help("the flavour's name is the node name: `desktop default=#true`"),
                     );
@@ -661,7 +651,7 @@ impl Image {
                     Some(v) => v,
                     None => {
                         issues.push(
-                            Issue::new(format!("`{key}` must be #true or #false"), &file, &text)
+                            Issue::new(format!("`{key}` must be #true or #false"), src)
                                 .at(entry.span(), "not a boolean"),
                         );
                         false
@@ -671,7 +661,7 @@ impl Image {
                     "default" => flavour.default = flag(issues),
                     "pr-build" => flavour.pr_build = flag(issues),
                     other => issues.push(
-                        Issue::new(format!("unknown flavour property `{other}`"), &file, &text)
+                        Issue::new(format!("unknown flavour property `{other}`"), src)
                             .at(entry.span(), "not part of the schema")
                             .help("a flavour accepts `default` and `pr-build`"),
                     ),
@@ -680,13 +670,9 @@ impl Image {
 
             if let Some(dup) = self.flavours.iter().find(|f| f.name == flavour.name) {
                 issues.push(
-                    Issue::new(
-                        format!("flavour `{}` is declared twice", flavour.name),
-                        &file,
-                        &text,
-                    )
-                    .at(dup.span, "first here")
-                    .at(flavour.span, "and again here"),
+                    Issue::new(format!("flavour `{}` is declared twice", flavour.name), src)
+                        .at(dup.span, "first here")
+                        .at(flavour.span, "and again here"),
                 );
                 continue;
             }
@@ -695,7 +681,7 @@ impl Image {
     }
 
     fn parse_modules(&mut self, block: &KdlNode, issues: &mut Issues) {
-        let (file, text) = (self.file.clone(), self.text.clone());
+        let src = &self.src.clone();
         let Some(children) = block.children() else {
             return;
         };
@@ -709,7 +695,7 @@ impl Image {
                 "flavour" => {
                     let Some(name) = string_arg(node) else {
                         issues.push(
-                            Issue::new("`flavour` needs a flavour name", &file, &text)
+                            Issue::new("`flavour` needs a flavour name", src)
                                 .at(node.name().span(), "no name given")
                                 .help("`flavour \"desktop\" { module \"...\" }`"),
                         );
@@ -720,7 +706,7 @@ impl Image {
                         let known: Vec<&str> =
                             self.flavours.iter().map(|f| f.name.as_str()).collect();
                         issues.push(
-                            Issue::new(format!("`{name}` is not a declared flavour"), &file, &text)
+                            Issue::new(format!("`{name}` is not a declared flavour"), src)
                                 .at(node.name().span(), "no such flavour")
                                 .help(if known.is_empty() {
                                     "no flavours are declared; add a `flavours` block above"
@@ -735,8 +721,7 @@ impl Image {
                             issues.push(
                                 Issue::new(
                                     format!("`{}` is not allowed inside a flavour block", inner.name().value()),
-                                    &file,
-                                    &text,
+                                    src,
                                 )
                                 .at(inner.name().span(), "only `module` belongs here")
                                 .help("flavour blocks do not nest; a module gated to two flavours is listed under each"),
@@ -749,7 +734,7 @@ impl Image {
                     }
                 }
                 other => issues.push(
-                    Issue::new(format!("unknown node `{other}` in `modules`"), &file, &text)
+                    Issue::new(format!("unknown node `{other}` in `modules`"), src)
                         .at(node.name().span(), "not part of the schema")
                         .help("`modules` holds `module` entries and `flavour` blocks"),
                 ),
@@ -763,10 +748,10 @@ impl Image {
         flavour: Option<String>,
         issues: &mut Issues,
     ) -> Option<Entry> {
-        let (file, text) = (&self.file, &self.text);
+        let src = &self.src;
         let Some(path) = string_arg(node) else {
             issues.push(
-                Issue::new("`module` needs a path", file, text)
+                Issue::new("`module` needs a path", src)
                     .at(node.name().span(), "no path given")
                     .help("`module \"core/flatpak\"`, the path relative to modules/"),
             );
@@ -780,7 +765,7 @@ impl Image {
             .find(|e| e.path == path && e.flavour == flavour)
         {
             issues.push(
-                Issue::new(format!("`{path}` is listed twice"), file, text)
+                Issue::new(format!("`{path}` is listed twice"), src)
                     .at(dup.span, "first here")
                     .at(node.name().span(), "and again here")
                     .help("a module builds once per flavour it is listed under"),
@@ -797,12 +782,12 @@ impl Image {
                 "variant" => match entry.value().as_string() {
                     Some(v) => variant = Some(v.to_string()),
                     None => issues.push(
-                        Issue::new("`variant` must be a string", file, text)
+                        Issue::new("`variant` must be a string", src)
                             .at(entry.span(), "not a string"),
                     ),
                 },
                 other => issues.push(
-                    Issue::new(format!("unknown module property `{other}`"), file, text)
+                    Issue::new(format!("unknown module property `{other}`"), src)
                         .at(entry.span(), "not part of the schema")
                         .help("a list entry accepts `variant`; options are set as child nodes"),
                 ),
@@ -815,30 +800,25 @@ impl Image {
             if child.name().value() == "source" {
                 if let Some(first) = pin.as_ref().map(|p| p.span) {
                     issues.push(
-                        Issue::new(format!("`{path}` is pinned twice"), file, text)
+                        Issue::new(format!("`{path}` is pinned twice"), src)
                             .at(first, "first here")
                             .at(child.name().span(), "and again here"),
                     );
                     continue;
                 }
-                pin = remote::parse(child, file, text, issues);
+                pin = remote::parse(child, src, issues);
                 continue;
             }
             options.push((
                 child.name().value().to_string(),
-                child
-                    .entries()
-                    .iter()
-                    .filter(|e| e.name().is_none())
-                    .map(|e| e.value().clone())
-                    .collect(),
-                child.name().span(),
+                options::args(child),
+                child.name().span().into(),
             ));
         }
 
         if pin.is_some() && !is_flavour_name(&path) {
             issues.push(
-                Issue::new(format!("invalid module name `{path}`"), file, text)
+                Issue::new(format!("invalid module name `{path}`"), src)
                     .at(node.name().span(), "must be lowercase letters, digits and dashes, starting with a letter")
                     .help(format!("a pinned module is fetched into modules/{REMOTE_DIR}/<name>, so its name is one path segment rather than a path")),
             );
@@ -850,13 +830,13 @@ impl Image {
             variant,
             options,
             remote: pin,
-            span: node.name().span(),
+            span: node.name().span().into(),
             module: None,
         })
     }
 
     fn check_flavours(&self, issues: &mut Issues) {
-        let (file, text) = (&self.file, &self.text);
+        let src = &self.src;
         if self.flavours.is_empty() {
             return;
         }
@@ -865,7 +845,7 @@ impl Image {
         match defaults.len() {
             0 | 1 => {}
             _ => {
-                let mut issue = Issue::new("more than one flavour is marked `default=#true`", file, text);
+                let mut issue = Issue::new("more than one flavour is marked `default=#true`", src);
                 for f in &defaults {
                     issue = issue.at(f.span, "marked default");
                 }
@@ -875,12 +855,8 @@ impl Image {
 
         let pr: Vec<&Flavour> = self.flavours.iter().filter(|f| f.pr_build).collect();
         if pr.len() > 1 {
-            let mut issue = Issue::new(
-                "more than one flavour is marked `pr-build=#true`",
-                file,
-                text,
-            )
-            .help("a pull request builds one flavour, for half the runner time");
+            let mut issue = Issue::new("more than one flavour is marked `pr-build=#true`", src)
+                .help("a pull request builds one flavour, for half the runner time");
             for f in &pr {
                 issue = issue.at(f.span, "marked pr-build");
             }
@@ -902,15 +878,13 @@ impl Image {
             .map(|f| f.name.as_str())
             .or_else(|| self.default_flavour())
     }
-
 }
 
 impl List {
-    fn parse_workflows(&mut self, block: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
-        let (file, text) = (file.to_string(), text.to_string());
+    fn parse_workflows(&mut self, block: &KdlNode, src: &Source, issues: &mut Issues) {
         let Some(children) = block.children() else {
             issues.push(
-                Issue::new("`workflows` has no workflows in it", &file, &text)
+                Issue::new("`workflows` has no workflows in it", src)
                     .at(block.name().span(), "empty block")
                     .help("omit the block entirely; every workflow in .github/workflows/ runs unless something here says otherwise"),
             );
@@ -919,11 +893,11 @@ impl List {
 
         for node in children.nodes() {
             let name = node.name().value().to_string();
-            let span = node.name().span();
+            let span: Span = node.name().span().into();
 
             if let Some(dup) = self.workflows.iter().find(|w| w.name == name) {
                 issues.push(
-                    Issue::new(format!("workflow `{name}` is declared twice"), &file, &text)
+                    Issue::new(format!("workflow `{name}` is declared twice"), src)
                         .at(dup.span, "first here")
                         .at(span, "and again here")
                         .help("one workflow is either on or off; two answers means the file below wins silently"),
@@ -936,7 +910,7 @@ impl List {
             for entry in node.entries() {
                 let Some(key) = entry.name().map(|n| n.value()) else {
                     issues.push(
-                        Issue::new("a workflow takes no arguments", &file, &text)
+                        Issue::new("a workflow takes no arguments", src)
                             .at(entry.span(), "unexpected value")
                             .help("the file stem is the node name: `smoke-test enabled=#false`"),
                     );
@@ -948,13 +922,13 @@ impl List {
                         match entry.value().as_bool() {
                             Some(v) => enabled = Some(v),
                             None => issues.push(
-                                Issue::new("`enabled` must be #true or #false", &file, &text)
+                                Issue::new("`enabled` must be #true or #false", src)
                                     .at(entry.span(), "not a boolean"),
                             ),
                         }
                     }
                     other => issues.push(
-                        Issue::new(format!("unknown workflow property `{other}`"), &file, &text)
+                        Issue::new(format!("unknown workflow property `{other}`"), src)
                             .at(entry.span(), "not part of the schema")
                             .help("a workflow accepts `enabled`"),
                     ),
@@ -966,8 +940,7 @@ impl List {
                     issues.push(
                         Issue::new(
                             format!("`{name}` says nothing about whether it runs"),
-                            &file,
-                            &text,
+                            src,
                         )
                         .at(span, "no `enabled`")
                         .help(format!(
@@ -1037,7 +1010,8 @@ impl List {
     }
 
     pub fn cache_image(&self) -> Option<String> {
-        self.default_image().map(|image| format!("{}-cache", image.id))
+        self.default_image()
+            .map(|image| format!("{}-cache", image.id))
     }
 
     pub fn pr_target(&self) -> Option<Target> {

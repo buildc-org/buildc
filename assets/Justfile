@@ -50,25 +50,15 @@ sudoif command *args:
     }
     sudoif {{ command }} {{ args }}
 
-build $target_image=image_name $tag=default_tag $target=`buildc plan --json | jq -r .default_target` $kernel="": (_build "buildkit" target_image tag target kernel)
-
-[group('Utility')]
-build-buildah $target_image=image_name $tag=default_tag $target=`buildc plan --json | jq -r .default_target` $kernel="": (_build "buildah" target_image tag target kernel)
-
-[private]
-_build backend $target_image $tag $target $kernel:
+build $target_image=image_name $tag=default_tag $target=`buildc plan --json | jq -r .default_target` $kernel="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    args=(--backend "{{ backend }}" --target "${target}" --tag "${target_image}:${tag}")
+    args=(--backend buildah --target "${target}" --tag "${target_image}:${tag}")
     if [[ -n "${kernel}" ]]; then
         args+=(--kernel "${kernel}")
     fi
     ./scripts/build.sh "${args[@]}"
-
-[group('Utility')]
-buildkit-reset:
-    ./scripts/build.sh --reset
 
 [group('Secure Boot')]
 generate-mok-key dir=(env("HOME") + "/.local/share/" + `buildc plan --json | jq -r .default_image`):

@@ -72,6 +72,17 @@ impl Issues {
         self.0.push(issue);
     }
 
+    pub fn plain(&self) -> String {
+        let handler = miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::none())
+            .with_width(80);
+        let mut out = String::new();
+        for issue in &self.0 {
+            let _ = handler.render_report(&mut out, issue);
+            out.push('\n');
+        }
+        out
+    }
+
     pub fn report(self, context: &str) -> bool {
         let found = !self.0.is_empty();
         let count = self.0.len();

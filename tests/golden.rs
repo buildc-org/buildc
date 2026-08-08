@@ -42,7 +42,6 @@ fn golden() {
     names.sort();
     assert!(!names.is_empty());
 
-    capture("self", &crate_dir());
     for name in names {
         capture(&name, &dir.join(&name));
     }

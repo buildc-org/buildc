@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-plan="$(buildc plan --json)"
+plan="$(./scripts/buildc.sh plan --json)"
 
 die() {
 	echo "build: $*" >&2

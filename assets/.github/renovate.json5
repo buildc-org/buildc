@@ -34,6 +34,15 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "The pinned build tool release",
+      "managerFilePatterns": ["/^scripts/buildc\\.sh$/"],
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nversion=\"(?<currentValue>[^\"]+)\"",
+      ],
+    },
+    {
+      "customType": "regex",
       "description": "Base image reference in an image file",
       "managerFilePatterns": ["/^[^/]+\\.kdl$/"],
       "datasourceTemplate": "docker",

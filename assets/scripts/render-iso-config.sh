@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-plan="$(buildc plan --json)"
+plan="$(./scripts/buildc.sh plan --json)"
 target="${target:-$(jq -r '.ungated_target' <<< "$plan")}"
 published="$(jq -r --arg t "$target" \
     '.images[].targets[] | select(.name == $t) | .published' <<< "$plan")"

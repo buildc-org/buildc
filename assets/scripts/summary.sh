@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 target="${1:?usage: summary.sh <target>}"
 
-buildc plan --json | jq -r --arg target "$target" '
+./scripts/buildc.sh plan --json | jq -r --arg target "$target" '
     def cell: gsub("\\|"; "\\\\|");
 
     .images[].targets[] | select(.name == $target)

@@ -23,6 +23,13 @@ pub struct Decl {
 pub struct Collect {
     pub file: String,
     pub into: String,
+    pub priority: u32,
+    pub span: SourceSpan,
+}
+
+pub struct Contribution {
+    pub file: String,
+    pub priority: u32,
     pub span: SourceSpan,
 }
 
@@ -52,6 +59,7 @@ pub struct Module {
     pub verify_exceptions: Vec<VerifyException>,
     pub flavour: Option<String>,
     pub collects: Vec<Collect>,
+    pub contributes: Vec<Contribution>,
     pub secrets: Vec<Decl>,
     pub args: Vec<Decl>,
     pub options: Vec<Opt>,
@@ -83,6 +91,33 @@ fn bad_token(value: &str) -> Option<&'static str> {
         return Some("has a character that is not allowed");
     }
     None
+}
+
+enum Priority {
+    Missing,
+    Invalid,
+    Set(u32),
+}
+
+fn priority(node: &KdlNode, file: &str, text: &str, issues: &mut Issues) -> Priority {
+    let Some(entry) = node
+        .entries()
+        .iter()
+        .find(|e| e.name().map(|n| n.value()) == Some("priority"))
+    else {
+        return Priority::Missing;
+    };
+    match entry.value().as_integer() {
+        Some(value) if (0..=9999).contains(&value) => Priority::Set(value as u32),
+        _ => {
+            issues.push(
+                Issue::new("`priority` is a number from 0 to 9999", file, text)
+                    .at(entry.span(), "not a priority")
+                    .help("it becomes the NNNN in the staged filename, so four digits is the whole range there is"),
+            );
+            Priority::Invalid
+        }
+    }
 }
 
 fn prop<'a>(node: &'a KdlNode, key: &str) -> Option<&'a str> {
@@ -164,6 +199,7 @@ impl Module {
             verify_exceptions: Vec::new(),
             flavour: entry.flavour.clone(),
             collects: Vec::new(),
+            contributes: Vec::new(),
             secrets: Vec::new(),
             args: Vec::new(),
             options: Vec::new(),
@@ -393,26 +429,83 @@ impl Module {
                 "collects" => {
                     let collected = string_args(node).first().map(|s| s.to_string());
                     let into = prop(node, "into");
-                    match (collected, into) {
-                        (Some(collected), Some(into)) if into.starts_with('/') => {
+                    let priority = priority(node, &file, &text, issues);
+                    match (collected, into, priority) {
+                        (Some(collected), Some(into), Priority::Set(priority))
+                            if into.starts_with('/') =>
+                        {
                             module.collects.push(Collect {
                                 file: collected,
                                 into: into.to_string(),
+                                priority,
                                 span: node.name().span(),
                             })
                         }
-                        (collected, into) => {
+                        (_, _, Priority::Invalid) => {}
+                        (collected, into, priority) => {
                             let missing = if collected.is_none() {
                                 "the filename it collects"
                             } else if into.is_none() {
                                 "into=, where the build puts them"
+                            } else if matches!(priority, Priority::Missing) {
+                                "priority=, where a contribution lands when it names none"
                             } else {
                                 "an absolute into="
                             };
                             issues.push(
                                 Issue::new(format!("`collects` needs {missing}"), &file, &text)
                                     .at(node.name().span(), "incomplete")
-                                    .help("`collects \"justfile.inc\" into=\"/usr/share/goojust/justfile.apps\"`"),
+                                    .help("`collects \"justfile.inc\" into=\"/usr/share/just/justfile.apps\" priority=500`"),
+                            );
+                        }
+                    }
+                }
+                "contributes" => {
+                    let contributed = string_args(node).first().map(|s| s.to_string());
+                    let priority = priority(node, &file, &text, issues);
+                    match (contributed, priority) {
+                        (Some(contributed), Priority::Set(priority)) => {
+                            if !dir.join(&contributed).is_file() {
+                                issues.push(
+                                    Issue::new(
+                                        format!("`{}` orders a {contributed} it does not ship", entry.path),
+                                        &file,
+                                        &text,
+                                    )
+                                    .at(node.name().span(), "nothing to order")
+                                    .help("shipping the file is what contributes it; this node only says where it lands"),
+                                );
+                            } else if let Some(dup) =
+                                module.contributes.iter().find(|c| c.file == contributed)
+                            {
+                                issues.push(
+                                    Issue::new(
+                                        format!("`{contributed}` is ordered twice"),
+                                        &file,
+                                        &text,
+                                    )
+                                    .at(dup.span, "first here")
+                                    .at(node.name().span(), "and again here"),
+                                );
+                            } else {
+                                module.contributes.push(Contribution {
+                                    file: contributed,
+                                    priority,
+                                    span: node.name().span(),
+                                });
+                            }
+                        }
+                        (_, Priority::Invalid) => {}
+                        (contributed, _) => {
+                            let missing = if contributed.is_none() {
+                                "the filename it contributes"
+                            } else {
+                                "priority=, which is the only thing it declares"
+                            };
+                            issues.push(
+                                Issue::new(format!("`contributes` needs {missing}"), &file, &text)
+                                    .at(node.name().span(), "incomplete")
+                                    .help("`contributes \"justfile.inc\" priority=900`, for a module that has to land after the rest"),
                             );
                         }
                     }
@@ -993,11 +1086,18 @@ fn collectors_on_disk(root: &Path) -> BTreeMap<String, String> {
     out
 }
 
-pub fn resolve_collects(
-    modules: &[Module],
-    root: &Path,
-    issues: &mut Issues,
-) -> BTreeMap<String, Vec<(String, String)>> {
+pub struct Collected {
+    pub file: String,
+    pub staged: String,
+}
+
+#[derive(Default)]
+pub struct Collection {
+    pub by_module: BTreeMap<String, Vec<Collected>>,
+    pub destinations: Vec<String>,
+}
+
+pub fn resolve_collects(modules: &[Module], root: &Path, issues: &mut Issues) -> Collection {
     let mut by_file: BTreeMap<&str, &Module> = BTreeMap::new();
     for module in modules {
         for collect in &module.collects {
@@ -1018,7 +1118,13 @@ pub fn resolve_collects(
     }
 
     let on_disk = collectors_on_disk(root);
-    let mut out: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut out = Collection::default();
+    out.destinations = by_file
+        .values()
+        .flat_map(|collector| collector.collects.iter().map(|c| c.into.clone()))
+        .collect();
+    out.destinations.sort();
+    out.destinations.dedup();
 
     for module in modules {
         let dir = root.join("modules").join(&module.dir);
@@ -1028,11 +1134,14 @@ pub fn resolve_collects(
             }
             match by_file.get(file.as_str()) {
                 Some(enabled) => {
-                    let into = enabled
-                        .collects
+                    let declared = enabled.collects.iter().find(|c| &c.file == file);
+                    let into = declared.map(|c| c.into.clone()).unwrap_or_default();
+                    let priority = module
+                        .contributes
                         .iter()
                         .find(|c| &c.file == file)
-                        .map(|c| c.into.clone())
+                        .map(|c| c.priority)
+                        .or_else(|| declared.map(|c| c.priority))
                         .unwrap_or_default();
                     if !module.standard_layer {
                         issues.push(
@@ -1050,9 +1159,13 @@ pub fn resolve_collects(
                         );
                         continue;
                     }
-                    out.entry(module.path.clone())
+                    out.by_module
+                        .entry(module.path.clone())
                         .or_default()
-                        .push((file.clone(), into));
+                        .push(Collected {
+                            file: file.clone(),
+                            staged: staged(&into, priority, &module.path),
+                        });
                 }
                 None => issues.push(
                     Issue::new(
@@ -1071,4 +1184,8 @@ pub fn resolve_collects(
         }
     }
     out
+}
+
+fn staged(into: &str, priority: u32, module: &str) -> String {
+    format!("{into}.d/{priority:04}-{}.part", module.replace('/', "-"))
 }

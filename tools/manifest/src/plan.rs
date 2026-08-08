@@ -1,13 +1,12 @@
 use crate::json::Json;
 use crate::list::{Entry, Image, List, Target, NO_FLAVOUR};
-use crate::module::Module;
+use crate::module::{Collection, Module};
 use crate::overlay;
-use std::collections::BTreeMap;
 
 pub struct Resolved {
     pub modules: Vec<Module>,
     pub shipped: overlay::Index,
-    pub collected: BTreeMap<String, Vec<(String, String)>>,
+    pub collected: Collection,
 }
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -204,6 +203,26 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         ("assets", assets(&modules)),
         ("provides_files", provides_files(&modules)),
         ("overlay_files", overlay_files(resolved, flavour)),
+        (
+            "collected_files",
+            Json::map(entries.iter().filter_map(|(entry, _)| {
+                resolved.collected.by_module.get(&entry.path).map(|staged| {
+                    (
+                        entry.path.clone(),
+                        Json::array(staged.iter().map(|c| {
+                            Json::object([
+                                ("file", Json::string(&c.file)),
+                                ("staged", Json::string(&c.staged)),
+                            ])
+                        })),
+                    )
+                })
+            })),
+        ),
+        (
+            "collect_destinations",
+            Json::strings(resolved.collected.destinations.clone()),
+        ),
     ])
 }
 

@@ -4,7 +4,6 @@ use crate::module::{Collection, Module};
 use crate::overlay;
 
 pub struct Resolved {
-    pub modules: Vec<Module>,
     pub shipped: overlay::Index,
     pub collected: Collection,
 }
@@ -62,7 +61,7 @@ pub fn build(list: &List, resolved: &[Resolved], workflows: &[(String, bool)]) -
             })),
         ),
         ("remotes", remotes(list)),
-        ("assets", every_asset(resolved)),
+        ("assets", every_asset(list)),
         (
             "images",
             Json::array(
@@ -130,19 +129,12 @@ fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
 
 fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> Json {
     let flavour = Some(target.flavour.as_str());
-    let entries: Vec<(&Entry, Option<&Module>)> = image
+    let entries: Vec<&Entry> = image
         .entries
         .iter()
         .filter(|entry| in_target(entry, flavour))
-        .map(|entry| {
-            let module = resolved
-                .modules
-                .iter()
-                .find(|m| m.path == entry.path && m.flavour == entry.flavour);
-            (entry, module)
-        })
         .collect();
-    let modules: Vec<&Module> = entries.iter().filter_map(|(_, module)| *module).collect();
+    let modules: Vec<&Module> = entries.iter().filter_map(|e| e.module.as_ref()).collect();
 
     Json::object([
         ("name", Json::string(target.to_string())),
@@ -180,7 +172,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         ),
         (
             "modules",
-            Json::array(entries.iter().map(|(entry, module)| self::module(entry, *module))),
+            Json::array(entries.iter().map(|entry| self::module(entry))),
         ),
         ("secrets", unique(&modules, |m| {
             m.secrets.iter().map(|d| d.name.clone()).collect()
@@ -201,10 +193,10 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         ),
         ("assets", assets(&modules)),
         ("provides_files", provides_files(&modules)),
-        ("overlay_files", overlay_files(resolved, flavour)),
+        ("overlay_files", overlay_files(image, &resolved.shipped, flavour)),
         (
             "collected_files",
-            Json::map(entries.iter().filter_map(|(entry, _)| {
+            Json::map(entries.iter().filter_map(|entry| {
                 resolved.collected.by_module.get(&entry.path).map(|staged| {
                     (
                         entry.path.clone(),
@@ -225,7 +217,8 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
     ])
 }
 
-fn module(entry: &Entry, module: Option<&Module>) -> Json {
+fn module(entry: &Entry) -> Json {
+    let module = entry.module.as_ref();
     Json::object([
         ("path", Json::string(&entry.path)),
         ("dir", Json::string(entry.dir())),
@@ -285,17 +278,13 @@ fn provides_files(modules: &[&Module]) -> Json {
     Json::map(out)
 }
 
-fn overlay_files(resolved: &Resolved, flavour: Option<&str>) -> Json {
-    Json::map(resolved.shipped.iter().filter_map(|(path, owners)| {
+fn overlay_files(image: &Image, shipped: &overlay::Index, flavour: Option<&str>) -> Json {
+    Json::map(shipped.iter().filter_map(|(path, owners)| {
         owners
             .iter()
             .rev()
-            .map(|&owner| &resolved.modules[owner])
-            .find(|owner| match (&owner.flavour, flavour) {
-                (None, _) => true,
-                (Some(_), None) => true,
-                (Some(gate), Some(flavour)) => gate == flavour,
-            })
+            .map(|&owner| &image.entries[owner])
+            .find(|owner| in_target(owner, flavour))
             .map(|owner| (path.clone(), Json::string(&owner.path)))
     }))
 }
@@ -326,8 +315,8 @@ fn assets(modules: &[&Module]) -> Json {
     Json::Array(out)
 }
 
-fn every_asset(resolved: &[Resolved]) -> Json {
-    let modules: Vec<&Module> = resolved.iter().flat_map(|r| r.modules.iter()).collect();
+fn every_asset(list: &List) -> Json {
+    let modules: Vec<&Module> = list.images.iter().flat_map(Image::modules).collect();
     assets(&modules)
 }
 

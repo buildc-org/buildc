@@ -1,23 +1,12 @@
 use crate::diag::{Issue, Issues};
 use crate::list::{Entry, Image};
-use crate::module::Module;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 
-pub fn sort(image: &Image, modules: &[Module], issues: &mut Issues) -> Vec<usize> {
-    let by_entry: Vec<Option<&Module>> = image
-        .entries
-        .iter()
-        .map(|e| {
-            modules
-                .iter()
-                .find(|m| m.path == e.path && m.flavour == e.flavour)
-        })
-        .collect();
-
+pub fn sort(image: &Image, issues: &mut Issues) -> Vec<usize> {
     let mut offered: BTreeMap<&str, usize> = BTreeMap::new();
-    for (index, module) in by_entry.iter().enumerate() {
-        let Some(module) = module else { continue };
+    for (index, entry) in image.entries.iter().enumerate() {
+        let Some(module) = &entry.module else { continue };
         for decl in module.provides.iter().chain(module.provides_files.iter()) {
             offered.entry(decl.name.as_str()).or_insert(index);
         }
@@ -25,8 +14,8 @@ pub fn sort(image: &Image, modules: &[Module], issues: &mut Issues) -> Vec<usize
 
     let n = image.entries.len();
     let mut waits_on: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (index, module) in by_entry.iter().enumerate() {
-        let Some(module) = module else { continue };
+    for (index, entry) in image.entries.iter().enumerate() {
+        let Some(module) = &entry.module else { continue };
         let hard = module.requires.iter().chain(module.requires_files.iter());
         for decl in hard {
             if let Some(&provider) = offered.get(decl.name.as_str()) {
@@ -40,7 +29,7 @@ pub fn sort(image: &Image, modules: &[Module], issues: &mut Issues) -> Vec<usize
                 continue;
             };
             let drags_below_gate =
-                module.flavour.is_none() && by_entry[provider].is_some_and(|p| p.flavour.is_some());
+                entry.flavour.is_none() && image.entries[provider].flavour.is_some();
             if provider != index && !drags_below_gate {
                 waits_on[index].push(provider);
             }
@@ -59,7 +48,7 @@ pub fn sort(image: &Image, modules: &[Module], issues: &mut Issues) -> Vec<usize
     }
 
     let key = |index: usize| {
-        let gated = u8::from(by_entry[index].is_some_and(|m| m.flavour.is_some()));
+        let gated = u8::from(image.entries[index].flavour.is_some());
         Reverse((gated, index))
     };
 
@@ -80,34 +69,22 @@ pub fn sort(image: &Image, modules: &[Module], issues: &mut Issues) -> Vec<usize
     }
 
     if order.len() < n {
-        report_cycle(image, &by_entry, &waits_on, &remaining, issues);
+        report_cycle(image, &waits_on, &remaining, issues);
         order.extend((0..n).filter(|index| remaining[*index] > 0));
     }
     order
 }
 
-pub fn apply(image: &mut Image, modules: &mut [Module], order: &[usize]) {
+pub fn apply(image: &mut Image, order: &[usize]) {
     let mut taken: Vec<Option<Entry>> = image.entries.drain(..).map(Some).collect();
     image.entries = order
         .iter()
         .filter_map(|&index| taken[index].take())
         .collect();
-    modules.sort_by_key(|m| {
-        image.entries
-            .iter()
-            .position(|e| e.path == m.path && e.flavour == m.flavour)
-            .unwrap_or(usize::MAX)
-    });
 }
 
-fn report_cycle(
-    image: &Image,
-    by_entry: &[Option<&Module>],
-    waits_on: &[Vec<usize>],
-    remaining: &[usize],
-    issues: &mut Issues,
-) {
-    let name = |index: usize| match by_entry[index].and_then(|m| m.flavour.as_deref()) {
+fn report_cycle(image: &Image, waits_on: &[Vec<usize>], remaining: &[usize], issues: &mut Issues) {
+    let name = |index: usize| match &image.entries[index].flavour {
         Some(flavour) => format!("{} [{flavour}]", image.entries[index].path),
         None => image.entries[index].path.clone(),
     };

@@ -1,4 +1,5 @@
 use crate::diag::{Issue, Issues};
+use crate::module::Module;
 use crate::remote::{self, Remote, REMOTE_DIR};
 use kdl::{KdlDocument, KdlNode, KdlValue};
 use miette::SourceSpan;
@@ -76,6 +77,7 @@ pub struct Entry {
     pub options: Vec<(String, Vec<KdlValue>, SourceSpan)>,
     pub remote: Option<Remote>,
     pub span: SourceSpan,
+    pub module: Option<Module>,
 }
 
 impl Entry {
@@ -515,6 +517,10 @@ impl List {
 }
 
 impl Image {
+    pub fn modules(&self) -> impl Iterator<Item = &Module> {
+        self.entries.iter().filter_map(|e| e.module.as_ref())
+    }
+
     fn parse_base(&mut self, node: &KdlNode, issues: &mut Issues) {
         let (file, text) = (self.file.clone(), self.text.clone());
 
@@ -845,6 +851,7 @@ impl Image {
             options,
             remote: pin,
             span: node.name().span(),
+            module: None,
         })
     }
 

@@ -40,12 +40,9 @@ pub struct VerifyException {
 }
 
 pub struct Module {
-    #[allow(dead_code)]
     pub path: String,
     pub dir: String,
-    #[allow(dead_code)]
     pub file: String,
-    #[allow(dead_code)]
     pub text: String,
     pub description: String,
     pub supports: Vec<String>,
@@ -856,9 +853,9 @@ fn providers_on_disk(root: &Path) -> BTreeMap<String, Vec<String>> {
     out
 }
 
-pub fn check_graph(modules: &[Module], image: &Image, root: &Path, issues: &mut Issues) {
+pub fn check_graph(image: &Image, root: &Path, issues: &mut Issues) {
     let mut offered: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
-    for module in modules {
+    for module in image.modules() {
         for decl in module.provides.iter().chain(module.provides_files.iter()) {
             offered.entry(decl.name.as_str()).or_default().push(module);
         }
@@ -908,7 +905,7 @@ pub fn check_graph(modules: &[Module], image: &Image, root: &Path, issues: &mut 
         .as_ref()
         .map(|b| b.family.as_str())
         .filter(|f| !f.is_empty());
-    for module in modules {
+    for module in image.modules() {
         let Some(base_family) = base_family else { break };
         if !module.supports.iter().any(|f| f == base_family) {
             let supported = module.supports.join(", ");
@@ -956,7 +953,7 @@ pub fn check_graph(modules: &[Module], image: &Image, root: &Path, issues: &mut 
     }
 
     const MAC_POLICY: &str = "mac-policy";
-    for module in modules {
+    for module in image.modules() {
         let dir = root.join("modules").join(&module.dir);
         let has_policy = std::fs::read_dir(dir.join("selinux"))
             .into_iter()
@@ -983,7 +980,7 @@ pub fn check_graph(modules: &[Module], image: &Image, root: &Path, issues: &mut 
 
     let on_disk = providers_on_disk(root);
 
-    for module in modules {
+    for module in image.modules() {
         let hard = module
             .requires
             .iter()
@@ -1097,9 +1094,9 @@ pub struct Collection {
     pub destinations: Vec<String>,
 }
 
-pub fn resolve_collects(modules: &[Module], root: &Path, issues: &mut Issues) -> Collection {
+pub fn resolve_collects(image: &Image, root: &Path, issues: &mut Issues) -> Collection {
     let mut by_file: BTreeMap<&str, &Module> = BTreeMap::new();
-    for module in modules {
+    for module in image.modules() {
         for collect in &module.collects {
             if let Some(first) = by_file.get(collect.file.as_str()) {
                 issues.push(
@@ -1126,7 +1123,7 @@ pub fn resolve_collects(modules: &[Module], root: &Path, issues: &mut Issues) ->
     out.destinations.sort();
     out.destinations.dedup();
 
-    for module in modules {
+    for module in image.modules() {
         let dir = root.join("modules").join(&module.dir);
         for (file, collector) in &on_disk {
             if !dir.join(file).is_file() {

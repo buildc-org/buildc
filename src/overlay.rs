@@ -1,13 +1,14 @@
 use crate::diag::{Issue, Issues};
-use crate::module::Module;
+use crate::list::{Entry, Image};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub type Index = BTreeMap<String, Vec<usize>>;
 
-pub fn index(modules: &[Module], root: &Path) -> Index {
+pub fn index(image: &Image, root: &Path) -> Index {
     let mut shipped: Index = BTreeMap::new();
-    for (index, module) in modules.iter().enumerate() {
+    for (index, entry) in image.entries.iter().enumerate() {
+        let Some(module) = &entry.module else { continue };
         let overlay = root.join("modules").join(&module.dir).join("files");
         for path in overlay_paths(&overlay) {
             shipped.entry(path).or_default().push(index);
@@ -16,19 +17,23 @@ pub fn index(modules: &[Module], root: &Path) -> Index {
     shipped
 }
 
-pub fn check(modules: &[Module], shipped: &Index, issues: &mut Issues) {
-    let mut used: Vec<BTreeSet<&str>> = vec![BTreeSet::new(); modules.len()];
+pub fn check(image: &Image, shipped: &Index, issues: &mut Issues) {
+    let entries = &image.entries;
+    let mut used: Vec<BTreeSet<&str>> = vec![BTreeSet::new(); entries.len()];
 
     for (path, owners) in shipped {
         for (position, &later) in owners.iter().enumerate() {
+            let Some(module) = &entries[later].module else {
+                continue;
+            };
             let Some(&earlier) = owners[..position]
                 .iter()
                 .rev()
-                .find(|&&earlier| coinstalled(&modules[earlier], &modules[later]))
+                .find(|&&earlier| coinstalled(&entries[earlier], &entries[later]))
             else {
                 continue;
             };
-            if let Some(decl) = modules[later].overrides.iter().find(|d| &d.name == path) {
+            if let Some(decl) = module.overrides.iter().find(|d| &d.name == path) {
                 used[later].insert(decl.name.as_str());
                 continue;
             }
@@ -36,10 +41,10 @@ pub fn check(modules: &[Module], shipped: &Index, issues: &mut Issues) {
                 Issue::new(
                     format!(
                         "`{}` overwrites `{path}`, which `{}` also ships",
-                        modules[later].path, modules[earlier].path
+                        entries[later].path, entries[earlier].path
                     ),
-                    &modules[later].file,
-                    &modules[later].text,
+                    &module.file,
+                    &module.text,
                 )
                 .help(format!(
                     "overlays are copied in build order, so this one wins and the other file never reaches the image. \
@@ -49,7 +54,8 @@ pub fn check(modules: &[Module], shipped: &Index, issues: &mut Issues) {
         }
     }
 
-    for (index, module) in modules.iter().enumerate() {
+    for (index, entry) in entries.iter().enumerate() {
+        let Some(module) = &entry.module else { continue };
         for decl in &module.overrides {
             if used[index].contains(decl.name.as_str()) {
                 continue;
@@ -58,7 +64,7 @@ pub fn check(modules: &[Module], shipped: &Index, issues: &mut Issues) {
                 Issue::new(
                     format!(
                         "`{}` overrides `{}`, which no earlier module ships",
-                        module.path, decl.name
+                        entry.path, decl.name
                     ),
                     &module.file,
                     &module.text,
@@ -70,7 +76,7 @@ pub fn check(modules: &[Module], shipped: &Index, issues: &mut Issues) {
     }
 }
 
-fn coinstalled(a: &Module, b: &Module) -> bool {
+fn coinstalled(a: &Entry, b: &Entry) -> bool {
     if a.path == b.path {
         return false;
     }

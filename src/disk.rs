@@ -14,6 +14,10 @@ pub struct Disk {
 }
 
 impl Disk {
+    pub fn modules(&self) -> impl Iterator<Item = &String> {
+        self.overlays.keys()
+    }
+
     pub fn scan(root: &Path, issues: &mut Issues) -> Self {
         let mut out = Disk {
             phases: phases(root, issues),

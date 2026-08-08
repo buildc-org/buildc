@@ -1,5 +1,6 @@
 use crate::asset::{self, Asset};
 use crate::diag::{Issue, Issues};
+use crate::disk::Disk;
 use crate::list::{Entry, Image};
 use crate::options::{self, Opt, Variant};
 use kdl::{KdlDocument, KdlNode};
@@ -809,51 +810,7 @@ impl Module {
     }
 }
 
-fn providers_on_disk(root: &Path) -> BTreeMap<String, Vec<String>> {
-    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let modules = root.join("modules");
-    let mut dirs = vec![modules.clone()];
-    while let Some(dir) = dirs.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            if path.file_name().is_some_and(|n| n == "_template") {
-                continue;
-            }
-            let manifest = path.join("module.kdl");
-            if manifest.is_file() {
-                let Ok(text) = std::fs::read_to_string(&manifest) else {
-                    continue;
-                };
-                let Ok(doc) = text.parse::<KdlDocument>() else {
-                    continue;
-                };
-                let name = path
-                    .strip_prefix(&modules)
-                    .unwrap_or(&path)
-                    .display()
-                    .to_string();
-                for node in doc.nodes() {
-                    if matches!(node.name().value(), "provides" | "provides-file") {
-                        for cap in string_args(node) {
-                            out.entry(cap.to_string()).or_default().push(name.clone());
-                        }
-                    }
-                }
-            } else {
-                dirs.push(path);
-            }
-        }
-    }
-    out
-}
-
-pub fn check_graph(image: &Image, root: &Path, issues: &mut Issues) {
+pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues) {
     let mut offered: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
     for module in image.modules() {
         for decl in module.provides.iter().chain(module.provides_files.iter()) {
@@ -978,8 +935,6 @@ pub fn check_graph(image: &Image, root: &Path, issues: &mut Issues) {
         );
     }
 
-    let on_disk = providers_on_disk(root);
-
     for module in image.modules() {
         let hard = module
             .requires
@@ -993,7 +948,7 @@ pub fn check_graph(image: &Image, root: &Path, issues: &mut Issues) {
             }
 
             let Some(providers) = offered.get(decl.name.as_str()) else {
-                let help = match on_disk.get(&decl.name) {
+                let help = match disk.providers.get(&decl.name) {
                     Some(candidates) => format!(
                         "{} would satisfy it; add it to this image. Nothing is included automatically, so the list stays the complete statement of what is in the image",
                         candidates.join(" or ")
@@ -1040,49 +995,6 @@ pub fn check_graph(image: &Image, root: &Path, issues: &mut Issues) {
     }
 }
 
-fn collectors_on_disk(root: &Path) -> BTreeMap<String, String> {
-    let mut out = BTreeMap::new();
-    let modules = root.join("modules");
-    let mut dirs = vec![modules.clone()];
-    while let Some(dir) = dirs.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() || path.file_name().is_some_and(|n| n == "_template") {
-                continue;
-            }
-            let manifest = path.join("module.kdl");
-            if !manifest.is_file() {
-                dirs.push(path);
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&manifest) else {
-                continue;
-            };
-            let Ok(doc) = text.parse::<KdlDocument>() else {
-                continue;
-            };
-            let name = path
-                .strip_prefix(&modules)
-                .unwrap_or(&path)
-                .display()
-                .to_string();
-            for node in doc
-                .nodes()
-                .iter()
-                .filter(|n| n.name().value() == "collects")
-            {
-                if let Some(file) = string_args(node).first() {
-                    out.insert(file.to_string(), name.clone());
-                }
-            }
-        }
-    }
-    out
-}
-
 pub struct Collected {
     pub file: String,
     pub staged: String,
@@ -1094,7 +1006,12 @@ pub struct Collection {
     pub destinations: Vec<String>,
 }
 
-pub fn resolve_collects(image: &Image, root: &Path, issues: &mut Issues) -> Collection {
+pub fn resolve_collects(
+    image: &Image,
+    root: &Path,
+    disk: &Disk,
+    issues: &mut Issues,
+) -> Collection {
     let mut by_file: BTreeMap<&str, &Module> = BTreeMap::new();
     for module in image.modules() {
         for collect in &module.collects {
@@ -1114,7 +1031,6 @@ pub fn resolve_collects(image: &Image, root: &Path, issues: &mut Issues) -> Coll
         }
     }
 
-    let on_disk = collectors_on_disk(root);
     let mut out = Collection::default();
     out.destinations = by_file
         .values()
@@ -1125,7 +1041,7 @@ pub fn resolve_collects(image: &Image, root: &Path, issues: &mut Issues) -> Coll
 
     for module in image.modules() {
         let dir = root.join("modules").join(&module.dir);
-        for (file, collector) in &on_disk {
+        for (file, collector) in &disk.collectors {
             if !dir.join(file).is_file() {
                 continue;
             }

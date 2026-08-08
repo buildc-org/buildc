@@ -65,6 +65,7 @@ pub struct Module {
     pub assets: Vec<Asset>,
     pub packages: Vec<PackageGroup>,
     pub resolved: Vec<(String, String)>,
+    pub fragment: Option<String>,
     pub fragment_after: bool,
     pub standard_layer: bool,
 }
@@ -205,6 +206,7 @@ impl Module {
             assets: Vec::new(),
             packages: Vec::new(),
             resolved: Vec::new(),
+            fragment: std::fs::read_to_string(dir.join("Containerfile.inc")).ok(),
             fragment_after: false,
             standard_layer: true,
             file: file.clone(),
@@ -518,7 +520,7 @@ impl Module {
                         continue;
                     }
                     fragment_span = Some(node.name().span());
-                    if !dir.join("Containerfile.inc").is_file() {
+                    if module.fragment.is_none() {
                         issues.push(
                             Issue::new(
                                 format!("`{}` declares `fragment` but ships no Containerfile.inc", entry.path),
@@ -991,6 +993,61 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
                     }
                 }
             }
+        }
+    }
+}
+
+pub fn check_fragments(image: &Image, issues: &mut Issues) {
+    let mut gated = false;
+    for entry in &image.entries {
+        let Some(module) = &entry.module else { continue };
+        gated |= entry.flavour.is_some();
+        let Some(body) = &module.fragment else { continue };
+        let path = &entry.path;
+
+        if !gated && (body.contains("${FLAVOUR}") || body.contains("$FLAVOUR")) {
+            issues.push(
+                Issue::new(
+                    format!("`{path}` expands FLAVOUR above the flavour gate"),
+                    &image.file,
+                    &image.text,
+                )
+                .at(entry.span, "listed above the first flavour-gated module")
+                .help("ARG FLAVOUR is declared directly above the first gated entry, so a fragment before it would expand to an empty string"),
+            );
+        }
+
+        let runs = body.lines().any(|l| l.trim_start().starts_with("RUN "));
+        let Some(flavour) = entry.flavour.as_ref().filter(|_| runs) else {
+            continue;
+        };
+        let declared = body
+            .split("FLAVOUR_GATE=")
+            .nth(1)
+            .map(|rest| rest.split_whitespace().next().unwrap_or_default());
+        match declared {
+            Some(d) if d == flavour => {}
+            Some(d) => issues.push(
+                Issue::new(
+                    format!("`{path}` is listed under `{flavour}` but its fragment gates on `{d}`"),
+                    &image.file,
+                    &image.text,
+                )
+                .at(entry.span, "listed here"),
+            ),
+            None => issues.push(
+                Issue::new(
+                    format!(
+                        "`{path}` is listed under `{flavour}` but its fragment sets no FLAVOUR_GATE"
+                    ),
+                    &image.file,
+                    &image.text,
+                )
+                .at(entry.span, "the flavour gate would be silently ignored")
+                .help(
+                    "a fragment is emitted unconditionally, so anything it runs has to carry the gate itself",
+                ),
+            ),
         }
     }
 }

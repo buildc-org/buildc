@@ -178,6 +178,8 @@ fi
 # ---- the Containerfile the build actually uses ---------------------------
 ./scripts/gen-containerfile.sh
 
+install -D -m755 "$(./scripts/buildc.sh --path)" build/buildc
+
 build_args=(
 	"FLAVOUR=${flavour_arg}"
 	"IMAGE_VERSION=${image_version}"

@@ -34,4 +34,9 @@ if [ ! -x "$bin" ]; then
     trap - EXIT
 fi
 
+if [ "${1:-}" = "--path" ]; then
+    echo "$bin"
+    exit 0
+fi
+
 exec "$bin" "$@"

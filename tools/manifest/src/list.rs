@@ -4,6 +4,8 @@ use kdl::{KdlDocument, KdlNode, KdlValue};
 use miette::SourceSpan;
 use std::path::Path;
 
+pub const SCHEMA_VERSION: u32 = 1;
+
 pub const NO_FLAVOUR: &str = "none";
 
 pub struct Target {
@@ -92,6 +94,8 @@ pub struct List {
     pub workflows: Vec<WorkflowToggle>,
     pub default_image_id: Option<String>,
     pub pr_image_id: Option<String>,
+    pub schema_version: Option<u32>,
+    schema_version_seen: bool,
     pub repo_file: String,
     pub repo_text: String,
     pub files: Vec<String>,
@@ -138,6 +142,8 @@ impl List {
             workflows: Vec::new(),
             default_image_id: None,
             pr_image_id: None,
+            schema_version: None,
+            schema_version_seen: false,
             repo_file: root.join(REPO_FILE).display().to_string(),
             repo_text: String::new(),
             files: Vec::new(),
@@ -222,13 +228,14 @@ impl List {
                 (true, "pr-image") => {
                     self.pr_image_id = string_arg(node).map(str::to_string);
                 }
+                (true, "schema-version") => self.parse_schema_version(node, file, &text, issues),
                 (true, other) => issues.push(
                     Issue::new(format!("unknown node `{other}` in {REPO_FILE}"), file, &text)
                         .at(node.name().span(), "not part of the schema")
                         .help(
-                            "repo.kdl holds `default-image`, `pr-image` and a `workflows` \
-                             block: what is true of the repository rather than of any image \
-                             in it. An image goes in a file of its own",
+                            "repo.kdl holds `schema-version`, `default-image`, `pr-image` \
+                             and a `workflows` block: what is true of the repository rather \
+                             than of any image in it. An image goes in a file of its own",
                         ),
                 ),
                 (false, other) => issues.push(
@@ -251,6 +258,38 @@ impl List {
                      and what it publishes as"
                 )),
             );
+        }
+    }
+
+    fn parse_schema_version(&mut self, node: &KdlNode, file: &str, text: &str, issues: &mut Issues) {
+        self.schema_version_seen = true;
+        let declared = node
+            .entries()
+            .iter()
+            .find(|e| e.name().is_none())
+            .and_then(|e| e.value().as_integer());
+        match declared {
+            Some(version) if version == i128::from(SCHEMA_VERSION) => {
+                self.schema_version = Some(SCHEMA_VERSION);
+            }
+            Some(version) => issues.push(
+                Issue::new(
+                    format!("this repository is written against schema version {version}"),
+                    file,
+                    text,
+                )
+                .at(node.name().span(), format!("this tool knows {SCHEMA_VERSION}"))
+                .help(if version > i128::from(SCHEMA_VERSION) {
+                    "the repository is ahead of the tool; take a newer release"
+                } else {
+                    "the tool is ahead of the repository; every diagnostic below it is suspect until the files are brought forward"
+                }),
+            ),
+            None => issues.push(
+                Issue::new("`schema-version` needs a number", file, text)
+                    .at(node.name().span(), "not a version")
+                    .help(format!("`schema-version {SCHEMA_VERSION}`")),
+            ),
         }
     }
 
@@ -293,6 +332,20 @@ impl List {
                     }
                 }
             }
+        }
+
+        if !self.schema_version_seen {
+            issues.push(
+                Issue::new(
+                    format!("{REPO_FILE} declares no `schema-version`"),
+                    &self.repo_file,
+                    &self.repo_text,
+                )
+                .help(format!(
+                    "`schema-version {SCHEMA_VERSION}`, so a tool from a different release \
+                     says so plainly instead of reporting every node it does not recognise"
+                )),
+            );
         }
 
         if self.images.len() > 1 {

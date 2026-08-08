@@ -25,9 +25,9 @@ fn capture(name: &str, root: &Path) {
     std::env::set_current_dir(root).expect("fixture root exists");
     let here = Path::new(".");
     for (command, file) in [("plan", "plan.json"), ("section", "section.txt")] {
-        compare(name, file, &manifest::run(command, None, here).stdout);
+        compare(name, file, &buildc::run(command, None, here).stdout);
     }
-    compare(name, "issues.txt", &manifest::run("check", None, here).issues.plain());
+    compare(name, "issues.txt", &buildc::run("check", None, here).issues.plain());
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn golden() {
     names.sort();
     assert!(!names.is_empty());
 
-    capture("self", &crate_dir().join("../.."));
+    capture("self", &crate_dir());
     for name in names {
         capture(&name, &dir.join(&name));
     }

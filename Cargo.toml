@@ -1,6 +1,6 @@
 [package]
-name = "manifest"
-version = "0.0.0"
+name = "buildc"
+version = "0.1.0"
 edition = "2021"
 publish = false
 description = "Reads the image files and the per-module module.kdl manifests"
@@ -9,6 +9,7 @@ description = "Reads the image files and the per-module module.kdl manifests"
 kdl = "6.3.4"
 miette = { version = "7.6.0", features = ["fancy"] }
 
+# A local release build uses this profile, so it favours compile time over runtime performance.
 [profile.release]
 opt-level = 1
 debug = false

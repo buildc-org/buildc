@@ -17,6 +17,17 @@ usage: buildc [--root <dir>] <command>
                     image; the default image when none is given
   check             validate every manifest, printing what is wrong
 
+Inside a build layer, where the binary is mounted and there is no
+repository to read:
+
+  os-release        write the image identity the ARGs carry into
+                    /usr/lib/os-release
+  fetch <what> <url> <sha256> [target] [extra...]
+                    download, verify against the hash, and place it: `file`
+                    keeps it, `tree` unpacks it, `bin` installs one
+                    executable, `rpm` installs the package
+  validate-image    every check a built image has to pass
+
 The repository is the nearest directory at or above the working directory
 holding a repo.kdl, or `--root`. Data goes to stdout and diagnostics to
 stderr; exit 1 is the invocation, exit 2 the repository.
@@ -147,6 +158,22 @@ fn main() -> ExitCode {
     }
     if owner_arg.is_some() {
         return usage_error(format!("`{command}` does not take `--owner`"));
+    }
+
+    let in_layer = match command {
+        "os-release" => Some(buildc::runtime::os_release()),
+        "validate-image" => Some(buildc::runtime::validate_image()),
+        "fetch" => Some(buildc::runtime::fetch(&rest)),
+        _ => None,
+    };
+    if let Some(result) = in_layer {
+        return match result {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("buildc: {message}");
+                ExitCode::from(USAGE_ERROR)
+            }
+        };
     }
 
     let image_arg = match (command, rest.as_slice()) {

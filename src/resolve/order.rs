@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues};
-use crate::list::{Entry, Image};
+use crate::model::image::{Entry, Image};
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 
@@ -51,6 +51,7 @@ pub fn sort(image: &Image, issues: &mut Issues) -> Vec<usize> {
         }
     }
 
+    // The generated Containerfile declares ARG FLAVOUR directly above the first gated component, so every ungated component sorts before it.
     let key = |index: usize| {
         let gated = u8::from(image.entries[index].flavour.is_some());
         Reverse((gated, index))

@@ -1,12 +1,8 @@
-use crate::json::Json;
-use crate::list::{Entry, Image, List, Target, NO_FLAVOUR, SCHEMA_VERSION};
-use crate::module::{Collection, Module};
-use crate::overlay;
-
-pub struct Resolved {
-    pub shipped: overlay::Index,
-    pub collected: Collection,
-}
+use crate::emit::json::Json;
+use crate::model::image::{Entry, Image, List, Target, NO_FLAVOUR, SCHEMA_VERSION};
+use crate::model::module::Module;
+use crate::resolve::overlay;
+use crate::resolve::Resolved;
 
 pub fn build(list: &List, resolved: &[Resolved], workflows: &[(String, bool)]) -> Json {
     Json::object([

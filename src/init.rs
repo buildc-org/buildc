@@ -1,4 +1,4 @@
-use crate::list::{is_flavour_name, REPO_FILE, SCHEMA_VERSION};
+use crate::model::image::{is_flavour_name, REPO_FILE, SCHEMA_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 

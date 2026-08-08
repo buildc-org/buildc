@@ -1,31 +1,10 @@
-use crate::asset::check_renovate;
 use crate::diag::{Issue, Issues, Source, Span};
+use crate::model::remote::Remote;
+use crate::parse::asset::check_renovate;
+use crate::parse::string_arg;
 use kdl::KdlNode;
 
-pub const REMOTE_DIR: &str = ".remote";
-
 const ARCHIVES: [&str; 5] = [".tar.gz", ".tgz", ".tar.xz", ".tar.zst", ".tar.bz2"];
-
-pub struct Remote {
-    pub url: String,
-    pub git_ref: String,
-    pub sha256: String,
-    pub path: Option<String>,
-    pub span: Span,
-}
-
-impl Remote {
-    pub fn url_resolved(&self) -> String {
-        self.url.replace("{ref}", &self.git_ref)
-    }
-}
-
-fn string_arg(node: &KdlNode) -> Option<&str> {
-    node.entries()
-        .iter()
-        .find(|e| e.name().is_none())
-        .and_then(|e| e.value().as_string())
-}
 
 fn datasource(node: &KdlNode) -> Option<&str> {
     node.entries()

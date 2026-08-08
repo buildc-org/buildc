@@ -1,6 +1,6 @@
 use crate::diag::{Issue, Issues};
-use crate::disk::Disk;
-use crate::list::{Entry, Image};
+use crate::model::image::{Entry, Image};
+use crate::parse::disk::Disk;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type Index = BTreeMap<String, Vec<usize>>;

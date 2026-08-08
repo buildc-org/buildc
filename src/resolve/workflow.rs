@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues};
-use crate::list::List;
+use crate::model::image::List;
 use std::path::Path;
 
 const WORKFLOW_DIR: &str = ".github/workflows";

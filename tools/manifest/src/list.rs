@@ -12,15 +12,11 @@ pub struct Target {
 }
 
 impl Target {
-    pub fn parse(text: &str) -> Option<Self> {
-        let (image, flavour) = text.split_once('/')?;
-        if image.is_empty() || flavour.is_empty() || flavour.contains('/') {
-            return None;
+    pub fn published(&self) -> String {
+        match self.flavour.as_str() {
+            NO_FLAVOUR => self.image.clone(),
+            flavour => format!("{}-{flavour}", self.image),
         }
-        Some(Target {
-            image: image.to_string(),
-            flavour: flavour.to_string(),
-        })
     }
 }
 
@@ -992,6 +988,17 @@ impl List {
             image: image.id.clone(),
             flavour: image.default_flavour().unwrap_or(NO_FLAVOUR).to_string(),
         })
+    }
+
+    pub fn ungated_target(&self) -> Option<Target> {
+        self.default_image().map(|image| Target {
+            image: image.id.clone(),
+            flavour: NO_FLAVOUR.to_string(),
+        })
+    }
+
+    pub fn cache_image(&self) -> Option<String> {
+        self.default_image().map(|image| format!("{}-cache", image.id))
     }
 
     pub fn pr_target(&self) -> Option<Target> {

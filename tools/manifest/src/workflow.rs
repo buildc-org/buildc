@@ -1,6 +1,5 @@
 use crate::diag::{Issue, Issues};
 use crate::list::List;
-use std::fmt::Write as _;
 use std::path::Path;
 
 const WORKFLOW_DIR: &str = ".github/workflows";
@@ -39,14 +38,6 @@ pub fn resolve(list: &List, root: &Path, issues: &mut Issues) -> Vec<(String, bo
             (file, enabled)
         })
         .collect()
-}
-
-pub fn render(workflows: &[(String, bool)]) -> String {
-    let mut out = String::new();
-    for (file, enabled) in workflows {
-        let _ = writeln!(out, "{file}|{enabled}");
-    }
-    out
 }
 
 fn files(root: &Path) -> Vec<(String, String)> {

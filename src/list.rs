@@ -117,7 +117,7 @@ pub(crate) fn syntax_issue(err: &kdl::KdlError, file: &str, src: &Source) -> Iss
     }
 }
 
-fn is_flavour_name(name: &str) -> bool {
+pub(crate) fn is_flavour_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() => {}

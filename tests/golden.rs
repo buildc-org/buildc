@@ -30,6 +30,13 @@ fn capture(name: &str, root: &Path) {
     compare(name, "issues.txt", &buildc::run("check", None, here).issues.plain());
 }
 
+fn init_repo() -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("init");
+    let _ = std::fs::remove_dir_all(&root);
+    buildc::init::write(&root, "Example", "someone", &crate_dir().join("assets")).unwrap();
+    root
+}
+
 #[test]
 fn golden() {
     let dir = crate_dir().join("tests/repos");
@@ -42,7 +49,9 @@ fn golden() {
     names.sort();
     assert!(!names.is_empty());
 
+    let init = init_repo();
     for name in names {
         capture(&name, &dir.join(&name));
     }
+    capture("init", &init);
 }

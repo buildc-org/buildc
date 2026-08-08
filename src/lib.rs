@@ -1,6 +1,7 @@
 pub mod asset;
 pub mod diag;
 pub mod disk;
+pub mod init;
 pub mod json;
 pub mod list;
 pub mod module;

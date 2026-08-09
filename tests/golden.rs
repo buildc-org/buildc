@@ -81,6 +81,48 @@ fn verify(name: &str, root: &Path) {
     compare(name, "verify.txt", &out);
 }
 
+fn create(name: &str, root: &Path) {
+    std::env::set_current_dir(root).expect("the created-into repository exists");
+    let here = Path::new(".");
+    let silent = buildc::prompt::Prompt::silent();
+
+    buildc::create::module(
+        here,
+        Some("My Editor".into()),
+        vec!["nano".into()],
+        vec![("provides".into(), "editor".into())],
+        Some("example".into()),
+        &silent,
+    )
+    .unwrap();
+    buildc::create::module(
+        here,
+        Some("plain".into()),
+        Vec::new(),
+        Vec::new(),
+        None,
+        &silent,
+    )
+    .unwrap();
+
+    let mut out = String::new();
+    for file in [
+        "modules/my-editor/module.kdl",
+        "modules/plain/module.kdl",
+        "example.kdl",
+    ] {
+        out.push_str(&format!(
+            "==== {file}\n{}",
+            std::fs::read_to_string(file).unwrap()
+        ));
+    }
+    out.push_str(&format!(
+        "==== check\n{}",
+        buildc::run("check", None, here).issues.plain()
+    ));
+    compare(name, "create.txt", &out);
+}
+
 fn import(name: &str, root: &Path) {
     let mut out = String::new();
     let collections = crate_dir().join("tests/collections");
@@ -185,5 +227,6 @@ fn golden() {
     }
     capture("init", &init);
     verify("init", &init);
+    create("create", &init_repo("create"));
     import("import", &init_repo("import"));
 }

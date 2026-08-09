@@ -28,7 +28,7 @@
   ],
 
   "dockerfile": {
-    "managerFilePatterns": ["/^containerfiles/[^/]+\\.generated$/"],
+    "managerFilePatterns": ["/^generated/[^/.]+$/"],
   },
 
   "customManagers": [

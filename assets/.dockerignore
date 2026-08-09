@@ -1,7 +1,4 @@
 .git
 **/__pycache__
-output
-_build*
-build/*
-!build/buildc
-containerfiles
+out/*
+!out/buildc

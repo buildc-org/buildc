@@ -125,7 +125,7 @@ image="$(jq -r '.image' <<< "$resolved")"
 published="$(jq -r '.published' <<< "$resolved")"
 flavour_arg="$(jq -r '.flavour // ""' <<< "$resolved")"
 
-containerfile="containerfiles/${image}.generated"
+containerfile="generated/${image}"
 
 image_version="${IMAGE_VERSION:-$(date -u +%Y%m%d)}"
 
@@ -178,7 +178,7 @@ fi
 # ---- the Containerfile the build actually uses ---------------------------
 ./scripts/gen-containerfile.sh
 
-install -D -m755 "$(./scripts/buildc.sh --path)" build/buildc
+install -D -m755 "$(./scripts/buildc.sh --path)" out/buildc
 
 build_args=(
     "FLAVOUR=${flavour_arg}"

@@ -5,7 +5,7 @@ COPY lib/ /lib/
 COPY modules/ /modules/
 
 FROM scratch AS buildc
-COPY build/buildc /buildc
+COPY out/buildc /buildc
 
 # ---- BEGIN GENERATED (build phases and modules; see scripts/gen-containerfile.sh) ----
 # ---- END GENERATED ----

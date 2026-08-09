@@ -7,7 +7,7 @@ begin='# ---- BEGIN GENERATED (build phases and modules; see scripts/gen-contain
 end='# ---- END GENERATED ----'
 
 skeleton=scripts/Containerfile.skeleton
-outdir=containerfiles
+outdir=generated
 
 if ! grep -qxF "$begin" "$skeleton" || ! grep -qxF "$end" "$skeleton"; then
     echo "gen-containerfile: BEGIN/END GENERATED markers not found in ${skeleton}" >&2
@@ -25,6 +25,7 @@ section_file="$(mktemp)"
 trap 'rm -f "$section_file"' EXIT
 
 mkdir -p "$outdir"
+find "$outdir" -maxdepth 1 -type f ! -name '*.*' -delete
 
 mapfile -t images < <(./scripts/buildc.sh plan --json | jq -r '.images[].id')
 if [ "${#images[@]}" -eq 0 ]; then
@@ -33,7 +34,7 @@ if [ "${#images[@]}" -eq 0 ]; then
 fi
 
 for image in "${images[@]}"; do
-    out="${outdir}/${image}.generated"
+    out="${outdir}/${image}"
     ./scripts/buildc.sh section "$image" > "$section_file"
 
     {

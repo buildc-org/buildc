@@ -10,14 +10,14 @@ die() {
     exit 1
 }
 
-bin="${BUILDC_BIN:-build/buildc-${version}}"
+bin="${BUILDC_BIN:-out/buildc-${version}}"
 
 if [ ! -x "$bin" ]; then
     asset="buildc-v${version}-x86_64-linux-musl.tar.gz"
     url="https://github.com/buildc-org/buildc/releases/download/v${version}/${asset}"
 
-    mkdir -p build
-    tmp="$(mktemp -d -p build download.XXXXXXXX)"
+    mkdir -p out
+    tmp="$(mktemp -d -p out download.XXXXXXXX)"
     trap 'rm -rf "$tmp"' EXIT
 
     curl -fsSL --retry 3 -o "${tmp}/${asset}" "$url" \

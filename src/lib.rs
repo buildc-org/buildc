@@ -13,7 +13,7 @@ pub mod ui;
 use diag::Issue;
 use diag::Issues;
 use diag::Source;
-use model::image::{List, REPO_FILE};
+use model::image::{List, Target, REPO_FILE};
 use model::module::Module;
 use model::remote::Collection;
 pub use parse::repo::compatible;
@@ -68,7 +68,11 @@ fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
     found.then_some(text)
 }
 
-pub fn run(command: &str, image_arg: Option<&str>, root: &Path) -> Run {
+pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
+    let (target_arg, image_arg) = match command {
+        "summary" | "sbom" => (arg, None),
+        _ => (None, arg),
+    };
     let (mut list, mut issues) = List::load(root);
     let context = context(&list, root);
 
@@ -107,6 +111,20 @@ pub fn run(command: &str, image_arg: Option<&str>, root: &Path) -> Run {
         );
     }
 
+    let targets: Vec<String> = list.targets().iter().map(Target::to_string).collect();
+    if let Some(unknown) = target_arg.filter(|name| !targets.iter().any(|have| have == name)) {
+        issues.push(
+            Issue::new(
+                format!("`{unknown}` is not a build target"),
+                &list.repo_src,
+            )
+            .help(format!("targets: {}", targets.join(", "))),
+        );
+    }
+    let target = target_arg
+        .map(str::to_string)
+        .or_else(|| list.default_target().map(|t| t.to_string()));
+
     let one = match image_arg {
         Some(id) => list.images.iter().position(|i| i.id == id),
         None => list
@@ -142,6 +160,9 @@ pub fn run(command: &str, image_arg: Option<&str>, root: &Path) -> Run {
 
     let stdout = match command {
         "plan" => emit::plan::build(&list, &resolved, &workflows).render(),
+        "summary" => target
+            .and_then(|name| emit::summary::render(&list, &name))
+            .unwrap_or_default(),
         "graph" | "graph-json" => match one {
             Some(i) => {
                 let graph = emit::graph::of(&list.images[i]);

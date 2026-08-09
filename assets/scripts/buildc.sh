@@ -2,13 +2,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# renovate: datasource=github-releases depName=buildc-org/buildc
-version="0.0.0"
-
 die() {
     echo "buildc: $*" >&2
     exit 1
 }
+
+version="$(sed -n 's/^buildc-version "\(.*\)"$/\1/p' repo.kdl)"
+[ -n "$version" ] || die "repo.kdl declares no buildc-version"
 
 bin="${BUILDC_BIN:-out/buildc-${version}}"
 

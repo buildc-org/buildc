@@ -35,10 +35,10 @@
     {
       "customType": "regex",
       "description": "The pinned build tool release",
-      "managerFilePatterns": ["/^scripts/buildc\\.sh$/"],
+      "managerFilePatterns": ["/^repo\\.kdl$/"],
       "extractVersionTemplate": "^v(?<version>.+)$",
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nversion=\"(?<currentValue>[^\"]+)\"",
+        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nbuildc-version \"(?<currentValue>[^\"]+)\"",
       ],
     },
     {

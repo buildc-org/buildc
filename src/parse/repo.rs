@@ -426,6 +426,8 @@ mod tests {
             r#"
 schema-version
 schema-version 1
+buildc-version
+buildc-version "0.0.0"
 default-image
 pr-image
 workflows {
@@ -441,6 +443,8 @@ colour "blue"
             [
                 "`schema-version` needs a number",
                 "`schema-version` is declared twice",
+                "`buildc-version` needs a release",
+                "`buildc-version` is declared twice",
                 "`default-image` needs an image name",
                 "`pr-image` needs an image name",
                 "a workflow takes no arguments",

@@ -110,6 +110,10 @@ impl Issues {
         self.0.push(issue);
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn plain(&self) -> String {
         let handler = miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::none())
             .with_width(80);

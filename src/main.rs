@@ -115,6 +115,10 @@ fn repo_root(given: Option<PathBuf>) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("no repo.kdl in {} or any parent directory", here.display()))
 }
 
+fn refused(root: &Path) -> bool {
+    buildc::compatible(root).report(&root.join("repo.kdl").display().to_string())
+}
+
 fn import(
     name: Option<String>,
     root: &Path,
@@ -249,6 +253,9 @@ fn run() -> Result<ExitCode, String> {
             only(&given, &["root", "owner", "base"], "create image")?;
             let name = one_name(rest, "create image")?;
             let root = repo_root(root_arg)?;
+            if refused(&root) {
+                return Ok(ExitCode::from(REPO_ERROR));
+            }
             buildc::create::image(
                 &root,
                 name,
@@ -263,6 +270,9 @@ fn run() -> Result<ExitCode, String> {
             only(&given, &["root", "image", "pkg", "with"], "create module")?;
             let name = one_name(rest, "create module")?;
             let root = repo_root(root_arg)?;
+            if refused(&root) {
+                return Ok(ExitCode::from(REPO_ERROR));
+            }
             buildc::create::module(&root, name, pkgs, with, image_arg, &prompt)?;
             return Ok(ExitCode::SUCCESS);
         }

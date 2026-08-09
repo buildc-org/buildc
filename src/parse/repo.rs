@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues, Source, Span};
-use crate::model::image::{List, WorkflowToggle, REPO_FILE, SCHEMA_VERSION};
+use crate::model::image::{List, WorkflowToggle, REPO_FILE, SCHEMA_VERSION, BUILDC_VERSION};
 use crate::parse::image::IMAGE;
 use crate::parse::remote::{parse_collection, COLLECTION};
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
@@ -69,52 +69,84 @@ const IMAGE_FILE: Node = Node::new("image file", "One image, in a file of its ow
          declared inside it, because they are what the image is rather than what the repository \
          is"));
 
-type Reader = fn(&Path) -> (List, Issues);
-
-fn reader(version: i128) -> Option<Reader> {
-    match version {
-        v if v == i128::from(SCHEMA_VERSION) => Some(List::read),
-        _ => None,
-    }
+struct Pins {
+    schema: Option<(i128, Span)>,
+    buildc: Option<(String, Span)>,
+    src: Source,
 }
 
-fn declared_version(root: &Path) -> Option<(i128, Span, Source)> {
+fn pins(root: &Path) -> Option<Pins> {
     let path = root.join(REPO_FILE);
     let text = std::fs::read_to_string(&path).ok()?;
     let doc: KdlDocument = text.parse().ok()?;
-    let node = doc
-        .nodes()
-        .iter()
-        .find(|n| n.name().value() == "schema-version")?;
-    let version = int_arg(node)?;
-    let src = Source::new(path.display().to_string(), text);
-    Some((version, node.name().span().into(), src))
+    let node = |name: &str| {
+        doc.nodes()
+            .iter()
+            .find(|n| n.name().value() == name)
+            .cloned()
+    };
+    Some(Pins {
+        schema: node("schema-version").and_then(|n| Some((int_arg(&n)?, n.name().span().into()))),
+        buildc: node("buildc-version")
+            .and_then(|n| Some((string_arg(&n)?.to_string(), n.name().span().into()))),
+        src: Source::new(path.display().to_string(), text),
+    })
+}
+
+pub fn compatible(root: &Path) -> Issues {
+    let mut issues = Issues::default();
+    let Some(pins) = pins(root) else {
+        return issues;
+    };
+
+    if let Some((version, span)) = pins
+        .schema
+        .filter(|(v, _)| *v != i128::from(SCHEMA_VERSION))
+    {
+        let ahead = version > i128::from(SCHEMA_VERSION);
+        issues.push(
+            Issue::new(
+                format!("this repository is written against schema version {version}"),
+                &pins.src,
+            )
+            .at(span, format!("this tool knows {SCHEMA_VERSION}"))
+            .help(match ahead {
+                true => "the repository is ahead of the tool; `buildc-version` names the release \
+                         that reads it, and `scripts/buildc.sh` fetches that one"
+                    .to_string(),
+                false => format!(
+                    "`buildc update-repo` moves the repository to schema {SCHEMA_VERSION}; nothing \
+                     else is read until it does, because every diagnostic under a grammar this \
+                     release does not have would be noise"
+                ),
+            }),
+        );
+        return issues;
+    }
+
+    if let Some((version, span)) = pins.buildc.filter(|(v, _)| v != BUILDC_VERSION) {
+        issues.push(
+            Issue::new(
+                format!("this repository is pinned to buildc {version}"),
+                &pins.src,
+            )
+            .at(span, format!("this is buildc {BUILDC_VERSION}"))
+            .help(
+                "run the pinned release, which `scripts/buildc.sh` fetches, or `buildc update-repo` \
+                 to move the pin to this one",
+            ),
+        );
+    }
+    issues
 }
 
 impl List {
     pub fn load(root: &Path) -> (Self, Issues) {
-        let Some((version, span, src)) = declared_version(root) else {
-            return List::read(root);
-        };
-        if let Some(read) = reader(version) {
-            return read(root);
+        let issues = compatible(root);
+        match issues.is_empty() {
+            true => List::read(root),
+            false => (List::empty(root), issues),
         }
-
-        let mut issues = Issues::default();
-        issues.push(
-            Issue::new(
-                format!("this repository is written against schema version {version}"),
-                &src,
-            )
-            .at(span, format!("this tool knows {SCHEMA_VERSION}"))
-            .help(if version > i128::from(SCHEMA_VERSION) {
-                "the repository is ahead of the tool; take a newer release"
-            } else {
-                "the tool is ahead of the repository; nothing else is read, because every \
-                 diagnostic under a grammar this release does not have would be noise"
-            }),
-        );
-        (List::empty(root), issues)
     }
 
     fn empty(root: &Path) -> Self {

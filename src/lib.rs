@@ -16,6 +16,7 @@ use diag::Source;
 use model::image::{List, REPO_FILE};
 use model::module::Module;
 use model::remote::Collection;
+pub use parse::repo::compatible;
 use resolve::Resolved;
 use std::path::{Path, PathBuf};
 

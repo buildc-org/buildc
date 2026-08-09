@@ -21,6 +21,7 @@ pub fn find_root(from: &Path) -> Option<PathBuf> {
 
 pub struct Run {
     pub stdout: String,
+    pub files: Vec<(PathBuf, String)>,
     pub issues: Issues,
     pub context: String,
     pub images: usize,
@@ -77,6 +78,17 @@ pub fn run(command: &str, image_arg: Option<&str>, root: &Path) -> Run {
             .and_then(|d| list.images.iter().position(|i| i.id == d.id)),
     };
 
+    let mut files: Vec<(PathBuf, String)> = Vec::new();
+    if command == "generate" {
+        for (image, resolved) in list.images.iter().zip(&resolved) {
+            files.extend(emit::module_build::scripts(
+                image,
+                &resolved.collected,
+                root,
+            ));
+        }
+    }
+
     let stdout = match command {
         "plan" => emit::plan::build(&list, &resolved, &workflows).render(),
         "section" => match one {
@@ -88,11 +100,16 @@ pub fn run(command: &str, image_arg: Option<&str>, root: &Path) -> Run {
             ),
             None => String::new(),
         },
+        "generate" => files
+            .iter()
+            .map(|(path, _)| format!("{}\n", path.display()))
+            .collect(),
         _ => String::new(),
     };
 
     Run {
         stdout,
+        files,
         issues,
         context,
         images: list.images.len(),

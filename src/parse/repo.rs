@@ -4,7 +4,9 @@ use crate::parse::{string_arg, syntax_issue};
 use kdl::{KdlDocument, KdlNode};
 use std::path::Path;
 
-fn reader(version: i128) -> Option<fn(&Path) -> (List, Issues)> {
+type Reader = fn(&Path) -> (List, Issues);
+
+fn reader(version: i128) -> Option<Reader> {
     match version {
         v if v == i128::from(SCHEMA_VERSION) => Some(List::read),
         _ => None,

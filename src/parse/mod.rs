@@ -5,6 +5,7 @@ pub mod module;
 pub mod options;
 pub mod remote;
 pub mod repo;
+pub mod schema;
 
 use crate::diag::{Issue, Source};
 use kdl::KdlNode;
@@ -45,4 +46,34 @@ pub(crate) fn string_args(node: &KdlNode) -> Vec<&str> {
         .filter(|e| e.name().is_none())
         .filter_map(|e| e.value().as_string())
         .collect()
+}
+
+pub(crate) fn prop<'a>(node: &'a KdlNode, key: &str) -> Option<&'a str> {
+    node.entries()
+        .iter()
+        .find(|e| e.name().map(|n| n.value()) == Some(key))
+        .and_then(|e| e.value().as_string())
+}
+
+pub(crate) fn flag(node: &KdlNode, key: &str) -> bool {
+    node.entries()
+        .iter()
+        .find(|e| e.name().map(|n| n.value()) == Some(key))
+        .and_then(|e| e.value().as_bool())
+        .unwrap_or(false)
+}
+
+pub(crate) fn kids(node: &KdlNode) -> &[KdlNode] {
+    node.children().map(|c| c.nodes()).unwrap_or_default()
+}
+
+pub(crate) fn child<'a>(node: &'a KdlNode, name: &str) -> Option<&'a KdlNode> {
+    kids(node).iter().find(|c| c.name().value() == name)
+}
+
+pub(crate) fn text(node: &KdlNode, name: &str) -> String {
+    child(node, name)
+        .and_then(string_arg)
+        .unwrap_or_default()
+        .to_string()
 }

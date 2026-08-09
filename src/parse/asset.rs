@@ -1,6 +1,12 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::asset::{Asset, ShaFrom};
+use crate::parse::schema::Node;
 use kdl::KdlNode;
+
+pub const ASSET: Node = Node::new(
+    "asset",
+    "A pinned upstream payload the module fetches, reaching the build as ASSET_*.",
+);
 
 const DATASOURCES: [&str; 3] = ["github-releases", "github-tags", "git-refs"];
 

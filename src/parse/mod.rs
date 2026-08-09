@@ -7,7 +7,7 @@ pub mod remote;
 pub mod repo;
 pub mod schema;
 
-use crate::diag::{Issue, Source};
+use crate::diag::{Issue, Source, Span};
 use kdl::KdlNode;
 
 pub(crate) fn syntax_issue(err: &kdl::KdlError, file: &str, src: &Source) -> Issue {
@@ -55,12 +55,22 @@ pub(crate) fn prop<'a>(node: &'a KdlNode, key: &str) -> Option<&'a str> {
         .and_then(|e| e.value().as_string())
 }
 
-pub(crate) fn flag(node: &KdlNode, key: &str) -> bool {
+pub(crate) fn boolean(node: &KdlNode, key: &str) -> Option<bool> {
     node.entries()
         .iter()
         .find(|e| e.name().map(|n| n.value()) == Some(key))
         .and_then(|e| e.value().as_bool())
-        .unwrap_or(false)
+}
+
+pub(crate) fn flag(node: &KdlNode, key: &str) -> bool {
+    boolean(node, key).unwrap_or(false)
+}
+
+pub(crate) fn prop_span(node: &KdlNode, key: &str) -> Option<Span> {
+    node.entries()
+        .iter()
+        .find(|e| e.name().map(|n| n.value()) == Some(key))
+        .map(|e| e.span().into())
 }
 
 pub(crate) fn kids(node: &KdlNode) -> &[KdlNode] {

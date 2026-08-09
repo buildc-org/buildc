@@ -1,6 +1,6 @@
 use crate::diag::{Issue, Issues, Source, Span};
-use crate::parse::{bool_arg, kids, string_arg};
-use kdl::KdlNode;
+use crate::parse::{bool_arg, kids, string_arg, string_args};
+use kdl::{KdlDocument, KdlNode};
 
 pub struct Say {
     pub text: &'static str,
@@ -41,6 +41,8 @@ pub enum Arg {
 pub enum Kind {
     Str,
     Bool,
+    Int(i128, i128),
+    One(&'static [&'static str]),
 }
 
 pub struct Prop {
@@ -58,6 +60,7 @@ pub struct Node {
     pub missing: Say,
     pub once: bool,
     pub dup_help: &'static str,
+    pub unique: Say,
     pub empty: Say,
     pub props: &'static [Prop],
     pub prop_say: Say,
@@ -75,6 +78,7 @@ impl Node {
             missing: Say::NONE,
             once: false,
             dup_help: "",
+            unique: Say::NONE,
             empty: Say::NONE,
             props: &[],
             prop_say: Say::NONE,
@@ -92,6 +96,11 @@ impl Node {
     pub const fn once(mut self, help: &'static str) -> Node {
         self.once = true;
         self.dup_help = help;
+        self
+    }
+
+    pub const fn unique(mut self, say: Say) -> Node {
+        self.unique = say;
         self
     }
 
@@ -118,8 +127,12 @@ impl Node {
     }
 }
 
+pub fn check_doc(doc: &KdlDocument, schema: &Node, src: &Source, issues: &mut Issues) {
+    walk(doc.nodes(), schema, Span::default(), src, issues);
+}
+
 pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
-    let here = node.name().span();
+    let here: Span = node.name().span().into();
     match schema.arg {
         Arg::None => {
             if let Some(stray) = string_arg(node) {
@@ -127,7 +140,7 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
             }
         }
         Arg::Str => {
-            if string_arg(node).is_none() {
+            if string_arg(node).is_none_or(str::is_empty) {
                 schema.arg_say.raise(schema.name, here, src, issues);
             }
         }
@@ -136,7 +149,11 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                 schema.arg_say.raise(schema.name, here, src, issues);
             }
         }
-        Arg::Strs => {}
+        Arg::Strs => {
+            if string_args(node).is_empty() {
+                schema.arg_say.raise(schema.name, here, src, issues);
+            }
+        }
     }
 
     for entry in node.entries() {
@@ -148,6 +165,11 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                 let ok = match prop.kind {
                     Kind::Str => entry.value().as_string().is_some(),
                     Kind::Bool => entry.value().as_bool().is_some(),
+                    Kind::Int(low, high) => entry
+                        .value()
+                        .as_integer()
+                        .is_some_and(|v| (low..=high).contains(&v)),
+                    Kind::One(set) => entry.value().as_string().is_some_and(|v| set.contains(&v)),
                 };
                 if !ok {
                     prop.say.raise(key, entry.span(), src, issues);
@@ -157,12 +179,15 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
         }
     }
 
-    let children = kids(node);
+    walk(kids(node), schema, here, src, issues);
+}
+
+fn walk(children: &[KdlNode], schema: &Node, here: Span, src: &Source, issues: &mut Issues) {
     if children.is_empty() {
         schema.empty.raise(schema.name, here, src, issues);
     }
 
-    let mut seen: Vec<(&str, Span)> = Vec::new();
+    let mut seen: Vec<(&str, &str, Span)> = Vec::new();
     for child in children {
         let name = child.name().value();
         let span: Span = child.name().span().into();
@@ -175,18 +200,30 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
             schema.child_say.raise(name, span, src, issues);
             continue;
         };
-        if sub.once {
-            if let Some((_, first)) = seen.iter().find(|(seen, _)| *seen == name) {
-                let issue = Issue::new(format!("`{name}` is declared twice"), src)
-                    .at(*first, "first here")
-                    .at(span, "and again here");
-                issues.push(match sub.dup_help.is_empty() {
-                    true => issue,
-                    false => issue.help(sub.dup_help),
-                });
+        let key = match sub.once {
+            true => Some(name),
+            false => match sub.unique.silent() {
+                true => None,
+                false => string_arg(child),
+            },
+        };
+        if let Some(key) = key {
+            if let Some((_, _, first)) = seen.iter().find(|(n, k, _)| *n == sub.name && *k == key) {
+                match sub.once {
+                    true => {
+                        let issue = Issue::new(format!("`{name}` is declared twice"), src)
+                            .at(*first, "first here")
+                            .at(span, "and again here");
+                        issues.push(match sub.dup_help.is_empty() {
+                            true => issue,
+                            false => issue.help(sub.dup_help),
+                        });
+                    }
+                    false => sub.unique.raise(key, span, src, issues),
+                }
                 continue;
             }
-            seen.push((name, span));
+            seen.push((sub.name, key, span));
         }
         check(child, sub, src, issues);
     }

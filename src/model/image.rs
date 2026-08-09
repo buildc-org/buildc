@@ -5,6 +5,8 @@ use crate::model::remote::{Collection, Remote, REMOTE_DIR};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
+pub const BUILDC_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub const NO_FLAVOUR: &str = "none";
 
 pub const REPO_FILE: &str = "repo.kdl";

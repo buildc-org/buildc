@@ -15,6 +15,13 @@ pub const REPO: Node = Node::new("repo",
             "The schema release this repository is written against, which picks the reader.")
             .arg(Arg::Int, Say::new("`{}` needs a number", "not a version", "`schema-version 1`"))
             .once(""),
+        Node::new("buildc-version",
+            "The buildc release this repository is built with, which every command holds itself to.")
+            .arg(Arg::Str, Say::new("`{}` needs a release", "not a version",
+                concat!("`buildc-version \"", env!("CARGO_PKG_VERSION"),
+                        "\"`, the release the build fetches and every command checks itself \
+                         against")))
+            .once(""),
         Node::new("default-image", "The image a build that names no target builds.")
             .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
                 "`default-image \"workstation\"`, naming one of the images declared at the root"))
@@ -51,9 +58,9 @@ pub const REPO: Node = Node::new("repo",
                 "omit the block entirely; a repository with nothing here imports from nothing"))
             .children(&[COLLECTION], Say::NONE),
     ], Say::new("unknown node `{}` in repo.kdl", "not part of the schema",
-        "repo.kdl holds `schema-version`, `default-image`, `pr-image`, a `workflows` block and a \
-         `sources` block: what is true of the repository rather than of any image in it. An image \
-         goes in a file of its own"));
+        "repo.kdl holds `schema-version`, `buildc-version`, `default-image`, `pr-image`, a \
+         `workflows` block and a `sources` block: what is true of the repository rather than of \
+         any image in it. An image goes in a file of its own"));
 
 #[rustfmt::skip]
 const IMAGE_FILE: Node = Node::new("image file", "One image, in a file of its own.")

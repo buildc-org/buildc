@@ -1,4 +1,4 @@
-use crate::model::image::{is_name, REPO_FILE, SCHEMA_VERSION};
+use crate::model::image::{is_name, REPO_FILE, SCHEMA_VERSION, BUILDC_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -49,7 +49,11 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<(), String> {
     copy_tree(assets, root)?;
     put(
         &root.join(REPO_FILE),
-        &format!("schema-version {SCHEMA_VERSION}\n"),
+        &format!(
+            "schema-version {SCHEMA_VERSION}\n\n\
+             // renovate: datasource=github-releases depName=buildc-org/buildc\n\
+             buildc-version \"{BUILDC_VERSION}\"\n"
+        ),
     )?;
     put(&root.join("README.md"), &format!("# {name}\n"))?;
     put(&root.join("modules/.gitkeep"), "")?;

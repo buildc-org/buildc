@@ -6,6 +6,7 @@ pub mod init;
 pub mod model;
 pub mod parse;
 pub mod prompt;
+pub mod registry;
 pub mod resolve;
 pub mod runtime;
 pub mod ui;
@@ -26,9 +27,14 @@ pub fn find_root(from: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-pub fn sources(root: &Path) -> (Vec<Collection>, Issues, String) {
+pub fn declarations(root: &Path) -> (List, Issues, String) {
     let (list, issues) = List::load(root);
     let context = context(&list, root);
+    (list, issues, context)
+}
+
+pub fn sources(root: &Path) -> (Vec<Collection>, Issues, String) {
+    let (list, issues, context) = declarations(root);
     (list.sources, issues, context)
 }
 

@@ -160,7 +160,7 @@ done
 cache_import_refs=()
 cache_export_ref=""
 if [ "$cache_from" = 1 ] || [ "$cache_to" = 1 ]; then
-    if namespace="$(./scripts/registry.sh namespace)"; then
+    if namespace="$(./scripts/buildc.sh registry namespace)"; then
         repo="${namespace}/$(jq -r '.cache_image' <<< "$plan")"
         if [ "$cache_from" = 1 ]; then
             cache_import_refs+=("${repo}:${published}")
@@ -184,7 +184,7 @@ install -D -m755 "$(./scripts/buildc.sh --path)" out/buildc
 build_args=(
     "FLAVOUR=${flavour_arg}"
     "IMAGE_VERSION=${image_version}"
-    "IMAGE_REGISTRY=$(./scripts/registry.sh namespace 2> /dev/null || true)"
+    "IMAGE_REGISTRY=$(./scripts/buildc.sh registry namespace 2> /dev/null || true)"
     "CONTRACT_FILES=$(jq -r '.contract_files | join(" ")' <<< "$resolved")"
     "VERIFY_EXCEPTIONS=$(jq -r \
         '[.verify_exceptions[] | "\(.class)|\(.unit)"] | join(" ")' <<< "$resolved")"

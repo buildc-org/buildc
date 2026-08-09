@@ -40,6 +40,13 @@ pub(crate) fn bool_arg(node: &KdlNode) -> Option<bool> {
         .and_then(|e| e.value().as_bool())
 }
 
+pub(crate) fn int_arg(node: &KdlNode) -> Option<i128> {
+    node.entries()
+        .iter()
+        .find(|e| e.name().is_none())
+        .and_then(|e| e.value().as_integer())
+}
+
 pub(crate) fn string_args(node: &KdlNode) -> Vec<&str> {
     node.entries()
         .iter()

@@ -68,7 +68,7 @@ fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
         if !text.lines().any(|line| line == marker) {
             issues.push(
                 Issue::new(format!("`{SKELETON}` has no `{marker}` line"), &src)
-                    .help("the generated phases and module layers go between the two markers"),
+                    .help("the generated module layers go between the two markers"),
             );
             found = false;
         }
@@ -79,7 +79,6 @@ fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
 pub(crate) struct Loaded {
     list: List,
     resolved: Vec<Resolved>,
-    disk: parse::disk::Disk,
     workflows: Vec<(String, bool)>,
     issues: Issues,
     context: String,
@@ -90,7 +89,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
     let context = context(&list, root);
 
     let workflows = resolve::workflow::resolve(&list, root, &mut issues);
-    let disk = parse::disk::Disk::scan(root, &mut issues);
+    let disk = parse::disk::Disk::scan(root);
     parse::module::check_unlisted(&list, root, &disk, &mut issues);
 
     let mut resolved: Vec<Resolved> = Vec::new();
@@ -116,7 +115,6 @@ pub(crate) fn load(root: &Path) -> Loaded {
     Loaded {
         list,
         resolved,
-        disk,
         workflows,
         issues,
         context,
@@ -131,7 +129,6 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
     let Loaded {
         list,
         resolved,
-        disk,
         workflows,
         mut issues,
         context,
@@ -172,8 +169,7 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
     if matches!(command, "generate" | "verify") {
         for (image, resolved) in list.images.iter().zip(&resolved) {
             if let Some(skeleton) = &skeleton {
-                let section =
-                    emit::containerfile::section(image, &resolved.collected, &disk.phases, root);
+                let section = emit::containerfile::section(image, &resolved.collected, root);
                 files.push((
                     emit::containerfile::path(image),
                     emit::containerfile::file(skeleton, image, &section),
@@ -184,6 +180,7 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
                 &resolved.collected,
                 root,
             ));
+            files.extend(emit::finalize::script(image, &resolved.collected, root));
             files.extend(emit::graph::files(image));
         }
     }
@@ -212,12 +209,7 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
             None => String::new(),
         },
         "section" => match one {
-            Some(i) => emit::containerfile::section(
-                &list.images[i],
-                &resolved[i].collected,
-                &disk.phases,
-                root,
-            ),
+            Some(i) => emit::containerfile::section(&list.images[i], &resolved[i].collected, root),
             None => String::new(),
         },
         "generate" => files

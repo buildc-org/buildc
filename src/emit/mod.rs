@@ -1,4 +1,5 @@
 pub mod containerfile;
+pub mod finalize;
 pub mod graph;
 pub mod json;
 pub mod module_build;

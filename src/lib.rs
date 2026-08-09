@@ -1,3 +1,4 @@
+pub mod base;
 pub mod build;
 pub mod create;
 pub mod diag;

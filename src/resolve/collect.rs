@@ -8,12 +8,14 @@ use std::path::Path;
 pub struct Collected {
     pub file: String,
     pub staged: String,
+    pub into: String,
 }
 
 #[derive(Default)]
 pub struct Collection {
     pub by_module: BTreeMap<String, Vec<Collected>>,
     pub destinations: Vec<String>,
+    pub assembled: BTreeMap<String, Vec<String>>,
 }
 
 pub fn resolve_collects(
@@ -88,6 +90,7 @@ pub fn resolve_collects(
                         .push(Collected {
                             file: file.clone(),
                             staged: staged(&into, priority, &module.path),
+                            into,
                         });
                 }
                 None => issues.push(
@@ -105,6 +108,18 @@ pub fn resolve_collects(
             }
         }
     }
+
+    let mut assembled: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for collected in out.by_module.values().flatten() {
+        assembled
+            .entry(collected.into.clone())
+            .or_default()
+            .push(collected.staged.clone());
+    }
+    for parts in assembled.values_mut() {
+        parts.sort();
+    }
+    out.assembled = assembled;
     out
 }
 

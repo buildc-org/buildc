@@ -15,9 +15,9 @@ does, once, and the shell that runs inside a layer is handed the result.
     workstation.kdl       one image, and every root .kdl but repo.kdl is one
     modules/<path>/       one module apiece, each with a module.kdl
 
-`buildc init` writes that tree, along with the build scripts, the build phases,
-the disk config and the workflows, which the tool ships and a repository does
-not carry.
+`buildc create repo` writes that tree, along with the build scripts, the build
+phases, the disk config and the workflows, which the tool ships and a
+repository does not carry.
 
 See [the schema](docs/schema.md), which documents
 [the repository file](docs/schema.md#the-repository-file),
@@ -30,28 +30,29 @@ tool accepts.
 
 This is the whole surface today. The rest of it is not built yet.
 
-    buildc init [name]      write a new repository into --root, else a directory
-                          named for the image, else here
-    buildc module import <name>
+    buildc create repo [name]
+                          start a repository, and offer an image in it
+    buildc create image [name]
+                          add an image: what it is called, and what it builds
+                          on
+    buildc create module [name]
+                          write a module, with the packages it installs, and
+                          offer to list it in an image
+    buildc import module <name>
                           copy a module out of a collection repo.kdl names,
                           into modules/<owner>/<name>
     buildc check            validate every manifest, and say where and why
-    buildc plan [--json]    every fact the repository derives, as one document
+    buildc generate         write the Containerfile per image, the per-module
+                          build scripts and the graph, under generated/
     buildc section [image]  the generated Containerfile module section
     buildc graph [--format md|json]
                           the capability graph, as markdown holding a mermaid
                           diagram, or as JSON
-    buildc generate         write the Containerfile per image, the per-module
-                          build scripts and the graph, under generated/
-    buildc verify           re-emit all of that and compare it against what is
-                          committed under generated/
 
-Inside a build layer, where the binary is mounted and there is no repository
-to read:
-
-    buildc os-release       write the image identity into /usr/lib/os-release
-    buildc fetch ...        download, verify against a hash, and place it
-    buildc validate-image   every check a built image has to pass
+`buildc plan --json` and `buildc verify` are the build's, and `os-release`,
+`fetch` and `validate-image` run only inside a build layer. See
+[the commands](docs/commands.md), which documents all of them, and how every
+command takes a flag for everything it needs.
 
 Data goes to stdout and diagnostics to stderr. Exit 1 is the invocation, exit
 2 the repository.
@@ -62,8 +63,8 @@ Data goes to stdout and diagnostics to stderr. Exit 1 is the invocation, exit
 
 There is no tagged release yet, so a repository cannot fetch a binary. Until
 there is one, run the local build against a repository with `--root`, and
-point `BUILDC_ASSETS` at this repository's `assets/` so `buildc init` can find the
-scaffolding it copies.
+point `BUILDC_ASSETS` at this repository's `assets/` so `buildc create repo` can
+find the scaffolding it copies.
 
 ## Developing
 

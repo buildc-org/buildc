@@ -177,7 +177,7 @@ fi
 
 # ---- the Containerfile the build actually uses ---------------------------
 ./scripts/fetch-modules.sh
-./scripts/buildc.sh generate
+./scripts/buildc.sh verify
 
 install -D -m755 "$(./scripts/buildc.sh --path)" out/buildc
 

@@ -34,17 +34,5 @@ echo "lint: ${#scripts[@]} scripts pass shellcheck and shfmt"
 
 ./scripts/buildc.sh check
 
-./scripts/buildc.sh generate > /dev/null
+./scripts/buildc.sh verify
 ./scripts/render-iso-config.sh > /dev/null
-
-if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-    echo "lint: the build files generate (no checkout, so no drift check)"
-else
-    drift="$(git status --porcelain -- generated)"
-    if [ -n "$drift" ]; then
-        echo "lint: generated/ does not match what the tree generates, stage it" >&2
-        printf '%s\n' "$drift" >&2
-        exit 1
-    fi
-    echo "lint: generated/ matches the committed files"
-fi

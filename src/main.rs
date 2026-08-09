@@ -255,8 +255,14 @@ fn main() -> ExitCode {
     print!("{}", run.stdout);
     if command == "check" {
         eprintln!(
-            "buildc: {} images, {} modules, {} flavours",
-            run.images, run.modules, run.flavours
+            "buildc: {} images, {} modules, {} flavours{}",
+            run.images,
+            run.modules,
+            run.flavours,
+            match run.suppressed {
+                0 => String::new(),
+                n => format!(", {n} the base already provides"),
+            }
         );
     }
     if command == "verify" {

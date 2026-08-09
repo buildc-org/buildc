@@ -176,7 +176,7 @@ if [ "$cache_from" = 1 ] || [ "$cache_to" = 1 ]; then
 fi
 
 # ---- the Containerfile the build actually uses ---------------------------
-./scripts/fetch-modules.sh
+./scripts/buildc.sh fetch modules
 ./scripts/buildc.sh verify
 
 install -D -m755 "$(./scripts/buildc.sh --path)" out/buildc

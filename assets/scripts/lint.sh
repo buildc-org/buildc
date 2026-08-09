@@ -30,7 +30,7 @@ shellcheck -s bash "${scripts[@]}"
 }
 echo "lint: ${#scripts[@]} scripts pass shellcheck and shfmt"
 
-./scripts/fetch-modules.sh
+./scripts/buildc.sh fetch modules
 
 ./scripts/buildc.sh check
 

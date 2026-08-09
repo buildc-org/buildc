@@ -9,7 +9,10 @@ const GITHUB: [&str; 3] = [
 ];
 
 pub fn namespace(root: &Path) -> Result<String, String> {
-    if let Some(set) = std::env::var("IMAGE_REGISTRY").ok().filter(|s| !s.is_empty()) {
+    if let Some(set) = std::env::var("IMAGE_REGISTRY")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
         return Ok(set.to_lowercase());
     }
     let url = origin(root)

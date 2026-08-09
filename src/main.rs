@@ -241,6 +241,19 @@ fn run() -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    if let ["fetch", "modules"] = words.as_slice() {
+        only(&given, &["root"], "fetch modules")?;
+        let root = repo_root(root_arg)?;
+        let (list, issues, context) = buildc::declarations(&root);
+        if issues.report(&context) {
+            return Ok(ExitCode::from(REPO_ERROR));
+        }
+        for line in buildc::fetch::modules(&root, &list)? {
+            eprintln!("buildc: {line}");
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
+
     let in_layer = match words.as_slice() {
         ["os-release"] => Some(buildc::runtime::os_release()),
         ["validate-image"] => Some(buildc::runtime::validate_image()),

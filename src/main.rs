@@ -1,6 +1,6 @@
-use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use buildc::prompt::Prompt;
 
 const USAGE: &str = "\
 usage: buildc [--root <dir>] <command>
@@ -81,22 +81,20 @@ fn take_flag(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, Strin
     Ok(value)
 }
 
-const OWNERSHIP: &str = "your account or org on github (not buildc-org)";
-
-fn ask(question: &str) -> Result<String, String> {
-    if !std::io::stdin().is_terminal() {
-        return Err(format!("nothing to read an answer from: {question}"));
-    }
-    print!("{question}: ");
-    std::io::stdout().flush().map_err(|err| err.to_string())?;
-    let mut answer = String::new();
-    std::io::stdin()
-        .read_line(&mut answer)
-        .map_err(|err| err.to_string())?;
-    Ok(answer.trim().to_string())
+fn take_switch(args: &mut Vec<String>, flag: &str) -> bool {
+    let before = args.len();
+    args.retain(|arg| arg != &format!("--{flag}"));
+    args.len() != before
 }
 
-fn init(args: &[&str], root_arg: Option<PathBuf>, owner: Option<String>) -> Result<(), String> {
+const OWNERSHIP: &str = "your account or org on github (not buildc-org)";
+
+fn init(
+    args: &[&str],
+    root_arg: Option<PathBuf>,
+    owner: Option<String>,
+    prompt: &Prompt,
+) -> Result<(), String> {
     let name = match args {
         [] => None,
         [name] => Some((*name).to_string()),
@@ -119,13 +117,7 @@ fn init(args: &[&str], root_arg: Option<PathBuf>, owner: Option<String>) -> Resu
             .ok_or_else(|| format!("cannot name an image after {}", root.display()))?,
     };
 
-    let owner = match owner {
-        Some(owner) => owner,
-        None => ask(&format!("owner, {OWNERSHIP}"))?,
-    };
-    if owner.is_empty() {
-        return Err(format!("`--owner` is {OWNERSHIP}"));
-    }
+    let owner = prompt.text(owner, &format!("owner, {OWNERSHIP}"), "`--owner`", None)?;
 
     let assets = buildc::init::assets()?;
     buildc::init::write(&root, &name, &owner, &assets)?;
@@ -142,7 +134,7 @@ fn init(args: &[&str], root_arg: Option<PathBuf>, owner: Option<String>) -> Resu
     Ok(())
 }
 
-fn import(name: &str, root: &Path) -> Result<ExitCode, String> {
+fn import(name: &str, root: &Path, prompt: &Prompt) -> Result<ExitCode, String> {
     let (sources, issues, context) = buildc::sources(root);
     if issues.report(&context) {
         return Ok(ExitCode::from(REPO_ERROR));
@@ -155,16 +147,18 @@ fn import(name: &str, root: &Path) -> Result<ExitCode, String> {
         many => {
             let owners: Vec<&str> = many.iter().map(|f| f.owner.as_str()).collect();
             let listed = owners.join(", ");
-            if !std::io::stdin().is_terminal() {
-                return Err(format!(
-                    "`{module}` is in {listed}; name which one, as `{}/{module}`",
-                    owners[0]
-                ));
-            }
-            let answer = ask(&format!("`{module}` is in {listed}; which one"))?;
-            many.iter()
-                .find(|f| f.owner == answer)
-                .ok_or_else(|| format!("`{answer}` is not one of {listed}"))?
+            let chosen = prompt
+                .choose(
+                    &format!("`{module}` is in {listed}; which one"),
+                    &owners.iter().map(|o| (*o).to_string()).collect::<Vec<_>>(),
+                )?
+                .ok_or_else(|| {
+                    format!(
+                        "`{module}` is in {listed}; name which one, as `{}/{module}`",
+                        owners[0]
+                    )
+                })?;
+            &many[chosen]
         }
     };
 
@@ -195,6 +189,7 @@ fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), Strin
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let prompt = Prompt::new(take_switch(&mut args, "no-tui"));
     let root_arg = match take_flag(&mut args, "root") {
         Ok(root) => root.map(PathBuf::from),
         Err(message) => return usage_error(message),
@@ -232,7 +227,7 @@ fn main() -> ExitCode {
 
     let rest: Vec<&str> = args[1..].iter().map(String::as_str).collect();
     if command == "init" {
-        return match init(&rest, root_arg, owner_arg) {
+        return match init(&rest, root_arg, owner_arg, &prompt) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => usage_error(message),
         };
@@ -292,7 +287,7 @@ fn main() -> ExitCode {
     };
 
     if command == "module" {
-        return match import(rest[1], &root) {
+        return match import(rest[1], &root, &prompt) {
             Ok(code) => code,
             Err(message) => usage_error(message),
         };

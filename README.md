@@ -32,6 +32,9 @@ This is the whole surface today. The rest of it is not built yet.
 
     buildc init [name]      write a new repository into --root, else a directory
                           named for the image, else here
+    buildc module import <name>
+                          copy a module out of a collection repo.kdl names,
+                          into modules/<owner>/<name>
     buildc check            validate every manifest, and say where and why
     buildc plan [--json]    every fact the repository derives, as one document
     buildc section [image]  the generated Containerfile module section

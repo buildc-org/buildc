@@ -1,5 +1,6 @@
 pub mod diag;
 pub mod emit;
+pub mod import;
 pub mod init;
 pub mod model;
 pub mod parse;
@@ -11,6 +12,7 @@ use diag::Issues;
 use diag::Source;
 use model::image::{List, REPO_FILE};
 use model::module::Module;
+use model::remote::Collection;
 use resolve::Resolved;
 use std::path::{Path, PathBuf};
 
@@ -18,6 +20,19 @@ pub fn find_root(from: &Path) -> Option<PathBuf> {
     from.ancestors()
         .find(|dir| dir.join(REPO_FILE).is_file())
         .map(Path::to_path_buf)
+}
+
+pub fn sources(root: &Path) -> (Vec<Collection>, Issues, String) {
+    let (list, issues) = List::load(root);
+    let context = context(&list, root);
+    (list.sources, issues, context)
+}
+
+fn context(list: &List, root: &Path) -> String {
+    match list.files.is_empty() {
+        true => root.display().to_string(),
+        false => list.files.join(", "),
+    }
 }
 
 pub struct Run {
@@ -51,11 +66,7 @@ fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
 
 pub fn run(command: &str, image_arg: Option<&str>, root: &Path) -> Run {
     let (mut list, mut issues) = List::load(root);
-    let context = if list.files.is_empty() {
-        root.display().to_string()
-    } else {
-        list.files.join(", ")
-    };
+    let context = context(&list, root);
 
     let workflows = resolve::workflow::resolve(&list, root, &mut issues);
     let disk = parse::disk::Disk::scan(root, &mut issues);

@@ -32,11 +32,11 @@ fn capture(name: &str, root: &Path) {
         &buildc::run("check", None, here).issues.plain(),
     );
 
-    let mut scripts = String::new();
+    let mut generated = String::new();
     for (path, body) in &buildc::run("generate", None, here).files {
-        scripts.push_str(&format!("==== {}\n{body}", path.display()));
+        generated.push_str(&format!("==== {}\n{body}", path.display()));
     }
-    compare(name, "modules.txt", &scripts);
+    compare(name, "generated.txt", &generated);
 }
 
 fn init_repo() -> PathBuf {

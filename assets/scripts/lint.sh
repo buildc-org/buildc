@@ -34,7 +34,7 @@ echo "lint: ${#scripts[@]} scripts pass shellcheck and shfmt"
 
 ./scripts/buildc.sh check
 
-./scripts/gen-containerfile.sh > /dev/null
+./scripts/buildc.sh generate > /dev/null
 ./scripts/render-iso-config.sh > /dev/null
 
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then

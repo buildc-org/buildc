@@ -4,7 +4,44 @@ use crate::model::module::Module;
 use crate::parse::disk::MODULE_SLOT;
 use crate::resolve::collect::Collection;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+pub const SKELETON: &str = "scripts/Containerfile.skeleton";
+pub const BEGIN: &str = "# ---- BEGIN GENERATED (build phases and modules) ----";
+pub const END: &str = "# ---- END GENERATED ----";
+
+pub fn path(image: &Image) -> PathBuf {
+    PathBuf::from("generated").join(&image.id)
+}
+
+pub fn file(skeleton: &str, image: &Image, section: &str) -> String {
+    let mut out = String::new();
+    let mut lines = skeleton.lines().peekable();
+    if lines.peek().is_some_and(|l| l.starts_with("# syntax=")) {
+        let _ = writeln!(out, "{}", lines.next().unwrap_or_default());
+    }
+    let _ = write!(
+        out,
+        "# GENERATED FILE, do not edit. Produced by `buildc generate` from\n\
+         # {SKELETON} and the {} image definition.\n\n",
+        image.id
+    );
+
+    let mut generated = false;
+    for line in lines {
+        if line == END {
+            generated = false;
+        }
+        if !generated {
+            let _ = writeln!(out, "{line}");
+        }
+        if line == BEGIN {
+            let _ = write!(out, "\n{section}");
+            generated = true;
+        }
+    }
+    out
+}
 
 const FLAVOUR_ARG: &str = "\
 # ---- flavour gate ----

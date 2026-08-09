@@ -176,7 +176,8 @@ if [ "$cache_from" = 1 ] || [ "$cache_to" = 1 ]; then
 fi
 
 # ---- the Containerfile the build actually uses ---------------------------
-./scripts/gen-containerfile.sh
+./scripts/fetch-modules.sh
+./scripts/buildc.sh generate
 
 install -D -m755 "$(./scripts/buildc.sh --path)" out/buildc
 

@@ -131,10 +131,13 @@ fn init(args: &[&str], root_arg: Option<PathBuf>, owner: Option<String>) -> Resu
 fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
     if let Ok(entries) = std::fs::read_dir(root.join("generated")) {
         for entry in entries.flatten() {
-            if entry.path().extension().is_some_and(|e| e == "d") {
-                std::fs::remove_dir_all(entry.path())
-                    .map_err(|err| format!("{}: {err}", entry.path().display()))?;
-            }
+            let path = entry.path();
+            let result = match path.extension() {
+                Some(ext) if ext == "d" => std::fs::remove_dir_all(&path),
+                None if path.is_file() => std::fs::remove_file(&path),
+                _ => continue,
+            };
+            result.map_err(|err| format!("{}: {err}", path.display()))?;
         }
     }
     for (path, text) in files {

@@ -38,9 +38,10 @@ This is the whole surface today. The rest of it is not built yet.
     buildc create module [name]
                           write a module, with the packages it installs, and
                           offer to list it in an image
-    buildc import module <name>
+    buildc import module [name]
                           copy a module out of a collection repo.kdl names,
-                          into modules/<owner>/<name>
+                          into modules/<owner>/<name>, choosing from what the
+                          collections hold when no name is given
     buildc check            validate every manifest, and say where and why
     buildc generate         write the Containerfile per image, the per-module
                           build scripts and the graph, under generated/

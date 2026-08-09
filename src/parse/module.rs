@@ -695,6 +695,24 @@ impl Module {
     }
 }
 
+pub fn summary(file: &Path) -> (String, Vec<String>) {
+    let Some(doc) = std::fs::read_to_string(file)
+        .ok()
+        .and_then(|text| text.parse::<KdlDocument>().ok())
+    else {
+        return (String::new(), Vec::new());
+    };
+    let strings = |name: &str| -> Vec<String> {
+        doc.nodes()
+            .iter()
+            .filter(|node| node.name().value() == name)
+            .flat_map(KdlNode::entries)
+            .filter_map(|entry| entry.value().as_string().map(str::to_string))
+            .collect()
+    };
+    (strings("description").join(" "), strings("requires"))
+}
+
 pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues) {
     let listed: BTreeSet<String> = list
         .images

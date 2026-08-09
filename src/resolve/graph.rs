@@ -1,9 +1,47 @@
 use crate::diag::{Issue, Issues};
-use crate::model::image::Image;
-use crate::model::module::Module;
+use crate::model::image::{Entry, Image};
+use crate::model::module::{Decl, Module};
 use crate::parse::disk::Disk;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+
+pub fn suppress(image: &mut Image) {
+    let base: BTreeSet<String> = image
+        .base
+        .iter()
+        .flat_map(|b| b.provides.iter().chain(b.provides_files.iter()))
+        .map(|decl| decl.name.clone())
+        .collect();
+    if base.is_empty() {
+        return;
+    }
+    let (suppressed, kept): (Vec<Entry>, Vec<Entry>) = image
+        .entries
+        .drain(..)
+        .partition(|entry| covered(entry, &base));
+    image.entries = kept;
+    image.suppressed = suppressed;
+}
+
+fn covered(entry: &Entry, base: &BTreeSet<String>) -> bool {
+    let Some(module) = &entry.module else {
+        return false;
+    };
+    let mut decls = provided(module).peekable();
+    decls.peek().is_some() && decls.all(|decl| base.contains(&decl.name))
+}
+
+fn provided(module: &Module) -> impl Iterator<Item = &Decl> {
+    module.provides.iter().chain(module.provides_files.iter())
+}
+
+fn names(decls: &[&Decl]) -> String {
+    decls
+        .iter()
+        .map(|decl| format!("`{}`", decl.name))
+        .collect::<Vec<String>>()
+        .join(", ")
+}
 
 pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues) {
     let mut offered: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
@@ -20,35 +58,28 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
         .map(|decl| (decl.name.as_str(), decl))
         .collect();
 
-    for cap in base_caps.keys() {
-        let Some(providers) = offered.get(cap) else {
+    for module in image.modules() {
+        let (covered, rest): (Vec<&Decl>, Vec<&Decl>) =
+            provided(module).partition(|decl| base_caps.contains_key(decl.name.as_str()));
+        let (Some(first), Some(_)) = (covered.first(), rest.first()) else {
             continue;
         };
-        for module in providers {
-            issues.push(
-                Issue::new(
-                    format!(
-                        "`{}` provides `{cap}`, which the base image already provides",
-                        module.path
-                    ),
-                    &module.src,
-                )
-                .at(
-                    module
-                        .provides
-                        .iter()
-                        .chain(module.provides_files.iter())
-                        .find(|d| &d.name == cap)
-                        .map(|d| d.span)
-                        .unwrap_or_default(),
-                    "already provided by the base",
-                )
-                .help(format!(
-                    "the `base` node in {} declares it. Drop it from the module, or drop it from the base if the base no longer carries it",
-                    image.src.name()
-                )),
-            );
-        }
+        issues.push(
+            Issue::new(
+                format!(
+                    "`{}` provides {}, which the base image already provides",
+                    module.path,
+                    names(&covered)
+                ),
+                &module.src,
+            )
+            .at(first.span, "already provided by the base")
+            .help(format!(
+                "a module the base covers entirely is suppressed instead. This one also provides {}, so its layer still builds and would provision {} a second time: split it, or drop the declaration",
+                names(&rest),
+                names(&covered)
+            )),
+        );
     }
 
     let base_family = image

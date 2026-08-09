@@ -48,6 +48,7 @@ pub struct Image {
     pub base: Option<Base>,
     pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
+    pub suppressed: Vec<Entry>,
     pub span: Span,
 }
 

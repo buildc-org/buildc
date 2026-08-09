@@ -1,4 +1,4 @@
-use crate::model::image::{is_flavour_name, REPO_FILE, SCHEMA_VERSION};
+use crate::model::image::{is_name, REPO_FILE, SCHEMA_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -34,7 +34,7 @@ pub fn assets() -> Result<PathBuf, String> {
 
 pub fn id(name: &str) -> Result<String, String> {
     let id = name.to_lowercase().replace(' ', "-");
-    if !is_flavour_name(&id) {
+    if !is_name(&id) {
         return Err(format!(
             "`{name}` does not derive a usable image name: lowercase letters, digits and \
              dashes, starting with a letter"

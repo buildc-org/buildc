@@ -9,7 +9,7 @@ pub const NO_FLAVOUR: &str = "none";
 
 pub const REPO_FILE: &str = "repo.kdl";
 
-pub fn is_flavour_name(name: &str) -> bool {
+pub fn is_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() => {}

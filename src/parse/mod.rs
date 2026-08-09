@@ -7,8 +7,23 @@ pub mod remote;
 pub mod repo;
 pub mod schema;
 
-use crate::diag::{Issue, Source, Span};
+use crate::diag::{Issue, Issues, Source, Span};
+use crate::model::image::is_name;
 use kdl::KdlNode;
+
+pub(crate) fn check_capability(name: &str, span: Span, src: &Source, issues: &mut Issues) {
+    if is_name(name) {
+        return;
+    }
+    issues.push(
+        Issue::new(format!("invalid capability name `{name}`"), src)
+            .at(span, "lowercase, digits and dashes, starting with a letter")
+            .help(
+                "the name is written into the generated graph as a mermaid label and a markdown \
+                 table cell, neither of which quotes anything",
+            ),
+    );
+}
 
 pub(crate) fn syntax_issue(err: &kdl::KdlError, file: &str, src: &Source) -> Issue {
     let mut issue = Issue::new(format!("{file} is not valid KDL"), src);

@@ -306,16 +306,22 @@ fn main() -> ExitCode {
     }
     print!("{}", run.stdout);
     if command == "check" {
-        eprintln!(
-            "buildc: {} images, {} modules, {} flavours{}",
-            run.images,
-            run.modules,
-            run.flavours,
-            match run.suppressed {
-                0 => String::new(),
-                n => format!(", {n} the base already provides"),
-            }
-        );
+        match run.images {
+            0 => eprintln!("buildc: no image yet; `buildc create image <name>` writes one"),
+            _ => eprintln!(
+                "buildc: {} images, {} modules, {} flavours{}",
+                run.images,
+                run.modules,
+                run.flavours,
+                match run.suppressed {
+                    0 => String::new(),
+                    n => format!(", {n} the base already provides"),
+                }
+            ),
+        }
+    }
+    if command == "generate" && run.files.is_empty() {
+        eprintln!("buildc: nothing to generate; `buildc create image <name>` writes an image");
     }
     if command == "verify" {
         let count = run.files.len();

@@ -1,6 +1,7 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::image::{List, WorkflowToggle, REPO_FILE, SCHEMA_VERSION};
 use crate::parse::image::IMAGE;
+use crate::parse::remote::{parse_collection, COLLECTION};
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
 use crate::parse::{boolean, int_arg, kids, string_arg, syntax_issue};
 use kdl::{KdlDocument, KdlNode};
@@ -43,10 +44,16 @@ pub const REPO: Node = Node::new("repo",
                     ], Say::new("unknown workflow property `{}`", "not part of the schema",
                         "a workflow accepts `enabled`")),
             ], Say::NONE),
+        Node::new("sources",
+            "The module collections `buildc module import` resolves a name against.")
+            .once("a second block would split one registry in two")
+            .empty(Say::new("`sources` has no collections in it", "empty block",
+                "omit the block entirely; a repository with nothing here imports from nothing"))
+            .children(&[COLLECTION], Say::NONE),
     ], Say::new("unknown node `{}` in repo.kdl", "not part of the schema",
-        "repo.kdl holds `schema-version`, `default-image`, `pr-image` and a `workflows` block: \
-         what is true of the repository rather than of any image in it. An image goes in a file \
-         of its own"));
+        "repo.kdl holds `schema-version`, `default-image`, `pr-image`, a `workflows` block and a \
+         `sources` block: what is true of the repository rather than of any image in it. An image \
+         goes in a file of its own"));
 
 #[rustfmt::skip]
 const IMAGE_FILE: Node = Node::new("image file", "One image, in a file of its own.")
@@ -107,6 +114,7 @@ impl List {
         List {
             images: Vec::new(),
             workflows: Vec::new(),
+            sources: Vec::new(),
             default_image_id: None,
             pr_image_id: None,
             schema_version: None,
@@ -195,6 +203,7 @@ impl List {
             match (is_repo, node.name().value()) {
                 (false, "image") => self.parse_image(node, src, issues),
                 (true, "workflows") => self.parse_workflows(node, src, issues),
+                (true, "sources") => self.parse_sources(node, src, issues),
                 (true, "default-image") => {
                     self.default_image_id = string_arg(node).map(str::to_string);
                 }
@@ -345,6 +354,27 @@ impl List {
             }
         }
     }
+
+    fn parse_sources(&mut self, block: &KdlNode, src: &Source, issues: &mut Issues) {
+        for node in kids(block) {
+            let Some(collection) = parse_collection(node, src, issues) else {
+                continue;
+            };
+            if let Some(dup) = self.sources.iter().find(|c| c.name == collection.name) {
+                issues.push(
+                    Issue::new(
+                        format!("collection `{}` is declared twice", collection.name),
+                        src,
+                    )
+                    .at(dup.span, "first here")
+                    .at(collection.span, "and again here")
+                    .help("both would import into the same directory, so one of them would be shadowed silently"),
+                );
+                continue;
+            }
+            self.sources.push(collection);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -401,5 +431,29 @@ colour "blue"
     fn an_empty_workflows_block_is_a_block_with_nothing_in_it() {
         let found = messages("schema-version 1\nworkflows { }\n");
         assert_eq!(found, ["`workflows` has no workflows in it"]);
+    }
+
+    #[test]
+    fn a_collection_is_a_location_and_what_pins_it() {
+        let found = messages(
+            r#"
+schema-version 1
+sources {
+    owner "https://host/owner/modules/{ref}.tar.gz" branch="main" {
+        ref "v1"
+        ref "v2"
+        subtree "modules"
+    }
+}
+"#,
+        );
+        assert_eq!(
+            found,
+            [
+                "unknown collection property `branch`",
+                "`ref` is declared twice",
+                "unknown node `subtree` in a collection",
+            ]
+        );
     }
 }

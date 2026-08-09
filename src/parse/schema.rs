@@ -135,6 +135,10 @@ pub fn check_doc(doc: &KdlDocument, schema: &Node, src: &Source, issues: &mut Is
 
 pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
     let here: Span = node.name().span().into();
+    let about = match schema.name.is_empty() {
+        true => node.name().value(),
+        false => schema.name,
+    };
     match schema.arg {
         Arg::None => {
             if let Some(stray) = string_arg(node) {
@@ -143,22 +147,22 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
         }
         Arg::Str => {
             if string_arg(node).is_none_or(str::is_empty) {
-                schema.arg_say.raise(schema.name, here, src, issues);
+                schema.arg_say.raise(about, here, src, issues);
             }
         }
         Arg::Bool => {
             if bool_arg(node).is_none() {
-                schema.arg_say.raise(schema.name, here, src, issues);
+                schema.arg_say.raise(about, here, src, issues);
             }
         }
         Arg::Int => {
             if int_arg(node).is_none() {
-                schema.arg_say.raise(schema.name, here, src, issues);
+                schema.arg_say.raise(about, here, src, issues);
             }
         }
         Arg::Strs => {
             if string_args(node).is_empty() {
-                schema.arg_say.raise(schema.name, here, src, issues);
+                schema.arg_say.raise(about, here, src, issues);
             }
         }
     }

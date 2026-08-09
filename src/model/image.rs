@@ -1,7 +1,7 @@
 use crate::diag::{Source, Span};
 use crate::model::module::Module;
 use crate::model::options::Value;
-use crate::model::remote::{Remote, REMOTE_DIR};
+use crate::model::remote::{Collection, Remote, REMOTE_DIR};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -101,6 +101,7 @@ impl Entry {
 pub struct List {
     pub images: Vec<Image>,
     pub workflows: Vec<WorkflowToggle>,
+    pub sources: Vec<Collection>,
     pub default_image_id: Option<String>,
     pub pr_image_id: Option<String>,
     pub schema_version: Option<u32>,

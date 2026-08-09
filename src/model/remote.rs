@@ -15,3 +15,23 @@ impl Remote {
         self.url.replace("{ref}", &self.git_ref)
     }
 }
+
+pub struct Collection {
+    pub name: String,
+    pub at: At,
+    pub span: Span,
+}
+
+pub enum At {
+    Dir(String),
+    Archive(Remote),
+}
+
+impl Collection {
+    pub fn subtree(&self) -> Option<&str> {
+        match &self.at {
+            At::Dir(_) => None,
+            At::Archive(remote) => remote.path.as_deref(),
+        }
+    }
+}

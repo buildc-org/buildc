@@ -6,9 +6,47 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const COSIGN_PUB: &str = "/etc/pki/containers/cosign.pub";
 const SB_CERT: &str = "/usr/share/secureboot/sb_cert.der";
 
+const COSIGN_KEY: &str = "cosign.key";
 const MOK_PRIV: &str = "MOK.priv";
+
+pub fn cosign(root: &Path, module: Option<String>, prompt: &Prompt) -> Result<(), String> {
+    let dir = provider(root, COSIGN_PUB, module, prompt)?;
+    let public = overlay(root, &dir, COSIGN_PUB);
+    let private = root.join(COSIGN_KEY);
+    unwritten(&public)?;
+    unwritten(&private)?;
+
+    let work = workspace("cosign")?;
+    let mut generate = Command::new("cosign");
+    generate
+        .arg("generate-key-pair")
+        .current_dir(&work)
+        .env("COSIGN_PASSWORD", "");
+    finish(
+        generate,
+        "cosign",
+        "get it from https://github.com/sigstore/cosign/releases, or `dnf install cosign`",
+    )?;
+
+    install(&work.join("cosign.pub"), &public, 0o644)?;
+    install(&work.join("cosign.key"), &private, 0o600)?;
+    let _ = std::fs::remove_dir_all(&work);
+
+    println!("wrote {}", shown(root, &public));
+    println!("wrote {COSIGN_KEY}");
+    println!(
+        "\nthe key carries no password, which is what the build workflow decrypts it with.\n\n\
+         next:\n\
+         \x20 commit {}\n\
+         \x20 gh secret set SIGNING_SECRET < {COSIGN_KEY}\n",
+        shown(root, &public)
+    );
+    warn_unignored(root, COSIGN_KEY);
+    Ok(())
+}
 
 pub fn mok(
     root: &Path,
@@ -91,7 +129,7 @@ fn provider(
     match found.as_slice() {
         [] => Err(format!(
             "no module declares `provides-file \"{path}\"`, and that module is where \
-             the certificate goes; write or import one first"
+             the public half goes; write or import one first"
         )),
         [one] => Ok(one.clone()),
         many => {

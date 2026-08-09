@@ -41,6 +41,21 @@ fn init_repo() -> PathBuf {
 }
 
 #[test]
+fn schema_doc() {
+    let path = crate_dir().join("docs/schema.md");
+    let doc = std::fs::read_to_string(&path).expect("docs/schema.md exists");
+    let rendered = buildc::emit::schema_md::render(&doc).unwrap_or_else(|err| panic!("{err}"));
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&path, rendered).unwrap();
+        return;
+    }
+    assert!(
+        doc == rendered,
+        "docs/schema.md is stale. Rerun with UPDATE_GOLDEN=1 and read the diff"
+    );
+}
+
+#[test]
 fn golden() {
     let dir = crate_dir().join("tests/repos");
     let mut names: Vec<String> = std::fs::read_dir(&dir)

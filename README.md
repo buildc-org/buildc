@@ -35,8 +35,11 @@ This is the whole surface today. The rest of it is not built yet.
     buildc check            validate every manifest, and say where and why
     buildc plan [--json]    every fact the repository derives, as one document
     buildc section [image]  the generated Containerfile module section
-    buildc generate         write the Containerfile per image and the per-module
-                          build scripts, under generated/
+    buildc graph [--format md|json]
+                          the capability graph, as markdown holding a mermaid
+                          diagram, or as JSON
+    buildc generate         write the Containerfile per image, the per-module
+                          build scripts and the graph, under generated/
     buildc verify           re-emit all of that and compare it against what is
                           committed under generated/
 

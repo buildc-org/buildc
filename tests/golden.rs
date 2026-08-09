@@ -42,7 +42,16 @@ fn capture(name: &str, root: &Path) {
 fn init_repo(name: &str) -> PathBuf {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&root);
-    buildc::init::write(&root, "Example", "someone", &crate_dir().join("assets")).unwrap();
+    std::env::set_var("BUILDC_ASSETS", crate_dir().join("assets"));
+    buildc::create::repo(
+        Some("Example".into()),
+        Some("someone".into()),
+        Some("Example".into()),
+        None,
+        Some(root.clone()),
+        &buildc::prompt::Prompt::silent(),
+    )
+    .unwrap();
     root
 }
 

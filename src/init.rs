@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 
 const INSTALLED: &str = "/usr/share/buildc/assets";
 
-const BASE: &str = "quay.io/fedora/fedora-bootc:44";
-
 pub fn assets() -> Result<PathBuf, String> {
     let mut tried: Vec<PathBuf> = Vec::new();
     if let Some(dir) = std::env::var_os("BUILDC_ASSETS") {
@@ -43,8 +41,7 @@ pub fn id(name: &str) -> Result<String, String> {
     Ok(id)
 }
 
-pub fn write(root: &Path, name: &str, owner: &str, assets: &Path) -> Result<(), String> {
-    let id = id(name)?;
+pub fn write(root: &Path, name: &str, assets: &Path) -> Result<(), String> {
     if root.join(REPO_FILE).exists() {
         return Err(format!("{} is already a repository", root.display()));
     }
@@ -54,31 +51,12 @@ pub fn write(root: &Path, name: &str, owner: &str, assets: &Path) -> Result<(), 
         &root.join(REPO_FILE),
         &format!("schema-version {SCHEMA_VERSION}\n"),
     )?;
-    put(&root.join("image.kdl"), &image_kdl(name, &id, owner))?;
     put(&root.join("README.md"), &format!("# {name}\n"))?;
     put(&root.join("modules/.gitkeep"), "")?;
     Ok(())
 }
 
-fn image_kdl(name: &str, id: &str, owner: &str) -> String {
-    format!(
-        "image {{\n\
-         \x20   name \"{name}\"\n\
-         \x20   url \"https://github.com/{owner}/{id}\"\n\
-         \x20   issues-url \"https://github.com/{owner}/{id}/issues\"\n\
-         \n\
-         \x20   base \"{BASE}\" {{\n\
-         \x20       family \"fedora\"\n\
-         \x20       provides \"rechunking\" \"initramfs-generation\" \"mac-policy\"\n\
-         \x20   }}\n\
-         \n\
-         \x20   modules {{\n\
-         \x20   }}\n\
-         }}\n"
-    )
-}
-
-fn put(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn put(path: &Path, text: &str) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     }

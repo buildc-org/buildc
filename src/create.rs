@@ -60,7 +60,7 @@ pub fn image(
     owner: Option<&str>,
     flag: &str,
     prompt: &Prompt,
-) -> Result<String, String> {
+) -> Result<(), String> {
     let name = prompt.text(name, "image name", flag, None)?;
     let id = crate::init::id(&name)?;
     let base = prompt.text(base, "base image", "`--base`", Some(BASE))?;
@@ -71,7 +71,7 @@ pub fn image(
     }
     crate::init::put(&file, &image_kdl(&name, &id, owner, &base))?;
     println!("wrote {}", file.display());
-    Ok(id)
+    Ok(())
 }
 
 pub fn module(

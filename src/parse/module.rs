@@ -151,7 +151,7 @@ pub const MODULE: Node = Node::new("module",
                         "a family entry in `packages` accepts `enablerepo`")),
             ], Say::NONE),
     ], Say::new("unknown node `{}`", "not part of the schema",
-        "SCHEMA.md documents every node a manifest may hold"));
+        "docs/schema.md documents every node a manifest may hold"));
 
 enum Priority {
     Missing,

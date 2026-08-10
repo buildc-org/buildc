@@ -132,8 +132,10 @@ fn repo_root(given: Option<PathBuf>) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("no repo.kdl in {} or any parent directory", here.display()))
 }
 
-fn refused(root: &Path) -> bool {
-    buildc::compatible(root).report(&root.join("repo.kdl").display().to_string())
+fn open(given: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    let root = repo_root(given)?;
+    let refused = buildc::compatible(&root).report(&root.join("repo.kdl").display().to_string());
+    Ok((!refused).then_some(root))
 }
 
 fn import(
@@ -281,10 +283,9 @@ fn run() -> Result<ExitCode, String> {
         ["create", "image", rest @ ..] => {
             args.only(&["root", "owner", "base"], "create image")?;
             let name = one_name(rest, "create image")?;
-            let root = repo_root(root_arg)?;
-            if refused(&root) {
+            let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
-            }
+            };
             buildc::create::image(
                 &root,
                 name,
@@ -298,28 +299,25 @@ fn run() -> Result<ExitCode, String> {
         ["create", "module", rest @ ..] => {
             args.only(&["root", "image", "pkg", "with"], "create module")?;
             let name = one_name(rest, "create module")?;
-            let root = repo_root(root_arg)?;
-            if refused(&root) {
+            let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
-            }
+            };
             buildc::create::module(&root, name, pkgs, with, image_arg, &prompt)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "cosign-key"] => {
             args.only(&["root", "module"], "create cosign-key")?;
-            let root = repo_root(root_arg)?;
-            if refused(&root) {
+            let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
-            }
+            };
             buildc::key::cosign(&root, module_arg, &prompt)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "mok-key"] => {
             args.only(&["root", "module", "cn"], "create mok-key")?;
-            let root = repo_root(root_arg)?;
-            if refused(&root) {
+            let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
-            }
+            };
             buildc::key::mok(&root, module_arg, cn, &prompt)?;
             return Ok(ExitCode::SUCCESS);
         }

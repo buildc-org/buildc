@@ -43,7 +43,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<bool, String> {
     for line in crate::fetch::modules(root, &list)? {
         eprintln!("buildc: {line}");
     }
-    let gate = crate::run("verify", None, root);
+    let gate = crate::run(crate::Command::Verify, None, root);
     if gate.issues.report(&gate.context) {
         return Ok(true);
     }

@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use buildc::Command;
 
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,21 +25,21 @@ fn capture(name: &str, root: &Path) {
     std::env::set_current_dir(root).expect("fixture root exists");
     let here = Path::new(".");
     for (command, file) in [
-        ("plan", "plan.json"),
-        ("section", "section.txt"),
-        ("summary", "summary.md"),
-        ("sbom", "sbom.json"),
+        (Command::Plan, "plan.json"),
+        (Command::Section, "section.txt"),
+        (Command::Summary, "summary.md"),
+        (Command::Sbom, "sbom.json"),
     ] {
         compare(name, file, &buildc::run(command, None, here).stdout);
     }
     compare(
         name,
         "issues.txt",
-        &buildc::run("check", None, here).issues.plain(),
+        &buildc::run(Command::Check, None, here).issues.plain(),
     );
 
     let mut generated = String::new();
-    for (path, body) in &buildc::run("generate", None, here).files {
+    for (path, body) in &buildc::run(Command::Generate, None, here).files {
         generated.push_str(&format!("==== {}\n{body}", path.display()));
     }
     compare(name, "generated.txt", &generated);
@@ -63,12 +64,12 @@ fn init_repo(name: &str) -> PathBuf {
 fn verify(name: &str, root: &Path) {
     std::env::set_current_dir(root).expect("fixture root exists");
     let here = Path::new(".");
-    let run = buildc::run("generate", None, here);
+    let run = buildc::run(Command::Generate, None, here);
     for (path, body) in &run.files {
         std::fs::create_dir_all(path.parent().expect("a file under generated/")).unwrap();
         std::fs::write(path, body).unwrap();
     }
-    let issues = || buildc::run("verify", None, here).issues.plain();
+    let issues = || buildc::run(Command::Verify, None, here).issues.plain();
 
     let mut out = format!("==== as generated\n{}", issues());
 
@@ -123,7 +124,7 @@ fn create(name: &str, root: &Path) {
     }
     out.push_str(&format!(
         "==== check\n{}",
-        buildc::run("check", None, here).issues.plain()
+        buildc::run(Command::Check, None, here).issues.plain()
     ));
     compare(name, "create.txt", &out);
 }
@@ -187,7 +188,7 @@ fn import(name: &str, root: &Path) {
 
     out.push_str(&format!(
         "==== check\n{}",
-        buildc::run("check", None, here).issues.plain()
+        buildc::run(Command::Check, None, here).issues.plain()
     ));
     compare(name, "import.txt", &out);
 }
@@ -207,19 +208,25 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
 fn no_default(root: &Path) {
     std::env::set_current_dir(root).expect("fixture root exists");
     let here = Path::new(".");
-    for quiet in ["check", "generate"] {
+    for quiet in [Command::Check, Command::Generate] {
         let issues = buildc::run(quiet, None, here).issues.plain();
-        assert!(issues.is_empty(), "{quiet} reported {issues}");
+        assert!(issues.is_empty(), "{quiet:?} reported {issues}");
     }
-    for quiet in [("section", "server"), ("graph", "server")] {
-        let issues = buildc::run(quiet.0, Some(quiet.1), here).issues.plain();
-        assert!(issues.is_empty(), "{} reported {issues}", quiet.0);
+    for quiet in [Command::Section, Command::Graph] {
+        let issues = buildc::run(quiet, Some("server"), here).issues.plain();
+        assert!(issues.is_empty(), "{quiet:?} reported {issues}");
     }
-    for loud in ["plan", "section", "graph", "summary", "sbom"] {
+    for loud in [
+        Command::Plan,
+        Command::Section,
+        Command::Graph,
+        Command::Summary,
+        Command::Sbom,
+    ] {
         let issues = buildc::run(loud, None, here).issues.plain();
         assert!(
             issues.contains("2 images are declared and none is the default"),
-            "{loud} reported {issues}"
+            "{loud:?} reported {issues}"
         );
     }
 }

@@ -25,6 +25,53 @@ pub use parse::repo::compatible;
 use resolve::Resolved;
 use std::path::{Path, PathBuf};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Command {
+    Plan,
+    Check,
+    Generate,
+    Verify,
+    Section,
+    Graph,
+    GraphJson,
+    Summary,
+    Sbom,
+}
+
+pub enum Arg {
+    Image,
+    Target,
+}
+
+impl Command {
+    pub fn parse(word: &str) -> Option<Self> {
+        Some(match word {
+            "plan" => Self::Plan,
+            "check" => Self::Check,
+            "generate" => Self::Generate,
+            "verify" => Self::Verify,
+            "section" => Self::Section,
+            "graph" => Self::Graph,
+            "summary" => Self::Summary,
+            "sbom" => Self::Sbom,
+            _ => return None,
+        })
+    }
+
+    pub fn arg(self) -> Option<Arg> {
+        match self {
+            Self::Plan
+            | Self::Check
+            | Self::Generate
+            | Self::Verify
+            | Self::Graph
+            | Self::GraphJson => None,
+            Self::Section => Some(Arg::Image),
+            Self::Summary | Self::Sbom => Some(Arg::Target),
+        }
+    }
+}
+
 pub fn find_root(from: &Path) -> Option<PathBuf> {
     from.ancestors()
         .find(|dir| dir.join(REPO_FILE).is_file())
@@ -123,9 +170,9 @@ pub(crate) fn load(root: &Path) -> Loaded {
     }
 }
 
-pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
-    let (target_arg, image_arg) = match command {
-        "summary" | "sbom" => (arg, None),
+pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
+    let (target_arg, image_arg) = match command.arg() {
+        Some(Arg::Target) => (arg, None),
         _ => (None, arg),
     };
     let Loaded {
@@ -155,10 +202,10 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
         );
     }
     let needs_default = match command {
-        "summary" | "sbom" => target_arg.is_none(),
-        "graph" | "graph-json" | "section" => image_arg.is_none(),
-        "plan" => true,
-        _ => false,
+        Command::Summary | Command::Sbom => target_arg.is_none(),
+        Command::Graph | Command::GraphJson | Command::Section => image_arg.is_none(),
+        Command::Plan => true,
+        Command::Check | Command::Generate | Command::Verify => false,
     };
     if needs_default {
         if let Some(issue) = list.no_default() {
@@ -180,7 +227,7 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
     let skeleton = skeleton(root, &mut issues);
 
     let mut files: Vec<(PathBuf, String)> = Vec::new();
-    if matches!(command, "generate" | "verify") {
+    if matches!(command, Command::Generate | Command::Verify) {
         for (image, resolved) in list.images.iter().zip(&resolved) {
             if let Some(skeleton) = &skeleton {
                 let section = emit::containerfile::section(image, &resolved.collected, root);
@@ -199,38 +246,38 @@ pub fn run(command: &str, arg: Option<&str>, root: &Path) -> Run {
         }
     }
 
-    if command == "verify" {
+    if command == Command::Verify {
         verify(root, &files, &mut issues);
     }
 
     let stdout = match command {
-        "plan" => emit::plan::build(&list, &resolved, &workflows).render(),
-        "summary" => target
+        Command::Plan => emit::plan::build(&list, &resolved, &workflows).render(),
+        Command::Summary => target
             .and_then(|name| emit::summary::render(&list, &name))
             .unwrap_or_default(),
-        "sbom" => target
+        Command::Sbom => target
             .and_then(|name| emit::sbom::build(&list, &name))
             .map(|json| json.render())
             .unwrap_or_default(),
-        "graph" | "graph-json" => match one {
+        Command::Graph | Command::GraphJson => match one {
             Some(i) => {
                 let graph = emit::graph::of(&list.images[i]);
                 match command {
-                    "graph" => graph.markdown(),
+                    Command::Graph => graph.markdown(),
                     _ => graph.json().render(),
                 }
             }
             None => String::new(),
         },
-        "section" => match one {
+        Command::Section => match one {
             Some(i) => emit::containerfile::section(&list.images[i], &resolved[i].collected, root),
             None => String::new(),
         },
-        "generate" => files
+        Command::Generate => files
             .iter()
             .map(|(path, _)| format!("{}\n", path.display()))
             .collect(),
-        _ => String::new(),
+        Command::Check | Command::Verify => String::new(),
     };
 
     Run {

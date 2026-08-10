@@ -1,4 +1,4 @@
-use crate::diag::{Source, Span};
+use crate::diag::{Issue, Source, Span};
 use crate::model::module::Module;
 use crate::model::options::Value;
 use crate::model::remote::{Collection, Remote, REMOTE_DIR};
@@ -146,6 +146,25 @@ impl List {
                 _ => None,
             },
         }
+    }
+
+    pub fn no_default(&self) -> Option<Issue> {
+        let first = self.images.first().filter(|_| self.images.len() > 1)?;
+        self.default_image_id.is_none().then(|| {
+            Issue::new(
+                format!(
+                    "{} images are declared and none is the default",
+                    self.images.len()
+                ),
+                &self.repo_src,
+            )
+            .help(format!(
+                "the default image is what a command given no image answers about, and what a \
+                 bare `buildc build` builds; a repository with one image falls back to that one, \
+                 and a repository with more says which: `default-image \"{}\"` in {REPO_FILE}",
+                first.id
+            ))
+        })
     }
 
     pub fn pr_image(&self) -> Option<&Image> {

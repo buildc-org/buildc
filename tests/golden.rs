@@ -204,6 +204,26 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+fn no_default(root: &Path) {
+    std::env::set_current_dir(root).expect("fixture root exists");
+    let here = Path::new(".");
+    for quiet in ["check", "generate"] {
+        let issues = buildc::run(quiet, None, here).issues.plain();
+        assert!(issues.is_empty(), "{quiet} reported {issues}");
+    }
+    for quiet in [("section", "server"), ("graph", "server")] {
+        let issues = buildc::run(quiet.0, Some(quiet.1), here).issues.plain();
+        assert!(issues.is_empty(), "{} reported {issues}", quiet.0);
+    }
+    for loud in ["plan", "section", "graph", "summary", "sbom"] {
+        let issues = buildc::run(loud, None, here).issues.plain();
+        assert!(
+            issues.contains("2 images are declared and none is the default"),
+            "{loud} reported {issues}"
+        );
+    }
+}
+
 #[test]
 fn schema_doc() {
     let path = crate_dir().join("docs/schema.md");
@@ -235,6 +255,7 @@ fn golden() {
     for name in names {
         capture(&name, &dir.join(&name));
     }
+    no_default(&dir.join("no-default"));
     capture("init", &init);
     verify("init", &init);
     create("create", &init_repo("create"));

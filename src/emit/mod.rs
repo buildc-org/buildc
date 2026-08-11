@@ -6,4 +6,5 @@ pub mod module_build;
 pub mod plan;
 pub mod sbom;
 pub mod schema_md;
+pub mod seed;
 pub mod summary;

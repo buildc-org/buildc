@@ -15,20 +15,17 @@ pub fn path(image: &Image) -> PathBuf {
 }
 
 pub fn hooks<'a>(image: &'a Image, root: &Path) -> Vec<&'a Entry> {
-    let mut out: Vec<&Entry> = Vec::new();
-    for entry in &image.entries {
-        if entry.module.is_none()
-            || !root
-                .join("modules")
+    image
+        .entries
+        .iter()
+        .filter(|entry| entry.module.is_some())
+        .filter(|entry| {
+            root.join("modules")
                 .join(entry.dir())
                 .join("finalize.sh")
                 .is_file()
-        {
-            continue;
-        }
-        out.push(entry);
-    }
-    out
+        })
+        .collect()
 }
 
 pub fn script(image: &Image, collection: &Collection, root: &Path) -> Option<(PathBuf, String)> {

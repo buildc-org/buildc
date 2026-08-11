@@ -1,13 +1,11 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::image::{is_name, Base, Decl, Entry, Flavour, Image, List, NO_FLAVOUR};
 use crate::model::remote::{Remote, REMOTE_DIR};
-use crate::parse::schema::{Arg, Kind, Node, Prop, Say};
+use crate::parse::schema::{Arg, Kind, Node, Prop, Say, NEEDS_VALUE};
 use crate::parse::{bool_arg, check_capability, check_path, child, flag, kids, options};
 use crate::parse::{prop, remote};
 use crate::parse::{string_arg, string_args, text};
 use kdl::{KdlDocument, KdlNode};
-
-const NEEDS_VALUE: Say = Say::new("`{}` needs a value", "nothing given", "");
 
 #[rustfmt::skip]
 const ENTRY: Node = Node::new("module", "One module the image is made of, named by its path under `modules/`.")

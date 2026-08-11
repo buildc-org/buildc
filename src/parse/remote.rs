@@ -2,13 +2,11 @@ use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::image::is_name;
 use crate::model::remote::{At, Collection, Remote};
 use crate::parse::asset::{MANUAL, RENOVATE};
-use crate::parse::schema::{Arg, Node, Say};
+use crate::parse::schema::{Arg, Node, Say, NEEDS_VALUE};
 use crate::parse::{kids, string_arg};
 use kdl::KdlNode;
 
 const ARCHIVES: [&str; 5] = [".tar.gz", ".tgz", ".tar.xz", ".tar.zst", ".tar.bz2"];
-
-const NEEDS_VALUE: Say = Say::new("`{}` needs a value", "nothing given", "");
 
 const REF: Node = Node::new("ref", "The tag or commit the archive is fetched at.")
     .arg(Arg::Str, NEEDS_VALUE)

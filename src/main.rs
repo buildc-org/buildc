@@ -403,11 +403,11 @@ fn run() -> Result<ExitCode, Error> {
             args.only(&["root", "image"], "import module")?;
             let name = one_name(rest, "import module")?;
             let root = repo_root(root_arg)?;
-            let (sources, issues, context) = buildc::sources(&root);
+            let (list, issues, context) = buildc::declarations(&root);
             if issues.report(&context) {
                 return Ok(ExitCode::from(REPO_ERROR));
             }
-            Import::collect(name, &root, &sources, images, &prompt)?.apply(&root)?;
+            Import::collect(name, &root, &list.sources, images, &prompt)?.apply(&root)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["build", rest @ ..] => {

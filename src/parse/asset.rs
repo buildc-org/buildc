@@ -1,10 +1,8 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::asset::{Asset, ShaFrom};
-use crate::parse::schema::{Arg, Kind, Node, Prop, Say};
+use crate::parse::schema::{Arg, Kind, Node, Prop, Say, NEEDS_VALUE};
 use crate::parse::{kids, prop, string_arg};
 use kdl::KdlNode;
-
-const NEEDS_VALUE: Say = Say::new("`{}` needs a value", "nothing given", "");
 
 const DATASOURCES: [&str; 3] = ["github-releases", "github-tags", "git-refs"];
 

@@ -134,10 +134,6 @@ impl Image {
 }
 
 impl List {
-    pub fn images(&self) -> Vec<&Image> {
-        self.images.iter().collect()
-    }
-
     pub fn default_image(&self) -> Option<&Image> {
         match &self.default_image_id {
             Some(id) => self.images.iter().find(|i| &i.id == id),
@@ -176,7 +172,7 @@ impl List {
 
     pub fn targets(&self) -> Vec<Target> {
         let mut out = Vec::new();
-        for image in self.images() {
+        for image in &self.images {
             out.push(Target {
                 image: image.id.clone(),
                 flavour: NO_FLAVOUR.to_string(),

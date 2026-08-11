@@ -31,6 +31,8 @@ impl Say {
     }
 }
 
+pub const NEEDS_VALUE: Say = Say::new("`{}` needs a value", "nothing given", "");
+
 pub enum Arg {
     None,
     Str,

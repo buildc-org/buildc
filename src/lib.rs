@@ -20,7 +20,6 @@ use diag::Issues;
 use diag::Source;
 use model::image::{List, Target, REPO_FILE};
 use model::module::Module;
-use model::remote::Collection;
 pub use parse::repo::compatible;
 use resolve::Resolved;
 use std::path::{Path, PathBuf};
@@ -82,11 +81,6 @@ pub fn declarations(root: &Path) -> (List, Issues, String) {
     let (list, issues) = List::load(root);
     let context = context(&list, root);
     (list, issues, context)
-}
-
-pub fn sources(root: &Path) -> (Vec<Collection>, Issues, String) {
-    let (list, issues, context) = declarations(root);
-    (list.sources, issues, context)
 }
 
 fn context(list: &List, root: &Path) -> String {

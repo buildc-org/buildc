@@ -33,9 +33,11 @@ pub fn find(root: &Path, sources: &[Collection], name: &str) -> Result<Vec<Found
         ));
     }
     if sources.is_empty() {
-        return Err(
-            "repo.kdl declares no `sources`, so there is no collection to import from".to_string(),
-        );
+        return Err(format!(
+            "repo.kdl declares no `sources`, so there is no collection to import from.\n\n\
+             This is the block `buildc create repo` writes:\n\n{}",
+            crate::init::SOURCES
+        ));
     }
 
     let mut searched: Vec<&str> = Vec::new();
@@ -139,6 +141,7 @@ pub fn choose(root: &Path, sources: &[Collection], prompt: &Prompt) -> Result<St
 pub fn cached(root: &Path, collection: &Collection) -> Option<PathBuf> {
     let dir = match &collection.at {
         At::Dir(dir) => root.join(dir),
+        At::Archive(remote) if remote.unpinned.is_some() => root.join(CACHE).join(&collection.name),
         At::Archive(remote) => {
             let pin = root.join(CACHE).join(format!("{}.pin", collection.name));
             match std::fs::read_to_string(&pin).ok().as_deref() == Some(remote.sha256.as_str()) {
@@ -151,8 +154,10 @@ pub fn cached(root: &Path, collection: &Collection) -> Option<PathBuf> {
 }
 
 fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {
-    if let Some(dir) = cached(root, collection) {
-        return Ok(dir);
+    if !collection.unpinned() {
+        if let Some(dir) = cached(root, collection) {
+            return Ok(dir);
+        }
     }
     let remote = match &collection.at {
         At::Dir(dir) => {
@@ -169,9 +174,15 @@ fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {
     let pin = root.join(CACHE).join(format!("{}.pin", collection.name));
     let _ = std::fs::remove_dir_all(&dir);
     let url = remote.url_resolved();
-    crate::runtime::extract(&url, &remote.sha256, &dir, &["--strip-components=1"])
+    let sha256 = remote.unpinned.is_none().then_some(remote.sha256.as_str());
+    crate::runtime::extract(&url, sha256, &dir, &["--strip-components=1"])
         .map_err(|err| format!("`{}`: {err}", collection.name))?;
-    std::fs::write(&pin, &remote.sha256).map_err(|err| format!("{}: {err}", pin.display()))?;
+    match sha256 {
+        Some(sha256) => {
+            std::fs::write(&pin, sha256).map_err(|err| format!("{}: {err}", pin.display()))?
+        }
+        None => drop(std::fs::remove_file(&pin)),
+    }
     Ok(dir)
 }
 

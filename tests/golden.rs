@@ -360,9 +360,11 @@ fn flow_repo_two(name: &str) -> PathBuf {
 fn flow_repo_sourced(name: &str) -> PathBuf {
     let root = flow_repo(name);
     let collections = crate_dir().join("tests/collections");
-    let mut repo = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
+    let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
+        .unwrap()
+        .replace(buildc::init::SOURCES, "");
     repo.push_str(&format!(
-        "\nsources {{\n    one {:?}\n    two {:?}\n}}\n",
+        "sources {{\n    one {:?}\n    two {:?}\n}}\n",
         collections.join("one").display(),
         collections.join("two").display()
     ));

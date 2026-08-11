@@ -7,6 +7,15 @@ const INSTALLED: [&str; 2] = [
     "/usr/share/buildc/assets",
 ];
 
+pub const SOURCES: &str = "\
+sources {
+    buildc-org \"https://github.com/buildc-org/modules/archive/refs/heads/{ref}.tar.gz\" {
+        unpinned \"the collection this tool is published alongside, followed at its branch head\"
+        ref \"main\"
+    }
+}
+";
+
 pub fn assets() -> Result<PathBuf, String> {
     let mut tried: Vec<PathBuf> = Vec::new();
     if let Some(dir) = std::env::var_os("BUILDC_ASSETS") {
@@ -66,7 +75,8 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<(), String> {
         &format!(
             "schema-version {SCHEMA_VERSION}\n\n\
              // renovate: datasource=github-releases depName=buildc-org/buildc\n\
-             buildc-version \"{BUILDC_VERSION}\"\n"
+             buildc-version \"{BUILDC_VERSION}\"\n\n\
+             {SOURCES}"
         ),
     )?;
     put(&root.join("README.md"), &format!("# {name}\n"))?;

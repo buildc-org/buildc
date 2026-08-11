@@ -119,13 +119,13 @@ pub fn fetch(args: &[&str]) -> Result<(), String> {
     };
 
     match (what, rest) {
-        ("file", [path]) => verified(url, sha256, Path::new(path)),
-        ("tree", [dir, extra @ ..]) => extract(url, sha256, Path::new(dir), extra),
+        ("file", [path]) => verified(url, Some(sha256), Path::new(path)),
+        ("tree", [dir, extra @ ..]) => extract(url, Some(sha256), Path::new(dir), extra),
         ("bin", [name]) => install_bin(url, sha256, name, name),
         ("bin", [name, inner]) => install_bin(url, sha256, name, inner),
         ("rpm", []) => {
             let rpm = scratch(url);
-            verified(url, sha256, &rpm)?;
+            verified(url, Some(sha256), &rpm)?;
             let status = run("dnf5", &["install", "-y", &rpm.to_string_lossy()])?;
             let _ = fs::remove_file(&rpm);
             status
@@ -151,7 +151,7 @@ fn run(program: &str, args: &[&str]) -> Result<Result<(), String>, String> {
     })
 }
 
-fn verified(url: &str, sha256: &str, dest: &Path) -> Result<(), String> {
+fn verified(url: &str, sha256: Option<&str>, dest: &Path) -> Result<(), String> {
     if let Some(dir) = dest.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     }
@@ -160,6 +160,9 @@ fn verified(url: &str, sha256: &str, dest: &Path) -> Result<(), String> {
         &["--retry", "3", "-fsSLo", &dest.to_string_lossy(), url],
     )??;
 
+    let Some(sha256) = sha256 else {
+        return Ok(());
+    };
     let got = sha256_file(dest)?;
     if got != sha256.to_lowercase() {
         let _ = fs::remove_file(dest);
@@ -170,7 +173,12 @@ fn verified(url: &str, sha256: &str, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn extract(url: &str, sha256: &str, dir: &Path, extra: &[&str]) -> Result<(), String> {
+pub(crate) fn extract(
+    url: &str,
+    sha256: Option<&str>,
+    dir: &Path,
+    extra: &[&str],
+) -> Result<(), String> {
     let archive = scratch(url);
     verified(url, sha256, &archive)?;
     fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
@@ -202,11 +210,11 @@ fn install_bin(url: &str, sha256: &str, name: &str, inner: &str) -> Result<(), S
         .iter()
         .any(|ext| url.ends_with(ext))
     {
-        extract(url, sha256, &tmp, &[])?;
+        extract(url, Some(sha256), &tmp, &[])?;
         install(&tmp.join(inner), &dest)?;
         let _ = fs::remove_dir_all(&tmp);
     } else {
-        verified(url, sha256, &tmp)?;
+        verified(url, Some(sha256), &tmp)?;
         install(&tmp, &dest)?;
         let _ = fs::remove_file(&tmp);
     }

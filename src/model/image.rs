@@ -98,6 +98,19 @@ impl Entry {
             None => self.path.clone(),
         }
     }
+
+    pub fn qualified(&self, publishes_as: &str) -> Option<String> {
+        match (&self.remote, self.path.contains('/')) {
+            (Some(_), _) => None,
+            (None, true) => Some(self.path.clone()),
+            (None, false) => Some(format!("{publishes_as}/{}", self.path)),
+        }
+    }
+}
+
+pub struct Seed {
+    pub image: String,
+    pub collection: String,
 }
 
 pub struct List {
@@ -106,6 +119,7 @@ pub struct List {
     pub sources: Vec<Collection>,
     pub default_image_id: Option<String>,
     pub pr_image_id: Option<String>,
+    pub seed: Option<Seed>,
     pub schema_version: Option<u32>,
     pub(crate) schema_version_seen: bool,
     pub repo_src: Source,

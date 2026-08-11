@@ -14,6 +14,16 @@ pub struct Base {
     pub span: Span,
 }
 
+impl Base {
+    fn differs(&self, other: &Base) -> bool {
+        self.family != other.family
+            || self.provides != other.provides
+            || self.provides_files != other.provides_files
+            || self.about != other.about
+            || self.signed != other.signed
+    }
+}
+
 pub struct Seed {
     pub image: &'static str,
     pub family: &'static str,
@@ -116,10 +126,12 @@ pub fn catalog(
             declared.push((base.image.clone(), collection.name.clone()));
             match bases.iter().position(|known| known.image == base.image) {
                 Some(at) => {
-                    shadows.push(Shadow {
-                        image: base.image.clone(),
-                        collection: collection.name.clone(),
-                    });
+                    if bases[at].differs(&base) {
+                        shadows.push(Shadow {
+                            image: base.image.clone(),
+                            collection: collection.name.clone(),
+                        });
+                    }
                     bases[at] = base;
                 }
                 None => bases.push(base),

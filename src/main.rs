@@ -433,10 +433,8 @@ fn run() -> Result<ExitCode, Error> {
                 no_cache_from,
                 cache_to,
             };
-            let refused = buildc::build::run(&repo_root(root_arg)?, &opts)?;
-            return Ok(match refused {
-                true => ExitCode::from(REPO_ERROR),
-                false => ExitCode::SUCCESS,
+            return Ok(match buildc::build::run(&repo_root(root_arg)?, &opts)? {
+                buildc::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
             });
         }
         ["registry", "namespace"] => {

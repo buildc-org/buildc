@@ -163,12 +163,19 @@ fn repo_root(given: Option<PathBuf>) -> Result<PathBuf, Error> {
         return Ok(root);
     }
     let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    buildc::find_root(&here).ok_or_else(|| {
+    let found = buildc::find_root(&here).ok_or_else(|| {
         Error::Invocation(format!(
             "no repo.kdl in {} or any parent directory",
             here.display()
         ))
-    })
+    })?;
+    Ok(
+        match here.strip_prefix(&found).map(|d| d.components().count()) {
+            Ok(0) => PathBuf::from("."),
+            Ok(up) => (0..up).map(|_| "..").collect(),
+            Err(_) => found,
+        },
+    )
 }
 
 fn open(given: Option<PathBuf>) -> Result<Option<PathBuf>, Error> {

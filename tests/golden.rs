@@ -356,6 +356,27 @@ fn flow_repo_two(name: &str) -> PathBuf {
     root
 }
 
+fn flow_repo_sourced(name: &str) -> PathBuf {
+    let root = flow_repo(name);
+    let collections = crate_dir().join("tests/collections");
+    let mut repo = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
+    repo.push_str(&format!(
+        "\nsources {{\n    one {:?}\n    two {:?}\n}}\n",
+        collections.join("one").display(),
+        collections.join("two").display()
+    ));
+    std::fs::write(root.join("repo.kdl"), repo).unwrap();
+    root
+}
+
+const KEYHOLDER: &str = "description \"Signs the modules it builds\"\n\n\
+     supports \"fedora\"\n\n\
+     key \"secureboot\" {\n\
+     \x20   generator \"openssl\" profile=\"module-signing\" bits=4096\n\
+     \x20   public \"/usr/share/secureboot/sb_cert.der\" format=\"der\"\n\
+     \x20   private \"MOK.priv\"\n\
+     }\n";
+
 #[test]
 fn flows() {
     let repo = ["create", "repo"];
@@ -394,20 +415,28 @@ fn flows() {
         &module,
     );
 
-    let root = flow_repo("flow-import");
-    let collections = crate_dir().join("tests/collections");
-    let mut repo = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
-    repo.push_str(&format!(
-        "\nsources {{\n    one {:?}\n    two {:?}\n}}\n",
-        collections.join("one").display(),
-        collections.join("two").display()
-    ));
-    std::fs::write(root.join("repo.kdl"), repo).unwrap();
     flow(
         "flow-import-module",
-        &root,
+        &flow_repo_sourced("flow-import"),
         None,
         &["--root", ".", "import", "module"],
+    );
+
+    flow(
+        "flow-key-absent",
+        &flow_repo_sourced("flow-key-none"),
+        None,
+        &["--root", ".", "create", "key", "cosign"],
+    );
+
+    let root = flow_repo("flow-key");
+    std::fs::create_dir_all(root.join("modules/signed-kernel")).unwrap();
+    std::fs::write(root.join("modules/signed-kernel/module.kdl"), KEYHOLDER).unwrap();
+    flow(
+        "flow-key-kinds",
+        &root,
+        None,
+        &["--root", ".", "create", "key"],
     );
 }
 

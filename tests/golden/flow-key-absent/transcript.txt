@@ -1,0 +1,7 @@
+Buildc v0.0.0
+
+Error: The one/signature-policy module must be imported before creating cosign keys.
+You can add it with `buildc import module one/signature-policy`
+
+You can find the available commands by typing 'buildc' or 'buildc --help'
+==== exit 1

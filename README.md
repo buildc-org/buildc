@@ -43,11 +43,9 @@ This is the whole surface today. The rest of it is not built yet.
                           copy a module out of a collection repo.kdl names,
                           into modules/<owner>/<name>, choosing from what the
                           collections hold when no name is given
-    buildc create cosign-key
-                          the keypair the published images are signed with,
-                          public half into the module that declares it
-    buildc create mok-key   the secure boot key the built kernel modules are
-                          signed with, certificate as DER for mokutil
+    buildc create key <kind>
+                          generate a key one of the repository's modules
+                          declares, public half into that module
     buildc check            validate every manifest, and say where and why
     buildc generate         write the Containerfile per image, the per-module
                           build scripts and the graph, under generated/

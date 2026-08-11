@@ -78,6 +78,7 @@ pub struct Listed {
     pub qualified: String,
     pub description: String,
     pub requires: Vec<String>,
+    pub keys: Vec<String>,
 }
 
 impl Listed {
@@ -104,13 +105,15 @@ pub fn catalog(root: &Path, sources: &[Collection]) -> Result<Vec<Listed>, Strin
                 continue;
             }
             let name = dir.file_name().unwrap_or_default().to_string_lossy();
-            let (description, requires) = crate::parse::module::summary(&dir.join("module.kdl"));
+            let (description, requires, keys) =
+                crate::parse::module::summary(&dir.join("module.kdl"));
             listed.push(Listed {
                 qualified: format!("{}/{name}", collection.name),
                 name: name.into_owned(),
                 owner: collection.name.clone(),
                 description,
                 requires,
+                keys,
             });
         }
     }

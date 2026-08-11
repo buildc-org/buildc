@@ -393,9 +393,15 @@ fn flows() {
 
     flow(
         "flow-create-image",
-        &flow_repo("flow-image"),
+        &flow_repo_sourced("flow-image"),
         None,
         &["--root", ".", "create", "image"],
+    );
+    flow(
+        "flow-check-shadow",
+        &flow_repo_sourced("flow-shadow"),
+        None,
+        &["--root", ".", "check"],
     );
 
     let root = flow_repo("flow-module");

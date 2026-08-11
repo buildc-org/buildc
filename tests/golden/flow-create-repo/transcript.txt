@@ -1,21 +1,49 @@
 Buildc v0.0.0
 
-repository name: Example
-owner, your account or org on github (not buildc-org): someone
-create an image in it now [Y/n]: yes
-image name: Desktop
+What will the repo be called?
+Example
+
+Creating example...
+
+This repo is designed to run scheduled builds of the repo's images via
+Github or Forgejo actions.
+Would you like to configure this now? (Yes/No)
+Yes
+
+  1) github.com  Github, and the workflows Buildc ships
+  2) forgejo  a Forgejo instance, whose address you give
+  0) none
+Where will the repo be hosted? [0-2]: 1
+
+What is your github username?
+github.com/someone
+
+Added github.com/someone/example as the origin repo
+Would you like to create this repo on Github now? (Yes/Skip)
+Skip
+
+Buildc defines images through kdl files. These image files define the base
+image and modules to be included in the built image.
+Would you like to create an image file now? (Yes/No)
+Yes
+
+What will the image be called?
+Desktop
+
   1) quay.io/fedora/fedora-bootc:44  Fedora 44, nothing above the base system
   2) ghcr.io/ublue-os/bazzite:stable  KDE, gaming and hardware support over kinoite-main
   3) ghcr.io/ublue-os/aurora:stable  KDE developer workstation over kinoite-main
   4) ghcr.io/ublue-os/bluefin:stable  GNOME developer workstation over silverblue-main
   5) ghcr.io/ublue-os/kinoite-main:44  Fedora Kinoite with the ublue additions, what bazzite builds on
   0) none
-which base, or none to name another [0-5]: 1
+What is the base image for this image? [0-5]: 1
+
 wrote Example into example
+initialised a git repository in example
 wrote example/desktop.kdl
 
 next, in example:
-  git init && git add -A && git commit
+  git add -A && git commit
   gh repo create someone/example --source=. --push
 
 ==== exit 0

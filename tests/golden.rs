@@ -49,8 +49,11 @@ fn init_repo(name: &str) -> PathBuf {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&root);
     std::env::set_var("BUILDC_ASSETS", crate_dir().join("assets"));
+    std::env::set_var("GIT_CONFIG_GLOBAL", "/dev/null");
+    std::env::set_var("GIT_CONFIG_SYSTEM", "/dev/null");
     buildc::create::Repo::collect(
         Some("Example".into()),
+        None,
         Some("someone".into()),
         Some("Example".into()),
         None,
@@ -239,16 +242,50 @@ fn no_default(root: &Path) {
     }
 }
 
-fn flow(name: &str, dir: &Path, args: &[&str]) {
+fn bin(name: &str, gh: Option<&str>) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmp().join(format!("{name}-bin"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let git = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(|at| Path::new(at).join("git"))
+        .find(|at| at.is_file())
+        .expect("git on PATH");
+    std::os::unix::fs::symlink(git, dir.join("git")).unwrap();
+    if let Some(script) = gh {
+        let at = dir.join("gh");
+        std::fs::write(&at, script).unwrap();
+        std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    dir
+}
+
+const SIGNED_OUT: &str = "#!/bin/sh\ntest \"$1\" = auth && exit 1\nexit 0\n";
+const SIGNED_IN: &str = "#!/bin/sh\nexit 0\n";
+
+fn sealed<'a>(
+    command: &'a mut std::process::Command,
+    path: &Path,
+) -> &'a mut std::process::Command {
+    command
+        .env("PATH", path)
+        .env("HOME", tmp())
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("BUILDC_ASSETS", crate_dir().join("assets"))
+}
+
+fn flow(name: &str, dir: &Path, gh: Option<&str>, args: &[&str]) {
     let fixture = crate_dir().join("tests/golden").join(name);
     let log = tmp().join(format!("{name}.log"));
     let file = std::fs::File::create(&log).unwrap();
-    let status = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+    let status = sealed(&mut command, &bin(name, gh))
         .args(args)
         .current_dir(dir)
-        .env("PATH", "")
         .env("BUILDC_ANSWERS", fixture.join("answers.txt"))
-        .env("BUILDC_ASSETS", crate_dir().join("assets"))
         .stdout(std::process::Stdio::from(file.try_clone().unwrap()))
         .stderr(std::process::Stdio::from(file))
         .status()
@@ -266,11 +303,10 @@ fn tmp() -> PathBuf {
 }
 
 fn buildc(dir: &Path, args: &[&str]) {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+    let out = sealed(&mut command, &bin("buildc", None))
         .args(args)
         .current_dir(dir)
-        .env("PATH", "")
-        .env("BUILDC_ASSETS", crate_dir().join("assets"))
         .output()
         .unwrap();
     assert!(
@@ -301,24 +337,35 @@ fn flow_repo(name: &str) -> PathBuf {
 
 #[test]
 fn flows() {
-    flow("flow-create-repo", &empty("flow-new"), &["create", "repo"]);
+    let repo = ["create", "repo"];
+    for (name, gh) in [
+        ("flow-create-repo", None),
+        ("flow-create-repo-no-gh", None),
+        ("flow-create-repo-signed-out", Some(SIGNED_OUT)),
+        ("flow-create-repo-signed-in", Some(SIGNED_IN)),
+        ("flow-create-repo-forgejo", None),
+    ] {
+        flow(name, &empty(&format!("{name}-in")), gh, &repo);
+    }
 
     let root = flow_repo("flow-image");
     flow(
         "flow-create-image",
         &root,
+        None,
         &["--root", ".", "create", "image"],
     );
 
     let root = flow_repo("flow-module");
     let module = ["--root", ".", "create", "module"];
-    flow("flow-create-module", &root, &module);
+    flow("flow-create-module", &root, None, &module);
     flow(
         "flow-module-taken",
         &root,
+        None,
         &[&module[..], &["My Editor"]].concat(),
     );
-    flow("flow-unanswered", &root, &module);
+    flow("flow-unanswered", &root, None, &module);
 
     let root = flow_repo("flow-import");
     let collections = crate_dir().join("tests/collections");
@@ -332,6 +379,7 @@ fn flows() {
     flow(
         "flow-import-module",
         &root,
+        None,
         &["--root", ".", "import", "module"],
     );
 }

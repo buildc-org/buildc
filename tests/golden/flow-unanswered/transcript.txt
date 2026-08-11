@@ -1,7 +1,8 @@
 Buildc v0.0.0
 
 module name: Other
-Error: nothing left in BUILDC_ANSWERS to answer `does it install packages [Y/n]` with.
+
+Error: nothing left in BUILDC_ANSWERS to answer `does it install packages (Yes/No)` with.
 
 You can find the available commands by typing 'buildc' or 'buildc --help'
 ==== exit 1

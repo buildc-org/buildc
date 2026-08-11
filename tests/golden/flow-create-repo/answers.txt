@@ -1,5 +1,8 @@
 Example
+Yes
+1
 someone
-yes
+Skip
+Yes
 Desktop
 1

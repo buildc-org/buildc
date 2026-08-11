@@ -240,7 +240,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("sha256sum {}: no hash in its output", path.display()))
 }
 
-const MODULE_PRESET: &str = "45-module-";
+pub(crate) const MODULE_PRESET: &str = "45-module-";
 
 struct Report {
     failures: usize,
@@ -354,7 +354,7 @@ pub fn validate_image() -> Result<(), String> {
     }
 
     println!("==> systemd unit verification");
-    let mut checked = 0usize;
+    let mut arrived: Vec<String> = Vec::new();
     for scope in ["system", "user"] {
         let unit_dirs = [
             PathBuf::from(format!("/usr/lib/systemd/{scope}")),
@@ -362,6 +362,7 @@ pub fn validate_image() -> Result<(), String> {
         ];
         for preset in presets(scope) {
             println!("    {}", preset.display());
+            arrived.push(preset.display().to_string());
             let Ok(text) = fs::read_to_string(&preset) else {
                 continue;
             };
@@ -373,7 +374,6 @@ pub fn validate_image() -> Result<(), String> {
                 if verb != "enable" && verb != "disable" {
                     continue;
                 }
-                checked += 1;
 
                 if !unit_dirs.iter().any(|dir| find_unit(dir, unit)) {
                     if verb == "enable" {
@@ -460,8 +460,8 @@ pub fn validate_image() -> Result<(), String> {
         }
     }
 
-    if checked == 0 {
-        report.fail("no module preset files found");
+    for message in missing_presets(&env("MODULE_PRESETS").unwrap_or_default(), &arrived) {
+        report.fail(message);
     }
 
     println!();
@@ -471,6 +471,14 @@ pub fn validate_image() -> Result<(), String> {
     } else {
         Err(format!("{} validation check(s) failed.", report.failures))
     }
+}
+
+fn missing_presets(expected: &str, arrived: &[String]) -> Vec<String> {
+    expected
+        .split_whitespace()
+        .filter(|path| !arrived.iter().any(|have| have == path))
+        .map(|path| format!("{path}: a module ships it, the image does not have it"))
+        .collect()
 }
 
 fn presets(scope: &str) -> Vec<PathBuf> {
@@ -587,5 +595,20 @@ mod tests {
             Some("man-page-missing")
         );
         assert_eq!(classify("Unit is bad in some other way"), None);
+    }
+
+    #[test]
+    fn a_preset_the_plan_expects_and_the_image_lacks_is_named() {
+        let one = "/usr/lib/systemd/system-preset/45-module-one.preset".to_string();
+        let two = "/usr/lib/systemd/user-preset/45-module-two.preset".to_string();
+        let arrived = [one.clone()];
+
+        assert!(missing_presets("", &[]).is_empty());
+        assert!(missing_presets(&one, &arrived).is_empty());
+        assert!(missing_presets("", &arrived).is_empty());
+
+        let missing = missing_presets(&format!("{one} {two}"), &arrived);
+        assert_eq!(missing.len(), 1);
+        assert!(missing[0].starts_with(&two));
     }
 }

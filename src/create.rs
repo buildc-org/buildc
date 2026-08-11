@@ -24,6 +24,14 @@ pub fn origin(host: &str, owner: &str) -> String {
     format!("https://{host}/{owner}")
 }
 
+pub fn named_after_root(root: &Path) -> Option<String> {
+    std::fs::canonicalize(root)
+        .ok()
+        .as_deref()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
 pub struct Repo {
     name: String,
     id: String,
@@ -46,17 +54,12 @@ impl Repo {
         root_arg: Option<PathBuf>,
         prompt: &Prompt,
     ) -> Result<Self, String> {
-        let named_after_root = root_arg
-            .as_ref()
-            .and_then(|root| std::fs::canonicalize(root).ok())
-            .as_deref()
-            .and_then(Path::file_name)
-            .map(|name| name.to_string_lossy().into_owned());
         let name = prompt.line(
-            name.or(named_after_root),
+            name.or_else(|| root_arg.as_deref().and_then(named_after_root)),
             "What will the repo be called?",
             "a name argument",
             "",
+            None,
         )?;
         let id = crate::init::id(&name)?;
         let root = root_arg.unwrap_or_else(|| PathBuf::from(&id));
@@ -71,7 +74,13 @@ impl Repo {
             (_, given) => given.unwrap_or_else(|| HOST.to_string()),
         };
         let owner = match configure {
-            true => Some(prompt.line(owner, &username(&host), "`--owner`", &format!("{host}/"))?),
+            true => Some(prompt.line(
+                owner,
+                &username(&host),
+                "`--owner`",
+                &format!("{host}/"),
+                None,
+            )?),
             false => None,
         };
         let mut remote = false;
@@ -107,7 +116,10 @@ impl Repo {
                 &root,
                 image_name,
                 base,
-                owner.as_deref().map(|owner| origin(&host, owner)),
+                &name,
+                owner
+                    .as_deref()
+                    .map(|owner| format!("{}/{id}", origin(&host, owner))),
                 "`--image`",
                 prompt,
             )?),
@@ -171,6 +183,7 @@ fn choose_host(prompt: &Prompt) -> Result<String, String> {
             "What is the address of the Forgejo instance?",
             "`--host`",
             "",
+            None,
         ),
     }
 }
@@ -184,8 +197,7 @@ fn username(host: &str) -> String {
 
 pub struct Image {
     name: String,
-    id: String,
-    origin: Option<String>,
+    url: Option<String>,
     base: String,
     family: String,
     file: PathBuf,
@@ -197,17 +209,31 @@ impl Image {
         root: &Path,
         name: Option<String>,
         base: Option<String>,
-        origin: Option<String>,
+        repo: &str,
+        url: Option<String>,
         flag: &str,
         prompt: &Prompt,
     ) -> Result<Self, String> {
-        let name = prompt.line(name, "What will the image be called?", flag, "")?;
+        let name = prompt.line(
+            name,
+            "What will the image be called?",
+            flag,
+            "",
+            crate::init::id(repo).is_ok().then_some(repo),
+        )?;
         let id = crate::init::id(&name)?;
         let file = root.join(format!("{id}.kdl"));
         if file.exists() {
             return Err(format!("{} is already there", file.display()));
         }
-        let names_default = implicit_default(root).filter(|was| *was != id);
+        let (list, _) = crate::model::image::List::load(root);
+        let names_default = implicit_default(&list).filter(|was| *was != id);
+        let url = url.or_else(|| {
+            list.images
+                .iter()
+                .find(|image| !image.url.is_empty())
+                .map(|image| image.url.clone())
+        });
 
         let base = match base {
             Some(given) => given,
@@ -224,8 +250,7 @@ impl Image {
         };
         Ok(Self {
             name,
-            id,
-            origin,
+            url,
             base,
             family,
             file,
@@ -236,8 +261,7 @@ impl Image {
     pub fn apply(&self, root: &Path) -> Result<(), String> {
         let text = image_kdl(
             &self.name,
-            &self.id,
-            self.origin.as_deref(),
+            self.url.as_deref(),
             &self.base,
             &self.family,
             crate::base::find(&self.base),
@@ -252,8 +276,7 @@ impl Image {
     }
 }
 
-fn implicit_default(root: &Path) -> Option<String> {
-    let (list, _) = crate::model::image::List::load(root);
+fn implicit_default(list: &crate::model::image::List) -> Option<String> {
     match (&list.default_image_id, list.images.as_slice()) {
         (None, [only]) => Some(only.id.clone()),
         _ => None,
@@ -470,16 +493,15 @@ fn append_module(file: &Path, path: &str) -> Result<(), String> {
 
 fn image_kdl(
     name: &str,
-    id: &str,
-    origin: Option<&str>,
+    url: Option<&str>,
     base: &str,
     family: &str,
     known: Option<&crate::base::Base>,
 ) -> String {
-    let urls = match origin {
-        Some(origin) => format!(
-            "\x20   url \"{origin}/{id}\"\n\
-             \x20   issues-url \"{origin}/{id}/issues\"\n"
+    let urls = match url {
+        Some(url) => format!(
+            "\x20   url \"{url}\"\n\
+             \x20   issues-url \"{url}/issues\"\n"
         ),
         None => String::new(),
     };
@@ -581,7 +603,6 @@ mod tests {
         let bazzite = "ghcr.io/ublue-os/bazzite:stable";
         let known = image_kdl(
             "Bazzite",
-            "bazzite",
             None,
             bazzite,
             "fedora",
@@ -596,7 +617,21 @@ mod tests {
             "{known}"
         );
 
-        let unknown = image_kdl("Own", "own", None, "example.invalid/own:1", "fedora", None);
+        let shared = image_kdl(
+            "Server",
+            Some("https://github.com/someone/example"),
+            bazzite,
+            "fedora",
+            None,
+        );
+        assert!(
+            shared.contains("    url \"https://github.com/someone/example\"\n")
+                && shared
+                    .contains("    issues-url \"https://github.com/someone/example/issues\"\n"),
+            "{shared}"
+        );
+
+        let unknown = image_kdl("Own", None, "example.invalid/own:1", "fedora", None);
         assert!(!unknown.contains("provides"), "{unknown}");
         assert!(
             unknown.contains("base \"example.invalid/own:1\" {\n        family \"fedora\"\n"),

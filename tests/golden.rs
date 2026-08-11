@@ -97,12 +97,24 @@ fn create(name: &str, root: &Path) {
     let here = Path::new(".");
     let silent = buildc::prompt::Prompt::silent();
 
+    buildc::create::Image::collect(
+        here,
+        Some("Server".into()),
+        None,
+        "example",
+        None,
+        "a name argument",
+        &silent,
+    )
+    .unwrap()
+    .apply(here)
+    .unwrap();
     buildc::create::Module::collect(
         here,
         Some("My Editor".into()),
         vec!["nano".into()],
         vec![("provides".into(), "editor".into())],
-        vec!["example".into()],
+        vec!["example".into(), "server".into()],
         &silent,
     )
     .unwrap()
@@ -125,6 +137,7 @@ fn create(name: &str, root: &Path) {
         "modules/my-editor/module.kdl",
         "modules/plain/module.kdl",
         "example.kdl",
+        "server.kdl",
     ] {
         out.push_str(&format!(
             "==== {file}\n{}",
@@ -324,15 +337,14 @@ fn empty(name: &str) -> PathBuf {
 }
 
 fn flow_repo(name: &str) -> PathBuf {
-    let root = empty(name);
+    let dir = empty(name);
     buildc(
-        &root,
+        &dir,
         &[
-            "--no-tui", "--root", ".", "create", "repo", "Example", "--owner", "someone",
-            "--image", "Example",
+            "--no-tui", "create", "repo", "Example", "--owner", "someone", "--image", "Example",
         ],
     );
-    root
+    dir.join("example")
 }
 
 fn flow_repo_two(name: &str) -> PathBuf {
@@ -353,14 +365,14 @@ fn flows() {
         ("flow-create-repo-signed-out", Some(SIGNED_OUT)),
         ("flow-create-repo-signed-in", Some(SIGNED_IN)),
         ("flow-create-repo-forgejo", None),
+        ("flow-image-default", None),
     ] {
         flow(name, &empty(&format!("{name}-in")), gh, &repo);
     }
 
-    let root = flow_repo("flow-image");
     flow(
         "flow-create-image",
-        &root,
+        &flow_repo("flow-image"),
         None,
         &["--root", ".", "create", "image"],
     );

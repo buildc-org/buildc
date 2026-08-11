@@ -364,9 +364,23 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            let origin = owner.map(|owner| buildc::create::origin(buildc::create::HOST, &owner));
-            buildc::create::Image::collect(&root, name, base, origin, "a name argument", &prompt)?
-                .apply(&root)?;
+            let repo = buildc::create::named_after_root(&root).unwrap_or_default();
+            let url = owner.map(|owner| {
+                format!(
+                    "{}/{repo}",
+                    buildc::create::origin(buildc::create::HOST, &owner)
+                )
+            });
+            buildc::create::Image::collect(
+                &root,
+                name,
+                base,
+                &repo,
+                url,
+                "a name argument",
+                &prompt,
+            )?
+            .apply(&root)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "module", rest @ ..] => {

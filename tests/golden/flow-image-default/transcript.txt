@@ -1,0 +1,36 @@
+Buildc v0.0.0
+
+What will the repo be called?
+Example
+
+Creating example...
+
+This repo is designed to run scheduled builds of the repo's images via
+Github or Forgejo actions.
+Would you like to configure this now? (Yes/No)
+No
+
+Buildc defines images through kdl files. These image files define the base
+image and modules to be included in the built image.
+Would you like to create an image file now? (Yes/No)
+Yes
+
+What will the image be called? [Example]
+
+
+  1) quay.io/fedora/fedora-bootc:44  Fedora 44, nothing above the base system
+  2) ghcr.io/ublue-os/bazzite:stable  KDE, gaming and hardware support over kinoite-main
+  3) ghcr.io/ublue-os/aurora:stable  KDE developer workstation over kinoite-main
+  4) ghcr.io/ublue-os/bluefin:stable  GNOME developer workstation over silverblue-main
+  5) ghcr.io/ublue-os/kinoite-main:44  Fedora Kinoite with the ublue additions, what bazzite builds on
+  0) none
+What is the base image for this image? [0-5]: 1
+
+wrote Example into example
+initialised a git repository in example
+wrote example/example.kdl
+
+next, in example:
+  git add -A && git commit
+
+==== exit 0

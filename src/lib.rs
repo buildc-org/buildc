@@ -100,6 +100,7 @@ pub struct Run {
     pub suppressed: usize,
     pub flavours: usize,
     pub shadowed: Vec<base::Shadow>,
+    pub unpinned: Vec<String>,
     pub(crate) list: List,
     pub(crate) resolved: Vec<Resolved>,
 }
@@ -180,9 +181,16 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
         context,
     } = load(root);
 
-    let shadowed = match command {
-        Command::Check => base::catalog(root, &list.sources, &mut issues).1,
-        _ => Vec::new(),
+    let (shadowed, unpinned) = match command {
+        Command::Check => (
+            base::catalog(root, &list.sources, &mut issues).1,
+            list.sources
+                .iter()
+                .filter(|c| c.unpinned())
+                .map(|c| c.name.clone())
+                .collect(),
+        ),
+        _ => (Vec::new(), Vec::new()),
     };
 
     if let Some(unknown) = image_arg.filter(|id| !list.images.iter().any(|i| i.id == *id)) {
@@ -293,6 +301,7 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
         suppressed: list.images.iter().map(|i| i.suppressed.len()).sum(),
         flavours: list.images.iter().map(|i| i.flavours.len()).sum(),
         shadowed,
+        unpinned,
         list,
         resolved,
     }

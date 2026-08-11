@@ -406,6 +406,12 @@ fn flows() {
         None,
         &["--root", ".", "check"],
     );
+    flow(
+        "flow-check-unpinned",
+        &flow_repo("flow-unpinned"),
+        None,
+        &["--root", ".", "check"],
+    );
 
     let root = flow_repo("flow-module");
     let module = ["--root", ".", "create", "module"];

@@ -534,6 +534,12 @@ fn run() -> Result<ExitCode, Error> {
                 shadow.image
             );
         }
+        for name in &run.unpinned {
+            eprintln!(
+                "buildc: `{name}` is unpinned, so an import of it takes whatever its ref holds \
+                 then, unverified"
+            );
+        }
         match run.images {
             0 => eprintln!("buildc: no image yet; `buildc create image <name>` writes one"),
             _ => eprintln!(

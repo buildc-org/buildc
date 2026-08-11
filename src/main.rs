@@ -519,6 +519,14 @@ fn run() -> Result<ExitCode, Error> {
     }
     print!("{}", run.stdout);
     if command == Command::Check {
+        for shadow in &run.shadowed {
+            eprintln!(
+                "buildc: {}/{} replaces the tool's own entry for {}",
+                shadow.collection,
+                buildc::base::BASES_FILE,
+                shadow.image
+            );
+        }
         match run.images {
             0 => eprintln!("buildc: no image yet; `buildc create image <name>` writes one"),
             _ => eprintln!(

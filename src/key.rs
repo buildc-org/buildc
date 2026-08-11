@@ -42,6 +42,12 @@ impl Key {
         unwritten(&private)?;
 
         let cn = match (declared.generator.as_str(), declared.profile.as_deref()) {
+            ("cosign", _) if cn.is_some() => {
+                return Err(
+                    "`--cn` is a certificate's common name, and `cosign` writes no certificate"
+                        .into(),
+                )
+            }
             ("cosign", _) => None,
             ("openssl", Some("module-signing")) => Some(common_name(root, cn, prompt)?),
             (generator, _) => {

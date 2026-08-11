@@ -33,11 +33,13 @@ pub fn find(root: &Path, sources: &[Collection], name: &str) -> Result<Vec<Found
         ));
     }
     if sources.is_empty() {
-        return Err(format!(
-            "repo.kdl declares no `sources`, so there is no collection to import from.\n\n\
-             This is the block `buildc create repo` writes:\n\n{}",
-            crate::init::SOURCES
-        ));
+        const NONE: &str = "repo.kdl declares no `sources`, so there is no collection to import \
+                            from";
+        let block = crate::init::assets().map(|dir| crate::init::sources(&dir));
+        return Err(match block.as_deref().unwrap_or("") {
+            "" => format!("{NONE}, and no collection is scaffolded to name one"),
+            block => format!("{NONE}.\n\nThis is the block `buildc create repo` writes:\n\n{block}"),
+        });
     }
 
     let mut searched: Vec<&str> = Vec::new();

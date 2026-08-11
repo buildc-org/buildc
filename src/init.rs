@@ -7,14 +7,11 @@ const INSTALLED: [&str; 2] = [
     "/usr/share/buildc/assets",
 ];
 
-pub const SOURCES: &str = "\
-sources {
-    buildc-org \"https://github.com/buildc-org/modules/archive/refs/heads/{ref}.tar.gz\" {
-        unpinned \"the collection this tool is published alongside, followed at its branch head\"
-        ref \"main\"
-    }
+pub const SOURCES_FILE: &str = "repo.sources.kdl";
+
+pub fn sources(assets: &Path) -> String {
+    fs::read_to_string(assets.join(SOURCES_FILE)).unwrap_or_default()
 }
-";
 
 pub fn assets() -> Result<PathBuf, String> {
     let mut tried: Vec<PathBuf> = Vec::new();
@@ -70,13 +67,21 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<(), String> {
     }
 
     copy_tree(assets, root)?;
+    let scaffold = root.join(SOURCES_FILE);
+    let sources = match sources(assets) {
+        block if block.is_empty() => block,
+        block => format!("\n{block}"),
+    };
+    if scaffold.is_file() {
+        fs::remove_file(&scaffold).map_err(|err| format!("{}: {err}", scaffold.display()))?;
+    }
     put(
         &root.join(REPO_FILE),
         &format!(
             "schema-version {SCHEMA_VERSION}\n\n\
              // renovate: datasource=github-releases depName=buildc-org/buildc\n\
-             buildc-version \"{BUILDC_VERSION}\"\n\n\
-             {SOURCES}"
+             buildc-version \"{BUILDC_VERSION}\"\n\
+             {sources}"
         ),
     )?;
     put(&root.join("README.md"), &format!("# {name}\n"))?;

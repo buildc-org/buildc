@@ -362,7 +362,7 @@ fn flow_repo_sourced(name: &str) -> PathBuf {
     let collections = crate_dir().join("tests/collections");
     let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
         .unwrap()
-        .replace(buildc::init::SOURCES, "");
+        .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
     repo.push_str(&format!(
         "sources {{\n    one {:?}\n    two {:?}\n}}\n",
         collections.join("one").display(),

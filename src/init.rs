@@ -2,7 +2,10 @@ use crate::model::image::{is_name, REPO_FILE, SCHEMA_VERSION, BUILDC_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const INSTALLED: &str = "/usr/share/buildc/assets";
+const INSTALLED: [&str; 2] = [
+    "/usr/local/share/buildc/assets",
+    "/usr/share/buildc/assets",
+];
 
 pub fn assets() -> Result<PathBuf, String> {
     let mut tried: Vec<PathBuf> = Vec::new();
@@ -15,7 +18,10 @@ pub fn assets() -> Result<PathBuf, String> {
     {
         tried.push(dir.join("assets"));
     }
-    tried.push(PathBuf::from(INSTALLED));
+    if let Some(dir) = data_home() {
+        tried.push(dir.join("buildc/assets"));
+    }
+    tried.extend(INSTALLED.iter().map(PathBuf::from));
 
     match tried.iter().find(|dir| dir.is_dir()) {
         Some(dir) => Ok(dir.clone()),
@@ -28,6 +34,14 @@ pub fn assets() -> Result<PathBuf, String> {
                 .join(", ")
         )),
     }
+}
+
+fn data_home() -> Option<PathBuf> {
+    // The XDG base directory specification counts an empty XDG_DATA_HOME as unset.
+    std::env::var_os("XDG_DATA_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/share")))
 }
 
 pub fn id(name: &str) -> Result<String, String> {

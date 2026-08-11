@@ -1,10 +1,26 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
+use buildc::model::image::BUILDC_VERSION;
 use buildc::prompt::Prompt;
 use buildc::ui::Choice;
 use buildc::Command;
 
 const HEAD: &str = "usage: buildc [--root <dir>] <command>\n";
+
+const COMMANDS: &str = "You can find the available commands by typing 'buildc' or 'buildc --help'";
+
+static GREETED: AtomicBool = AtomicBool::new(false);
+
+fn banner(failing: bool) {
+    if GREETED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    match failing {
+        true => eprintln!("Buildc v{BUILDC_VERSION}\n"),
+        false => println!("Buildc v{BUILDC_VERSION}\n"),
+    }
+}
 
 const CREATE_REPO: &str = "\
 \x20 create repo [name]  start a repository for your own images, here or in
@@ -238,9 +254,17 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("buildc: {}", error.message());
-            if let Error::Invocation(_) = error {
-                eprint!("{}", usage(in_repo()));
+            banner(true);
+            let invocation = matches!(error, Error::Invocation(_));
+            let message = error.message();
+            let stop = match message.ends_with(['.', '!', '?']) || message.contains('\n') {
+                true => "",
+                false => ".",
+            };
+            eprintln!("Error: {message}{stop}\n");
+            match invocation {
+                true => eprint!("{}", usage(in_repo())),
+                false => eprintln!("{COMMANDS}"),
             }
             ExitCode::from(USAGE_ERROR)
         }
@@ -291,6 +315,13 @@ fn run() -> Result<ExitCode, Error> {
             return Ok(ExitCode::SUCCESS);
         }
         Some(_) => {}
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["create", ..] | ["import", ..] | ["check", ..]
+    ) {
+        banner(false);
     }
 
     if let ["create", "repo", rest @ ..] = words.as_slice() {

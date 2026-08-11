@@ -39,6 +39,36 @@ pub(crate) fn check_path(path: &str, span: Span, src: &Source, issues: &mut Issu
     );
 }
 
+pub(crate) fn placeholders(url: &str) -> impl Iterator<Item = &str> {
+    url.match_indices('{').map(|(at, _)| {
+        url[at..]
+            .find('}')
+            .map_or(&url[at..], |end| &url[at..=at + end])
+    })
+}
+
+pub(crate) fn check_sha256(
+    sha256: &str,
+    subject: &str,
+    span: Span,
+    src: &Source,
+    issues: &mut Issues,
+) {
+    if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        issues.push(
+            Issue::new(format!("{subject} has a malformed sha256"), src)
+                .at(span, "not 64 hex digits")
+                .help("sha256sum output, lowercase"),
+        );
+    } else if sha256.chars().any(|c| c.is_ascii_uppercase()) {
+        issues.push(
+            Issue::new(format!("{subject} has an uppercase sha256"), src)
+                .at(span, "lowercase, as sha256sum writes it")
+                .help("the checksum workflow rewrites this line by matching the pinned value, so its case has to be the one sha256sum produces"),
+        );
+    }
+}
+
 pub(crate) fn syntax_issue(err: &kdl::KdlError, file: &str, src: &Source) -> Issue {
     let mut issue = Issue::new(format!("{file} is not valid KDL"), src);
     for found in &err.diagnostics {

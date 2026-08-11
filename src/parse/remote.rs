@@ -3,7 +3,7 @@ use crate::model::image::is_name;
 use crate::model::remote::{At, Collection, Remote};
 use crate::parse::asset::{MANUAL, RENOVATE};
 use crate::parse::schema::{Arg, Node, Say, NEEDS_VALUE};
-use crate::parse::{kids, string_arg};
+use crate::parse::{check_sha256, kids, placeholders, string_arg};
 use kdl::KdlNode;
 
 const ARCHIVES: [&str; 5] = [".tar.gz", ".tgz", ".tar.xz", ".tar.zst", ".tar.bz2"];
@@ -141,18 +141,8 @@ pub fn parse(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Remote
                 .at(span, "nothing to verify the archive against")
                 .help("a remote module is arbitrary shell running as root in the build, so the content hash is required, not optional"),
         );
-    } else if remote.sha256.len() != 64 || !remote.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
-        issues.push(
-            Issue::new("the pin has a malformed sha256", src)
-                .at(span, "not 64 hex digits")
-                .help("sha256sum output, lowercase"),
-        );
-    } else if remote.sha256.chars().any(|c| c.is_ascii_uppercase()) {
-        issues.push(
-            Issue::new("the pin has an uppercase sha256", src)
-                .at(span, "lowercase, as sha256sum writes it")
-                .help("the checksum workflow rewrites this line by matching the pinned value, so its case has to be the one sha256sum produces"),
-        );
+    } else {
+        check_sha256(&remote.sha256, "the pin", span, src, issues);
     }
 
     check_url(&remote, renovate.is_some(), src, issues);
@@ -212,21 +202,15 @@ fn check_url(remote: &Remote, tracked: bool, src: &Source, issues: &mut Issues) 
         );
     }
 
-    for (index, _) in url.match_indices('{') {
-        let placeholder = url[index..]
-            .find('}')
-            .map(|end| &url[index..=index + end])
-            .unwrap_or(&url[index..]);
-        if placeholder != "{ref}" {
-            issues.push(
-                Issue::new(
-                    format!("the source URL has an unknown placeholder {placeholder}"),
-                    src,
-                )
-                .at(remote.span, "not substituted")
-                .help("a source URL expands `{ref}` and nothing else"),
-            );
-        }
+    for placeholder in placeholders(url).filter(|found| *found != "{ref}") {
+        issues.push(
+            Issue::new(
+                format!("the source URL has an unknown placeholder {placeholder}"),
+                src,
+            )
+            .at(remote.span, "not substituted")
+            .help("a source URL expands `{ref}` and nothing else"),
+        );
     }
 
     if tracked && !url.contains("{ref}") {

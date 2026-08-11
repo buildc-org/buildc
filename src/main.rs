@@ -163,45 +163,61 @@ fn open(given: Option<PathBuf>) -> Result<Option<PathBuf>, Error> {
     Ok((!refused).then_some(root))
 }
 
-fn import(
-    name: Option<String>,
-    root: &Path,
-    image_arg: Option<String>,
-    prompt: &Prompt,
-) -> Result<ExitCode, Error> {
-    let (sources, issues, context) = buildc::sources(root);
-    if issues.report(&context) {
-        return Ok(ExitCode::from(REPO_ERROR));
+struct Import {
+    from: buildc::import::Found,
+    dest: PathBuf,
+    path: String,
+    listing: buildc::create::Listing,
+}
+
+impl Import {
+    fn collect(
+        name: Option<String>,
+        root: &Path,
+        sources: &[buildc::model::remote::Collection],
+        image_arg: Option<String>,
+        prompt: &Prompt,
+    ) -> Result<Self, Error> {
+        let name = match name {
+            Some(name) => name,
+            None => buildc::import::choose(root, sources, prompt)?,
+        };
+        let mut found = buildc::import::find(root, sources, &name)?;
+        let module = buildc::import::split(&name).1;
+        let at = match found.as_slice() {
+            [_] => 0,
+            many => {
+                let owners: Vec<String> = many.iter().map(|f| f.owner.clone()).collect();
+                let listed = owners.join(", ");
+                let options: Vec<Choice> =
+                    owners.iter().map(|owner| Choice::new(owner, "")).collect();
+                prompt
+                    .choose(&format!("`{module}` is in {listed}; which one"), &options)?
+                    .ok_or_else(|| {
+                        format!(
+                            "`{module}` is in {listed}; name which one, as `{}/{module}`",
+                            owners[0]
+                        )
+                    })?
+            }
+        };
+        let from = found.swap_remove(at);
+        let dest = buildc::import::destination(root, &from, module)?;
+        let path = format!("{}/{module}", from.owner);
+        let listing = buildc::create::Listing::collect(root, image_arg, prompt)?;
+        Ok(Self {
+            from,
+            dest,
+            path,
+            listing,
+        })
     }
 
-    let name = match name {
-        Some(name) => name,
-        None => buildc::import::choose(root, &sources, prompt)?,
-    };
-    let found = buildc::import::find(root, &sources, &name)?;
-    let module = buildc::import::split(&name).1;
-    let one = match found.as_slice() {
-        [one] => one,
-        many => {
-            let owners: Vec<String> = many.iter().map(|f| f.owner.clone()).collect();
-            let listed = owners.join(", ");
-            let options: Vec<Choice> = owners.iter().map(|owner| Choice::new(owner, "")).collect();
-            let chosen = prompt
-                .choose(&format!("`{module}` is in {listed}; which one"), &options)?
-                .ok_or_else(|| {
-                    format!(
-                        "`{module}` is in {listed}; name which one, as `{}/{module}`",
-                        owners[0]
-                    )
-                })?;
-            &many[chosen]
-        }
-    };
-
-    let dest = buildc::import::vendor(root, one, module)?;
-    println!("imported {}", dest.display());
-    buildc::create::add_to_image(root, &format!("{}/{module}", one.owner), image_arg, prompt)?;
-    Ok(ExitCode::SUCCESS)
+    fn apply(&self, root: &Path) -> Result<(), String> {
+        buildc::import::vendor(root, &self.from, &self.dest)?;
+        println!("imported {}", self.dest.display());
+        self.listing.apply(&self.path)
+    }
 }
 
 fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
@@ -280,7 +296,7 @@ fn run() -> Result<ExitCode, Error> {
     if let ["create", "repo", rest @ ..] = words.as_slice() {
         args.only(&["root", "owner", "image", "base"], "create repo")?;
         let name = one_name(rest, "create repo")?;
-        buildc::create::repo(name, owner, image_arg, base, root_arg, &prompt)?;
+        buildc::create::Repo::collect(name, owner, image_arg, base, root_arg, &prompt)?.apply()?;
         return Ok(ExitCode::SUCCESS);
     }
 
@@ -315,14 +331,8 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            buildc::create::image(
-                &root,
-                name,
-                base,
-                owner.as_deref(),
-                "a name argument",
-                &prompt,
-            )?;
+            buildc::create::Image::collect(&root, name, base, owner, "a name argument", &prompt)?
+                .apply(&root)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "module", rest @ ..] => {
@@ -331,7 +341,7 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            buildc::create::module(&root, name, pkgs, with, image_arg, &prompt)?;
+            buildc::create::Module::collect(&root, name, pkgs, with, image_arg, &prompt)?.apply()?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "cosign-key"] => {
@@ -339,7 +349,7 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            buildc::key::cosign(&root, module_arg, &prompt)?;
+            buildc::key::Cosign::collect(&root, module_arg, &prompt)?.apply(&root)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "mok-key"] => {
@@ -347,13 +357,19 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            buildc::key::mok(&root, module_arg, cn, &prompt)?;
+            buildc::key::Mok::collect(&root, module_arg, cn, &prompt)?.apply(&root)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["import", "module", rest @ ..] => {
             args.only(&["root", "image"], "import module")?;
             let name = one_name(rest, "import module")?;
-            return import(name, &repo_root(root_arg)?, image_arg, &prompt);
+            let root = repo_root(root_arg)?;
+            let (sources, issues, context) = buildc::sources(&root);
+            if issues.report(&context) {
+                return Ok(ExitCode::from(REPO_ERROR));
+            }
+            Import::collect(name, &root, &sources, image_arg, &prompt)?.apply(&root)?;
+            return Ok(ExitCode::SUCCESS);
         }
         ["build", rest @ ..] => {
             args.only(

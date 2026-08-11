@@ -170,15 +170,17 @@ fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-pub fn vendor(root: &Path, found: &Found, module: &str) -> Result<PathBuf, String> {
+pub fn destination(root: &Path, found: &Found, module: &str) -> Result<PathBuf, String> {
     let dest = PathBuf::from("modules").join(&found.owner).join(module);
-    let full = root.join(&dest);
-    if full.exists() {
-        return Err(format!(
+    match root.join(&dest).exists() {
+        true => Err(format!(
             "{} is already there; delete it to import over it",
             dest.display()
-        ));
+        )),
+        false => Ok(dest),
     }
-    crate::init::copy_tree(&found.dir, &full)?;
-    Ok(dest)
+}
+
+pub fn vendor(root: &Path, found: &Found, dest: &Path) -> Result<(), String> {
+    crate::init::copy_tree(&found.dir, &root.join(dest))
 }

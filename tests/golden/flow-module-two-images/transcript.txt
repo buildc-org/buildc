@@ -1,0 +1,18 @@
+Buildc v0.0.0
+
+module name: My Editor
+
+does it install packages (Yes/No)
+yes
+
+package names, separated by spaces []: nano vim
+
+  1) example  Example
+  2) server  Server
+  0) none
+list it in images [0-2, several]: 1 2
+
+wrote modules/my-editor/module.kdl
+listed "my-editor" in ./example.kdl
+listed "my-editor" in ./server.kdl
+==== exit 0

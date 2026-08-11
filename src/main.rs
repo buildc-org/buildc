@@ -191,7 +191,7 @@ impl Import {
         name: Option<String>,
         root: &Path,
         sources: &[buildc::model::remote::Collection],
-        image_arg: Option<String>,
+        images: Vec<String>,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
         let name = match name {
@@ -220,7 +220,7 @@ impl Import {
         let from = found.swap_remove(at);
         let dest = buildc::import::destination(root, &from, module)?;
         let path = format!("{}/{module}", from.owner);
-        let listing = buildc::create::Listing::collect(root, image_arg, prompt)?;
+        let listing = buildc::create::Listing::collect(root, images, prompt)?;
         Ok(Self {
             from,
             dest,
@@ -282,7 +282,7 @@ fn run() -> Result<ExitCode, Error> {
     let root_arg = args.flag("root")?.map(PathBuf::from);
     let owner = args.flag("owner")?;
     let host = args.flag("host")?;
-    let image_arg = args.flag("image")?;
+    let images = args.flags("image")?;
     let module_arg = args.flag("module")?;
     let cn = args.flag("cn")?;
     let base = args.flag("base")?;
@@ -328,8 +328,8 @@ fn run() -> Result<ExitCode, Error> {
     if let ["create", "repo", rest @ ..] = words.as_slice() {
         args.only(&["root", "host", "owner", "image", "base"], "create repo")?;
         let name = one_name(rest, "create repo")?;
-        buildc::create::Repo::collect(name, host, owner, image_arg, base, root_arg, &prompt)?
-            .apply()?;
+        let image = images.last().cloned();
+        buildc::create::Repo::collect(name, host, owner, image, base, root_arg, &prompt)?.apply()?;
         return Ok(ExitCode::SUCCESS);
     }
 
@@ -375,7 +375,7 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            buildc::create::Module::collect(&root, name, pkgs, with, image_arg, &prompt)?.apply()?;
+            buildc::create::Module::collect(&root, name, pkgs, with, images, &prompt)?.apply()?;
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "cosign-key"] => {
@@ -402,7 +402,7 @@ fn run() -> Result<ExitCode, Error> {
             if issues.report(&context) {
                 return Ok(ExitCode::from(REPO_ERROR));
             }
-            Import::collect(name, &root, &sources, image_arg, &prompt)?.apply(&root)?;
+            Import::collect(name, &root, &sources, images, &prompt)?.apply(&root)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["build", rest @ ..] => {

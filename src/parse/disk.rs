@@ -1,3 +1,5 @@
+use crate::diag::{Issues, Source};
+use crate::model::module::Key;
 use kdl::KdlDocument;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -5,6 +7,7 @@ use std::path::Path;
 #[derive(Default)]
 pub struct Disk {
     pub providers: BTreeMap<String, Vec<String>>,
+    pub keys: BTreeMap<String, Vec<(String, Key)>>,
     pub collectors: BTreeMap<String, String>,
     pub overlays: BTreeMap<String, Vec<String>>,
 }
@@ -68,6 +71,22 @@ impl Disk {
                                 out.collectors.insert(file.to_string(), name.clone());
                             }
                         }
+                        "key" => {
+                            let src = Source::new(manifest.display().to_string(), text.clone());
+                            let Some(key) =
+                                crate::parse::module::parse_key(node, &src, &mut Issues::default())
+                            else {
+                                continue;
+                            };
+                            out.providers
+                                .entry(key.public.clone())
+                                .or_default()
+                                .push(name.clone());
+                            out.keys
+                                .entry(key.kind.clone())
+                                .or_default()
+                                .push((name.clone(), key));
+                        }
                         _ => {}
                     }
                 }
@@ -76,6 +95,9 @@ impl Disk {
 
         for candidates in out.providers.values_mut() {
             candidates.sort();
+        }
+        for declaring in out.keys.values_mut() {
+            declaring.sort_by(|a, b| a.0.cmp(&b.0));
         }
         out
     }

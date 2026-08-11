@@ -37,6 +37,7 @@ pub enum Arg {
     Bool,
     Int,
     Strs,
+    One(&'static [&'static str]),
 }
 
 pub enum Kind {
@@ -163,6 +164,14 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
         Arg::Strs => {
             if string_args(node).is_empty() {
                 schema.arg_say.raise(about, here, src, issues);
+            }
+        }
+        Arg::One(set) => {
+            let given = string_arg(node);
+            if !given.is_some_and(|value| set.contains(&value)) {
+                schema
+                    .arg_say
+                    .raise(given.unwrap_or(about), here, src, issues);
             }
         }
     }

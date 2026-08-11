@@ -28,6 +28,17 @@ pub struct Contribution {
     pub span: Span,
 }
 
+pub struct Key {
+    pub kind: String,
+    pub generator: String,
+    pub profile: Option<String>,
+    pub bits: u32,
+    pub public: String,
+    pub format: String,
+    pub private: String,
+    pub span: Span,
+}
+
 pub struct VerifyException {
     pub class: String,
     pub unit: String,
@@ -51,6 +62,7 @@ pub struct Module {
     pub flavour: Option<String>,
     pub collects: Vec<Collect>,
     pub contributes: Vec<Contribution>,
+    pub keys: Vec<Key>,
     pub secrets: Vec<Decl>,
     pub args: Vec<Decl>,
     pub options: Vec<Opt>,

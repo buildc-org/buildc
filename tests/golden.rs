@@ -239,6 +239,103 @@ fn no_default(root: &Path) {
     }
 }
 
+fn flow(name: &str, dir: &Path, args: &[&str]) {
+    let fixture = crate_dir().join("tests/golden").join(name);
+    let log = tmp().join(format!("{name}.log"));
+    let file = std::fs::File::create(&log).unwrap();
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+        .args(args)
+        .current_dir(dir)
+        .env("PATH", "")
+        .env("BUILDC_ANSWERS", fixture.join("answers.txt"))
+        .env("BUILDC_ASSETS", crate_dir().join("assets"))
+        .stdout(std::process::Stdio::from(file.try_clone().unwrap()))
+        .stderr(std::process::Stdio::from(file))
+        .status()
+        .unwrap();
+    let transcript = format!(
+        "{}==== exit {}\n",
+        std::fs::read_to_string(&log).unwrap(),
+        status.code().unwrap_or_default()
+    );
+    compare(name, "transcript.txt", &transcript);
+}
+
+fn tmp() -> PathBuf {
+    PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+}
+
+fn buildc(dir: &Path, args: &[&str]) {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+        .args(args)
+        .current_dir(dir)
+        .env("PATH", "")
+        .env("BUILDC_ASSETS", crate_dir().join("assets"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+fn empty(name: &str) -> PathBuf {
+    let dir = tmp().join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn flow_repo(name: &str) -> PathBuf {
+    let root = empty(name);
+    buildc(
+        &root,
+        &[
+            "--no-tui", "--root", ".", "create", "repo", "Example", "--owner", "someone",
+            "--image", "Example",
+        ],
+    );
+    root
+}
+
+#[test]
+fn flows() {
+    flow("flow-create-repo", &empty("flow-new"), &["create", "repo"]);
+
+    let root = flow_repo("flow-image");
+    flow(
+        "flow-create-image",
+        &root,
+        &["--root", ".", "create", "image"],
+    );
+
+    let root = flow_repo("flow-module");
+    let module = ["--root", ".", "create", "module"];
+    flow("flow-create-module", &root, &module);
+    flow(
+        "flow-module-taken",
+        &root,
+        &[&module[..], &["My Editor"]].concat(),
+    );
+    flow("flow-unanswered", &root, &module);
+
+    let root = flow_repo("flow-import");
+    let collections = crate_dir().join("tests/collections");
+    let mut repo = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
+    repo.push_str(&format!(
+        "\nsources {{\n    one {:?}\n    two {:?}\n}}\n",
+        collections.join("one").display(),
+        collections.join("two").display()
+    ));
+    std::fs::write(root.join("repo.kdl"), repo).unwrap();
+    flow(
+        "flow-import-module",
+        &root,
+        &["--root", ".", "import", "module"],
+    );
+}
+
 #[test]
 fn schema_doc() {
     let path = crate_dir().join("docs/schema.md");

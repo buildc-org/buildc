@@ -256,6 +256,8 @@ fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), Strin
 }
 
 fn main() -> ExitCode {
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+
     match run() {
         Ok(code) => code,
         Err(error) => {

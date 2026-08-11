@@ -1,4 +1,4 @@
-Buildc v0.0.0
+Buildc v0.1.0
 
 What will the image be called? [example]
 Beta

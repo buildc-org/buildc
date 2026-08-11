@@ -3,7 +3,7 @@
  2 | 
  3 | buildc-version "0.0.1"
    : ^^^^^^|^^^^^
-   :       `-- this is buildc 0.0.0
+   :       `-- this is buildc 0.1.0
    `----
   help: run the pinned release, which `scripts/buildc.sh` fetches, or `buildc
         update-repo` to move the pin to this one

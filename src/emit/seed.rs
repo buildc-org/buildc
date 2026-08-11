@@ -63,8 +63,13 @@ fn source(collection: &Collection, out: &mut String) {
         }
         At::Archive(remote) => {
             let _ = writeln!(out, "\x20   {name} {:?} {{", remote.url);
+            if let Some(why) = &remote.unpinned {
+                let _ = writeln!(out, "\x20       unpinned {why:?}");
+            }
             let _ = writeln!(out, "\x20       ref {:?}", remote.git_ref);
-            let _ = writeln!(out, "\x20       sha256 {:?}", remote.sha256);
+            if remote.unpinned.is_none() {
+                let _ = writeln!(out, "\x20       sha256 {:?}", remote.sha256);
+            }
             if let Some(path) = &remote.path {
                 let _ = writeln!(out, "\x20       path {path:?}");
             }

@@ -6,6 +6,7 @@ pub struct Remote {
     pub url: String,
     pub git_ref: String,
     pub sha256: String,
+    pub unpinned: Option<String>,
     pub path: Option<String>,
     pub span: Span,
 }
@@ -32,6 +33,13 @@ impl Collection {
         match &self.at {
             At::Dir(_) => None,
             At::Archive(remote) => remote.path.as_deref(),
+        }
+    }
+
+    pub fn unpinned(&self) -> bool {
+        match &self.at {
+            At::Dir(_) => false,
+            At::Archive(remote) => remote.unpinned.is_some(),
         }
     }
 }

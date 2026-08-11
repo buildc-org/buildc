@@ -106,6 +106,7 @@ pub struct Run {
     pub suppressed: usize,
     pub flavours: usize,
     pub shadowed: Vec<base::Shadow>,
+    pub(crate) list: List,
 }
 
 fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
@@ -296,6 +297,7 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
         suppressed: list.images.iter().map(|i| i.suppressed.len()).sum(),
         flavours: list.images.iter().map(|i| i.flavours.len()).sum(),
         shadowed,
+        list,
     }
 }
 

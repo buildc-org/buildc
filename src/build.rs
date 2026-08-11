@@ -56,11 +56,11 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         gate.files.len()
     );
 
-    let loaded = crate::load(root);
+    let list = gate.list;
     let (image, flavour, entries) =
-        of_target(&loaded.list, &target).ok_or_else(|| format!("`{target}` has no image"))?;
+        of_target(&list, &target).ok_or_else(|| format!("`{target}` has no image"))?;
     let modules: Vec<&Module> = entries.iter().filter_map(|e| e.module.as_ref()).collect();
-    let published = published(&loaded.list, &target);
+    let published = published(&list, &target);
 
     let version = env("IMAGE_VERSION").unwrap_or_else(today);
     let namespace = crate::registry::namespace(root);
@@ -100,7 +100,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     }
 
     let secrets = secrets(opts)?;
-    let (import, export) = cache(&loaded.list, &target, &published, opts, namespace.ok())?;
+    let (import, export) = cache(&list, &target, &published, opts, namespace.ok())?;
 
     install(root)?;
 

@@ -1,6 +1,6 @@
 sources {
     buildc-org "https://github.com/buildc-org/modules/archive/refs/heads/{ref}.tar.gz" {
-        unpinned "the collection this tool is published alongside, followed at its branch head"
+        unpinned "This is the trusted source for modules"
         ref "main"
     }
 }

@@ -144,6 +144,12 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     for label in lines("LABELS") {
         args.extend(["--label".to_string(), label]);
     }
+    if list.manifest_label {
+        args.extend([
+            "--label".to_string(),
+            "org.buildc.manifest=/usr/share/buildc/manifest.json".to_string(),
+        ]);
+    }
     if backend == "buildx" {
         for reference in &import {
             args.extend([

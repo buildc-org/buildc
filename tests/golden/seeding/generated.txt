@@ -109,3 +109,4 @@ sources {
 module "buildc-org/hello"
 module "buildc-org/flatpak" variant="beta"
 module "buildc-org/drivers" flavour="nvidia"
+==== generated/plan.json

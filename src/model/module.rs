@@ -10,6 +10,12 @@ pub struct PackageGroup {
     pub span: Span,
 }
 
+pub struct Coverage {
+    pub benchmark: String,
+    pub rules: Vec<String>,
+    pub span: Span,
+}
+
 pub struct Decl {
     pub name: String,
     pub span: Span,
@@ -69,6 +75,7 @@ pub struct Module {
     pub variants: Vec<Variant>,
     pub assets: Vec<Asset>,
     pub packages: Vec<PackageGroup>,
+    pub satisfies: Vec<Coverage>,
     pub resolved: Vec<(String, String)>,
     pub fragment: Option<String>,
     pub fragment_after: bool,

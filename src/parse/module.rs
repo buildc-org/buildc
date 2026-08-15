@@ -1,7 +1,7 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::image::{Entry, Image, List};
 use crate::model::module::{
-    Collect, Contribution, Decl, Key, Module, PackageGroup, VerifyException,
+    Collect, Contribution, Coverage, Decl, Key, Module, PackageGroup, VerifyException,
 };
 use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
@@ -207,6 +207,13 @@ pub const MODULE: Node = Node::new("module",
                     ], Say::new("unknown property `{}` in packages block", "not part of the schema",
                         "a family entry in `packages` accepts `enablerepo`")),
             ], Say::NONE),
+        Node::new("satisfies", "The benchmarks and rules this module claims to harden, as an audit declaration the tool records rather than certifies.")
+            .once("a module makes one claim set; two blocks split it")
+            .children(&[
+                Node::new("", "One benchmark, and the rule IDs it covers.")
+                    .arg(Arg::Strs, Say::new("`{}` has no rules listed", "nothing to cover", ""))
+                    .unique(Say::new("benchmark `{}` is declared twice", "already declared above", "")),
+            ], Say::NONE),
     ], Say::new("unknown node `{}`", "not part of the schema",
         "docs/schema.md documents every node a manifest may hold"));
 
@@ -310,6 +317,7 @@ impl Module {
             variants: Vec::new(),
             assets: Vec::new(),
             packages: Vec::new(),
+            satisfies: Vec::new(),
             resolved: Vec::new(),
             fragment: std::fs::read_to_string(dir.join("Containerfile.inc")).ok(),
             fragment_after: false,
@@ -396,6 +404,7 @@ impl Module {
                     }
                 }
                 "packages" => module.parse_packages(node, src, issues),
+                "satisfies" => module.parse_satisfies(node, src, issues),
                 _ => {}
             }
         }
@@ -757,6 +766,34 @@ impl Module {
             });
         }
     }
+
+    fn parse_satisfies(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
+        let Some(children) = node.children() else {
+            return;
+        };
+        for child in children.nodes() {
+            let benchmark = child.name().value().to_string();
+            if benchmark.is_empty() {
+                issues.push(
+                    Issue::new("a benchmark name is required inside `satisfies`", src)
+                        .at(child.name().span(), "empty name")
+                        .help("`satisfies { cis-fedora \"1.1.1.1\" }`"),
+                );
+                continue;
+            }
+            let rules = child
+                .entries()
+                .iter()
+                .filter(|entry| entry.name().is_none())
+                .filter_map(|entry| entry.value().as_string().map(str::to_string))
+                .collect();
+            self.satisfies.push(Coverage {
+                benchmark,
+                rules,
+                span: child.name().span().into(),
+            });
+        }
+    }
 }
 
 pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Key> {
@@ -876,6 +913,13 @@ packages {
     fedora "one" enablerepo="two" weak=#true
 }
 drives "a truck"
+satisfies {
+    "" "1.1.1.1"
+    cis-fedora
+    cis-fedora "1"
+    cis-fedora "2"
+}
+satisfies
 "#,
         );
         assert_eq!(
@@ -900,6 +944,9 @@ drives "a truck"
                 "`fragment` is declared twice",
                 "unknown property `weak` in packages block",
                 "unknown node `drives`",
+                "`cis-fedora` has no rules listed",
+                "benchmark `cis-fedora` is declared twice",
+                "`satisfies` is declared twice",
             ]
         );
     }

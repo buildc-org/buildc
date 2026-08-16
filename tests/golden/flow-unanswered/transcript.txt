@@ -1,4 +1,4 @@
-Buildc v0.1.0
+Buildc v{version}
 
 module name: Other
 

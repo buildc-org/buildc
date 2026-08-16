@@ -1,4 +1,4 @@
-Buildc v0.1.0
+Buildc v{version}
 
   1) one/browser  A browser, from the first collection
   2) two/browser  A browser, from the second collection (requires flatpak)

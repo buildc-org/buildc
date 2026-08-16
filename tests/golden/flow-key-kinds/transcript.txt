@@ -1,4 +1,4 @@
-Buildc v0.1.0
+Buildc v{version}
 
   1) secureboot
   0) none

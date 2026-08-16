@@ -482,6 +482,8 @@ impl Module {
             }
         }
 
+        crate::provenance::check_fetch(&module, &dir, issues);
+
         Some(module)
     }
 

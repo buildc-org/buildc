@@ -122,6 +122,7 @@ pub struct List {
     pub pr_image_id: Option<String>,
     pub seed: Option<Seed>,
     pub manifest_label: bool,
+    pub audit_enforce: bool,
     pub schema_version: Option<u32>,
     pub(crate) schema_version_seen: bool,
     pub repo_src: Source,

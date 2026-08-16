@@ -74,16 +74,26 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     };
     let declared_base = image.base.as_ref().map(|b| b.image.clone());
     let resolved_base = match (env("BASE"), &declared_base) {
-        (Some(given), _) => given,
-        (None, Some(declared)) => record::base(declared).unwrap_or_else(|| {
-            eprintln!("buildc: {declared} did not resolve to a digest; the build record says so");
-            declared.clone()
-        }),
-        (None, None) => String::new(),
+        (Some(given), _) => Some(given),
+        (None, Some(declared)) => record::base(declared),
+        (None, None) => None,
     };
+    let source_commit = record::source_commit(root);
+    crate::provenance::enforce_build(
+        list.audit_enforce,
+        resolved_base.as_deref(),
+        source_commit.as_deref(),
+    )?;
     if let Some(declared) = &declared_base {
-        eprintln!("buildc: base {declared} -> {resolved_base}");
+        match &resolved_base {
+            Some(resolved) => eprintln!("buildc: base {declared} -> {resolved}"),
+            None => {
+                eprintln!("buildc: {declared} did not resolve to a digest; the build record says so")
+            }
+        }
     }
+    let resolved_base = resolved_base.unwrap_or_else(|| declared_base.clone().unwrap_or_default());
+    let source_commit = source_commit.unwrap_or_default();
 
     let resolutions: Vec<String> = pinned(&modules)
         .into_iter()
@@ -128,11 +138,8 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
                 .join(" ")
         ),
         format!("ASSET_RESOLUTIONS={}", resolutions.join(" ")),
-        format!(
-            "SOURCE_COMMIT={}",
-            record::source_commit(root).unwrap_or_default()
-        ),
-        "AUDIT_ENFORCE=false".to_string(),
+        format!("SOURCE_COMMIT={source_commit}"),
+        format!("AUDIT_ENFORCE={}", list.audit_enforce),
     ];
     if let Some(base) = &image.base {
         build_args.push(format!("BASE_DECLARED={}", base.image));

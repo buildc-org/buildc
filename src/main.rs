@@ -196,6 +196,7 @@ impl Import {
         name: Option<String>,
         root: &Path,
         sources: &[buildc::model::remote::Collection],
+        enforce: bool,
         images: Vec<String>,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
@@ -203,7 +204,7 @@ impl Import {
             Some(name) => name,
             None => buildc::import::choose(root, sources, prompt)?,
         };
-        let mut found = buildc::import::find(root, sources, &name)?;
+        let mut found = buildc::import::find(root, sources, &name, enforce)?;
         let module = buildc::import::split(&name).1;
         let at = match found.as_slice() {
             [_] => 0,
@@ -421,8 +422,15 @@ fn run() -> Result<ExitCode, Error> {
             if issues.report(&context) {
                 return Ok(ExitCode::from(REPO_ERROR));
             }
-            Import::collect(name, &root, &list.sources, images, &prompt)?
-                .apply(&root, &list.sources)?;
+            Import::collect(
+                name,
+                &root,
+                &list.sources,
+                list.audit_enforce,
+                images,
+                &prompt,
+            )?
+            .apply(&root, &list.sources)?;
             return Ok(ExitCode::SUCCESS);
         }
         ["build", rest @ ..] => {

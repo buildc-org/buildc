@@ -86,12 +86,19 @@
               ],
               "requires": [],
               "provenance": {
-                "content": "dd4717baec43f11289b370706231538b9ce3bea6c5d9abe394844909e7b97ccd",
+                "content": "f86ab0bde98e71158432e4f9d66377f98faaf5db4065748208a5fcf70fe701ae",
                 "repo": false,
                 "pin": null,
                 "imported": null
               },
-              "satisfies": []
+              "satisfies": [
+                {
+                  "benchmark": "cis-fedora",
+                  "rules": [
+                    "9.9.9.9"
+                  ]
+                }
+              ]
             }
           ],
           "secrets": [],
@@ -102,6 +109,7 @@
           "assets": [],
           "provides_files": {},
           "overlay_files": {},
+          "overlay_overridden": [],
           "collected_files": {},
           "collect_destinations": []
         }

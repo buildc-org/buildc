@@ -109,6 +109,13 @@
           "overlay_files": {
             "/usr/lib/clash.conf": "core/second"
           },
+          "overlay_overridden": [
+            {
+              "path": "/usr/lib/clash.conf",
+              "module": "core/first",
+              "by": "core/second"
+            }
+          ],
           "collected_files": {},
           "collect_destinations": []
         }

@@ -658,3 +658,26 @@ fn every_written_document_reads_back() {
     }
     assert!(read >= 20, "only {read} documents were read");
 }
+
+#[test]
+fn the_scan_fixtures_are_the_goldens_they_came_from() {
+    for (golden, shipped) in [
+        ("enforced/plan.json", "plan.json"),
+        ("suppressed/plan.json", "suppressed.json"),
+        ("broken-overlay/plan.json", "overlay.json"),
+    ] {
+        let from = crate_dir().join("tests/golden").join(golden);
+        let to = crate_dir().join("assets/tests/scan-fixtures").join(shipped);
+        let wanted = std::fs::read_to_string(&from).unwrap();
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::write(&to, &wanted).unwrap();
+            continue;
+        }
+        assert!(
+            std::fs::read_to_string(&to).unwrap_or_default() == wanted,
+            "{} is no longer {}; rerun with UPDATE_GOLDEN=1",
+            to.display(),
+            from.display()
+        );
+    }
+}

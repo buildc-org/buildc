@@ -6,6 +6,25 @@ use buildc::model::remote::{At, Collection};
 
 static ENV: Mutex<()> = Mutex::new(());
 
+fn flat(text: &str) -> String {
+    text.split_whitespace()
+        .filter(|word| !matches!(*word, "x" | "|"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn flattening_survives_a_wrap_mid_phrase() {
+    let wrapped = "  x /home/runner/work/buildc/buildc/target/tmp/io/bases.kdl could not be\n  | read: Is a directory (os error 21)\n";
+
+    let flat = flat(wrapped);
+    assert!(flat.contains("could not be read"), "{flat}");
+    assert!(
+        flat.contains("/home/runner/work/buildc/buildc/target/tmp/io/bases.kdl"),
+        "{flat}"
+    );
+}
+
 struct Assets {
     _lock: MutexGuard<'static, ()>,
     old: Option<std::ffi::OsString>,
@@ -119,9 +138,7 @@ fn malformed_runtime_file_does_not_substitute_embedded_catalog() {
 
     assert!(bases.is_empty());
     assert!(shadows.is_empty());
-    assert!(issues
-        .plain()
-        .contains(&assets.path.join(BASES_FILE).display().to_string()));
+    assert!(flat(&issues.plain()).contains(&assets.path.join(BASES_FILE).display().to_string()));
 }
 
 #[test]
@@ -135,15 +152,12 @@ fn present_unreadable_runtime_file_is_diagnosed_without_fallback() {
 
     assert!(bases.is_empty());
     assert!(shadows.is_empty());
-    let diagnostic = issues.plain();
+    let diagnostic = flat(&issues.plain());
     assert!(
         diagnostic.contains(&path.display().to_string()),
         "{diagnostic}"
     );
-    assert!(
-        diagnostic.contains("could") && diagnostic.contains("not be read"),
-        "{diagnostic}"
-    );
+    assert!(diagnostic.contains("could not be read"), "{diagnostic}");
 }
 
 #[test]
@@ -167,6 +181,7 @@ fn create_image_surfaces_an_unreadable_runtime_catalog() {
     .err()
     .expect("the unreadable runtime catalog must stop image creation");
 
+    let error = flat(&error);
     assert!(error.contains(&path.display().to_string()), "{error}");
     assert!(error.contains("could not be read"), "{error}");
 }

@@ -794,7 +794,7 @@ jobs:
         with:
           subject-name: ${{ env.SUBJECT_NAME }}
           subject-digest: ${{ env.SUBJECT_DIGEST }}
-          push-to-registry: true
+          push-to-registry: false
 
       - name: Verify both predicates are on the digest
         if: steps.claims.outputs.count != '0'

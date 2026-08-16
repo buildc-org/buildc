@@ -46,6 +46,10 @@ const FLAVOUR_ARG: &str = "\
 # ---- flavour gate ----
 ARG FLAVOUR";
 
+const FAMILY_ARG: &str = "\
+# ---- base family ----
+ARG FAMILY";
+
 const BUILDC_MOUNT: &str = "--mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    ";
 
 const IMAGE_VERSION_ARG: &str = "\
@@ -112,6 +116,7 @@ pub fn section(image: &Image, collection: &Collection, root: &Path) -> String {
     }
 
     let _ = write!(out, "{IMAGE_VERSION_ARG}\n\n");
+    let _ = write!(out, "{FAMILY_ARG}\n\n");
 
     let identity = identity(image);
     let _ = writeln!(out, "# ---- image identity ----");

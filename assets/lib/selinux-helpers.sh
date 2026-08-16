@@ -1,5 +1,4 @@
 #!/bin/bash
-
 ensure_checkpolicy() {
     command -v checkmodule > /dev/null 2>&1 || dnf5 install -y checkpolicy
 }

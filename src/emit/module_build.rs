@@ -95,7 +95,8 @@ fn script(
             "debian" | "ubuntu" => {
                 let _ = write!(
                     out,
-                    "\napt-get update\n\
+                    "\nmkdir -p /var/lib/apt/lists/partial /var/lib/dpkg /var/cache/apt/archives/partial\n\
+                     apt-get update\n\
                      DEBIAN_FRONTEND=noninteractive apt-get install -y {packages}\n\
                      apt-get clean\n\
                      rm -rf /var/lib/apt/lists/*\n"

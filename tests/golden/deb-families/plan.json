@@ -21,7 +21,7 @@
       "id": "debian",
       "name": "Debian",
       "pretty_name": "",
-      "file": "./debian.kdl",
+      "file": "./debian.image.kdl",
       "url": "",
       "issues_url": "",
       "base": {
@@ -82,7 +82,7 @@
       "id": "ubuntu",
       "name": "Ubuntu",
       "pretty_name": "",
-      "file": "./ubuntu.kdl",
+      "file": "./ubuntu.image.kdl",
       "url": "",
       "issues_url": "",
       "base": {

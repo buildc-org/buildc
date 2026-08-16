@@ -564,7 +564,7 @@ fn refuse_nesting(root: &Path) -> Result<(), String> {
 }
 
 fn git_init(root: &Path) -> Result<(), String> {
-    match quietly(Command::new("git").arg("init").arg(root)).status() {
+    match quietly(Command::new("git").args(["init", "-b", "main"]).arg(root)).status() {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(format!(
             "`git init` exited {}",

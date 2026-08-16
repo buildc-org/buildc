@@ -3,10 +3,13 @@ schema-version 1
 seed "example" collection="buildc-org"
 
 sources {
-    buildc-org "https://github.com/buildc-org/modules/archive/refs/tags/{ref}.tar.gz" {
-        renovate datasource="github-tags" depName="buildc-org/modules"
-        ref "v1.0.0"
-        sha256 "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3"
+    buildc-org {
+        pin {
+            renovate datasource="github-tags" depName="buildc-org/modules"
+            version "v1.0.0"
+            url "https://github.com/buildc-org/modules/archive/refs/tags/{version}.tar.gz"
+            sha256 "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3"
+        }
     }
     scratch "../modules"
 }

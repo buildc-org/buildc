@@ -52,8 +52,11 @@
     },
     {
       "customType": "regex",
-      "description": "Version-tagged asset pins in module.kdl",
-      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/"],
+      "description": "Version-tagged pins",
+      "managerFilePatterns": [
+        "/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/",
+        "/^[^/]+\\.kdl$/",
+      ],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*version \"(?<currentValue>[^\"]+)\"",
       ],
@@ -66,14 +69,6 @@
         "renovate datasource=\"(?<datasource>git-refs)\" depName=\"(?<depName>[^\"]+)\"\\s*\\n\\s*version \"(?<currentDigest>[^\"]+)\"",
       ],
       "currentValueTemplate": "master",
-    },
-    {
-      "customType": "regex",
-      "description": "Out-of-tree module pins in an image file",
-      "managerFilePatterns": ["/^[^/]+\\.kdl$/"],
-      "matchStrings": [
-        "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*ref \"(?<currentValue>[^\"]+)\"",
-      ],
     },
   ],
 }

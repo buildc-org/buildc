@@ -1,7 +1,8 @@
 use crate::diag::{Issue, Source, Span};
 use crate::model::module::Module;
 use crate::model::options::Value;
-use crate::model::remote::{Collection, Remote, REMOTE_DIR};
+use crate::model::remote::{Collection, REMOTE_DIR};
+use crate::provenance::Evidence;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -86,7 +87,7 @@ pub struct Entry {
     pub flavour: Option<String>,
     pub variant: Option<String>,
     pub options: Vec<(String, Vec<Value>, Span)>,
-    pub remote: Option<Remote>,
+    pub remote: Option<Evidence>,
     pub span: Span,
     pub module: Option<Module>,
 }

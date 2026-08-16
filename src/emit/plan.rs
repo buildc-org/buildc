@@ -2,6 +2,7 @@ use crate::emit::json::Json;
 use crate::model::asset::Asset;
 use crate::model::image::{Entry, Image, List, Target, NO_FLAVOUR, SCHEMA_VERSION};
 use crate::model::module::Module;
+use crate::provenance::Evidence;
 use crate::resolve::overlay;
 use crate::resolve::Resolved;
 
@@ -268,7 +269,7 @@ fn module(entry: &Entry) -> Json {
         ("variant", Json::optional(entry.variant.clone())),
         (
             "remote",
-            Json::optional(entry.remote.as_ref().map(|r| r.git_ref.clone())),
+            Json::optional(entry.remote.as_ref().and_then(|r| r.version.clone())),
         ),
         (
             "description",
@@ -284,6 +285,7 @@ fn module(entry: &Entry) -> Json {
                     .map(|(name, value)| (name.clone(), Json::string(value))),
             ),
         ),
+        ("provenance", provenance(entry)),
         (
             "satisfies",
             Json::array(
@@ -298,6 +300,31 @@ fn module(entry: &Entry) -> Json {
                         ])
                     }),
             ),
+        ),
+    ])
+}
+
+fn provenance(entry: &Entry) -> Json {
+    let module = entry.module.as_ref();
+    Json::object([
+        (
+            "content",
+            Json::optional(module.and_then(|m| m.content.clone())),
+        ),
+        (
+            "pin",
+            entry.remote.as_ref().map_or(Json::Null, Evidence::json),
+        ),
+        (
+            "imported",
+            match module.and_then(|m| m.imported.as_ref()) {
+                None => Json::Null,
+                Some(record) => Json::object([
+                    ("collection", Json::string(&record.collection)),
+                    ("content", Json::string(&record.content)),
+                    ("pin", record.pin.json()),
+                ]),
+            },
         ),
     ])
 }
@@ -397,10 +424,7 @@ fn assets(modules: &[&Module]) -> Json {
                 "manifest",
                 Json::string(format!("modules/{}/module.kdl", module.dir)),
             ),
-            ("version", Json::optional(asset.version.clone())),
-            ("sha256", Json::optional(asset.sha256.clone())),
-            ("from", Json::string(asset.from.as_str())),
-            ("url", Json::optional(asset.url_resolved())),
+            ("pin", asset.pin.json()),
         ])
     }))
 }
@@ -425,11 +449,8 @@ fn remotes(list: &List) -> Json {
             out.push(Json::object([
                 ("name", Json::string(&entry.path)),
                 ("dir", Json::string(format!("modules/{}", entry.dir()))),
-                ("ref", Json::string(&remote.git_ref)),
-                ("sha256", Json::string(&remote.sha256)),
-                ("url", Json::string(remote.url_resolved())),
-                ("path", Json::optional(remote.path.clone())),
                 ("file", Json::string(image.src.name())),
+                ("pin", remote.json()),
             ]));
         }
     }

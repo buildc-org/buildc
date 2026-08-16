@@ -10,6 +10,7 @@ pub mod key;
 pub mod model;
 pub mod parse;
 pub mod prompt;
+pub mod provenance;
 pub mod registry;
 pub mod resolve;
 pub mod runtime;
@@ -101,6 +102,7 @@ pub struct Run {
     pub flavours: usize,
     pub shadowed: Vec<base::Shadow>,
     pub unpinned: Vec<String>,
+    pub modified: Vec<String>,
     pub(crate) list: List,
     pub(crate) resolved: Vec<Resolved>,
 }
@@ -181,7 +183,7 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
         context,
     } = load(root);
 
-    let (shadowed, unpinned) = match command {
+    let (shadowed, unpinned, modified) = match command {
         Command::Check => (
             base::catalog(root, &list.sources, &mut issues).1,
             list.sources
@@ -189,8 +191,9 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
                 .filter(|c| c.unpinned())
                 .map(|c| c.name.clone())
                 .collect(),
+            provenance::record::modified(root),
         ),
-        _ => (Vec::new(), Vec::new()),
+        _ => (Vec::new(), Vec::new(), Vec::new()),
     };
 
     if let Some(unknown) = image_arg.filter(|id| !list.images.iter().any(|i| i.id == *id)) {
@@ -306,6 +309,7 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
         flavours: list.images.iter().map(|i| i.flavours.len()).sum(),
         shadowed,
         unpinned,
+        modified,
         list,
         resolved,
     }
@@ -376,7 +380,7 @@ fn difference(found: &str, generated: &str) -> (diag::Span, String) {
     }
 }
 
-fn tracked(dir: &Path) -> Vec<PathBuf> {
+pub(crate) fn tracked(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };

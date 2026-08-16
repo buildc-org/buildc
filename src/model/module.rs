@@ -1,6 +1,7 @@
 use crate::diag::{Source, Span};
 use crate::model::asset::Asset;
 use crate::model::options::{Opt, Variant};
+use crate::provenance::record::Record;
 
 #[derive(Debug)]
 pub struct PackageGroup {
@@ -80,4 +81,6 @@ pub struct Module {
     pub fragment: Option<String>,
     pub fragment_after: bool,
     pub standard_layer: bool,
+    pub content: Option<String>,
+    pub imported: Option<Record>,
 }

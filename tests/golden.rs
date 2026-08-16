@@ -198,9 +198,9 @@ fn import(name: &str, root: &Path) {
                 let owners: Vec<&str> = found.iter().map(|f| f.owner.as_str()).collect();
                 out.push_str(&format!("ambiguous: {}\n", owners.join(", ")));
             }
-            Ok(found) => match buildc::import::destination(here, &found[0], module)
-                .and_then(|dest| buildc::import::vendor(here, &found[0], &dest).map(|()| dest))
-            {
+            Ok(found) => match buildc::import::destination(here, &found[0], module).and_then(|dest| {
+                buildc::import::vendor(here, &sources, &found[0], &dest).map(|()| dest)
+            }) {
                 Ok(dest) => out.push_str(&format!("imported {}\n", dest.display())),
                 Err(message) => out.push_str(&format!("{message}\n")),
             },
@@ -216,10 +216,48 @@ fn import(name: &str, root: &Path) {
     out.extend(written);
 
     out.push_str(&format!(
+        "==== the record\n{}",
+        std::fs::read_to_string("modules/one/flatpak/provenance.kdl").unwrap()
+    ));
+    out.push_str(&format!(
         "==== check\n{}",
         buildc::run(Command::Check, None, here).issues.plain()
     ));
+    out.push_str(&format!(
+        "==== modified\n{:?}\n",
+        buildc::provenance::record::modified(here)
+    ));
+
+    std::fs::write("modules/one/flatpak/module.sh", "echo forked\n").unwrap();
+    out.push_str(&format!(
+        "==== modified after an edit\n{:?}\n{}",
+        buildc::provenance::record::modified(here),
+        buildc::run(Command::Check, None, here).issues.plain()
+    ));
     compare(name, "import.txt", &out);
+}
+
+fn edited_module(root: &Path) {
+    std::env::set_current_dir(root).expect("the created-into repository exists");
+    let here = Path::new(".");
+    for (path, body) in &buildc::run(Command::Generate, None, here).files {
+        std::fs::create_dir_all(path.parent().expect("a file under generated/")).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+    let issues = || buildc::run(Command::Verify, None, here).issues.plain();
+    let clean = issues();
+    assert!(
+        clean.is_empty(),
+        "verify was not green to begin with: {clean}"
+    );
+
+    let module = Path::new("modules/my-editor/module.sh");
+    std::fs::write(module, "echo edited\n").unwrap();
+    let dirty = issues();
+    assert!(
+        dirty.contains("generated/plan.json"),
+        "an edited module left plan.json current: {dirty}"
+    );
 }
 
 fn walk(dir: &Path) -> Vec<PathBuf> {
@@ -497,6 +535,8 @@ fn golden() {
     no_default(&dir.join("no-default"));
     capture("init", &init);
     verify("init", &init);
-    create("create", &init_repo("create"));
+    let created = init_repo("create");
+    create("create", &created);
+    edited_module(&created);
     import("import", &init_repo("import"));
 }

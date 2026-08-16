@@ -3,8 +3,11 @@ schema-version 1
 seed "example" collection="buildc-org"
 
 sources {
-    buildc-org "https://github.com/buildc-org/modules/archive/refs/heads/{ref}.tar.gz" {
-        unpinned "the collection this tool is published alongside, followed at its branch head"
-        ref "main"
+    buildc-org {
+        pin {
+            unpinned "the collection this tool is published alongside, followed at its branch head"
+            version "main"
+            url "https://github.com/buildc-org/modules/archive/refs/heads/{version}.tar.gz"
+        }
     }
 }

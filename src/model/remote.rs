@@ -1,21 +1,7 @@
 use crate::diag::Span;
+use crate::provenance::Evidence;
 
 pub const REMOTE_DIR: &str = ".remote";
-
-pub struct Remote {
-    pub url: String,
-    pub git_ref: String,
-    pub sha256: String,
-    pub unpinned: Option<String>,
-    pub path: Option<String>,
-    pub span: Span,
-}
-
-impl Remote {
-    pub fn url_resolved(&self) -> String {
-        self.url.replace("{ref}", &self.git_ref)
-    }
-}
 
 pub struct Collection {
     pub name: String,
@@ -25,21 +11,25 @@ pub struct Collection {
 
 pub enum At {
     Dir(String),
-    Archive(Remote),
+    Archive(Evidence),
 }
 
 impl Collection {
     pub fn subtree(&self) -> Option<&str> {
         match &self.at {
             At::Dir(_) => None,
-            At::Archive(remote) => remote.path.as_deref(),
+            At::Archive(pin) => pin.path.as_deref(),
+        }
+    }
+
+    pub fn pin(&self) -> Option<&Evidence> {
+        match &self.at {
+            At::Dir(_) => None,
+            At::Archive(pin) => Some(pin),
         }
     }
 
     pub fn unpinned(&self) -> bool {
-        match &self.at {
-            At::Dir(_) => false,
-            At::Archive(remote) => remote.unpinned.is_some(),
-        }
+        self.pin().is_some_and(Evidence::unpinned)
     }
 }

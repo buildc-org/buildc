@@ -54,9 +54,12 @@ base "quay.io/fedora/fedora-bootc:44" {
 }
 
 sources {
-    buildc-org "https://github.com/buildc-org/modules/archive/refs/heads/{ref}.tar.gz" {
-        unpinned "the collection this tool is published alongside, followed at its branch head"
-        ref "main"
+    buildc-org {
+        pin {
+            unpinned "the collection this tool is published alongside, followed at its branch head"
+            version "main"
+            url "https://github.com/buildc-org/modules/archive/refs/heads/{version}.tar.gz"
+        }
     }
 }
 

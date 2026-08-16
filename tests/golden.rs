@@ -260,6 +260,50 @@ fn edited_module(root: &Path) {
     );
 }
 
+fn why(name: &str, root: &Path, module: &str) {
+    std::env::set_current_dir(root).expect("fixture root exists");
+    let here = Path::new(".");
+    let mut out = String::new();
+
+    for (command, heading) in [(Command::Why, "markdown"), (Command::WhyJson, "json")] {
+        out.push_str(&format!("==== {heading}\n"));
+        out.push_str(&buildc::run(command, Some(module), here).stdout);
+    }
+
+    out.push_str("==== unknown\n");
+    out.push_str(&buildc::run(Command::Why, Some("nosuch"), here).issues.plain());
+
+    let manifest = buildc::emit::json::Json::parse(&buildc::run(Command::Plan, None, here).stdout)
+        .expect("the plan is a document");
+    let host = buildc::emit::why::on_host(&manifest, None, module).expect("the manifest names it");
+    out.push_str("==== from the baked manifest, with no repository\n");
+    out.push_str(&host.markdown());
+    out.push_str(&format!(
+        "==== the names it knows\n{}\n",
+        buildc::emit::why::known_on_host(&manifest).join(", ")
+    ));
+
+    let record = buildc::emit::json::Json::parse(&format!(
+        "{{\"modules\": [{{\"path\": {module:?}, \"content\": \"not what was declared\"}}]}}"
+    ))
+    .expect("the record is a document");
+    let observed =
+        buildc::emit::why::on_host(&manifest, Some(&record), module).expect("the manifest names it");
+    out.push_str("==== against a build record that disagrees\n");
+    out.push_str(
+        observed
+            .markdown()
+            .split("## Where it came from")
+            .nth(1)
+            .unwrap_or_default()
+            .split("## What it pulls in")
+            .next()
+            .unwrap_or_default(),
+    );
+
+    compare(name, "why.txt", &out);
+}
+
 fn unenforced(root: &Path) {
     let temp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("unenforced");
     let _ = std::fs::remove_dir_all(&temp);
@@ -579,10 +623,38 @@ fn golden() {
     no_default(&dir.join("no-default"));
     unenforced(&dir.join("enforced"));
     unpinned_import(&dir.join("unpinned-source"));
+    why("enforced", &dir.join("enforced"), "one/hello");
     capture("init", &init);
     verify("init", &init);
     let created = init_repo("create");
     create("create", &created);
     edited_module(&created);
     import("import", &init_repo("import"));
+}
+
+#[test]
+fn every_written_document_reads_back() {
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        return;
+    }
+    let dir = crate_dir().join("tests/golden");
+    let mut read = 0;
+    for path in walk(&dir) {
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        if text.trim().is_empty() {
+            continue;
+        }
+        let parsed = buildc::emit::json::Json::parse(&text)
+            .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+        assert!(
+            parsed.render() == text,
+            "{} did not read back as what was written",
+            path.display()
+        );
+        read += 1;
+    }
+    assert!(read >= 20, "only {read} documents were read");
 }

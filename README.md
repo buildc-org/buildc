@@ -54,6 +54,8 @@ This is the whole surface today. The rest of it is not built yet.
     buildc graph [--format md|json]
                           the capability graph, as markdown holding a mermaid
                           diagram, or as JSON
+    buildc why <module>     one module's trust read-out: what builds it, what it
+                          exchanges, what it claims, and where it came from
 
 `buildc plan --json`, `verify`, `summary`, `sbom`, `fetch modules` and
 `registry` are the build's, and `os-release`, `build-record`, `fetch` and

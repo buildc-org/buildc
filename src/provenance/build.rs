@@ -4,6 +4,8 @@ use std::process::Command;
 
 pub const RECORD: &str = "/usr/share/buildc/build.json";
 
+pub const MANIFEST: &str = "/usr/share/buildc/manifest.json";
+
 pub const ARGS: [&str; 9] = [
     "BASE",
     "BASE_DECLARED",

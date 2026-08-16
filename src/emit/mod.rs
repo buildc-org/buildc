@@ -8,3 +8,4 @@ pub mod sbom;
 pub mod schema_md;
 pub mod seed;
 pub mod summary;
+pub mod why;

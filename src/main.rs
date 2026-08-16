@@ -45,6 +45,9 @@ const IN_REPO: &str = "\
   graph [--format md|json]
                       print what provides what, what requires it, and what the
                       base already carries
+  why <module> [--format md|json]
+                      print one module's trust read-out: what builds it, what it
+                      exchanges, what it claims, and where every byte came from
 ";
 
 const RULE: &str = "\
@@ -176,6 +179,39 @@ fn repo_root(given: Option<PathBuf>) -> Result<PathBuf, Error> {
             Err(_) => found,
         },
     )
+}
+
+fn why_on_host(command: Command, arg: Option<&str>) -> Result<ExitCode, Error> {
+    use buildc::provenance::build::{MANIFEST, RECORD};
+
+    let Some(path) = arg else {
+        return Err(Error::Invocation(
+            "`why` needs a module: `buildc why <module>`".into(),
+        ));
+    };
+    let (manifest, record) = buildc::emit::why::baked(Path::new(MANIFEST), Path::new(RECORD))
+        .map_err(|err| {
+            Error::Invocation(format!(
+                "{err}\n\nno repo.kdl here and no baked manifest either, so there is nothing to \
+                 answer from"
+            ))
+        })?;
+
+    let Some(why) = buildc::emit::why::on_host(&manifest, record.as_ref(), path) else {
+        let known = buildc::emit::why::known_on_host(&manifest);
+        return Err(Error::Invocation(format!(
+            "`{path}` is not a module this image carries\n\nmodules: {}",
+            known.join(", ")
+        )));
+    };
+    print!(
+        "{}",
+        match command {
+            Command::Why => why.markdown(),
+            _ => why.json().render(),
+        }
+    );
+    Ok(ExitCode::SUCCESS)
 }
 
 fn open(given: Option<PathBuf>) -> Result<Option<PathBuf>, Error> {
@@ -499,7 +535,7 @@ fn run() -> Result<ExitCode, Error> {
     };
     args.only(
         match command {
-            Command::Graph => &["root", "format"],
+            Command::Graph | Command::Why => &["root", "format"],
             _ => &["root"],
         },
         words[0],
@@ -507,7 +543,9 @@ fn run() -> Result<ExitCode, Error> {
     let command = match (command, format.as_deref()) {
         (Command::Graph, None | Some("md")) => Command::Graph,
         (Command::Graph, Some("json")) => Command::GraphJson,
-        (Command::Graph, Some(other)) => {
+        (Command::Why, None | Some("md")) => Command::Why,
+        (Command::Why, Some("json")) => Command::WhyJson,
+        (Command::Graph | Command::Why, Some(other)) => {
             return Err(Error::Invocation(format!(
                 "`--format` is md or json, not `{other}`"
             )));
@@ -528,6 +566,10 @@ fn run() -> Result<ExitCode, Error> {
             )));
         }
     };
+
+    if matches!(command, Command::Why | Command::WhyJson) && repo_root(root_arg.clone()).is_err() {
+        return why_on_host(command, arg);
+    }
 
     let root = repo_root(root_arg)?;
     let run = buildc::run(command, arg, &root);

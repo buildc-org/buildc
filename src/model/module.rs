@@ -83,4 +83,5 @@ pub struct Module {
     pub standard_layer: bool,
     pub content: Option<String>,
     pub imported: Option<Record>,
+    pub repo: bool,
 }

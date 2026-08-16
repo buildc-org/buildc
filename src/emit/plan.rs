@@ -289,6 +289,8 @@ fn module(entry: &Entry) -> Json {
                     .map(|(name, value)| (name.clone(), Json::string(value))),
             ),
         ),
+        ("provides", Json::strings(decls(module, |m| &m.provides))),
+        ("requires", Json::strings(decls(module, |m| &m.requires))),
         ("provenance", provenance(entry)),
         (
             "satisfies",
@@ -308,6 +310,15 @@ fn module(entry: &Entry) -> Json {
     ])
 }
 
+fn decls(
+    module: Option<&Module>,
+    of: impl Fn(&Module) -> &Vec<crate::model::module::Decl>,
+) -> Vec<String> {
+    module
+        .map(|m| of(m).iter().map(|d| d.name.clone()).collect())
+        .unwrap_or_default()
+}
+
 fn provenance(entry: &Entry) -> Json {
     let module = entry.module.as_ref();
     Json::object([
@@ -315,6 +326,7 @@ fn provenance(entry: &Entry) -> Json {
             "content",
             Json::optional(module.and_then(|m| m.content.clone())),
         ),
+        ("repo", Json::Bool(module.is_some_and(|m| m.repo))),
         (
             "pin",
             entry.remote.as_ref().map_or(Json::Null, Evidence::json),

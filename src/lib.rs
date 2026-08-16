@@ -36,11 +36,14 @@ pub enum Command {
     GraphJson,
     Summary,
     Sbom,
+    Why,
+    WhyJson,
 }
 
 pub enum Arg {
     Image,
     Target,
+    Module,
 }
 
 impl Command {
@@ -54,6 +57,7 @@ impl Command {
             "graph" => Self::Graph,
             "summary" => Self::Summary,
             "sbom" => Self::Sbom,
+            "why" => Self::Why,
             _ => return None,
         })
     }
@@ -68,6 +72,7 @@ impl Command {
             | Self::GraphJson => None,
             Self::Section => Some(Arg::Image),
             Self::Summary | Self::Sbom => Some(Arg::Target),
+            Self::Why | Self::WhyJson => Some(Arg::Module),
         }
     }
 }
@@ -171,9 +176,10 @@ pub(crate) fn load(root: &Path) -> Loaded {
 }
 
 pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
-    let (target_arg, image_arg) = match command.arg() {
-        Some(Arg::Target) => (arg, None),
-        _ => (None, arg),
+    let (target_arg, image_arg, module_arg) = match command.arg() {
+        Some(Arg::Target) => (arg, None, None),
+        Some(Arg::Module) => (None, None, arg),
+        _ => (None, arg, None),
     };
     let Loaded {
         list,
@@ -231,6 +237,7 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
     let needs_default = match command {
         Command::Summary | Command::Sbom => target_arg.is_none(),
         Command::Graph | Command::GraphJson | Command::Section => image_arg.is_none(),
+        Command::Why | Command::WhyJson => false,
         Command::Plan => true,
         Command::Check | Command::Generate | Command::Verify => false,
     };
@@ -309,6 +316,35 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
             .iter()
             .map(|(path, _)| format!("{}\n", path.display()))
             .collect(),
+        Command::Why | Command::WhyJson => match module_arg {
+            Some(path) => match emit::why::of(&list, path, root) {
+                Some(why) => match command {
+                    Command::Why => why.markdown(),
+                    _ => why.json().render(),
+                },
+                None => {
+                    let known = emit::why::known(&list);
+                    issues.push(
+                        Issue::new(
+                            format!("`{path}` is not a module this repository lists"),
+                            &list.repo_src,
+                        )
+                        .help(match known.is_empty() {
+                            true => "no image lists a module yet".to_string(),
+                            false => format!("modules: {}", known.join(", ")),
+                        }),
+                    );
+                    String::new()
+                }
+            },
+            None => {
+                issues.push(
+                    Issue::new("`why` needs a module", &list.repo_src)
+                        .help("`buildc why <module>`, the path an image lists it under"),
+                );
+                String::new()
+            }
+        },
         Command::Check | Command::Verify => String::new(),
     };
 

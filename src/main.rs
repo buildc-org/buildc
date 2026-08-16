@@ -216,7 +216,8 @@ fn why_on_host(command: Command, arg: Option<&str>) -> Result<ExitCode, Error> {
 
 fn open(given: Option<PathBuf>) -> Result<Option<PathBuf>, Error> {
     let root = repo_root(given)?;
-    let refused = buildc::compatible(&root).report(&root.join("repo.kdl").display().to_string());
+    let refused =
+        buildc::compatible(&root).report(&root.join(buildc::layout::REPO_FILE).display().to_string());
     Ok((!refused).then_some(root))
 }
 
@@ -283,7 +284,7 @@ impl Import {
 }
 
 fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
-    let dir = root.join("generated");
+    let dir = buildc::layout::generated(root);
     if dir.is_dir() {
         std::fs::remove_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     }

@@ -1,4 +1,5 @@
 use crate::emit::json::Json;
+use crate::layout;
 use crate::model::image::{Image, List};
 use crate::model::module::Module;
 use crate::provenance::Evidence;
@@ -124,7 +125,7 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
 }
 
 fn repo_urls(root: &std::path::Path, dir: &str) -> Vec<String> {
-    let Ok(text) = std::fs::read_to_string(root.join("modules").join(dir).join("repo")) else {
+    let Ok(text) = std::fs::read_to_string(layout::module(root, dir).join("repo")) else {
         return Vec::new();
     };
     let mut out: Vec<String> = Vec::new();

@@ -1,3 +1,4 @@
+use crate::layout;
 use crate::model::image::{Entry, List, SCHEMA_VERSION};
 use crate::model::remote::{At, Collection};
 use crate::provenance::Tracker;
@@ -53,7 +54,7 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
         out.push('\n');
     }
 
-    Some((PathBuf::from("generated").join("seed.kdl"), out))
+    Some((PathBuf::from(layout::GENERATED).join("seed.kdl"), out))
 }
 
 fn source(collection: &Collection, out: &mut String) {

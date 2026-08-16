@@ -1,4 +1,5 @@
 use crate::diag::{Issue, Issues};
+use crate::layout;
 use crate::model::image::{Entry, Image};
 use crate::model::module::{Decl, Module};
 use crate::parse::disk::Disk;
@@ -136,7 +137,7 @@ pub fn check_graph(image: &Image, root: &Path, disk: &Disk, issues: &mut Issues)
 
     const MAC_POLICY: &str = "mac-policy";
     for module in image.modules() {
-        let dir = root.join("modules").join(&module.dir);
+        let dir = layout::module(root, &module.dir);
         let has_policy = std::fs::read_dir(dir.join("selinux"))
             .into_iter()
             .flatten()

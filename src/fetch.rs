@@ -1,9 +1,8 @@
+use crate::layout;
 use crate::model::image::List;
 use crate::model::remote::REMOTE_DIR;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-const STAMPS: &str = "out/remote-modules";
 
 struct Pin {
     name: String,
@@ -24,17 +23,17 @@ pub fn modules(root: &Path, list: &List) -> Result<Vec<String>, String> {
     let mut said = prune(root, &pins)?;
 
     for pin in &pins {
-        let dir = root.join("modules").join(REMOTE_DIR).join(&pin.name);
-        let stamp = root.join(STAMPS).join(format!("{}.pin", pin.name));
+        let dir = layout::module(root, REMOTE_DIR).join(&pin.name);
+        let stamp = root.join(layout::STAMPS).join(format!("{}.pin", pin.name));
         let current = fs::read_to_string(&stamp)
             .is_ok_and(|found| found.trim_end() == pin.stamped())
-            && dir.join("module.kdl").is_file();
+            && dir.join(layout::MODULE_FILE).is_file();
         if current {
             said.push(format!("{} {} is current", pin.name, pin.git_ref));
             continue;
         }
 
-        let tmp = root.join(format!("out/fetch-module.{}", std::process::id()));
+        let tmp = layout::out(root).join(format!("fetch-module.{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         crate::runtime::extract(&pin.url, Some(&pin.sha256), &tmp, &["--strip-components=1"])?;
 
@@ -53,7 +52,7 @@ pub fn modules(root: &Path, list: &List) -> Result<Vec<String>, String> {
 }
 
 fn place(source: &Path, dir: &Path, pin: &Pin) -> Result<(), String> {
-    if !source.join("module.kdl").is_file() {
+    if !source.join(layout::MODULE_FILE).is_file() {
         return Err(format!(
             "{}: {} ships no module.kdl {}",
             pin.name,
@@ -91,7 +90,7 @@ fn pins(list: &List) -> Vec<Pin> {
 }
 
 fn prune(root: &Path, pins: &[Pin]) -> Result<Vec<String>, String> {
-    let fetched = root.join("modules").join(REMOTE_DIR);
+    let fetched = layout::module(root, REMOTE_DIR);
     let mut said = Vec::new();
     for dir in trees(&fetched, &PathBuf::new()) {
         let name = dir.display().to_string();
@@ -99,7 +98,7 @@ fn prune(root: &Path, pins: &[Pin]) -> Result<Vec<String>, String> {
             continue;
         }
         fs::remove_dir_all(fetched.join(&dir)).map_err(|err| format!("{name}: {err}"))?;
-        let _ = fs::remove_file(root.join(STAMPS).join(format!("{name}.pin")));
+        let _ = fs::remove_file(root.join(layout::STAMPS).join(format!("{name}.pin")));
         said.push(format!("{name} is no longer pinned, removing"));
     }
     empties(&fetched);
@@ -114,7 +113,7 @@ fn trees(dir: &Path, rel: &Path) -> Vec<PathBuf> {
             continue;
         }
         let rel = rel.join(entry.file_name());
-        match path.join("module.kdl").is_file() {
+        match path.join(layout::MODULE_FILE).is_file() {
             true => out.push(rel),
             false => out.extend(trees(&path, &rel)),
         }

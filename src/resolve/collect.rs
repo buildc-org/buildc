@@ -1,4 +1,5 @@
 use crate::diag::{Issue, Issues};
+use crate::layout;
 use crate::model::image::Image;
 use crate::model::module::Module;
 use crate::parse::disk::Disk;
@@ -53,7 +54,7 @@ pub fn resolve_collects(
     out.destinations.dedup();
 
     for module in image.modules() {
-        let dir = root.join("modules").join(&module.dir);
+        let dir = layout::module(root, &module.dir);
         for (file, collector) in &disk.collectors {
             if !dir.join(file).is_file() {
                 continue;

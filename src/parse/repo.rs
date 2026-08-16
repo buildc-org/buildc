@@ -1,5 +1,6 @@
 use crate::diag::{Issue, Issues, Source, Span};
-use crate::model::image::{List, Seed, WorkflowToggle, REPO_FILE, SCHEMA_VERSION, BUILDC_VERSION};
+use crate::layout;
+use crate::model::image::{List, Seed, WorkflowToggle, SCHEMA_VERSION, BUILDC_VERSION};
 use crate::parse::image::IMAGE;
 use crate::parse::remote::{parse_collection, COLLECTION};
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
@@ -131,7 +132,7 @@ struct Pins {
 }
 
 fn pins(root: &Path) -> Option<Pins> {
-    let path = root.join(REPO_FILE);
+    let path = root.join(layout::REPO_FILE);
     let text = std::fs::read_to_string(&path).ok()?;
     let doc: KdlDocument = text.parse().ok()?;
     let node = |name: &str| {
@@ -216,7 +217,7 @@ impl List {
             audit_enforce: false,
             schema_version: None,
             schema_version_seen: false,
-            repo_src: Source::new(root.join(REPO_FILE).display().to_string(), ""),
+            repo_src: Source::new(root.join(layout::REPO_FILE).display().to_string(), ""),
             files: Vec::new(),
         }
     }
@@ -262,10 +263,10 @@ impl List {
             };
             list.files.push(path.clone());
             let src = Source::new(&path, text.clone());
-            if name == REPO_FILE {
+            if name == layout::REPO_FILE {
                 list.repo_src = src.clone();
             }
-            list.parse_file(&src, &text, name == REPO_FILE, &mut issues);
+            list.parse_file(&src, &text, name == layout::REPO_FILE, &mut issues);
         }
 
         list.check_images(&mut issues);
@@ -317,9 +318,10 @@ impl List {
         if !is_repo && !doc.nodes().iter().any(|n| n.name().value() == "image") {
             issues.push(
                 Issue::new(format!("{} declares no image", src.name()), src).help(format!(
-                    "every root .kdl but {REPO_FILE} holds one `image` node: \
+                    "every root .kdl but {} holds one `image` node: \
                      `image {{ name \"Name\" }}`, what the image calls itself in os-release \
-                     and what it publishes as"
+                     and what it publishes as",
+                    layout::REPO_FILE
                 )),
             );
         }
@@ -369,7 +371,7 @@ impl List {
         if !self.schema_version_seen {
             issues.push(
                 Issue::new(
-                    format!("{REPO_FILE} declares no `schema-version`"),
+                    format!("{} declares no `schema-version`", layout::REPO_FILE),
                     &self.repo_src,
                 )
                 .help(format!(
@@ -529,7 +531,7 @@ mod tests {
 
     fn messages(text: &str) -> Vec<String> {
         let doc: KdlDocument = text.parse().expect("valid KDL");
-        let src = Source::new(REPO_FILE, text);
+        let src = Source::new(layout::REPO_FILE, text);
         let mut issues = Issues::default();
         check_doc(&doc, &REPO, &src, &mut issues);
         issues
@@ -588,7 +590,12 @@ colour "blue"
         let read = |text: &str| {
             let mut list = List::empty(Path::new("."));
             let mut issues = Issues::default();
-            list.parse_file(&Source::new(REPO_FILE, text), text, true, &mut issues);
+            list.parse_file(
+                &Source::new(layout::REPO_FILE, text),
+                text,
+                true,
+                &mut issues,
+            );
             list.manifest_label
         };
         assert!(!read("schema-version 1\n"));

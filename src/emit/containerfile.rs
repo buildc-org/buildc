@@ -1,4 +1,5 @@
 use crate::emit::{finalize, module_build};
+use crate::layout;
 use crate::model::image::{Entry, Image};
 use crate::model::module::Module;
 use crate::resolve::collect::Collection;
@@ -10,7 +11,7 @@ pub const BEGIN: &str = "# ---- BEGIN GENERATED (module layers) ----";
 pub const END: &str = "# ---- END GENERATED ----";
 
 pub fn path(image: &Image) -> PathBuf {
-    PathBuf::from("generated").join(&image.id)
+    PathBuf::from(layout::GENERATED).join(&image.id)
 }
 
 pub fn file(skeleton: &str, image: &Image, section: &str) -> String {

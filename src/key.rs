@@ -1,3 +1,4 @@
+use crate::layout;
 use crate::model::module::Key as Declared;
 use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
@@ -255,9 +256,8 @@ fn openssl(work: &Path, declared: &Declared, cn: &str) -> Result<(PathBuf, PathB
 }
 
 fn overlay(root: &Path, dir: &str, path: &str) -> PathBuf {
-    root.join("modules")
-        .join(dir)
-        .join("files")
+    layout::module(root, dir)
+        .join(layout::OVERLAY)
         .join(path.trim_start_matches('/'))
 }
 

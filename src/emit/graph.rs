@@ -1,4 +1,5 @@
 use crate::emit::json::Json;
+use crate::layout;
 use crate::model::image::Image;
 use crate::model::module::Module;
 use std::collections::BTreeMap;
@@ -101,7 +102,7 @@ pub fn files(image: &Image) -> Vec<(PathBuf, String)> {
 }
 
 pub fn path(image: &Image, format: &str) -> PathBuf {
-    PathBuf::from("generated").join(format!("{}.graph.{format}", image.id))
+    PathBuf::from(layout::GENERATED).join(format!("{}.graph.{format}", image.id))
 }
 
 impl<'a> Graph<'a> {

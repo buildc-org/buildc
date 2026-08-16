@@ -7,6 +7,7 @@ pub mod fetch;
 pub mod import;
 pub mod init;
 pub mod key;
+pub mod layout;
 pub mod model;
 pub mod parse;
 pub mod prompt;
@@ -19,7 +20,7 @@ pub mod ui;
 use diag::Issue;
 use diag::Issues;
 use diag::Source;
-use model::image::{List, Target, REPO_FILE};
+use model::image::{List, Target};
 use model::module::Module;
 pub use parse::repo::compatible;
 use resolve::Resolved;
@@ -79,7 +80,7 @@ impl Command {
 
 pub fn find_root(from: &Path) -> Option<PathBuf> {
     from.ancestors()
-        .find(|dir| dir.join(REPO_FILE).is_file())
+        .find(|dir| dir.join(layout::REPO_FILE).is_file())
         .map(Path::to_path_buf)
 }
 
@@ -280,7 +281,7 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
         }
         files.extend(emit::seed::file(&list));
         files.push((
-            PathBuf::from("generated").join("plan.json"),
+            PathBuf::from(layout::GENERATED).join("plan.json"),
             emit::plan::build(&list, &resolved, &workflows).render(),
         ));
     }
@@ -390,7 +391,7 @@ fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issues) {
         );
     }
 
-    for path in tracked(&root.join("generated")) {
+    for path in tracked(&layout::generated(root)) {
         let Ok(path) = path.strip_prefix(root).map(Path::to_path_buf) else {
             continue;
         };

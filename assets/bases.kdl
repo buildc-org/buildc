@@ -35,13 +35,13 @@ base "ghcr.io/ublue-os/kinoite-main:44" {
 base "ghcr.io/bootcrew/debian-bootc:latest" {
     about "Experimental Debian bootc base from Bootcrew"
     family "debian"
-    provides "rechunking" "initramfs-generation"
+    provides "initramfs-generation"
     signed #true
 }
 
 base "ghcr.io/bootcrew/ubuntu-bootc:latest" {
     about "Experimental Ubuntu bootc base from Bootcrew"
     family "ubuntu"
-    provides "rechunking" "initramfs-generation"
+    provides "initramfs-generation"
     signed #true
 }

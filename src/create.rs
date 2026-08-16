@@ -233,7 +233,11 @@ impl Image {
                 .map(|image| image.url.clone())
         });
 
-        let (bases, _) = crate::base::catalog(root, &list.sources, &mut Issues::default());
+        let mut catalog_issues = Issues::default();
+        let (bases, _) = crate::base::catalog(root, &list.sources, &mut catalog_issues);
+        if !catalog_issues.is_empty() {
+            return Err(catalog_issues.plain());
+        }
         let base = match base {
             Some(given) => given,
             None => choose_base(&bases, prompt)?,
@@ -244,7 +248,7 @@ impl Image {
                 None,
                 "base family",
                 "`--base`, naming a base the catalog knows",
-                Some(crate::base::DEFAULT.family),
+                bases.first().map(|base| base.family.as_str()),
             )?,
         };
         let text = image_kdl(
@@ -301,7 +305,7 @@ fn choose_base(bases: &[crate::base::Base], prompt: &Prompt) -> Result<String, S
             None,
             "base image",
             "`--base`",
-            Some(crate::base::DEFAULT.image),
+            bases.first().map(|base| base.image.as_str()),
         ),
     }
 }
@@ -348,7 +352,7 @@ impl Module {
                 false => pkgs,
             };
 
-        let text = module_kdl(&name, &family(root), &pkgs, &with)?;
+        let text = module_kdl(&name, &family(root)?, &pkgs, &with)?;
         let listing = Listing::collect(root, images, prompt)?;
         Ok(Self {
             path,
@@ -365,12 +369,24 @@ impl Module {
     }
 }
 
-fn family(root: &Path) -> String {
+fn family(root: &Path) -> Result<String, String> {
     let (list, _) = crate::model::image::List::load(root);
-    list.images
+    if let Some(family) = list
+        .images
         .iter()
         .find_map(|image| image.base.as_ref().map(|base| base.family.clone()))
-        .unwrap_or_else(|| crate::base::DEFAULT.family.to_string())
+    {
+        return Ok(family);
+    }
+    let mut issues = Issues::default();
+    let bases = crate::base::catalog(root, &list.sources, &mut issues).0;
+    if !issues.is_empty() {
+        return Err(issues.plain());
+    }
+    bases
+        .first()
+        .map(|base| base.family.clone())
+        .ok_or_else(|| "no base in the catalog to derive a module family from".to_string())
 }
 
 fn module_kdl(
@@ -655,12 +671,14 @@ mod tests {
     #[test]
     fn every_catalogued_name_is_a_name() {
         use crate::model::image::is_name;
-        for base in crate::base::SEED {
-            assert!(is_name(base.family), "{}", base.image);
-            for name in base.provides {
+        let bases =
+            crate::base::catalog(Path::new("."), &[], &mut crate::diag::Issues::default()).0;
+        for base in bases {
+            assert!(is_name(&base.family), "{}", base.image);
+            for name in &base.provides {
                 assert!(is_name(name), "{} provides {name}", base.image);
             }
-            for path in base.provides_files {
+            for path in &base.provides_files {
                 assert!(path.starts_with('/'), "{} provides {path}", base.image);
             }
         }

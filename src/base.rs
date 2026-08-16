@@ -4,6 +4,8 @@ use std::path::Path;
 
 pub const BASES_FILE: &str = "bases.kdl";
 
+const BUILT_IN: &str = include_str!("../assets/bases.kdl");
+
 pub struct Base {
     pub image: String,
     pub family: String,
@@ -24,68 +26,6 @@ impl Base {
     }
 }
 
-pub struct Seed {
-    pub image: &'static str,
-    pub family: &'static str,
-    pub provides: &'static [&'static str],
-    pub provides_files: &'static [&'static str],
-    pub about: &'static str,
-}
-
-impl Seed {
-    fn base(&self) -> Base {
-        Base {
-            image: self.image.to_string(),
-            family: self.family.to_string(),
-            provides: self.provides.iter().map(|n| n.to_string()).collect(),
-            provides_files: self.provides_files.iter().map(|n| n.to_string()).collect(),
-            about: self.about.to_string(),
-            signed: false,
-            span: Span::default(),
-        }
-    }
-}
-
-pub const SEED: &[Seed] = &[
-    Seed {
-        image: "quay.io/fedora/fedora-bootc:44",
-        family: "fedora",
-        provides: &["rechunking", "initramfs-generation", "mac-policy"],
-        provides_files: &[],
-        about: "Fedora 44, nothing above the base system",
-    },
-    Seed {
-        image: "ghcr.io/ublue-os/bazzite:stable",
-        family: "fedora",
-        provides: &["rechunking", "flatpak"],
-        provides_files: &["/usr/bin/flatpak"],
-        about: "KDE, gaming and hardware support over kinoite-main",
-    },
-    Seed {
-        image: "ghcr.io/ublue-os/aurora:stable",
-        family: "fedora",
-        provides: &["rechunking", "flatpak"],
-        provides_files: &["/usr/bin/flatpak"],
-        about: "KDE developer workstation over kinoite-main",
-    },
-    Seed {
-        image: "ghcr.io/ublue-os/bluefin:stable",
-        family: "fedora",
-        provides: &["rechunking", "flatpak"],
-        provides_files: &["/usr/bin/flatpak"],
-        about: "GNOME developer workstation over silverblue-main",
-    },
-    Seed {
-        image: "ghcr.io/ublue-os/kinoite-main:44",
-        family: "fedora",
-        provides: &["rechunking", "flatpak"],
-        provides_files: &["/usr/bin/flatpak"],
-        about: "Fedora Kinoite with the ublue additions, what bazzite builds on",
-    },
-];
-
-pub const DEFAULT: &Seed = &SEED[0];
-
 pub struct Shadow {
     pub image: String,
     pub collection: String,
@@ -96,7 +36,16 @@ pub fn catalog(
     sources: &[Collection],
     issues: &mut Issues,
 ) -> (Vec<Base>, Vec<Shadow>) {
-    let mut bases: Vec<Base> = SEED.iter().map(Seed::base).collect();
+    let runtime = crate::init::assets()
+        .ok()
+        .map(|assets| assets.join(BASES_FILE));
+    let mut bases = match runtime
+        .as_deref()
+        .and_then(|path| crate::parse::bases::read(path, issues))
+    {
+        Some((bases, _)) => bases,
+        None => crate::parse::bases::parse("built-in bases.kdl", BUILT_IN, issues).0,
+    };
     let mut shadows: Vec<Shadow> = Vec::new();
     let mut declared: Vec<(String, String)> = Vec::new();
 

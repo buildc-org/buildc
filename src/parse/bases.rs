@@ -1,5 +1,5 @@
 use crate::base::Base;
-use crate::diag::{Issues, Source, Span};
+use crate::diag::{Issue, Issues, Source, Span};
 use crate::parse::schema::{check_doc, Arg, Node, Say};
 use crate::parse::{bool_arg, check_capability, check_path, child, string_arg, string_args, text};
 use crate::parse::{kids, syntax_issue};
@@ -51,13 +51,27 @@ pub const BASES: Node = Node::new("bases",
         "bases.kdl holds `base` entries and nothing else; a module goes in a directory of its own"));
 
 pub fn read(path: &Path, issues: &mut Issues) -> Option<(Vec<Base>, Source)> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let src = Source::new(path.display().to_string(), text.clone());
+    match std::fs::read_to_string(path) {
+        Ok(text) => Some(parse(&path.display().to_string(), &text, issues)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => {
+            let src = Source::new(path.display().to_string(), "");
+            issues.push(Issue::new(
+                format!("{} could not be read: {err}", path.display()),
+                &src,
+            ));
+            Some((Vec::new(), src))
+        }
+    }
+}
+
+pub fn parse(name: &str, text: &str, issues: &mut Issues) -> (Vec<Base>, Source) {
+    let src = Source::new(name, text);
     let doc: KdlDocument = match text.parse() {
         Ok(doc) => doc,
         Err(err) => {
             issues.push(syntax_issue(&err, src.name(), &src));
-            return Some((Vec::new(), src));
+            return (Vec::new(), src);
         }
     };
     check_doc(&doc, &BASES, &src, issues);
@@ -71,7 +85,7 @@ pub fn read(path: &Path, issues: &mut Issues) -> Option<(Vec<Base>, Source)> {
             bases.push(base);
         }
     }
-    Some((bases, src))
+    (bases, src)
 }
 
 fn entry(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Base> {

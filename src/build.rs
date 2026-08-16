@@ -1,6 +1,7 @@
-use crate::emit::plan::{contract_files, of_target, preset_files, unique_pairs};
+use crate::emit::plan::{contract_files, of_target, pinned, preset_files, unique_pairs};
 use crate::model::image::{List, Target};
 use crate::model::module::Module;
+use crate::provenance::build as record;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt as _;
@@ -71,6 +72,30 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         Some(named) => named,
         None => today()?,
     };
+    let declared_base = image.base.as_ref().map(|b| b.image.clone());
+    let resolved_base = match (env("BASE"), &declared_base) {
+        (Some(given), _) => given,
+        (None, Some(declared)) => record::base(declared).unwrap_or_else(|| {
+            eprintln!("buildc: {declared} did not resolve to a digest; the build record says so");
+            declared.clone()
+        }),
+        (None, None) => String::new(),
+    };
+    if let Some(declared) = &declared_base {
+        eprintln!("buildc: base {declared} -> {resolved_base}");
+    }
+
+    let resolutions: Vec<String> = pinned(&modules)
+        .into_iter()
+        .filter(|(_, asset)| asset.pin.cloned())
+        .filter_map(|(module, asset)| {
+            let url = asset.pin.url.as_deref()?;
+            let version = asset.pin.version.as_deref()?;
+            let commit = record::clone_commit(url, version)?;
+            Some(format!("{}|{}|{version}|{commit}", module.path, asset.name))
+        })
+        .collect();
+
     let namespace = crate::registry::namespace(root);
     let mut build_args = vec![
         format!("FLAVOUR={}", flavour.unwrap_or_default()),
@@ -93,7 +118,26 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
             .join(" ")
         ),
         format!("MODULE_PRESETS={}", presets.join(" ")),
+        format!("TARGET={target}"),
+        format!(
+            "MODULE_HASHES={}",
+            modules
+                .iter()
+                .filter_map(|m| m.content.as_ref().map(|c| format!("{}|{c}", m.path)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        format!("ASSET_RESOLUTIONS={}", resolutions.join(" ")),
+        format!(
+            "SOURCE_COMMIT={}",
+            record::source_commit(root).unwrap_or_default()
+        ),
+        "AUDIT_ENFORCE=false".to_string(),
     ];
+    if let Some(base) = &image.base {
+        build_args.push(format!("BASE_DECLARED={}", base.image));
+        build_args.push(format!("BASE={resolved_base}"));
+    }
     if let Some(kernel) = &opts.kernel {
         build_args.push(format!("KERNEL={kernel}"));
     }

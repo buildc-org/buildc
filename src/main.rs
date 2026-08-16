@@ -359,6 +359,7 @@ fn run() -> Result<ExitCode, Error> {
 
     let in_layer = match words.as_slice() {
         ["os-release"] => Some(buildc::runtime::os_release()),
+        ["build-record"] => Some(buildc::provenance::build::write()),
         ["validate-image"] => Some(buildc::runtime::validate_image()),
         ["fetch", rest @ ..] => Some(buildc::runtime::fetch(rest)),
         _ => None,

@@ -3,6 +3,7 @@
 # GENERATED FILE, do not edit. Produced by `buildc generate` from
 # scripts/Containerfile.skeleton and the example image definition.
 
+ARG BASE
 FROM scratch AS ctx
 COPY lib/ /lib/
 COPY modules/ /modules/
@@ -14,7 +15,7 @@ COPY out/buildc /buildc
 # ---- BEGIN GENERATED (module layers) ----
 
 ### Base Image
-FROM quay.io/fedora/fedora-bootc:44
+FROM ${BASE}
 
 ## Module layers
 
@@ -38,6 +39,19 @@ RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
 # ---- END GENERATED ----
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
+
+ARG BASE
+ARG BASE_DECLARED=""
+ARG TARGET=""
+ARG SOURCE_COMMIT=""
+ARG MODULE_HASHES=""
+ARG ASSET_RESOLUTIONS=""
+ARG AUDIT_ENFORCE=""
+RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
+    SOURCE_COMMIT="${SOURCE_COMMIT}" MODULE_HASHES="${MODULE_HASHES}" \
+    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" AUDIT_ENFORCE="${AUDIT_ENFORCE}" \
+    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" /ctx/buildc build-record
 
 ARG CONTRACT_FILES=""
 ARG VERIFY_EXCEPTIONS=""

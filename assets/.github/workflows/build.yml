@@ -692,6 +692,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             openscap-utils ssg-base ssg-debian ssg-nondebian
 
+      - name: Login to GitHub Container Registry (root)
+        if: steps.claims.outputs.count != '0'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
       - name: Scan the image
         if: steps.claims.outputs.count != '0'
         env:

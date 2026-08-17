@@ -821,6 +821,7 @@ jobs:
       # The cosign predicates remain the evidence an image verifier reads.
       - name: Attest the commit that built it
         if: steps.claims.outputs.count != '0'
+        continue-on-error: true
         uses: actions/attest-build-provenance@bd77c077858b8d561b7a36cbe48ef4cc642ca39d
         with:
           subject-name: ${{ env.SUBJECT_NAME }}

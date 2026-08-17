@@ -528,9 +528,7 @@ fn image_kdl(
                 ships.push_str(&format!("\x20       {node} {}\n", listed.join(" ")));
             }
         }
-        if known.signed {
-            ships.push_str("\x20       signed #true\n");
-        }
+        ships.push_str(&format!("\x20       signed #{}\n", known.signed));
     }
     format!(
         "image {{\n\

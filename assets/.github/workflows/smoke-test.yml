@@ -59,6 +59,7 @@ jobs:
             --generic-image \
             --filesystem btrfs \
             --karg console=ttyS0,115200n8 \
+            --karg systemd.wants=sshd.service \
             --root-ssh-authorized-keys /output/smoke-key.pub \
             /output/disk.raw
           ls -lh "${RUNNER_TEMP}/disk.raw"

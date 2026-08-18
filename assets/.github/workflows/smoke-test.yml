@@ -105,6 +105,7 @@ jobs:
           exit 1
 
       - name: Assertions
+        timeout-minutes: 10
         run: |
           s() {
             ssh -o StrictHostKeyChecking=no \
@@ -116,7 +117,8 @@ jobs:
           s bootc status || { echo "FAIL: bootc status"; exit 1; }
 
           echo "==> systemctl is-system-running"
-          state="$(s systemctl is-system-running)" || true
+          # A degraded system makes is-system-running exit non-zero, so its status cannot end the step.
+          state="$(s systemctl is-system-running --wait)" || true
           case "$state" in
             running)
               echo "system state: ${state}"

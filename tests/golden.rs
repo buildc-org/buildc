@@ -660,25 +660,107 @@ fn every_written_document_reads_back() {
     assert!(read >= 20, "only {read} documents were read");
 }
 
+fn scap_run(root: &Path, args: &[&str]) -> (String, String, i32) {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+        .args(args)
+        .current_dir(root)
+        .output()
+        .unwrap();
+    (
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+        out.status.code().unwrap_or_default(),
+    )
+}
+
 #[test]
-fn the_scan_fixtures_are_the_goldens_they_came_from() {
-    for (golden, shipped) in [
-        ("enforced/plan.json", "plan.json"),
-        ("suppressed/plan.json", "suppressed.json"),
-        ("broken-overlay/plan.json", "overlay.json"),
+fn scap() {
+    let enforced = crate_dir().join("tests/repos/enforced");
+    let fixtures = crate_dir().join("tests/scap");
+    let root = tmp().join("scap");
+    let _ = std::fs::remove_dir_all(&root);
+    copy(&enforced, &root);
+
+    let repo = root.join("repo.kdl");
+    let text = std::fs::read_to_string(&repo).unwrap();
+    let (before, rest) = text.split_once("audit {").expect("the fixture enforces");
+    let after = rest.split_once('}').expect("a closed block").1;
+    std::fs::write(&repo, format!("{before}{after}")).unwrap();
+
+    let baseline = tmp().join("scap-baseline.json");
+    let _ = std::fs::remove_file(&baseline);
+    let datastream = fixtures.join("datastream.xml");
+    let mut out = String::new();
+    for (heading, arf) in [
+        ("the first scan, which is the baseline", "arf.xml"),
+        ("and one where a rule stopped passing", "arf-regressed.xml"),
     ] {
-        let from = crate_dir().join("tests/golden").join(golden);
-        let to = crate_dir().join("assets/tests/scan-fixtures").join(shipped);
-        let wanted = std::fs::read_to_string(&from).unwrap();
-        if std::env::var_os("UPDATE_GOLDEN").is_some() {
-            std::fs::write(&to, &wanted).unwrap();
-            continue;
-        }
-        assert!(
-            std::fs::read_to_string(&to).unwrap_or_default() == wanted,
-            "{} is no longer {}; rerun with UPDATE_GOLDEN=1",
-            to.display(),
-            from.display()
+        let (report, said, code) = scap_run(
+            &root,
+            &[
+                "--root",
+                ".",
+                "scap",
+                &fixtures.join(arf).display().to_string(),
+                "--datastream",
+                &datastream.display().to_string(),
+                "--baseline",
+                &baseline.display().to_string(),
+            ],
         );
+        out.push_str(&format!("==== {heading}\n{report}{said}==== exit {code}\n"));
     }
+
+    let image = root.join("example.image.kdl");
+    let text = std::fs::read_to_string(&image).unwrap();
+    std::fs::write(
+        &image,
+        text.replace("conforms \"cis\"", "conforms \"nosuch\""),
+    )
+    .unwrap();
+    let (report, said, code) = scap_run(
+        &root,
+        &[
+            "--root",
+            ".",
+            "scap",
+            &fixtures.join("arf.xml").display().to_string(),
+            "--datastream",
+            &datastream.display().to_string(),
+        ],
+    );
+    out.push_str(&format!(
+        "==== conforming to a profile nothing carries\n{}{said}==== exit {code}\n",
+        report.split("## Measured").nth(1).unwrap_or_default()
+    ));
+
+    let (report, said, code) = scap_run(
+        &enforced,
+        &[
+            "--root",
+            ".",
+            "scap",
+            &fixtures.join("arf.xml").display().to_string(),
+            "--datastream",
+            &datastream.display().to_string(),
+        ],
+    );
+    assert!(code == 2, "enforcement did not fail the scan: {said}");
+    assert!(said.contains("cis-fedora 5.2.20"), "{said}");
+    out.push_str(&format!(
+        "==== enforced, and the report is the same\n{report}"
+    ));
+
+    for (heading, at) in [
+        ("the content it is measured with", &enforced),
+        (
+            "and for an image declaring neither a claim nor a profile",
+            &crate_dir().join("tests/repos/minimal"),
+        ),
+    ] {
+        let (path, _, code) = scap_run(at, &["--root", ".", "scap", "content"]);
+        out.push_str(&format!("==== {heading}\n{path}==== exit {code}\n"));
+    }
+
+    compare("scap", "report.txt", &out);
 }

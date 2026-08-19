@@ -277,9 +277,11 @@ impl Import {
         root: &Path,
         sources: &[buildc::model::remote::Collection],
     ) -> Result<(), String> {
-        buildc::import::vendor(root, sources, &self.from, &self.dest)?;
+        let wrote = buildc::import::vendor(root, sources, &self.from, &self.dest)?;
         println!("imported {}", self.dest.display());
-        self.listing.apply(&self.path)
+        self.listing.apply(&self.path)?;
+        buildc::create::report(root, &wrote);
+        Ok(())
     }
 }
 
@@ -423,7 +425,7 @@ fn run() -> Result<ExitCode, Error> {
                     buildc::create::origin(buildc::create::HOST, &owner)
                 )
             });
-            buildc::create::Image::collect(
+            let wrote = buildc::create::Image::collect(
                 &root,
                 name,
                 base,
@@ -433,6 +435,7 @@ fn run() -> Result<ExitCode, Error> {
                 &prompt,
             )?
             .apply(&root)?;
+            buildc::create::report(&root, &wrote);
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "module", rest @ ..] => {
@@ -441,7 +444,9 @@ fn run() -> Result<ExitCode, Error> {
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            buildc::create::Module::collect(&root, name, pkgs, with, images, &prompt)?.apply()?;
+            let wrote = buildc::create::Module::collect(&root, name, pkgs, with, images, &prompt)?
+                .apply(&root)?;
+            buildc::create::report(&root, &wrote);
             return Ok(ExitCode::SUCCESS);
         }
         ["create", "key", rest @ ..] => {

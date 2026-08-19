@@ -64,7 +64,7 @@ fn place(source: &Path, dir: &Path, pin: &Pin) -> Result<(), String> {
         ));
     }
     let _ = fs::remove_dir_all(dir);
-    crate::init::copy_tree(source, dir)
+    crate::init::copy_tree(source, dir).map(drop)
 }
 
 fn pins(list: &List) -> Vec<Pin> {

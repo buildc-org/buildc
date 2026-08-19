@@ -1,3 +1,5 @@
+pub mod tree;
+
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::crossterm::terminal;
@@ -42,7 +44,9 @@ pub fn confirm(question: &str, yes: &str, no: &str) -> Result<bool, String> {
 }
 
 pub fn multi(question: &str, options: &[Choice]) -> Result<Vec<usize>, String> {
-    inline(options.len(), |terminal| toggle(terminal, question, options))
+    inline(options.len(), |terminal| {
+        toggle(terminal, question, options)
+    })
 }
 
 fn inline<T>(

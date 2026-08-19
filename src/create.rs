@@ -140,17 +140,17 @@ impl Repo {
     }
 
     pub fn apply(&self) -> Result<(), String> {
-        crate::init::write(&self.root, &self.name, &self.assets)?;
-        println!("wrote {} into {}", self.name, self.root.display());
+        let mut wrote = crate::init::write(&self.root, &self.name, &self.assets)?;
         git_init(&self.root)?;
         println!("initialised a git repository in {}", self.root.display());
         if let Some(image) = &self.image {
-            image.apply(&self.root)?;
+            wrote.extend(image.apply(&self.root)?);
         }
         if let (true, Some(owner)) = (self.remote, &self.owner) {
             create_remote(owner, &self.id)?;
             println!("created {}/{} on github", owner, self.id);
         }
+        report(&self.root, &wrote);
 
         let Self { host, id, .. } = self;
         let mut next = vec!["git add -A && git commit".to_string()];
@@ -170,6 +170,41 @@ impl Repo {
         println!("\nnext, in {}:\n{}\n", self.root.display(), next.join("\n"));
         Ok(())
     }
+}
+
+pub fn report(root: &Path, wrote: &[PathBuf]) {
+    crate::ui::tree::print(root, wrote, describe);
+}
+
+fn describe(path: &Path) -> &'static str {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    if layout::is_image_file(&name) {
+        return "an image: its base, and the modules it lists";
+    }
+    if path.starts_with(layout::MODULES) && path.components().count() > 1 {
+        return match name.as_ref() {
+            layout::MODULE_FILE => "what the module installs, places and provides",
+            layout::RECORD_FILE => "where it was imported from, and its hash",
+            layout::OVERLAY => "what it lays into the image",
+            "module.sh" => "the shell its build layer runs",
+            _ => "",
+        };
+    }
+    match path.to_string_lossy().as_ref() {
+        layout::REPO_FILE => "what the repo pins, and where modules come from",
+        layout::MODULES => "every module this repo owns or imported",
+        "README.md" => "yours to write",
+        "lib" => "shell a module's build layer sources",
+        "scripts" => "what CI runs, and what you run by hand",
+        "disk_config" => "how a disk or installer image is shaped",
+        ".github/workflows" => "the CI: build, scan, sign and publish",
+        ".github/renovate.json5" => "keeps the pinned versions moving",
+        _ => "",
+    }
+}
+
+fn under(root: &Path, path: &Path) -> PathBuf {
+    path.strip_prefix(root).unwrap_or(path).to_path_buf()
 }
 
 fn choose_host(prompt: &Prompt) -> Result<String, String> {
@@ -265,14 +300,13 @@ impl Image {
         })
     }
 
-    pub fn apply(&self, root: &Path) -> Result<(), String> {
+    pub fn apply(&self, root: &Path) -> Result<Vec<PathBuf>, String> {
         crate::init::put(&self.file, &self.text)?;
-        println!("wrote {}", self.file.display());
         if let Some(was) = &self.names_default {
             append_default_image(root, was)?;
             println!("named \"{was}\" the default image in {}", layout::REPO_FILE);
         }
-        Ok(())
+        Ok(vec![under(root, &self.file)])
     }
 }
 
@@ -362,10 +396,10 @@ impl Module {
         })
     }
 
-    pub fn apply(&self) -> Result<(), String> {
+    pub fn apply(&self, root: &Path) -> Result<Vec<PathBuf>, String> {
         crate::init::put(&self.file, &self.text)?;
-        println!("wrote modules/{}/module.kdl", self.path);
-        self.listing.apply(&self.path)
+        self.listing.apply(&self.path)?;
+        Ok(vec![under(root, &self.file)])
     }
 }
 

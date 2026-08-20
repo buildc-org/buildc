@@ -1,5 +1,6 @@
 pub mod base;
 pub mod build;
+pub mod command;
 pub mod create;
 pub mod diag;
 pub mod emit;
@@ -18,6 +19,7 @@ pub mod runtime;
 pub mod scap;
 pub mod ui;
 
+pub use command::{Arg, Command};
 use diag::Issue;
 use diag::Issues;
 use diag::Source;
@@ -26,58 +28,6 @@ use model::module::Module;
 pub use parse::repo::compatible;
 use resolve::Resolved;
 use std::path::{Path, PathBuf};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Command {
-    Plan,
-    Check,
-    Generate,
-    Verify,
-    Section,
-    Graph,
-    GraphJson,
-    Summary,
-    Sbom,
-    Why,
-    WhyJson,
-}
-
-pub enum Arg {
-    Image,
-    Target,
-    Module,
-}
-
-impl Command {
-    pub fn parse(word: &str) -> Option<Self> {
-        Some(match word {
-            "plan" => Self::Plan,
-            "check" => Self::Check,
-            "generate" => Self::Generate,
-            "verify" => Self::Verify,
-            "section" => Self::Section,
-            "graph" => Self::Graph,
-            "summary" => Self::Summary,
-            "sbom" => Self::Sbom,
-            "why" => Self::Why,
-            _ => return None,
-        })
-    }
-
-    pub fn arg(self) -> Option<Arg> {
-        match self {
-            Self::Plan
-            | Self::Check
-            | Self::Generate
-            | Self::Verify
-            | Self::Graph
-            | Self::GraphJson => None,
-            Self::Section => Some(Arg::Image),
-            Self::Summary | Self::Sbom => Some(Arg::Target),
-            Self::Why | Self::WhyJson => Some(Arg::Module),
-        }
-    }
-}
 
 pub fn find_root(from: &Path) -> Option<PathBuf> {
     from.ancestors()

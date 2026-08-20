@@ -1,12 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
+use buildc::command::{self, Spec, Verb};
 use buildc::model::image::BUILDC_VERSION;
 use buildc::prompt::Prompt;
 use buildc::ui::Choice;
 use buildc::Command;
-
-const HEAD: &str = "usage: buildc [--root <dir>] <command>\n";
 
 const COMMANDS: &str = "You can find the available commands by typing 'buildc' or 'buildc --help'";
 
@@ -21,42 +20,6 @@ fn banner(failing: bool) {
         false => println!("Buildc v{BUILDC_VERSION}\n"),
     }
 }
-
-const CREATE_REPO: &str = "\
-\x20 create repo [name]  start a repository for your own images, here or in
-                      `--root`. `--owner` is your account or org, on `--host`
-";
-
-const IN_REPO: &str = "\
-\x20 create image [name] add an image: what it is called, and what it builds on
-  create module [name]
-                      write a module, with the packages it installs, and offer
-                      to list it in an image
-  import module [name]
-                      copy a module in from a collection repo.kdl declares,
-                      choosing from what they hold, and offer to list it in an
-                      image
-  create key <kind>   generate a key one of this repository's modules declares,
-                      such as the one its published images are signed with
-  check               read every manifest and say what is wrong with it
-  generate            write the build files, and list what was written
-  build [target]      verify the build files, then build the image
-  section [image]     print the Containerfile section an image generates
-  graph [--format md|json]
-                      print what provides what, what requires it, and what the
-                      base already carries
-  why <module> [--format md|json]
-                      print one module's trust read-out: what builds it, what it
-                      exchanges, what it claims, and where every byte came from
-";
-
-const RULE: &str = "\
-Every command takes a flag for everything it needs. What no flag gave is asked
-for, and `--no-tui` asks nothing, failing and naming the flag instead.
-
-docs/commands.md is the reference. Data goes to stdout and diagnostics to
-stderr; exit 1 is the invocation, exit 2 the repository.
-";
 
 const USAGE_ERROR: u8 = 1;
 const REPO_ERROR: u8 = 2;
@@ -77,16 +40,6 @@ impl Error {
 impl From<String> for Error {
     fn from(message: String) -> Self {
         Self::Operation(message)
-    }
-}
-
-fn usage(in_repo: bool) -> String {
-    match in_repo {
-        true => format!("{HEAD}\n{CREATE_REPO}{IN_REPO}\n{RULE}"),
-        false => format!(
-            "{HEAD}\n{CREATE_REPO}\nthese need a repository, and there is none here or above:\n\n\
-             {IN_REPO}\n{RULE}"
-        ),
     }
 }
 
@@ -140,22 +93,24 @@ impl Args {
         self.words.len() != before
     }
 
-    fn only(&self, takes: &[&str], command: &str) -> Result<(), Error> {
-        match self.given.iter().find(|flag| !takes.contains(flag)) {
+    fn only(&self, spec: &Spec) -> Result<(), Error> {
+        match self.given.iter().find(|flag| !spec.takes.contains(flag)) {
             Some(flag) => Err(Error::Invocation(format!(
-                "`{command}` does not take `--{flag}`"
+                "`{}` does not take `--{flag}`",
+                spec.name()
             ))),
             None => Ok(()),
         }
     }
 }
 
-fn one_name(rest: &[&str], command: &str) -> Result<Option<String>, Error> {
+fn one_name(rest: &[&str], spec: &Spec) -> Result<Option<String>, Error> {
     match rest {
         [] => Ok(None),
         [name] => Ok(Some((*name).to_string())),
         _ => Err(Error::Invocation(format!(
-            "`{command}` takes one name, not {}",
+            "`{}` takes one name, not {}",
+            spec.name(),
             rest.join(" ")
         ))),
     }
@@ -317,7 +272,7 @@ fn main() -> ExitCode {
             };
             eprintln!("Error: {message}{stop}\n");
             match invocation {
-                true => eprint!("{}", usage(in_repo())),
+                true => eprint!("{}", command::usage(in_repo())),
                 false => eprintln!("{COMMANDS}"),
             }
             ExitCode::from(USAGE_ERROR)
@@ -364,60 +319,40 @@ fn run() -> Result<ExitCode, Error> {
     let words: Vec<&str> = args.words.iter().map(String::as_str).collect();
     match words.first() {
         None => {
-            eprint!("{}", usage(in_repo()));
+            eprint!("{}", command::usage(in_repo()));
             return Ok(ExitCode::from(USAGE_ERROR));
         }
         Some(&"-h") | Some(&"--help") => {
-            print!("{}", usage(in_repo()));
+            print!("{}", command::usage(in_repo()));
             return Ok(ExitCode::SUCCESS);
         }
         Some(_) => {}
     }
 
+    let (spec, rest) = command::resolve(&words).map_err(Error::Invocation)?;
+    args.only(spec)?;
     if matches!(
-        words.as_slice(),
-        ["create", ..] | ["import", ..] | ["check", ..]
+        spec.verb,
+        Verb::CreateRepo
+            | Verb::CreateImage
+            | Verb::CreateModule
+            | Verb::CreateKey
+            | Verb::ImportModule
+            | Verb::Check
     ) {
         banner(false);
     }
 
-    if let ["create", "repo", rest @ ..] = words.as_slice() {
-        args.only(&["root", "host", "owner", "image", "base"], "create repo")?;
-        let name = one_name(rest, "create repo")?;
-        let image = images.last().cloned();
-        buildc::create::Repo::collect(name, host, owner, image, base, root_arg, &prompt)?.apply()?;
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    if let ["fetch", "modules"] = words.as_slice() {
-        args.only(&["root"], "fetch modules")?;
-        let root = repo_root(root_arg)?;
-        let (list, issues, context) = buildc::declarations(&root);
-        if issues.report(&context) {
-            return Ok(ExitCode::from(REPO_ERROR));
+    match spec.verb {
+        Verb::CreateRepo => {
+            let name = one_name(rest, spec)?;
+            let image = images.last().cloned();
+            buildc::create::Repo::collect(name, host, owner, image, base, root_arg, &prompt)?
+                .apply()?;
+            Ok(ExitCode::SUCCESS)
         }
-        for line in buildc::fetch::modules(&root, &list)? {
-            eprintln!("buildc: {line}");
-        }
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    let in_layer = match words.as_slice() {
-        ["os-release"] => Some(buildc::runtime::os_release()),
-        ["build-record"] => Some(buildc::provenance::build::write()),
-        ["validate-image"] => Some(buildc::runtime::validate_image()),
-        ["fetch", rest @ ..] => Some(buildc::runtime::fetch(rest)),
-        _ => None,
-    };
-    if let Some(result) = in_layer {
-        result?;
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    match words.as_slice() {
-        ["create", "image", rest @ ..] => {
-            args.only(&["root", "owner", "base"], "create image")?;
-            let name = one_name(rest, "create image")?;
+        Verb::CreateImage => {
+            let name = one_name(rest, spec)?;
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
@@ -439,31 +374,28 @@ fn run() -> Result<ExitCode, Error> {
             )?
             .apply(&root)?;
             buildc::create::report(&root, &wrote);
-            return Ok(ExitCode::SUCCESS);
+            Ok(ExitCode::SUCCESS)
         }
-        ["create", "module", rest @ ..] => {
-            args.only(&["root", "image", "pkg", "with"], "create module")?;
-            let name = one_name(rest, "create module")?;
+        Verb::CreateModule => {
+            let name = one_name(rest, spec)?;
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             let wrote = buildc::create::Module::collect(&root, name, pkgs, with, images, &prompt)?
                 .apply(&root)?;
             buildc::create::report(&root, &wrote);
-            return Ok(ExitCode::SUCCESS);
+            Ok(ExitCode::SUCCESS)
         }
-        ["create", "key", rest @ ..] => {
-            args.only(&["root", "module", "cn"], "create key")?;
-            let kind = one_name(rest, "create key")?;
+        Verb::CreateKey => {
+            let kind = one_name(rest, spec)?;
             let Some(root) = open(root_arg)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             buildc::key::Key::collect(&root, kind, module_arg, cn, &prompt)?.apply(&root)?;
-            return Ok(ExitCode::SUCCESS);
+            Ok(ExitCode::SUCCESS)
         }
-        ["import", "module", rest @ ..] => {
-            args.only(&["root", "image"], "import module")?;
-            let name = one_name(rest, "import module")?;
+        Verb::ImportModule => {
+            let name = one_name(rest, spec)?;
             let root = repo_root(root_arg)?;
             let (list, issues, context) = buildc::declarations(&root);
             if issues.report(&context) {
@@ -478,23 +410,22 @@ fn run() -> Result<ExitCode, Error> {
                 &prompt,
             )?
             .apply(&root, &list.sources)?;
-            return Ok(ExitCode::SUCCESS);
+            Ok(ExitCode::SUCCESS)
         }
-        ["build", rest @ ..] => {
-            args.only(
-                &[
-                    "root",
-                    "target",
-                    "tag",
-                    "kernel",
-                    "backend",
-                    "oci-output",
-                    "secret",
-                ],
-                "build",
-            )?;
+        Verb::FetchModules => {
+            let root = repo_root(root_arg)?;
+            let (list, issues, context) = buildc::declarations(&root);
+            if issues.report(&context) {
+                return Ok(ExitCode::from(REPO_ERROR));
+            }
+            for line in buildc::fetch::modules(&root, &list)? {
+                eprintln!("buildc: {line}");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::Build => {
             let opts = buildc::build::Options {
-                target: one_name(rest, "build")?.or(target),
+                target: one_name(rest, spec)?.or(target),
                 kernel,
                 tags,
                 secrets,
@@ -503,17 +434,15 @@ fn run() -> Result<ExitCode, Error> {
                 no_cache_from,
                 cache_to,
             };
-            return Ok(match buildc::build::run(&repo_root(root_arg)?, &opts)? {
+            Ok(match buildc::build::run(&repo_root(root_arg)?, &opts)? {
                 buildc::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
-            });
+            })
         }
-        ["registry", "namespace"] => {
-            args.only(&["root"], "registry namespace")?;
+        Verb::RegistryNamespace => {
             println!("{}", buildc::registry::namespace(&repo_root(root_arg)?)?);
-            return Ok(ExitCode::SUCCESS);
+            Ok(ExitCode::SUCCESS)
         }
-        ["registry", "ref"] => {
-            args.only(&["root", "target", "tag"], "registry ref")?;
+        Verb::RegistryRef => {
             let root = repo_root(root_arg)?;
             let (list, issues, context) = buildc::declarations(&root);
             if issues.report(&context) {
@@ -523,63 +452,60 @@ fn run() -> Result<ExitCode, Error> {
                 "{}",
                 buildc::registry::reference(&list, &root, target.as_deref(), tags.last())?
             );
-            return Ok(ExitCode::SUCCESS);
+            Ok(ExitCode::SUCCESS)
         }
-        ["registry", ..] => {
-            return Err(Error::Invocation(
-                "`registry` takes `namespace` or `ref`".into(),
-            ))
-        }
-        ["scap", "content"] => {
-            args.only(&["root", "target"], "scap content")?;
-            return Ok(
-                match buildc::scap::content(&repo_root(root_arg)?, target.as_deref())? {
-                    buildc::scap::Verdict::Clean => ExitCode::SUCCESS,
-                    buildc::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
-                },
-            );
-        }
-        ["scap", arf] => {
-            args.only(&["root", "target", "datastream", "baseline"], "scap")?;
+        Verb::ScapContent => Ok(
+            match buildc::scap::content(&repo_root(root_arg)?, target.as_deref())? {
+                buildc::scap::Verdict::Clean => ExitCode::SUCCESS,
+                buildc::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
+            },
+        ),
+        Verb::Scap => {
+            let [arf] = rest else {
+                return Err(Error::Invocation(
+                    "`scap` takes one report: `buildc scap <arf.xml>`, or `scap content`".into(),
+                ));
+            };
             let opts = buildc::scap::Options {
                 target,
                 datastream: datastream.map(PathBuf::from),
                 baseline: baseline.map(PathBuf::from),
             };
-            return Ok(
+            Ok(
                 match buildc::scap::run(&repo_root(root_arg)?, Path::new(arf), &opts)? {
                     buildc::scap::Verdict::Clean => ExitCode::SUCCESS,
                     buildc::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
                 },
-            );
+            )
         }
-        ["scap", ..] => {
-            return Err(Error::Invocation(
-                "`scap` takes one report: `buildc scap <arf.xml>`, or `scap content`".into(),
-            ))
+        Verb::OsRelease => {
+            buildc::runtime::os_release()?;
+            Ok(ExitCode::SUCCESS)
         }
-        ["create", ..] => {
-            return Err(Error::Invocation(
-                "`create` takes `repo <name>`, `image <name>`, `module <name>` \
-                 or `key <kind>`"
-                    .into(),
-            ))
+        Verb::BuildRecord => {
+            buildc::provenance::build::write()?;
+            Ok(ExitCode::SUCCESS)
         }
-        ["import", ..] => return Err(Error::Invocation("`import` takes `module <name>`".into())),
-        _ => {}
+        Verb::ValidateImage => {
+            buildc::runtime::validate_image()?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::Fetch => {
+            buildc::runtime::fetch(rest)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        _ => reading(spec, rest, format.as_deref(), root_arg),
     }
+}
 
-    let Some(command) = Command::parse(words[0]) else {
-        return Err(Error::Invocation(format!("unknown command `{}`", words[0])));
-    };
-    args.only(
-        match command {
-            Command::Graph | Command::Why => &["root", "format"],
-            _ => &["root"],
-        },
-        words[0],
-    )?;
-    let command = match (command, format.as_deref()) {
+fn reading(
+    spec: &Spec,
+    rest: &[&str],
+    format: Option<&str>,
+    root_arg: Option<PathBuf>,
+) -> Result<ExitCode, Error> {
+    let command = spec.verb.reads().expect("a command run reads");
+    let command = match (command, format) {
         (Command::Graph, None | Some("md")) => Command::Graph,
         (Command::Graph, Some("json")) => Command::GraphJson,
         (Command::Why, None | Some("md")) => Command::Why,
@@ -592,7 +518,6 @@ fn run() -> Result<ExitCode, Error> {
         (command, _) => command,
     };
 
-    let rest = &words[1..];
     let arg = match rest {
         [] => None,
         ["--json"] if command == Command::Plan => None,
@@ -600,7 +525,7 @@ fn run() -> Result<ExitCode, Error> {
         _ => {
             return Err(Error::Invocation(format!(
                 "`{}` does not take {}",
-                words[0],
+                spec.name(),
                 rest.join(" ")
             )));
         }

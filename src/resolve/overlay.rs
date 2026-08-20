@@ -2,11 +2,10 @@ use crate::diag::{Issue, Issues};
 use crate::model::image::{Entry, Image};
 use crate::parse::disk::Disk;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 pub type Index = BTreeMap<String, Vec<usize>>;
 
-pub fn index(image: &Image, disk: &Disk, root: &Path) -> Index {
+pub fn index(image: &Image, disk: &Disk) -> Index {
     let mut shipped: Index = BTreeMap::new();
     for (index, entry) in image.entries.iter().enumerate() {
         let Some(module) = &entry.module else {
@@ -16,12 +15,7 @@ pub fn index(image: &Image, disk: &Disk, root: &Path) -> Index {
             shipped.entry(path.clone()).or_default().push(index);
         }
         for key in &module.keys {
-            if crate::layout::public_key(root, &key.public)
-                .metadata()
-                .is_ok_and(|meta| meta.len() > 0)
-            {
-                shipped.entry(key.public.clone()).or_default().push(index);
-            }
+            shipped.entry(key.public.clone()).or_default().push(index);
         }
     }
     shipped

@@ -537,16 +537,21 @@ impl Listing {
     }
 
     pub fn apply(&self, path: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(&format!("module \"{path}\""))
+        self.apply_declaration(&format!("module \"{path}\""), None)
     }
 
     pub fn apply_source(&self, source: &str, name: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(&format!(
-            "source \"{source}\" {{\n    module \"{name}\"\n}}"
-        ))
+        self.apply_declaration(
+            &format!("source \"{source}\" {{\n    module \"{name}\"\n}}"),
+            Some((source, name)),
+        )
     }
 
-    fn apply_declaration(&self, declaration: &str) -> Result<Vec<(PathBuf, Change)>, String> {
+    fn apply_declaration(
+        &self,
+        declaration: &str,
+        source: Option<(&str, &str)>,
+    ) -> Result<Vec<(PathBuf, Change)>, String> {
         match self {
             Self::NoImage => {
                 println!("no image lists it yet; `buildc create image <name>` writes one");
@@ -561,7 +566,7 @@ impl Listing {
             }
             Self::In(files) => {
                 for file in files {
-                    append_declaration(file, declaration)?;
+                    append_declaration(file, declaration, source)?;
                 }
                 Ok(files
                     .iter()
@@ -572,11 +577,24 @@ impl Listing {
     }
 }
 
-fn append_declaration(file: &Path, declaration: &str) -> Result<(), String> {
+fn append_declaration(
+    file: &Path,
+    declaration: &str,
+    source: Option<(&str, &str)>,
+) -> Result<(), String> {
     let mut text =
         std::fs::read_to_string(file).map_err(|err| format!("{}: {err}", file.display()))?;
-    let close = crate::parse::image::modules_close(&text)
-        .ok_or_else(|| format!("{} has no `modules` block to add to", file.display()))?;
+    let (close, declaration) = match source.and_then(|(source, name)| {
+        crate::parse::image::source_close(&text, source)
+            .map(|close| (close, format!("module \"{name}\"")))
+    }) {
+        Some(found) => found,
+        None => (
+            crate::parse::image::modules_close(&text)
+                .ok_or_else(|| format!("{} has no `modules` block to add to", file.display()))?,
+            declaration.to_string(),
+        ),
+    };
 
     let start = text[..close].rfind('\n').map_or(0, |at| at + 1);
     let indent = &text[start..close];

@@ -146,6 +146,17 @@ pub fn modules_close(text: &str) -> Option<usize> {
     text[..span.offset + span.len].rfind('}')
 }
 
+pub fn source_close(text: &str, source: &str) -> Option<usize> {
+    let doc: KdlDocument = text.parse().ok()?;
+    let image = doc.nodes().iter().find(|n| n.name().value() == "image")?;
+    let modules = child(image, "modules")?;
+    let node = kids(modules)
+        .iter()
+        .find(|node| node.name().value() == "source" && string_arg(node) == Some(source))?;
+    let span: Span = node.span().into();
+    text[..span.offset + span.len].rfind('}')
+}
+
 fn decls(node: &KdlNode, name: &str) -> Vec<Decl> {
     kids(node)
         .iter()
@@ -527,6 +538,14 @@ image "stray" {
         let at = modules_close(text).expect("a modules block");
         assert_eq!(&text[at..=at], "}");
         assert_eq!(&text[at - 5..at], "\n    ");
+    }
+
+    #[test]
+    fn a_source_block_ends_at_its_closing_brace() {
+        let text = "image {\n    modules {\n        source \"one\" {\n            module \"a\"\n        }\n        source \"two\" {}\n    }\n}\n";
+        let at = source_close(text, "one").expect("a source block");
+        assert_eq!(&text[at..=at], "}");
+        assert!(text[..at].ends_with("module \"a\"\n        "));
     }
 
     #[test]

@@ -342,11 +342,16 @@ fn module_signing(cn: &str) -> String {
 
 fn warn_unignored(root: &Path) {
     let name = "keys/private/";
-    let ignored = std::fs::read_to_string(root.join(".gitignore"))
-        .is_ok_and(|text| text.lines().any(|line| line.trim() == name));
+    let ignored =
+        std::fs::read_to_string(root.join(".gitignore")).is_ok_and(|text| ignores_private(&text));
     if !ignored {
         eprintln!("buildc: nothing in .gitignore covers {name}; add that line before committing");
     }
+}
+
+fn ignores_private(text: &str) -> bool {
+    text.lines()
+        .any(|line| line.trim().trim_start_matches('/').trim_end_matches('/') == "keys/private")
 }
 
 #[cfg(test)]
@@ -458,5 +463,12 @@ key "secureboot" {
             root.join("keys/public/usr/share/secureboot/sb_cert.der")
         );
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn private_key_ignore_spelling_is_flexible() {
+        for line in ["keys/private/", "/keys/private/", "keys/private"] {
+            assert!(ignores_private(line));
+        }
     }
 }

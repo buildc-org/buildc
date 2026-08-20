@@ -4,6 +4,8 @@ pub const MODULES: &str = "modules";
 pub const GENERATED: &str = "generated";
 pub const OUT: &str = "out";
 pub const KEYS: &str = "keys";
+const PUBLIC_KEYS: &str = "public";
+const PRIVATE_KEYS: &str = "private";
 
 pub const OVERLAY: &str = "files";
 
@@ -37,12 +39,16 @@ pub fn module(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
 
 pub fn public_key(root: &Path, path: &str) -> PathBuf {
     root.join(KEYS)
-        .join("public")
+        .join(PUBLIC_KEYS)
         .join(path.trim_start_matches('/'))
 }
 
 pub fn private_key(root: &Path, name: &str) -> PathBuf {
-    root.join(KEYS).join("private").join(name)
+    root.join(KEYS).join(PRIVATE_KEYS).join(name)
+}
+
+pub fn nonempty(path: &Path) -> bool {
+    path.metadata().is_ok_and(|meta| meta.len() > 0)
 }
 
 pub fn manifest(root: &Path, dir: impl AsRef<Path>) -> PathBuf {

@@ -277,9 +277,12 @@ impl Import {
         root: &Path,
         sources: &[buildc::model::remote::Collection],
     ) -> Result<(), String> {
-        let wrote = buildc::import::vendor(root, sources, &self.from, &self.dest)?;
-        println!("imported {}", self.dest.display());
-        self.listing.apply(&self.path)?;
+        let mut wrote: Vec<(PathBuf, buildc::create::Change)> =
+            buildc::import::vendor(root, sources, &self.from, &self.dest)?
+                .into_iter()
+                .map(|path| (path, buildc::create::Change::Created))
+                .collect();
+        wrote.extend(self.listing.apply(&self.path)?);
         buildc::create::report(root, &wrote);
         Ok(())
     }

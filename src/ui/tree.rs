@@ -1,3 +1,4 @@
+use ratatui::crossterm::style::Stylize;
 use ratatui::crossterm::terminal;
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
@@ -9,44 +10,75 @@ const GAP: usize = 2;
 
 const LEAST: usize = 12;
 
+#[derive(Clone, Copy)]
+pub enum Change {
+    Created,
+    Updated,
+}
+
+fn mark(change: Change) -> String {
+    let symbol = match change {
+        Change::Created => "+",
+        Change::Updated => "~",
+    };
+    match colour() {
+        false => format!("{symbol} "),
+        true => match change {
+            Change::Created => format!("{} ", symbol.green()),
+            Change::Updated => format!("{} ", symbol.yellow()),
+        },
+    }
+}
+
 #[derive(Default)]
 struct Node {
     children: BTreeMap<String, Node>,
     dir: bool,
+    change: Option<Change>,
 }
 
-pub fn print(root: &Path, wrote: &[PathBuf], describe: fn(&Path) -> &'static str) {
+pub fn print(root: &Path, wrote: &[(PathBuf, Change)], describe: fn(&Path) -> &'static str) {
     let mut lines = Vec::new();
     walk(&of(wrote), Path::new(""), "", describe, &mut lines);
 
     let column = lines
         .iter()
-        .filter(|(_, desc)| !desc.is_empty())
-        .map(|(branch, _)| branch.chars().count() + GAP)
+        .filter(|(_, _, desc)| !desc.is_empty())
+        .map(|(plain, _, _)| plain.chars().count() + GAP)
         .max()
         .unwrap_or(0);
     let room = width().saturating_sub(column);
 
     println!("\n{}/", root.display());
-    for (branch, desc) in &lines {
+    for (plain, shown, desc) in &lines {
         match fit(desc, room) {
-            "" => println!("{branch}"),
-            desc => println!("{branch:column$}{desc}"),
+            "" => println!("{shown}"),
+            desc => println!(
+                "{shown}{}{desc}",
+                " ".repeat(column - plain.chars().count())
+            ),
         }
     }
 }
 
-fn of(wrote: &[PathBuf]) -> Node {
+fn of(wrote: &[(PathBuf, Change)]) -> Node {
     let mut tree = Node::default();
-    for path in wrote {
-        let depth = path.components().count();
+    for (path, change) in wrote {
+        let parts: Vec<_> = path
+            .components()
+            .filter(|part| !matches!(part, std::path::Component::CurDir))
+            .collect();
+        let depth = parts.len();
         let mut node = &mut tree;
-        for (at, part) in path.components().enumerate() {
+        for (at, part) in parts.into_iter().enumerate() {
             node = node
                 .children
                 .entry(part.as_os_str().to_string_lossy().into_owned())
                 .or_default();
             node.dir |= at + 1 < depth;
+            if at + 1 == depth {
+                node.change = Some(*change);
+            }
         }
     }
     tree
@@ -57,7 +89,7 @@ fn walk(
     at: &Path,
     prefix: &str,
     describe: fn(&Path) -> &'static str,
-    out: &mut Vec<(String, &'static str)>,
+    out: &mut Vec<(String, String, &'static str)>,
 ) {
     let mut names: Vec<&String> = node.children.keys().collect();
     names.sort_by_key(|name| !node.children[*name].dir);
@@ -68,13 +100,31 @@ fn walk(
             false => ("├── ", "│   "),
         };
         let path = at.join(name);
-        let slash = match child.dir {
-            true => "/",
-            false => "",
+        let prefix_shown = format!("{prefix}{branch}");
+        let (plain, shown) = match child.dir {
+            true => {
+                let base = format!("{prefix_shown}{name}/");
+                (base.clone(), base)
+            }
+            false => {
+                let change = child.change.unwrap_or(Change::Created);
+                let bare = match change {
+                    Change::Created => "+ ",
+                    Change::Updated => "~ ",
+                };
+                (
+                    format!("{prefix_shown}{bare}{name}"),
+                    format!("{prefix_shown}{}{name}", mark(change)),
+                )
+            }
         };
-        out.push((format!("{prefix}{branch}{name}{slash}"), describe(&path)));
+        out.push((plain, shown, describe(&path)));
         walk(child, &path, &format!("{prefix}{carry}"), describe, out);
     }
+}
+
+fn colour() -> bool {
+    std::io::stdout().is_terminal()
 }
 
 fn fit(desc: &str, room: usize) -> &str {
@@ -94,7 +144,7 @@ fn fit(desc: &str, room: usize) -> &str {
 }
 
 fn width() -> usize {
-    match std::io::stdout().is_terminal() {
+    match colour() {
         true => terminal::size().map_or(NARROWEST, |(cols, _)| cols as usize),
         false => NARROWEST,
     }
@@ -112,25 +162,35 @@ mod tests {
         }
     }
 
-    fn drawn(wrote: &[&str]) -> Vec<(String, &'static str)> {
-        let wrote: Vec<PathBuf> = wrote.iter().map(PathBuf::from).collect();
+    fn drawn(wrote: &[(&str, Change)]) -> Vec<(String, &'static str)> {
+        let wrote: Vec<(PathBuf, Change)> = wrote
+            .iter()
+            .map(|(path, change)| (PathBuf::from(path), *change))
+            .collect();
         let mut lines = Vec::new();
         walk(&of(&wrote), Path::new(""), "", phrase, &mut lines);
         lines
+            .into_iter()
+            .map(|(plain, _, desc)| (plain, desc))
+            .collect()
     }
 
     #[test]
     fn directories_come_first_and_carry_the_branch_their_children_hang_off() {
-        let lines = drawn(&["repo.kdl", "modules/mine/module.kdl", "README.md"]);
+        let lines = drawn(&[
+            ("repo.kdl", Change::Updated),
+            ("modules/mine/module.kdl", Change::Created),
+            ("README.md", Change::Created),
+        ]);
         let branches: Vec<&str> = lines.iter().map(|(branch, _)| branch.as_str()).collect();
         assert_eq!(
             branches,
             [
                 "├── modules/",
                 "│   └── mine/",
-                "│       └── module.kdl",
-                "├── README.md",
-                "└── repo.kdl",
+                "│       └── + module.kdl",
+                "├── + README.md",
+                "└── ~ repo.kdl",
             ]
         );
         assert_eq!(lines[0].1, "every module the repo holds");

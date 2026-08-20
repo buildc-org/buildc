@@ -23,6 +23,11 @@ impl Choice {
     }
 }
 
+pub enum Answer {
+    Cancelled,
+    Chosen(Vec<usize>),
+}
+
 const VISIBLE: usize = 8;
 
 const PICK: &str = "up and down to move, enter to choose, esc for none";
@@ -43,7 +48,7 @@ pub fn confirm(question: &str, yes: &str, no: &str) -> Result<bool, String> {
     Ok(chosen == Some(0))
 }
 
-pub fn multi(question: &str, options: &[Choice]) -> Result<Vec<usize>, String> {
+pub fn multi(question: &str, options: &[Choice]) -> Result<Answer, String> {
     inline(options.len(), |terminal| {
         toggle(terminal, question, options)
     })
@@ -93,7 +98,7 @@ fn toggle<B: Backend>(
     terminal: &mut ratatui::Terminal<B>,
     question: &str,
     options: &[Choice],
-) -> Result<Vec<usize>, String> {
+) -> Result<Answer, String> {
     let mut state = ListState::default().with_selected(Some(0));
     let mut on: Vec<usize> = Vec::new();
     loop {
@@ -112,8 +117,8 @@ fn toggle<B: Backend>(
                     }
                 }
             }
-            KeyCode::Enter => return Ok(on),
-            KeyCode::Esc | KeyCode::Char('q') => return Ok(Vec::new()),
+            KeyCode::Enter => return Ok(Answer::Chosen(on)),
+            KeyCode::Esc | KeyCode::Char('q') => return Ok(Answer::Cancelled),
             code => move_by(code, &mut state),
         }
     }

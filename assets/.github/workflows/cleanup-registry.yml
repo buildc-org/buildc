@@ -50,6 +50,7 @@ jobs:
             fi
           }
 
+          ./scripts/buildc.sh fetch modules
           ./scripts/buildc.sh plan --json > plan.json
           mapfile -t packages < <(jq -r '.images[].targets[].published' plan.json)
           for pkg in "${packages[@]}"; do

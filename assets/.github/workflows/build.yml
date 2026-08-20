@@ -657,6 +657,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          ./scripts/buildc.sh fetch modules
           datastream="$(./scripts/buildc.sh scap content --target "$TARGET")"
           {
             echo "datastream=${datastream}"

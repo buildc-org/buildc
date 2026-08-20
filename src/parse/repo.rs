@@ -182,9 +182,10 @@ pub fn compatible(root: &Path) -> Issues {
                          that reads it, and `scripts/buildc.sh` fetches that one"
                     .to_string(),
                 false => format!(
-                    "`buildc update-repo` moves the repository to schema {SCHEMA_VERSION}; nothing \
-                     else is read until it does, because every diagnostic under a grammar this \
-                     release does not have would be noise"
+                    "nothing here moves a repository to schema {SCHEMA_VERSION}, and nothing \
+                     else in it is read either, because every diagnostic under a grammar this \
+                     release does not have would be noise; run the release `buildc-version` names, \
+                     which `scripts/buildc.sh` fetches"
                 ),
             }),
         );
@@ -199,7 +200,7 @@ pub fn compatible(root: &Path) -> Issues {
             )
             .at(span, format!("this is buildc {BUILDC_VERSION}"))
             .help(
-                "run the pinned release, which `scripts/buildc.sh` fetches, or `buildc update-repo` \
+                "run the pinned release, which `scripts/buildc.sh` fetches, or edit `buildc-version` \
                  to move the pin to this one",
             ),
         );

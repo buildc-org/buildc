@@ -5,6 +5,6 @@
    : ^^^^^^|^^^^^
    :       `-- this is buildc {version}
    `----
-  help: run the pinned release, which `scripts/buildc.sh` fetches, or `buildc
-        update-repo` to move the pin to this one
+  help: run the pinned release, which `scripts/buildc.sh` fetches, or edit
+        `buildc-version` to move the pin to this one
 

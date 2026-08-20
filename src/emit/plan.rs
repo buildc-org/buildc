@@ -213,7 +213,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         ),
         (
             "modules",
-            Json::array(entries.iter().map(|entry| self::module(entry))),
+            Json::array(entries.iter().map(|entry| self::module(list, entry))),
         ),
         (
             "suppressed",
@@ -222,7 +222,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
                     .suppressed
                     .iter()
                     .filter(|entry| in_target(entry, flavour))
-                    .map(self::module),
+                    .map(|entry| self::module(list, entry)),
             ),
         ),
         (
@@ -283,7 +283,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
     ])
 }
 
-fn module(entry: &Entry) -> Json {
+fn module(list: &List, entry: &Entry) -> Json {
     let module = entry.module.as_ref();
     Json::object([
         ("path", Json::string(&entry.path)),
@@ -292,7 +292,7 @@ fn module(entry: &Entry) -> Json {
         ("variant", Json::optional(entry.variant.clone())),
         (
             "remote",
-            Json::optional(entry.remote.as_ref().and_then(|r| r.version.clone())),
+            Json::optional(entry.pin(&list.sources).and_then(|pin| pin.version.clone())),
         ),
         (
             "description",
@@ -310,7 +310,7 @@ fn module(entry: &Entry) -> Json {
         ),
         ("provides", Json::strings(decls(module, |m| &m.provides))),
         ("requires", Json::strings(decls(module, |m| &m.requires))),
-        ("provenance", provenance(entry)),
+        ("provenance", provenance(list, entry)),
         (
             "satisfies",
             Json::array(
@@ -338,7 +338,7 @@ fn decls(
         .unwrap_or_default()
 }
 
-fn provenance(entry: &Entry) -> Json {
+fn provenance(list: &List, entry: &Entry) -> Json {
     let module = entry.module.as_ref();
     Json::object([
         (
@@ -348,7 +348,7 @@ fn provenance(entry: &Entry) -> Json {
         ("repo", Json::Bool(module.is_some_and(|m| m.repo))),
         (
             "pin",
-            entry.remote.as_ref().map_or(Json::Null, Evidence::json),
+            entry.pin(&list.sources).map_or(Json::Null, Evidence::json),
         ),
         (
             "imported",
@@ -510,7 +510,7 @@ fn remotes(list: &List) -> Json {
     let mut out: Vec<Json> = Vec::new();
     for image in &list.images {
         for entry in &image.entries {
-            let Some(remote) = &entry.remote else {
+            let Some(remote) = entry.pin(&list.sources) else {
                 continue;
             };
             if seen.contains(&entry.path.as_str()) {
@@ -569,6 +569,7 @@ mod tests {
 
     fn entry(flavour: Option<&str>) -> Entry {
         Entry {
+            source: None,
             path: "owner/module".into(),
             flavour: flavour.map(str::to_string),
             variant: None,

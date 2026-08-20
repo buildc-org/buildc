@@ -12,7 +12,7 @@ dnf5 install -y fastfetch
 # GENERATED FILE, do not edit.
 set -euxo pipefail
 
-MODDIR=/ctx/modules/buildc-org/flatpak
+MODDIR=/ctx/modules/.remote/buildc-org/flatpak
 export MODDIR
 
 OPT_REMOTES=(flathub flathub-beta)

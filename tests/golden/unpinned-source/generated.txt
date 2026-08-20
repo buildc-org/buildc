@@ -3,7 +3,7 @@
 # GENERATED FILE, do not edit.
 set -euxo pipefail
 
-MODDIR=/ctx/modules/buildc-org/hello
+MODDIR=/ctx/modules/.remote/buildc-org/hello
 export MODDIR
 
 dnf5 install -y fastfetch

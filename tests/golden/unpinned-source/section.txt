@@ -4,7 +4,7 @@ FROM ${BASE}
 ## Module layers
 
 # ---- buildc-org/hello ----
-RUN --mount=type=bind,from=ctx,source=/modules/buildc-org/hello,target=/ctx/modules/buildc-org/hello \
+RUN --mount=type=bind,from=ctx,source=/modules/.remote/buildc-org/hello,target=/ctx/modules/.remote/buildc-org/hello \
     --mount=type=bind,from=ctx,source=/lib,target=/ctx/lib \
     --mount=type=bind,from=ctx,source=/generated/example.d/buildc-org/hello.sh,target=/ctx/module.sh \
     --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \

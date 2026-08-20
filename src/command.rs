@@ -382,11 +382,22 @@ pub fn listed() -> Vec<&'static Spec> {
     rows
 }
 
-pub fn choice(spec: &Spec, in_repo: bool) -> Choice {
-    match !in_repo && spec.family == Family::Repo {
-        true => Choice::new(spec.label(), "needs a repository"),
-        false => Choice::new(spec.label(), spec.about),
-    }
+fn in_repo() -> bool {
+    std::env::current_dir()
+        .ok()
+        .and_then(|here| crate::find_root(&here))
+        .is_some()
+}
+
+pub fn choices() -> Vec<Choice> {
+    let here = in_repo();
+    listed()
+        .iter()
+        .map(|spec| match !here && spec.family == Family::Repo {
+            true => Choice::new(spec.label(), "needs a repository"),
+            false => Choice::new(spec.label(), spec.about),
+        })
+        .collect()
 }
 
 const HEAD: &str = "usage: buildc [--root <dir>] <command>\n";
@@ -399,7 +410,8 @@ docs/commands.md is the reference. Data goes to stdout and diagnostics to
 stderr; exit 1 is the invocation, exit 2 the repository.
 ";
 
-pub fn usage(in_repo: bool) -> String {
+pub fn usage() -> String {
+    let in_repo = in_repo();
     let rows = listed();
     let width = rows
         .iter()

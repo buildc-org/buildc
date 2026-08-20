@@ -3,6 +3,7 @@ pub mod build;
 pub mod command;
 pub mod create;
 pub mod diag;
+pub mod dispatch;
 pub mod emit;
 pub mod fetch;
 pub mod import;
@@ -358,6 +359,20 @@ fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issues) {
             .help("delete it, or declare what it belongs to"),
         );
     }
+}
+
+pub fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
+    let dir = layout::generated(root);
+    if dir.is_dir() {
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+    }
+    for (path, text) in files {
+        let path = root.join(path);
+        let dir = path.parent().unwrap_or(&path);
+        std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+        std::fs::write(&path, text).map_err(|err| format!("{}: {err}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn difference(found: &str, generated: &str) -> (diag::Span, String) {

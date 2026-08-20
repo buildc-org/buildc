@@ -44,6 +44,10 @@ impl Prompt {
         self.ask
     }
 
+    pub fn draws(&self) -> bool {
+        self.draw
+    }
+
     fn read(&self, question: &str, shown: &str) -> Result<String, String> {
         let answer = self.answer(question, shown)?;
         println!();

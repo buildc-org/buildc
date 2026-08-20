@@ -97,6 +97,15 @@ fn main() -> ExitCode {
     }
 }
 
+fn picking(words: &[&str], prompt: &Prompt) -> bool {
+    prompt.draws()
+        && match words {
+            [] => true,
+            [word] => command::all_nouns(word),
+            _ => false,
+        }
+}
+
 fn run() -> Result<ExitCode, Error> {
     let mut args = Args {
         words: std::env::args().skip(1).collect(),
@@ -138,19 +147,28 @@ fn run() -> Result<ExitCode, Error> {
     };
 
     let words: Vec<&str> = args.words.iter().map(String::as_str).collect();
-    match words.first() {
-        None => {
-            eprint!("{}", command::usage());
-            return Ok(ExitCode::from(USAGE_ERROR));
+    let (spec, rest): (&Spec, &[&str]) = if matches!(words.first(), Some(&"-h") | Some(&"--help")) {
+        banner(false);
+        print!("{}", command::usage());
+        return Ok(ExitCode::SUCCESS);
+    } else if picking(&words, &prompt) {
+        let rows = match words.first() {
+            Some(word) => command::nouns(word),
+            None => command::listed(),
+        };
+        banner(false);
+        match buildc::ui::select("which command", &command::choices(&rows))? {
+            Some(at) => (rows[at], &[]),
+            None => return Ok(ExitCode::SUCCESS),
         }
-        Some(&"-h") | Some(&"--help") => {
-            print!("{}", command::usage());
-            return Ok(ExitCode::SUCCESS);
-        }
-        Some(_) => {}
-    }
+    } else if words.is_empty() {
+        banner(true);
+        eprint!("{}", command::usage());
+        return Ok(ExitCode::from(USAGE_ERROR));
+    } else {
+        command::resolve(&words).map_err(Error::Invocation)?
+    };
 
-    let (spec, rest) = command::resolve(&words).map_err(Error::Invocation)?;
     args.only(spec)?;
     if matches!(
         spec.verb,

@@ -343,6 +343,11 @@ pub fn nouns(word: &str) -> Vec<&'static Spec> {
     COMMANDS.iter().filter(|spec| spec.word == word).collect()
 }
 
+pub fn all_nouns(word: &str) -> bool {
+    let rows = nouns(word);
+    !rows.is_empty() && rows.iter().all(|spec| !spec.noun.is_empty())
+}
+
 pub fn resolve<'a>(words: &'a [&'a str]) -> Result<(&'static Spec, &'a [&'a str]), String> {
     let word = words[0];
     let rows = nouns(word);
@@ -389,10 +394,9 @@ fn in_repo() -> bool {
         .is_some()
 }
 
-pub fn choices() -> Vec<Choice> {
+pub fn choices(rows: &[&Spec]) -> Vec<Choice> {
     let here = in_repo();
-    listed()
-        .iter()
+    rows.iter()
         .map(|spec| match !here && spec.family == Family::Repo {
             true => Choice::new(spec.label(), "needs a repository"),
             false => Choice::new(spec.label(), spec.about),
@@ -515,6 +519,16 @@ mod tests {
             let (found, rest) = resolve(&words).unwrap();
             assert_eq!(found.verb, spec.verb, "{} resolved elsewhere", spec.label());
             assert!(rest.is_empty());
+        }
+    }
+
+    #[test]
+    fn only_a_verb_every_form_of_which_takes_a_noun_is_a_list() {
+        for word in ["create", "import", "registry"] {
+            assert!(all_nouns(word), "{word}");
+        }
+        for word in ["scap", "fetch", "check", "build", "nonsense"] {
+            assert!(!all_nouns(word), "{word}");
         }
     }
 

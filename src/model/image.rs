@@ -19,6 +19,7 @@ pub fn is_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+#[derive(Clone)]
 pub struct Target {
     pub image: String,
     pub flavour: String,
@@ -208,6 +209,24 @@ impl List {
             }));
         }
         out
+    }
+
+    pub fn find_target(&self, name: &str) -> Result<Target, String> {
+        let known = self.targets();
+        known
+            .iter()
+            .find(|have| have.to_string() == name)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "`{name}` is not a build target (have: {})",
+                    known
+                        .iter()
+                        .map(Target::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            })
     }
 
     pub fn default_target(&self) -> Option<Target> {

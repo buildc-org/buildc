@@ -37,7 +37,7 @@ struct Node {
     change: Option<Change>,
 }
 
-pub fn print(root: &Path, wrote: &[(PathBuf, Change)], describe: fn(&Path) -> &'static str) {
+pub fn print(label: &str, wrote: &[(PathBuf, Change)], describe: fn(&Path) -> &'static str) {
     let mut lines = Vec::new();
     walk(&of(wrote), Path::new(""), "", describe, &mut lines);
 
@@ -49,7 +49,7 @@ pub fn print(root: &Path, wrote: &[(PathBuf, Change)], describe: fn(&Path) -> &'
         .unwrap_or(0);
     let room = width().saturating_sub(column);
 
-    println!("\n{}/", root.display());
+    println!("\n{label}/");
     for (plain, shown, desc) in &lines {
         match fit(desc, room) {
             "" => println!("{shown}"),

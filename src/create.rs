@@ -178,7 +178,8 @@ impl Repo {
 }
 
 pub fn report(root: &Path, wrote: &[(PathBuf, Change)]) {
-    crate::ui::tree::print(root, wrote, describe);
+    let id = crate::model::image::List::load(root).0.id;
+    crate::ui::tree::print(&id, wrote, describe);
 }
 
 fn describe(path: &Path) -> &'static str {

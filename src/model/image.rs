@@ -120,6 +120,8 @@ pub struct Seed {
 }
 
 pub struct List {
+    pub name: String,
+    pub id: String,
     pub images: Vec<Image>,
     pub workflows: Vec<WorkflowToggle>,
     pub sources: Vec<Collection>,

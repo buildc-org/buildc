@@ -23,6 +23,14 @@ pub const REPO: Node = Node::new("repo",
                         "\"`, the release the build fetches and every command checks itself \
                          against")))
             .once(""),
+        Node::new("name",
+            "What the repository calls itself, whatever the directory holding it is called.")
+            .arg(Arg::Str, Say::new("`{}` needs a name", "no name given",
+                "`name \"Workstation\"`, which the directory is free to disagree with"))
+            .once("")
+            .missing(Say::new("repo.kdl says nothing about what this repository is called",
+                "no name", "`name \"Workstation\"`, so a rename of the directory changes \
+                 nothing about what this repository answers to")),
         Node::new("default-image",
             "The image a command given no image answers about, and a build with no target builds.")
             .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
@@ -113,7 +121,8 @@ pub const REPO: Node = Node::new("repo",
             ], Say::new("unknown node `{}` in audit", "not part of the schema",
                 "an audit block holds `enforce`")),
     ], Say::new("unknown node `{}` in repo.kdl", "not part of the schema",
-        "repo.kdl holds `schema-version`, `buildc-version`, `default-image`, `pr-image`, `seed`, a \
+        "repo.kdl holds `schema-version`, `buildc-version`, `name`, `default-image`, `pr-image`, \
+         `seed`, a \
          `workflows` block, a `sources` block, a `manifest` block and an `audit` block: what is \
          true of the \
          repository rather than of any image in it. An image goes in a file of its own"));
@@ -209,6 +218,8 @@ impl List {
 
     fn empty(root: &Path) -> Self {
         List {
+            name: String::new(),
+            id: String::new(),
             images: Vec::new(),
             workflows: Vec::new(),
             sources: Vec::new(),
@@ -320,6 +331,10 @@ impl List {
                 (true, "schema-version") => {
                     self.schema_version_seen = true;
                     self.schema_version = int_arg(node).map(|_| SCHEMA_VERSION);
+                }
+                (true, "name") => {
+                    self.name = string_arg(node).unwrap_or_default().to_string();
+                    self.id = self.name.to_lowercase().replace(' ', "-");
                 }
                 (true, "audit") => {
                     self.audit_enforce = child(node, "enforce").and_then(bool_arg).unwrap_or(false)
@@ -576,6 +591,7 @@ mod tests {
             r#"
 schema-version
 schema-version 1
+name "Buildc"
 buildc-version
 buildc-version "0.0.0"
 default-image
@@ -609,7 +625,7 @@ colour "blue"
 
     #[test]
     fn an_empty_workflows_block_is_a_block_with_nothing_in_it() {
-        let found = messages("schema-version 1\nworkflows { }\n");
+        let found = messages("schema-version 1\nname \"Buildc\"\nworkflows { }\n");
         assert_eq!(found, ["`workflows` has no workflows in it"]);
     }
 
@@ -635,6 +651,7 @@ colour "blue"
         let found = messages(
             r#"
 schema-version 1
+name "Buildc"
 sources {
     owner branch="main" {
         pin {

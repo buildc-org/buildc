@@ -1,4 +1,4 @@
-use crate::ui::Choice;
+use crate::ui::{Answer, Choice};
 use std::cell::Cell;
 use std::io::{IsTerminal, Write};
 
@@ -162,7 +162,7 @@ impl Prompt {
             println!("{question}: {answer}\n");
             return Ok(chosen);
         }
-        self.numbered(options);
+        self.numbered(options, &[]);
         let question = format!("{question} [{}, 0 for none]", range(options));
         let answer = self.read(&question, &format!("{question}: "))?;
         match answer.parse::<usize>() {
@@ -176,38 +176,35 @@ impl Prompt {
         }
     }
 
-    pub fn choose_many(&self, question: &str, options: &[Choice]) -> Result<Vec<usize>, String> {
+    pub fn choose_many(
+        &self,
+        question: &str,
+        options: &[Choice],
+        on: &[usize],
+    ) -> Result<Answer, String> {
         if !self.ask || options.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Answer::Chosen(on.to_vec()));
         }
         if self.draw {
-            let chosen = match crate::ui::multi(question, options)? {
-                crate::ui::Answer::Cancelled => Vec::new(),
-                crate::ui::Answer::Chosen(chosen) => chosen,
-            };
-            let answer = match chosen.is_empty() {
-                true => "none".to_string(),
-                false => chosen
-                    .iter()
-                    .map(|at| options[*at].label.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            };
-            println!("{question}: {answer}\n");
-            return Ok(chosen);
+            let answer = crate::ui::multi(question, options, on)?;
+            println!("{question}: {}\n", said(&answer, options));
+            return Ok(answer);
         }
-        self.numbered(options);
+        self.numbered(options, on);
         let several = match options.len() {
             1 => "",
             _ => ", several",
         };
         let question = format!("{question} [{}{several}, 0 for none]", range(options));
         let answer = self.read(&question, &format!("{question}: "))?;
+        if answer.is_empty() {
+            return Ok(Answer::Chosen(on.to_vec()));
+        }
 
         let mut chosen: Vec<usize> = Vec::new();
         for word in answer.split([' ', ',']).filter(|word| !word.is_empty()) {
             let at = match word.parse::<usize>() {
-                Ok(0) => return Ok(Vec::new()),
+                Ok(0) => return Ok(Answer::Chosen(Vec::new())),
                 Ok(number) if number <= options.len() => number - 1,
                 _ => options
                     .iter()
@@ -218,14 +215,33 @@ impl Prompt {
                 chosen.push(at);
             }
         }
-        Ok(chosen)
+        Ok(Answer::Chosen(chosen))
     }
 
-    fn numbered(&self, options: &[Choice]) {
+    fn numbered(&self, options: &[Choice], on: &[usize]) {
         for (index, option) in options.iter().enumerate() {
-            let line = format!("{}  {}", option.label, option.detail);
+            let mark = match (on.is_empty(), on.contains(&index)) {
+                (true, _) => "",
+                (false, true) => "[x] ",
+                (false, false) => "[ ] ",
+            };
+            let line = format!("{mark}{}  {}", option.label, option.detail);
             println!("  {}) {}", index + 1, line.trim_end());
         }
+    }
+}
+
+fn said(answer: &Answer, options: &[Choice]) -> String {
+    let Answer::Chosen(chosen) = answer else {
+        return "none".to_string();
+    };
+    match chosen.is_empty() {
+        true => "none".to_string(),
+        false => chosen
+            .iter()
+            .map(|at| options[*at].label.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 

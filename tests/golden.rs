@@ -41,10 +41,11 @@ fn capture(name: &str, root: &Path) {
 
     let mut generated = String::new();
     for (path, body) in &buildc::run(Command::Generate, None, here).files {
-        if path == std::path::Path::new("generated/plan.json") {
-            generated.push_str(&format!("==== {}\n", path.display()));
-        } else {
-            generated.push_str(&format!("==== {}\n{body}", path.display()));
+        let covered = path == std::path::Path::new("generated/plan.json")
+            || path.starts_with(buildc::layout::WORKFLOW_DIR);
+        match covered {
+            true => generated.push_str(&format!("==== {}\n", path.display())),
+            false => generated.push_str(&format!("==== {}\n{body}", path.display())),
         }
     }
     compare(name, "generated.txt", &generated);
@@ -93,6 +94,22 @@ fn verify(name: &str, root: &Path) {
     std::fs::remove_file(manifest).unwrap();
     std::fs::write("generated/leftover", "").unwrap();
     out.push_str(&format!("==== gone, and one nobody claims\n{}", issues()));
+
+    let dropped = Path::new(".github/workflows/smoke-test.yml");
+    let repo = Path::new("repo.kdl");
+    let text = std::fs::read_to_string(repo).unwrap();
+    std::fs::write(repo, text.replace("    smoke-test\n", "")).unwrap();
+    out.push_str(&format!("==== one workflow undeclared\n{}", issues()));
+
+    buildc::write_generated(here, &buildc::run(Command::Generate, None, here).files).unwrap();
+    out.push_str(&format!(
+        "==== and generated again\n{}smoke-test.yml is {}\n",
+        issues(),
+        match dropped.exists() {
+            true => "still there",
+            false => "gone",
+        }
+    ));
 
     compare(name, "verify.txt", &out);
 }
@@ -559,6 +576,13 @@ fn flows() {
         &flow_repo_two("flow-module-both"),
         None,
         &module,
+    );
+
+    flow(
+        "flow-set-workflows",
+        &flow_repo("flow-set"),
+        None,
+        &["--root", ".", "set", "workflows"],
     );
 
     flow(

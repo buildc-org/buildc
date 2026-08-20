@@ -9,3 +9,4 @@ pub mod schema_md;
 pub mod seed;
 pub mod summary;
 pub mod why;
+pub mod workflows;

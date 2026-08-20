@@ -6,6 +6,8 @@ pub const OUT: &str = "out";
 
 pub const OVERLAY: &str = "files";
 
+pub const WORKFLOW_DIR: &str = ".github/workflows";
+
 pub const REPO_FILE: &str = "repo.kdl";
 pub const IMAGE_FILE: &str = "image.kdl";
 pub const IMAGE_SUFFIX: &str = ".image.kdl";

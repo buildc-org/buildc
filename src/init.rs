@@ -68,6 +68,12 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<Vec<PathBuf>, Str
     }
 
     let mut wrote = copy_tree(assets, root)?;
+    let shipped = root.join(layout::WORKFLOW_DIR);
+    if shipped.is_dir() {
+        fs::remove_dir_all(&shipped).map_err(|err| format!("{}: {err}", shipped.display()))?;
+    }
+    wrote.retain(|path| !path.starts_with(layout::WORKFLOW_DIR));
+
     let scaffold = root.join(SOURCES_FILE);
     let sources = match sources(assets) {
         block if block.is_empty() => block,

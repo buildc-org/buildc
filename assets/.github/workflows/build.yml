@@ -22,7 +22,6 @@ on:
           kernel path and are never pushed, signed, or cached.
         type: string
         default: ''
-
 env:
   KERNEL: ${{ github.event.inputs.kernel || (github.event.schedule == '45 9 1 * *' && 'stock') || '' }}
   PROBE_IMAGE: "quay.io/podman/hello:latest"

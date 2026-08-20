@@ -82,9 +82,8 @@ pub struct Flavour {
     pub span: Span,
 }
 
-pub struct WorkflowToggle {
+pub struct Workflow {
     pub name: String,
-    pub enabled: bool,
     pub span: Span,
 }
 
@@ -124,7 +123,8 @@ pub struct List {
     pub name: String,
     pub id: String,
     pub images: Vec<Image>,
-    pub workflows: Vec<WorkflowToggle>,
+    pub workflows: Vec<Workflow>,
+    pub workflows_at: (u32, u32),
     pub sources: Vec<Collection>,
     pub default_image_id: Option<String>,
     pub pr_image_id: Option<String>,

@@ -1,8 +1,14 @@
 # Commands
 
-`buildc --help` lists what can run.
-As `buildc` provides the tools for both the user facing CLI and during the build,
-This will display all commands available.
+`buildc --help` lists the commands a person runs: `create repo`, and the ones
+that need a repository. The two families at the end of this file — what a build
+runs against, and what runs inside a build layer — are the contract rather than
+the help, and are not in that list.
+
+`buildc` with nothing after it opens a picker of the same list where the output
+is a terminal, and prints the list where it is not. A verb with no noun —
+`buildc create`, `buildc import`, `buildc registry` — opens a picker of its nouns.
+Leaving a picker is not an error: it exits 0 having done nothing.
 
 The repository is the nearest directory at or above the working directory
 holding a `repo.kdl`, or `--root <dir>`. Data goes to stdout, diagnostics to

@@ -537,18 +537,31 @@ impl Listing {
     }
 
     pub fn apply(&self, path: &str) -> Result<Vec<(PathBuf, Change)>, String> {
+        self.apply_declaration(&format!("module \"{path}\""))
+    }
+
+    pub fn apply_source(&self, source: &str, name: &str) -> Result<Vec<(PathBuf, Change)>, String> {
+        self.apply_declaration(&format!(
+            "source \"{source}\" {{\n    module \"{name}\"\n}}"
+        ))
+    }
+
+    fn apply_declaration(&self, declaration: &str) -> Result<Vec<(PathBuf, Change)>, String> {
         match self {
             Self::NoImage => {
                 println!("no image lists it yet; `buildc create image <name>` writes one");
                 Ok(Vec::new())
             }
             Self::Declined => {
-                println!("next, to build it, list it in an image:\n\x20 module \"{path}\"");
+                println!(
+                    "next, to build it, list it in an image:\n {}",
+                    declaration.replace('\n', "\n ")
+                );
                 Ok(Vec::new())
             }
             Self::In(files) => {
                 for file in files {
-                    append_module(file, path)?;
+                    append_declaration(file, declaration)?;
                 }
                 Ok(files
                     .iter()
@@ -559,7 +572,7 @@ impl Listing {
     }
 }
 
-fn append_module(file: &Path, path: &str) -> Result<(), String> {
+fn append_declaration(file: &Path, declaration: &str) -> Result<(), String> {
     let mut text =
         std::fs::read_to_string(file).map_err(|err| format!("{}: {err}", file.display()))?;
     let close = crate::parse::image::modules_close(&text)
@@ -568,8 +581,14 @@ fn append_module(file: &Path, path: &str) -> Result<(), String> {
     let start = text[..close].rfind('\n').map_or(0, |at| at + 1);
     let indent = &text[start..close];
     let (at, line) = match indent.trim().is_empty() {
-        true => (start, format!("{indent}    module \"{path}\"\n")),
-        false => (close, format!("module \"{path}\" ")),
+        true => (
+            start,
+            declaration
+                .lines()
+                .map(|line| format!("{indent}    {line}\n"))
+                .collect(),
+        ),
+        false => (close, format!("{} ", declaration.replace('\n', " "))),
     };
     text.insert_str(at, &line);
     std::fs::write(file, text).map_err(|err| format!("{}: {err}", file.display()))

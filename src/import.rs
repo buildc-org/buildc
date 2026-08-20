@@ -1,7 +1,7 @@
 use crate::create::{report, Change, Listing};
 use crate::dispatch::Error;
 use crate::layout;
-use crate::model::remote::{At, Collection};
+use crate::model::remote::{At, Collection, REMOTE_DIR};
 use crate::prompt::Prompt;
 use crate::provenance::record;
 use crate::ui::Choice;
@@ -57,7 +57,7 @@ pub fn find(
         }
         if enforce && collection.unpinned() {
             return Err(format!(
-                "`{}` follows a moving ref with no `sha256`, so an import of it is verified \
+                "`{}` follows a moving ref with no `sha256`, so using it is verified \
                  against nothing; `audit {{ enforce #true }}` makes that an error. Pin the \
                  collection to a tag and its hash, or drop the enforcement",
                 collection.name
@@ -140,7 +140,12 @@ pub fn catalog(root: &Path, sources: &[Collection]) -> Result<Vec<Listed>, Strin
     Ok(listed)
 }
 
-pub fn choose(root: &Path, sources: &[Collection], prompt: &Prompt) -> Result<String, String> {
+pub fn choose(
+    root: &Path,
+    sources: &[Collection],
+    command: &str,
+    prompt: &Prompt,
+) -> Result<String, String> {
     let listed = catalog(root, sources)?;
     if listed.is_empty() {
         return Err(format!("no module in {}", names(sources)));
@@ -151,7 +156,9 @@ pub fn choose(root: &Path, sources: &[Collection], prompt: &Prompt) -> Result<St
         .collect();
     match prompt.choose("which module", &options)? {
         Some(chosen) => Ok(listed[chosen].qualified.clone()),
-        None => Err("no module chosen; `buildc import module <name>` names one".to_string()),
+        None => Err(format!(
+            "no module chosen; `buildc {command} module <name>` names one"
+        )),
     }
 }
 
@@ -212,15 +219,21 @@ fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {
 }
 
 pub fn destination(root: &Path, found: &Found, module: &str) -> Result<PathBuf, String> {
-    let dest = PathBuf::from(layout::MODULES)
-        .join(&found.owner)
-        .join(module);
-    match root.join(&dest).exists() {
-        true => Err(format!(
-            "{} is already there; delete it to import over it",
+    let dest = PathBuf::from(layout::MODULES).join(module);
+    let dir = root.join(&dest);
+    if !dir.exists() {
+        return Ok(dest);
+    }
+    let mut issues = crate::diag::Issues::default();
+    match record::read(&dir, &mut issues) {
+        Some(record) => Err(format!(
+            "`{module}` was copied from `{}`; refusing the namesake from `{}`",
+            record.collection, found.owner
+        )),
+        None => Err(format!(
+            "{} is already there; delete it to copy over it",
             dest.display()
         )),
-        false => Ok(dest),
     }
 }
 
@@ -248,10 +261,42 @@ pub fn vendor(
     Ok(wrote)
 }
 
+fn select(
+    name: Option<String>,
+    root: &Path,
+    sources: &[Collection],
+    enforce: bool,
+    command: &str,
+    prompt: &Prompt,
+) -> Result<(Found, String), Error> {
+    let name = match name {
+        Some(name) => name,
+        None => choose(root, sources, command, prompt)?,
+    };
+    let mut found = find(root, sources, &name, enforce)?;
+    let module = split(&name).1.to_string();
+    let at = match found.as_slice() {
+        [_] => 0,
+        many => {
+            let owners: Vec<String> = many.iter().map(|f| f.owner.clone()).collect();
+            let listed = owners.join(", ");
+            let options: Vec<Choice> = owners.iter().map(|owner| Choice::new(owner, "")).collect();
+            prompt
+                .choose(&format!("`{module}` is in {listed}; which one"), &options)?
+                .ok_or_else(|| {
+                    format!(
+                        "`{module}` is in {listed}; name which one, as `{}/{module}`",
+                        owners[0]
+                    )
+                })?
+        }
+    };
+    Ok((found.swap_remove(at), module))
+}
+
 pub struct Module {
     from: Found,
-    dest: PathBuf,
-    path: String,
+    name: String,
     listing: Listing,
 }
 
@@ -264,37 +309,52 @@ impl Module {
         images: Vec<String>,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
-        let name = match name {
-            Some(name) => name,
-            None => choose(root, sources, prompt)?,
-        };
-        let mut found = find(root, sources, &name, enforce)?;
-        let module = split(&name).1;
-        let at = match found.as_slice() {
-            [_] => 0,
-            many => {
-                let owners: Vec<String> = many.iter().map(|f| f.owner.clone()).collect();
-                let listed = owners.join(", ");
-                let options: Vec<Choice> =
-                    owners.iter().map(|owner| Choice::new(owner, "")).collect();
-                prompt
-                    .choose(&format!("`{module}` is in {listed}; which one"), &options)?
-                    .ok_or_else(|| {
-                        format!(
-                            "`{module}` is in {listed}; name which one, as `{}/{module}`",
-                            owners[0]
-                        )
-                    })?
-            }
-        };
-        let from = found.swap_remove(at);
-        let dest = destination(root, &from, module)?;
-        let path = format!("{}/{module}", from.owner);
+        let (from, name) = select(name, root, sources, enforce, "import", prompt)?;
+        let listing = Listing::collect(root, images, prompt)?;
+        Ok(Self {
+            from,
+            name,
+            listing,
+        })
+    }
+
+    pub fn apply(&self, root: &Path) -> Result<(), String> {
+        if matches!(self.listing, Listing::In(_)) {
+            let dir = layout::module(root, REMOTE_DIR)
+                .join(&self.from.owner)
+                .join(&self.name);
+            let _ = std::fs::remove_dir_all(&dir);
+            crate::init::copy_tree(&self.from.dir, &dir)?;
+        }
+        let wrote = self.listing.apply_source(&self.from.owner, &self.name)?;
+        report(root, &wrote);
+        Ok(())
+    }
+}
+
+pub struct Copy {
+    from: Found,
+    dest: PathBuf,
+    name: String,
+    listing: Listing,
+}
+
+impl Copy {
+    pub fn collect(
+        name: Option<String>,
+        root: &Path,
+        sources: &[Collection],
+        enforce: bool,
+        images: Vec<String>,
+        prompt: &Prompt,
+    ) -> Result<Self, Error> {
+        let (from, name) = select(name, root, sources, enforce, "copy", prompt)?;
+        let dest = destination(root, &from, &name)?;
         let listing = Listing::collect(root, images, prompt)?;
         Ok(Self {
             from,
             dest,
-            path,
+            name,
             listing,
         })
     }
@@ -304,7 +364,7 @@ impl Module {
             .into_iter()
             .map(|path| (path, Change::Created))
             .collect();
-        wrote.extend(self.listing.apply(&self.path)?);
+        wrote.extend(self.listing.apply(&self.name)?);
         report(root, &wrote);
         Ok(())
     }

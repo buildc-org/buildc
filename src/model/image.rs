@@ -126,11 +126,18 @@ impl Entry {
     }
 
     pub fn qualified(&self, publishes_as: &str) -> Option<String> {
-        match (&self.remote, self.path.contains('/')) {
-            (Some(_), _) => None,
-            (None, true) => Some(self.path.clone()),
-            (None, false) => Some(format!("{publishes_as}/{}", self.path)),
+        if self.remote.is_some() {
+            return None;
         }
+        if self.source.is_some() {
+            return Some(self.path.clone());
+        }
+        let owner = self
+            .module
+            .as_ref()
+            .and_then(|module| module.imported.as_ref())
+            .map_or(publishes_as, |record| record.collection.as_str());
+        Some(format!("{owner}/{}", self.path))
     }
 }
 

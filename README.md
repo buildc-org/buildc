@@ -41,12 +41,12 @@ This is the whole surface today. The rest of it is not built yet.
                           write a module, with the packages it installs, and
                           offer to list it in an image
     buildc import module [name]
-                          copy a module out of a collection repo.kdl names,
-                          into modules/<owner>/<name>, choosing from what the
-                          collections hold when no name is given
+                          reference a module from a collection repo.kdl names
+    buildc copy module [name]
+                          copy a collection module into modules/<name>
     buildc create key <kind>
                           generate a key one of the repository's modules
-                          declares, public half into that module
+                          declares, with both halves under keys/
     buildc check            validate every manifest, and say where and why
     buildc generate         write the Containerfile per image, the per-module
                           build scripts and the graph, under generated/

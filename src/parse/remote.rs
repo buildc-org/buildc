@@ -8,7 +8,7 @@ use kdl::KdlNode;
 
 #[rustfmt::skip]
 pub const COLLECTION: Node = Node::new("",
-    "One module collection, named by the owner its modules land under in modules/.")
+    "One module collection, named by the owner its references use.")
     .arg(Arg::Str, Say::NONE)
     .props(&[], Say::new("unknown collection property `{}`", "not part of the schema",
         "a collection carries its fields as child nodes, not properties"))
@@ -24,7 +24,7 @@ pub fn parse_collection(node: &KdlNode, src: &Source, issues: &mut Issues) -> Op
         issues.push(
             Issue::new(format!("invalid collection name `{name}`"), src)
                 .at(span, "lowercase, digits and dashes, starting with a letter")
-                .help("the name is the directory imports land in, `modules/<name>/<module>`, and reaches every image that lists one of them"),
+                .help("the name qualifies references as `<name>/<module>` and reaches every image that lists one of them"),
         );
         return None;
     }

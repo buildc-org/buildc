@@ -177,6 +177,7 @@ fn run() -> Result<ExitCode, Error> {
             | Verb::CreateModule
             | Verb::CreateKey
             | Verb::ImportModule
+            | Verb::CopyModule
             | Verb::Check
     ) {
         banner(false);

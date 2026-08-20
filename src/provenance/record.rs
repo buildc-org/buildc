@@ -12,7 +12,7 @@ pub const RECORD: &str = "provenance.kdl";
 #[rustfmt::skip]
 pub const IMPORTED: Node = Node::new("imported",
     "Where this module was copied from, and what its content hashed to then. Written by \
-     `buildc import module`; the module's author does not maintain it.")
+     `buildc copy module`; the module's author does not maintain it.")
     .arg(Arg::Str, Say::new("`imported` needs a collection name", "no collection given",
         "`imported \"buildc-org\"`, the name the collection is declared under in `sources`"))
     .once("")

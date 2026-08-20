@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 pub const MODULES: &str = "modules";
 pub const GENERATED: &str = "generated";
 pub const OUT: &str = "out";
+pub const KEYS: &str = "keys";
 
 pub const OVERLAY: &str = "files";
 
@@ -32,6 +33,16 @@ pub fn modules(root: &Path) -> PathBuf {
 
 pub fn module(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
     modules(root).join(dir)
+}
+
+pub fn public_key(root: &Path, path: &str) -> PathBuf {
+    root.join(KEYS)
+        .join("public")
+        .join(path.trim_start_matches('/'))
+}
+
+pub fn private_key(root: &Path, name: &str) -> PathBuf {
+    root.join(KEYS).join("private").join(name)
 }
 
 pub fn manifest(root: &Path, dir: impl AsRef<Path>) -> PathBuf {

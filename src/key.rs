@@ -35,10 +35,10 @@ impl Key {
             return Err(absent(root, &kind, &disk));
         }
         let at = provider(&declaring, &kind, module, prompt)?;
-        let (dir, declared) = declaring.swap_remove(at);
+        let (_, declared) = declaring.swap_remove(at);
 
-        let public = overlay(root, &dir, &declared.public);
-        let private = root.join(&declared.private);
+        let public = layout::public_key(root, &declared.public);
+        let private = layout::private_key(root, &declared.private);
         unwritten(&public)?;
         unwritten(&private)?;
 
@@ -81,17 +81,17 @@ impl Key {
         install(&public, &self.public, 0o644)?;
         println!("wrote {}", shown(root, &self.public));
         install(&private, &self.private, 0o600)?;
-        println!("wrote {}", self.declared.private);
+        println!("wrote {}", shown(root, &self.private));
         let _ = std::fs::remove_dir_all(&work);
 
         print!("{}", self.next(root));
-        warn_unignored(root, &self.declared.private);
+        warn_unignored(root);
         Ok(())
     }
 
     fn next(&self, root: &Path) -> String {
         let public = shown(root, &self.public);
-        let private = &self.declared.private;
+        let private = shown(root, &self.private);
         match self.declared.generator.as_str() {
             "cosign" => format!(
                 "\nthe key carries no password, which is what the build workflow decrypts it with.\n\n\
@@ -255,12 +255,6 @@ fn openssl(work: &Path, declared: &Declared, cn: &str) -> Result<(PathBuf, PathB
     Ok((public, private))
 }
 
-fn overlay(root: &Path, dir: &str, path: &str) -> PathBuf {
-    layout::module(root, dir)
-        .join(layout::OVERLAY)
-        .join(path.trim_start_matches('/'))
-}
-
 fn unwritten(path: &Path) -> Result<(), String> {
     match std::fs::metadata(path) {
         Ok(meta) if meta.len() > 0 => Err(format!(
@@ -344,7 +338,8 @@ fn module_signing(cn: &str) -> String {
     )
 }
 
-fn warn_unignored(root: &Path, name: &str) {
+fn warn_unignored(root: &Path) {
+    let name = "keys/private/";
     let ignored = std::fs::read_to_string(root.join(".gitignore"))
         .is_ok_and(|text| text.lines().any(|line| line.trim() == name));
     if !ignored {
@@ -406,8 +401,8 @@ key "secureboot" {
             assert!(out.status.success(), "openssl {args:?}");
             out.stdout
         };
-        let cert = overlay(&root, "keyholder", "/usr/share/secureboot/sb_cert.der");
-        let private = root.join("MOK.priv");
+        let cert = layout::public_key(&root, "/usr/share/secureboot/sb_cert.der");
+        let private = layout::private_key(&root, "MOK.priv");
         let from_cert = openssl(&[
             "x509",
             "-inform",

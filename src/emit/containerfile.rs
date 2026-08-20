@@ -204,13 +204,20 @@ fn standard(entry: &Entry, module: &Module, script: &Path) -> String {
 
     let path = entry.dir();
     let script = script.display();
+    let keys = match module.keys.is_empty() {
+        true => String::new(),
+        false => format!(
+            "--mount=type=bind,from=ctx,source=/{}/public,target=/ctx/keys \\\n    ",
+            layout::KEYS
+        ),
+    };
     let mut out = String::new();
     let _ = write!(
         out,
         "RUN --mount=type=bind,from=ctx,source=/modules/{path},target=/ctx/modules/{path} \\\n    \
          --mount=type=bind,from=ctx,source=/lib,target=/ctx/lib \\\n    \
          --mount=type=bind,from=ctx,source=/{script},target=/ctx/module.sh \\\n    \
-         {BUILDC_MOUNT}\
+         {keys}{BUILDC_MOUNT}\
          --mount=type=cache,target=/var/cache \\\n    \
          --mount=type=cache,target=/var/log \\\n    \
          --mount=type=tmpfs,target=/tmp \\\n    \

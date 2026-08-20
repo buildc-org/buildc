@@ -409,7 +409,7 @@ fn reading(
         }
         for name in &run.unpinned {
             eprintln!(
-                "buildc: `{name}` is unpinned, so an import of it takes whatever its ref holds \
+                "buildc: `{name}` is unpinned, so a fetch from it takes whatever its ref holds \
                  then, unverified"
             );
         }

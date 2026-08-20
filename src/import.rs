@@ -181,7 +181,7 @@ pub fn cached(root: &Path, collection: &Collection) -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {
+pub(crate) fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {
     if !collection.unpinned() {
         if let Some(dir) = cached(root, collection) {
             return Ok(dir);

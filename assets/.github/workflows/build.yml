@@ -206,6 +206,7 @@ jobs:
           ref: ${{ needs.checksums.outputs.ref }}
       - id: set
         run: |
+          ./scripts/buildc.sh fetch modules
           selection='[.images[].targets[].name]'
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             selection='[.pr_target]'
@@ -242,6 +243,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          ./scripts/buildc.sh fetch modules
           ./scripts/buildc.sh plan --json > "${RUNNER_TEMP}/plan.json"
           jq -e --arg t "$TARGET" '.images[] | select([.targets[].name] | index($t))' \
             "${RUNNER_TEMP}/plan.json" > "${RUNNER_TEMP}/image.json"

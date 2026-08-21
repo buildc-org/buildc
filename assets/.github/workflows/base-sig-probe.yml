@@ -71,7 +71,7 @@ jobs:
           git add ./*.kdl
           git commit -m "Record the base image signature status" \
             -m "${SUMMARY}"
-          git push --force-with-lease origin "${branch}"
+          git push --force origin "${branch}"
 
           if gh pr view "${branch}" --json number > /dev/null 2>&1; then
             echo "updated the open PR for ${branch}"

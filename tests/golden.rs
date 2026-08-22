@@ -638,6 +638,27 @@ fn flows() {
         "{image}"
     );
     buildc(&requires, &["--no-tui", "--root", ".", "check"]);
+    let declined = flow_repo_sourced("flow-declined");
+    buildc(
+        &declined,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "two/browser",
+            "--image",
+            "example",
+        ],
+    );
+    flow(
+        "flow-check-unmet",
+        &declined,
+        None,
+        &["--root", ".", "check"],
+    );
+
     let kernel = flow_repo_sourced("flow-kernel");
     flow(
         "flow-import-kernel",

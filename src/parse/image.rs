@@ -139,22 +139,20 @@ pub const IMAGE: Node = Node::new("image",
         "an image accepts `id`, `name`, `pretty-name`, `url`, `issues-url`, `description`, \
          `keywords`, `logo-url` and `conforms`, and the `base`, `flavours` and `modules` blocks"));
 
-pub fn modules_close(text: &str) -> Option<usize> {
-    let doc: KdlDocument = text.parse().ok()?;
-    let image = doc.nodes().iter().find(|n| n.name().value() == "image")?;
-    let span: Span = child(image, "modules")?.span().into();
-    text[..span.offset + span.len].rfind('}')
-}
-
-pub fn source_close(text: &str, source: &str) -> Option<usize> {
-    let doc: KdlDocument = text.parse().ok()?;
-    let image = doc.nodes().iter().find(|n| n.name().value() == "image")?;
-    let modules = child(image, "modules")?;
-    let node = kids(modules)
+pub fn block_close(kdl: &str, image: &str, chain: &[(&str, Option<&str>)]) -> Option<usize> {
+    let doc: KdlDocument = kdl.parse().ok()?;
+    let mut node = doc
+        .nodes()
         .iter()
-        .find(|node| node.name().value() == "source" && string_arg(node) == Some(source))?;
+        .filter(|node| node.name().value() == "image")
+        .find(|node| text(node, "name") == image)?;
+    for (name, arg) in chain {
+        node = kids(node).iter().find(|node| {
+            node.name().value() == *name && (arg.is_none() || string_arg(node) == *arg)
+        })?;
+    }
     let span: Span = node.span().into();
-    text[..span.offset + span.len].rfind('}')
+    kdl[..span.offset + span.len].rfind('}')
 }
 
 fn decls(node: &KdlNode, name: &str) -> Vec<Decl> {
@@ -534,18 +532,29 @@ image "stray" {
 
     #[test]
     fn the_modules_block_ends_at_a_closing_brace() {
-        let text = "image {\n    modules {\n        module \"one\"\n    }\n}\n";
-        let at = modules_close(text).expect("a modules block");
+        let text = "image {\n    name \"X\"\n    modules {\n        module \"one\"\n    }\n}\n";
+        let at = block_close(text, "X", &[("modules", None)]).expect("a modules block");
         assert_eq!(&text[at..=at], "}");
         assert_eq!(&text[at - 5..at], "\n    ");
     }
 
     #[test]
     fn a_source_block_ends_at_its_closing_brace() {
-        let text = "image {\n    modules {\n        source \"one\" {\n            module \"a\"\n        }\n        source \"two\" {}\n    }\n}\n";
-        let at = source_close(text, "one").expect("a source block");
+        let text = "image {\n    name \"X\"\n    modules {\n        source \"one\" {\n            module \"a\"\n        }\n        source \"two\" {}\n    }\n}\n";
+        let chain = [("modules", None), ("source", Some("one"))];
+        let at = block_close(text, "X", &chain).expect("a source block");
         assert_eq!(&text[at..=at], "}");
         assert!(text[..at].ends_with("module \"a\"\n        "));
+    }
+
+    #[test]
+    fn a_block_is_found_under_the_image_that_was_named() {
+        let text = "image {\n    name \"A\"\n    modules { }\n}\nimage {\n    name \"B\"\n    modules {\n    }\n}\n";
+        let at = block_close(text, "B", &[("modules", None)]).expect("B's modules block");
+        assert!(text[..at].ends_with("modules {\n    "), "{at}");
+        assert!(block_close(text, "C", &[("modules", None)]).is_none());
+        let whole = block_close(text, "A", &[]).expect("A's own brace");
+        assert!(whole < at);
     }
 
     #[test]

@@ -358,6 +358,99 @@ fn append_default_image(root: &Path, id: &str) -> Result<(), String> {
     std::fs::write(&file, text).map_err(|err| format!("{}: {err}", file.display()))
 }
 
+pub struct Flavour {
+    name: String,
+    image: String,
+    file: PathBuf,
+}
+
+impl Flavour {
+    pub fn collect(
+        root: &Path,
+        name: Option<String>,
+        images: Vec<String>,
+        prompt: &Prompt,
+    ) -> Result<Self, String> {
+        let name = prompt.text(name, "flavour name", "a name argument", None)?;
+
+        if !crate::model::image::is_name(&name) {
+            return Err(format!(
+                "`{name}` must be lowercase letters, digits and dashes, starting with a letter"
+            ));
+        }
+        if name == crate::model::image::NO_FLAVOUR {
+            return Err(format!(
+                "`{}` is what the ungated build is called, so it is not a flavour name",
+                crate::model::image::NO_FLAVOUR
+            ));
+        }
+
+        let (list, _) = crate::model::image::List::load(root);
+        if list.images.is_empty() {
+            return Err(
+                "no image to add a flavour to; `buildc create image <name>` writes one".to_string(),
+            );
+        }
+
+        let at = match images.len() {
+            0 => {
+                let options: Vec<Choice> = list
+                    .images
+                    .iter()
+                    .map(|image| match image.name == image.id {
+                        true => Choice::new(&image.id, ""),
+                        false => Choice::new(&image.id, &image.name),
+                    })
+                    .collect();
+                match prompt.choose("which image publishes it", &options)? {
+                    Some(at) => at,
+                    None => return Err(
+                        "give `--image`, since nothing can be asked here: which image publishes it"
+                            .to_string(),
+                    ),
+                }
+            }
+            1 => match list.images.iter().position(|image| image.id == images[0]) {
+                Some(at) => at,
+                None => {
+                    let ids: Vec<&str> =
+                        list.images.iter().map(|image| image.id.as_str()).collect();
+                    return Err(format!(
+                        "`{}` is not a declared image; there is {}",
+                        images[0],
+                        ids.join(", ")
+                    ));
+                }
+            },
+            _ => {
+                return Err(
+                    "`create flavour` writes into one image; name one with `--image`".to_string(),
+                )
+            }
+        };
+
+        let image = &list.images[at];
+
+        if image.flavours.iter().any(|held| held.name == name) {
+            return Err(format!(
+                "`{}` already declares a flavour `{name}`",
+                image.id
+            ));
+        }
+
+        Ok(Self {
+            name,
+            image: image.name.clone(),
+            file: PathBuf::from(image.src.name()),
+        })
+    }
+
+    pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
+        append(&self.file, &self.image, &[("flavours", None)], &self.name)?;
+        Ok(vec![(under(root, &self.file), Change::Updated)])
+    }
+}
+
 fn choose_base(bases: &[crate::base::Base], prompt: &Prompt) -> Result<String, String> {
     let options: Vec<Choice> = bases
         .iter()
@@ -493,7 +586,13 @@ pub enum Listing {
     Cancelled,
     NoImage,
     Declined,
-    In(Vec<PathBuf>),
+    In(Vec<Target>),
+}
+
+pub struct Target {
+    file: PathBuf,
+    image: String,
+    flavour: Option<String>,
 }
 
 impl Listing {
@@ -534,14 +633,18 @@ impl Listing {
             false => Self::In(
                 chosen
                     .iter()
-                    .map(|at| PathBuf::from(list.images[*at].src.name()))
+                    .map(|at| Target {
+                        file: PathBuf::from(list.images[*at].src.name()),
+                        image: list.images[*at].name.clone(),
+                        flavour: None,
+                    })
                     .collect(),
             ),
         })
     }
 
     pub fn apply(&self, path: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(&format!("module \"{path}\""), None)
+        self.apply_declaration(path, None)
     }
 
     pub fn cancelled(&self) -> bool {
@@ -549,17 +652,15 @@ impl Listing {
     }
 
     pub fn apply_source(&self, source: &str, name: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(
-            &format!("source \"{source}\" {{\n    module \"{name}\"\n}}"),
-            Some((source, name)),
-        )
+        self.apply_declaration(name, Some(source))
     }
 
     fn apply_declaration(
         &self,
-        declaration: &str,
-        source: Option<(&str, &str)>,
+        name: &str,
+        source: Option<&str>,
     ) -> Result<Vec<(PathBuf, Change)>, String> {
+        let leaf = format!("module \"{name}\"");
         match self {
             Self::Cancelled => Ok(Vec::new()),
             Self::NoImage => {
@@ -567,43 +668,71 @@ impl Listing {
                 Ok(Vec::new())
             }
             Self::Declined => {
+                let shown = wrap(&listed_in(None, source)[1..], &leaf);
                 println!(
                     "next, to build it, list it in an image:\n {}",
-                    declaration.replace('\n', "\n ")
+                    shown.replace('\n', "\n ")
                 );
                 Ok(Vec::new())
             }
-            Self::In(files) => {
-                for file in files {
-                    append_declaration(file, declaration, source)?;
+            Self::In(targets) => {
+                for target in targets {
+                    append(
+                        &target.file,
+                        &target.image,
+                        &listed_in(target.flavour.as_deref(), source),
+                        &leaf,
+                    )?;
                 }
-                Ok(files
+                Ok(targets
                     .iter()
-                    .map(|file| (file.clone(), Change::Updated))
+                    .map(|target| (target.file.clone(), Change::Updated))
                     .collect())
             }
         }
     }
 }
 
-fn append_declaration(
+fn listed_in<'a>(
+    flavour: Option<&'a str>,
+    source: Option<&'a str>,
+) -> Vec<(&'a str, Option<&'a str>)> {
+    let mut chain = vec![("modules", None)];
+    if let Some(flavour) = flavour {
+        chain.push(("flavour", Some(flavour)));
+    }
+    if let Some(source) = source {
+        chain.push(("source", Some(source)));
+    }
+    chain
+}
+
+fn wrap(blocks: &[(&str, Option<&str>)], leaf: &str) -> String {
+    blocks
+        .iter()
+        .rev()
+        .fold(leaf.to_string(), |inner, (node, arg)| {
+            let arg = arg.map_or(String::new(), |arg| format!(" \"{arg}\""));
+            let inner: String = inner.lines().map(|line| format!("    {line}\n")).collect();
+            format!("{node}{arg} {{\n{inner}}}")
+        })
+}
+
+fn append(
     file: &Path,
-    declaration: &str,
-    source: Option<(&str, &str)>,
+    image: &str,
+    chain: &[(&str, Option<&str>)],
+    leaf: &str,
 ) -> Result<(), String> {
     let mut text =
         std::fs::read_to_string(file).map_err(|err| format!("{}: {err}", file.display()))?;
-    let (close, declaration) = match source.and_then(|(source, name)| {
-        crate::parse::image::source_close(&text, source)
-            .map(|close| (close, format!("module \"{name}\"")))
-    }) {
-        Some(found) => found,
-        None => (
-            crate::parse::image::modules_close(&text)
-                .ok_or_else(|| format!("{} has no `modules` block to add to", file.display()))?,
-            declaration.to_string(),
-        ),
-    };
+    let (kept, close) = (0..=chain.len())
+        .rev()
+        .find_map(|kept| {
+            crate::parse::image::block_close(&text, image, &chain[..kept]).map(|at| (kept, at))
+        })
+        .ok_or_else(|| format!("{} declares no image `{image}`", file.display()))?;
+    let declaration = wrap(&chain[kept..], leaf);
 
     let start = text[..close].rfind('\n').map_or(0, |at| at + 1);
     let indent = &text[start..close];
@@ -798,6 +927,56 @@ mod tests {
                 assert!(path.starts_with('/'), "{} provides {path}", base.image);
             }
         }
+    }
+
+    #[test]
+    fn a_missing_flavour_and_source_block_are_written_around_the_declaration() {
+        let root = std::env::temp_dir().join(format!("buildc-nested-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("example.image.kdl");
+        std::fs::write(
+            &file,
+            image_kdl(
+                "Example",
+                None,
+                "quay.io/fedora/fedora-bootc:44",
+                "fedora",
+                None,
+            ),
+        )
+        .unwrap();
+
+        let chain = listed_in(Some("dx"), Some("one"));
+        append(&file, "Example", &chain, "module \"dev-tools\"").unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+        let nested = [
+            "    modules {",
+            "        flavour \"dx\" {",
+            "            source \"one\" {",
+            "                module \"dev-tools\"",
+            "            }",
+            "        }",
+            "    }",
+        ]
+        .join("\n");
+        assert!(written.contains(&nested), "{written}");
+
+        append(&file, "Example", &chain, "module \"editor\"").unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(written.matches("flavour \"dx\"").count(), 1);
+        assert_eq!(written.matches("source \"one\"").count(), 1);
+        assert!(
+            written.contains("module \"dev-tools\"\n                module \"editor\"\n"),
+            "{written}"
+        );
+
+        append(&file, "Example", &[("flavours", None)], "dx").unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            written.contains("    flavours {\n        dx\n    }\n"),
+            "{written}"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

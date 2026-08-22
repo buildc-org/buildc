@@ -6,6 +6,8 @@
 
   "rebaseWhen": "never",
 
+  "ignorePaths": [".github/workflows/**"],
+
   "timezone": "Etc/UTC",
   "schedule": ["before 6am"],
 
@@ -14,12 +16,6 @@
       "matchPackageNames": ["*"],
       "groupName": "scheduled updates",
       "automerge": true,
-    },
-    {
-      "enabled": false,
-      "matchUpdateTypes": ["digest", "pinDigest", "pin"],
-      "matchDepTypes": ["container"],
-      "matchFileNames": [".github/workflows/**.yaml", ".github/workflows/**.yml"],
     },
     {
       "matchPackageNames": ["quay.io/fedora/fedora-bootc"],

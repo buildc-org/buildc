@@ -585,11 +585,13 @@ fn quotable(value: &str) -> Result<&str, String> {
 pub enum Listing {
     Cancelled,
     NoImage,
-    Declined,
-    In(Vec<Target>),
+    Declined {
+        asked: bool,
+    },
+    In(Vec<Listed>),
 }
 
-pub struct Target {
+pub struct Listed {
     file: PathBuf,
     image: String,
     flavour: Option<String>,
@@ -598,45 +600,68 @@ pub struct Target {
 impl Listing {
     pub fn collect(root: &Path, given: Vec<String>, prompt: &Prompt) -> Result<Self, String> {
         let (list, _) = crate::model::image::List::load(root);
-        let ids: Vec<String> = list.images.iter().map(|image| image.id.clone()).collect();
-        if ids.is_empty() {
+        if list.images.is_empty() {
             return Ok(Self::NoImage);
         }
-        let options: Vec<Choice> = list
-            .images
-            .iter()
-            .map(|image| match image.name == image.id {
-                true => Choice::new(&image.id, ""),
-                false => Choice::new(&image.id, &image.name),
-            })
-            .collect();
+        let targets = list.targets();
+        let named: Vec<String> = targets.iter().map(ToString::to_string).collect();
 
         let chosen: Vec<usize> = match given.is_empty() {
-            true => match prompt.choose_many("list it in images", &options, &[])? {
+            true => match ask(&list, &targets, prompt)? {
                 crate::ui::Answer::Cancelled => return Ok(Self::Cancelled),
                 crate::ui::Answer::Chosen(chosen) => chosen,
             },
             false => given
                 .iter()
-                .map(|id| {
-                    ids.iter().position(|known| known == id).ok_or_else(|| {
+                .map(|name| {
+                    named.iter().position(|known| known == name).ok_or_else(|| {
                         format!(
-                            "`{id}` is not a declared image; there is {}",
-                            ids.join(", ")
+                            "`{name}` is not a declared image; there is {}",
+                            named.join(", ")
                         )
                     })
                 })
                 .collect::<Result<_, _>>()?,
         };
+        let ungated = |target: &crate::model::image::Target| {
+            chosen.iter().any(|at| {
+                targets[*at].image == target.image
+                    && targets[*at].flavour == crate::model::image::NO_FLAVOUR
+            })
+        };
+        if let Some(gated) = chosen
+            .iter()
+            .map(|at| &targets[*at])
+            .find(|target| target.flavour != crate::model::image::NO_FLAVOUR && ungated(target))
+        {
+            return Err(format!(
+                "`{gated}` is inside `{}`, so listing it in both lists it twice",
+                gated.image
+            ));
+        }
+
         Ok(match chosen.is_empty() {
-            true => Self::Declined,
+            true => Self::Declined {
+                asked: prompt.asks(),
+            },
             false => Self::In(
                 chosen
                     .iter()
-                    .map(|at| Target {
-                        file: PathBuf::from(list.images[*at].src.name()),
-                        image: list.images[*at].name.clone(),
-                        flavour: None,
+                    .map(|at| {
+                        let target = &targets[*at];
+                        let image = list
+                            .images
+                            .iter()
+                            .find(|image| image.id == target.image)
+                            .expect("a target names an image the list holds");
+                        Listed {
+                            file: PathBuf::from(image.src.name()),
+                            image: image.name.clone(),
+                            flavour: match target.flavour == crate::model::image::NO_FLAVOUR {
+                                true => None,
+                                false => Some(target.flavour.clone()),
+                            },
+                        }
                     })
                     .collect(),
             ),
@@ -667,7 +692,7 @@ impl Listing {
                 println!("no image lists it yet; `buildc create image <name>` writes one");
                 Ok(Vec::new())
             }
-            Self::Declined => {
+            Self::Declined { .. } => {
                 let shown = wrap(&listed_in(None, source)[1..], &leaf);
                 println!(
                     "next, to build it, list it in an image:\n {}",
@@ -675,22 +700,57 @@ impl Listing {
                 );
                 Ok(Vec::new())
             }
-            Self::In(targets) => {
-                for target in targets {
+            Self::In(listed) => {
+                let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
+                for target in listed {
                     append(
                         &target.file,
                         &target.image,
                         &listed_in(target.flavour.as_deref(), source),
                         &leaf,
                     )?;
+                    if !wrote.iter().any(|(file, _)| *file == target.file) {
+                        wrote.push((target.file.clone(), Change::Updated));
+                    }
                 }
-                Ok(targets
-                    .iter()
-                    .map(|target| (target.file.clone(), Change::Updated))
-                    .collect())
+                Ok(wrote)
             }
         }
     }
+}
+
+fn ask(
+    list: &crate::model::image::List,
+    targets: &[crate::model::image::Target],
+    prompt: &Prompt,
+) -> Result<crate::ui::Answer, String> {
+    if let [only] = targets {
+        let listed = prompt.confirm(&format!("list it in {only}"), "Yes", "No")?;
+        return Ok(crate::ui::Answer::Chosen(match listed {
+            true => vec![0],
+            false => Vec::new(),
+        }));
+    }
+    let mut ungated = 0;
+    let mut rows: Vec<Choice> = Vec::new();
+    for (at, target) in targets.iter().enumerate() {
+        let label = target.to_string();
+        if target.flavour != crate::model::image::NO_FLAVOUR {
+            rows.push(Choice::new(label, "").under(ungated));
+            continue;
+        }
+        ungated = at;
+        let named = list
+            .images
+            .iter()
+            .find(|image| image.id == target.image)
+            .map_or("", |image| match image.name == image.id {
+                true => "",
+                false => image.name.as_str(),
+            });
+        rows.push(Choice::new(label, named));
+    }
+    prompt.choose_many("list it in images", &rows, &[])
 }
 
 fn listed_in<'a>(

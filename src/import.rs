@@ -337,9 +337,16 @@ impl Module {
                     "`import module` needs an image; run `buildc create image <name>` first".into(),
                 )
             }
-            Listing::Declined => {
+            Listing::Declined { asked: false } => {
                 return Err(
                     "`import module` needs an image to list it in; name one with `--image`".into(),
+                )
+            }
+            Listing::Declined { asked: true } => {
+                return Err(
+                    "an import is a reference an image lists, so listing it in none imports \
+                     nothing"
+                        .into(),
                 )
             }
             Listing::In(_) => {}

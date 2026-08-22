@@ -586,6 +586,27 @@ fn flows() {
         &["--root", ".", "create", "flavour"],
     );
 
+    let root = flow_repo("flow-gated");
+    buildc(
+        &root,
+        &[
+            "--no-tui", "--root", ".", "create", "flavour", "dx", "--image", "example",
+        ],
+    );
+    flow(
+        "flow-module-in-flavour",
+        &root,
+        None,
+        &["--root", ".", "create", "module"],
+    );
+    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains(
+            "    modules {\n        flavour \"dx\" {\n            module \"dev-tools\"\n        }\n    }"
+        ),
+        "{image}"
+    );
+
     flow(
         "flow-set-workflows",
         &flow_repo("flow-set"),

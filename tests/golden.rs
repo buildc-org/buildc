@@ -617,6 +617,33 @@ fn flows() {
         "{image}"
     );
 
+    buildc(
+        &root,
+        &[
+            "--no-tui", "--root", ".", "create", "flavour", "gaming", "--image", "example",
+        ],
+    );
+    let listed = |at: &str| {
+        buildc::create::Listing::collect(
+            &root,
+            vec![at.into()],
+            "dev-tools",
+            None,
+            &buildc::prompt::Prompt::silent(),
+        )
+        .err()
+        .unwrap_or_default()
+    };
+    assert_eq!(
+        listed("example/dx"),
+        "`example/dx` already lists `dev-tools`"
+    );
+    assert_eq!(
+        listed("example"),
+        "`example/dx` already lists `dev-tools`, so `example` lists it twice"
+    );
+    assert_eq!(listed("example/gaming"), "");
+
     flow(
         "flow-set-workflows",
         &flow_repo("flow-set"),

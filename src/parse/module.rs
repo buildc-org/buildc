@@ -866,12 +866,22 @@ pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Ke
     })
 }
 
-pub fn summary(file: &Path) -> (String, Vec<String>, Vec<String>) {
+#[derive(Default)]
+pub struct Summary {
+    pub description: String,
+    pub provides: Vec<String>,
+    pub supports: Vec<String>,
+    pub requires: Vec<String>,
+    pub keys: Vec<String>,
+    pub args: Vec<String>,
+}
+
+pub fn summary(file: &Path) -> Summary {
     let Some(doc) = std::fs::read_to_string(file)
         .ok()
         .and_then(|text| text.parse::<KdlDocument>().ok())
     else {
-        return (String::new(), Vec::new(), Vec::new());
+        return Summary::default();
     };
     let strings = |name: &str| -> Vec<String> {
         doc.nodes()
@@ -881,11 +891,30 @@ pub fn summary(file: &Path) -> (String, Vec<String>, Vec<String>) {
             .filter_map(|entry| entry.value().as_string().map(str::to_string))
             .collect()
     };
-    (
-        strings("description").join(" "),
-        strings("requires"),
-        strings("key"),
-    )
+    let mut provides = strings("provides");
+    provides.extend(strings("provides-file"));
+    provides.extend(
+        doc.nodes()
+            .iter()
+            .filter(|node| node.name().value() == "key")
+            .filter_map(|node| {
+                node.children()?
+                    .get("public")?
+                    .entries()
+                    .first()?
+                    .value()
+                    .as_string()
+            })
+            .map(str::to_string),
+    );
+    Summary {
+        description: strings("description").join(" "),
+        provides,
+        supports: strings("supports"),
+        requires: strings("requires"),
+        keys: strings("key"),
+        args: strings("arg"),
+    }
 }
 
 pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues) {

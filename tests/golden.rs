@@ -196,8 +196,8 @@ fn copied(name: &str, root: &Path) {
     }
 
     out.push_str("==== the catalog\n");
-    for module in buildc::import::catalog(here, &sources).unwrap() {
-        out.push_str(&format!("{}  {}\n", module.qualified, module.about()));
+    for module in buildc::import::catalog(here, &sources, true).unwrap() {
+        out.push_str(&format!("{}  {}\n", module.qualified(), module.about()));
     }
 
     for wanted in [

@@ -22,6 +22,20 @@ impl Workflows {
             .collect()
     }
 
+    pub fn adding(list: &crate::model::image::List, more: &[&'static str]) -> Self {
+        Self {
+            chosen: SHIPPED
+                .iter()
+                .filter(|shipped| {
+                    more.contains(&shipped.stem)
+                        || list.workflows.iter().any(|w| w.name == shipped.stem)
+                })
+                .map(|shipped| shipped.stem)
+                .collect(),
+            at: list.workflows_at,
+        }
+    }
+
     pub fn collect(
         basis: &Basis,
         on: &[&str],

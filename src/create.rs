@@ -717,6 +717,19 @@ impl Listing {
         matches!(self, Self::Cancelled)
     }
 
+    pub fn images(&self) -> Vec<&str> {
+        let Self::In(listed) = self else {
+            return Vec::new();
+        };
+        let mut out: Vec<&str> = Vec::new();
+        for target in listed {
+            if !out.contains(&target.image.as_str()) {
+                out.push(&target.image);
+            }
+        }
+        out
+    }
+
     pub fn apply_source(&self, source: &str, name: &str) -> Result<Vec<(PathBuf, Change)>, String> {
         self.apply_declaration(name, Some(source))
     }

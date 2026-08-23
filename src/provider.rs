@@ -38,7 +38,11 @@ impl Provider {
     }
 }
 
-pub struct Index(Vec<Provider>);
+pub struct Index {
+    held: Vec<Provider>,
+    unread: Vec<String>,
+    sourced: bool,
+}
 
 impl Index {
     pub fn scan(root: &Path, sources: &[Collection], disk: &Disk, fetch: bool) -> Self {
@@ -57,11 +61,30 @@ impl Index {
                 out.push(module);
             }
         }
-        Self(out)
+        Self {
+            held: out,
+            unread: match fetch {
+                true => Vec::new(),
+                false => sources
+                    .iter()
+                    .filter(|collection| crate::import::cached(root, collection).is_none())
+                    .map(|collection| collection.name.clone())
+                    .collect(),
+            },
+            sourced: !sources.is_empty(),
+        }
+    }
+
+    pub fn unread(&self) -> &[String] {
+        &self.unread
+    }
+
+    pub fn sourced(&self) -> bool {
+        self.sourced
     }
 
     pub fn of(&self, capability: &str) -> Vec<&Provider> {
-        self.0
+        self.held
             .iter()
             .filter(|held| held.declares.provides.iter().any(|has| has == capability))
             .collect()
@@ -74,14 +97,14 @@ impl Index {
     }
 
     pub fn declaring_key(&self, kind: &str) -> Vec<&Provider> {
-        self.0
+        self.held
             .iter()
             .filter(|held| held.declares.keys.iter().any(|has| has == kind))
             .collect()
     }
 
     pub fn at(&self, dir: &str) -> Option<&Provider> {
-        self.0.iter().find(|held| held.dir() == dir)
+        self.held.iter().find(|held| held.dir() == dir)
     }
 }
 

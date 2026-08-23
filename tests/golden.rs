@@ -682,6 +682,27 @@ fn flows() {
         &["--root", ".", "check"],
     );
 
+    let unfetched = flow_repo("flow-unfetched");
+    std::fs::create_dir_all(unfetched.join("modules/core/one")).unwrap();
+    std::fs::write(
+        unfetched.join("modules/core/one/module.kdl"),
+        "description \"Builds things\"\n\nsupports \"fedora\"\n\nrequires \"build-environment\"\n",
+    )
+    .unwrap();
+    let image = unfetched.join("example.image.kdl");
+    let listed = std::fs::read_to_string(&image).unwrap().replace(
+        "    modules {\n    }",
+        "    modules {\n        module \"core/one\"\n    }",
+    );
+    assert!(listed.contains("module \"core/one\""), "{listed}");
+    std::fs::write(&image, listed).unwrap();
+    flow(
+        "flow-check-unfetched",
+        &unfetched,
+        None,
+        &["--root", ".", "check"],
+    );
+
     let kernel = flow_repo_sourced("flow-kernel");
     flow(
         "flow-import-kernel",
@@ -789,6 +810,20 @@ fn flows() {
     flow(
         "flow-key-kinds",
         &root,
+        None,
+        &["--root", ".", "create", "key"],
+    );
+
+    flow(
+        "flow-key-undeclared",
+        &flow_repo_sourced("flow-key-undeclared"),
+        None,
+        &["--root", ".", "create", "key", "sbom"],
+    );
+
+    flow(
+        "flow-key-no-kind",
+        &flow_repo("flow-key-no-kind"),
         None,
         &["--root", ".", "create", "key"],
     );

@@ -44,6 +44,39 @@ fn names(decls: &[&Decl]) -> String {
         .join(", ")
 }
 
+fn nowhere(index: &Index, capability: &str, src: &str) -> String {
+    let unread: Vec<String> = index
+        .unread()
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect();
+    let (searched, unsearched) = match (unread.len(), index.sourced()) {
+        (0, true) => ("the repository or its collections", String::new()),
+        (0, false) => (
+            "the repository",
+            ". repo.kdl declares no `sources`, so there is no collection to import one from"
+                .to_string(),
+        ),
+        (1, _) => (
+            "the repository",
+            format!(
+                ". The {} collection is declared but not on this machine, so nothing read it: `buildc fetch modules` downloads it",
+                unread.join(", ")
+            ),
+        ),
+        _ => (
+            "the repository",
+            format!(
+                ". The {} collections are declared but not on this machine, so nothing read them: `buildc fetch modules` downloads them",
+                unread.join(", ")
+            ),
+        ),
+    };
+    format!(
+        "no module in {searched} declares `provides {capability:?}`, and neither does the `base` node in {src}{unsearched}"
+    )
+}
+
 pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issues) {
     let mut offered: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
     for module in image.modules() {
@@ -186,10 +219,7 @@ pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issue
                             named.join(" or "),
                             first.qualified()
                         ),
-                        None => format!(
-                            "no module in the repository or its collections declares `provides {:?}`, and neither does the `base` node in {}",
-                            decl.name, image.src.name()
-                        ),
+                        None => nowhere(index, &decl.name, &image.src.name()),
                     },
                 };
                 issues.push(

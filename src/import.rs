@@ -129,25 +129,49 @@ pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<P
     Ok(listed)
 }
 
+fn offered(root: &Path, sources: &[Collection]) -> Result<(Vec<Provider>, Vec<Choice>), String> {
+    let listed = catalog(root, sources, true)?;
+    if listed.is_empty() {
+        return Err(format!("no module in {}", names(sources)));
+    }
+    let options = listed
+        .iter()
+        .map(|module| Choice::new(module.qualified(), module.about()))
+        .collect();
+    Ok((listed, options))
+}
+
+fn unchosen(command: &str) -> String {
+    format!("no module chosen; `buildc {command} module <name>` names one")
+}
+
 pub fn choose(
     root: &Path,
     sources: &[Collection],
     command: &str,
     prompt: &Prompt,
 ) -> Result<String, String> {
-    let listed = catalog(root, sources, true)?;
-    if listed.is_empty() {
-        return Err(format!("no module in {}", names(sources)));
-    }
-    let options: Vec<Choice> = listed
-        .iter()
-        .map(|module| Choice::new(module.qualified(), module.about()))
-        .collect();
+    let (listed, options) = offered(root, sources)?;
     match prompt.choose("which module", &options)? {
         Some(chosen) => Ok(listed[chosen].qualified()),
-        None => Err(format!(
-            "no module chosen; `buildc {command} module <name>` names one"
-        )),
+        None => Err(unchosen(command)),
+    }
+}
+
+fn choose_several(
+    root: &Path,
+    sources: &[Collection],
+    command: &str,
+    prompt: &Prompt,
+) -> Result<Vec<String>, String> {
+    let (listed, options) = offered(root, sources)?;
+    let chosen = match prompt.choose_many("which modules", &options, &[])? {
+        crate::ui::Answer::Chosen(chosen) => chosen,
+        crate::ui::Answer::Cancelled => Vec::new(),
+    };
+    match chosen.is_empty() {
+        true => Err(unchosen(command)),
+        false => Ok(chosen.iter().map(|at| listed[*at].qualified()).collect()),
     }
 }
 
@@ -266,8 +290,18 @@ fn select(
         Some(name) => name,
         None => choose(root, sources, command, prompt)?,
     };
-    let mut found = find(root, sources, &name, enforce)?;
-    let module = split(&name).1.to_string();
+    resolve(&name, root, sources, enforce, prompt)
+}
+
+fn resolve(
+    name: &str,
+    root: &Path,
+    sources: &[Collection],
+    enforce: bool,
+    prompt: &Prompt,
+) -> Result<(Found, String), Error> {
+    let mut found = find(root, sources, name, enforce)?;
+    let module = split(name).1.to_string();
     let at = match found.as_slice() {
         [_] => 0,
         many => {
@@ -293,8 +327,7 @@ struct Member {
 }
 
 pub struct Module {
-    member: Member,
-    also: Vec<Member>,
+    members: Vec<Member>,
     listing: Listing,
     workflows: Option<crate::set::Workflows>,
 }
@@ -316,33 +349,49 @@ impl Module {
                     .into(),
             );
         }
-        let (from, name) = select(name, root, sources, enforce, "import", prompt)?;
-        let declares = crate::parse::module::summary(&from.dir.join(layout::MODULE_FILE));
-        let listing = Listing::collect(root, images, &name, Some(&from.owner), prompt)?;
+        let asked = match name {
+            Some(name) => vec![name],
+            None => choose_several(root, sources, "import", prompt)?,
+        };
+        let picked = asked
+            .iter()
+            .map(|name| resolve(name, root, sources, enforce, prompt))
+            .collect::<Result<Vec<(Found, String)>, Error>>()?;
+        let declares: Vec<crate::parse::module::Summary> = picked
+            .iter()
+            .map(|(from, _)| crate::parse::module::summary(&from.dir.join(layout::MODULE_FILE)))
+            .collect();
 
-        let also = short(
-            root,
-            sources,
-            &list,
-            &listing,
-            &name,
-            &declares.requires,
-            prompt,
-        )?
-        .into_iter()
-        .map(|qualified| {
-            let mut found = find(root, sources, &qualified, enforce)?;
-            let member = split(&qualified).1.to_string();
-            Ok(Member {
-                from: found.swap_remove(0),
-                name: member,
+        let listing = Listing::collect(root, images, prompt)?;
+        for (from, name) in &picked {
+            listing.refuse_duplicate(&list, name, Some(&from.owner))?;
+        }
+        let named: Vec<String> = picked.iter().map(|(_, name)| name.clone()).collect();
+
+        let also = short(root, sources, &list, &listing, &named, &declares, prompt)?
+            .into_iter()
+            .filter(|qualified| {
+                !picked
+                    .iter()
+                    .any(|(from, name)| format!("{}/{name}", from.owner) == *qualified)
             })
-        })
-        .collect::<Result<Vec<Member>, String>>()?;
+            .map(|qualified| {
+                let mut found = find(root, sources, &qualified, enforce)?;
+                let member = split(&qualified).1.to_string();
+                Ok(Member {
+                    from: found.swap_remove(0),
+                    name: member,
+                })
+            })
+            .collect::<Result<Vec<Member>, String>>()?;
 
         let unlocked = match listing.images().is_empty() {
             true => Vec::new(),
-            false => crate::resolve::workflow::unlocked(&list, &declares.args),
+            false => {
+                let args: Vec<String> =
+                    declares.iter().flat_map(|held| held.args.clone()).collect();
+                crate::resolve::workflow::unlocked(&list, &args)
+            }
         };
         let workflows = match unlocked.as_slice() {
             [] => None,
@@ -353,8 +402,13 @@ impl Module {
                     .map(|s| format!("`{}` {}", s.stem, s.about))
                     .collect();
                 let question = format!(
-                    "`{name}` makes CI runnable that this repo does not generate:\n{}\n\
+                    "{} {} CI runnable that this repo does not generate:\n{}\n\
                      Generate it now?",
+                    said(&quoted(&picked)),
+                    match picked.len() {
+                        1 => "makes",
+                        _ => "make",
+                    },
                     rows.join("\n")
                 );
                 prompt
@@ -363,9 +417,10 @@ impl Module {
             }
         };
 
+        let mut members = also;
+        members.extend(picked.into_iter().map(|(from, name)| Member { from, name }));
         Ok(Self {
-            member: Member { from, name },
-            also,
+            members,
             listing,
             workflows,
         })
@@ -393,22 +448,19 @@ impl Module {
             }
             Listing::In(_) => {}
         }
-        let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
-        for member in self.also.iter().chain(std::iter::once(&self.member)) {
+        for member in &self.members {
             let dir = layout::module(root, REMOTE_DIR)
                 .join(&member.from.owner)
                 .join(&member.name);
             let _ = std::fs::remove_dir_all(&dir);
             crate::init::copy_tree(&member.from.dir, &dir)?;
-            for written in self
-                .listing
-                .apply_source(&member.from.owner, &member.name)?
-            {
-                if !wrote.iter().any(|(held, _)| *held == written.0) {
-                    wrote.push(written);
-                }
-            }
         }
+        let listed: Vec<(&str, &str)> = self
+            .members
+            .iter()
+            .map(|member| (member.from.owner.as_str(), member.name.as_str()))
+            .collect();
+        let mut wrote: Vec<(PathBuf, Change)> = self.listing.apply_source(&listed)?;
         if let Some(workflows) = &self.workflows {
             wrote.extend(workflows.apply(root)?);
         }
@@ -422,14 +474,23 @@ fn short(
     sources: &[Collection],
     list: &crate::model::image::List,
     listing: &Listing,
-    name: &str,
-    requires: &[String],
+    named: &[String],
+    declares: &[crate::parse::module::Summary],
     prompt: &Prompt,
 ) -> Result<Vec<String>, String> {
     let images: Vec<&crate::model::image::Image> = listing
         .images()
         .iter()
         .filter_map(|named| list.images.iter().find(|image| image.name == *named))
+        .collect();
+    let requires: Vec<&String> = declares
+        .iter()
+        .flat_map(|held| held.requires.iter())
+        .filter(|want| {
+            !declares
+                .iter()
+                .any(|held| held.provides.iter().any(|has| &has == want))
+        })
         .collect();
     if images.is_empty() || requires.is_empty() {
         return Ok(Vec::new());
@@ -440,6 +501,9 @@ fn short(
     let mut unmet: Vec<&String> = Vec::new();
     let mut bring: Vec<String> = Vec::new();
     for want in requires {
+        if unmet.contains(&want) {
+            continue;
+        }
         let met = images.iter().all(|image| {
             image
                 .base
@@ -469,7 +533,17 @@ fn short(
     }
 
     let question = format!(
-        "`{name}` requires {}, which nothing in {} provides.\nImport {} as well?",
+        "{} {} {}, which nothing in {} provides.\nImport {} as well?",
+        said(
+            &named
+                .iter()
+                .map(|name| format!("`{name}`"))
+                .collect::<Vec<_>>()
+        ),
+        match named.len() {
+            1 => "requires",
+            _ => "require",
+        },
         said(
             &unmet
                 .iter()
@@ -488,6 +562,10 @@ fn short(
         true => Ok(bring),
         false => Ok(Vec::new()),
     }
+}
+
+fn quoted(picked: &[(Found, String)]) -> Vec<String> {
+    picked.iter().map(|(_, name)| format!("`{name}`")).collect()
 }
 
 fn said(items: &[String]) -> String {
@@ -509,14 +587,13 @@ mod tests {
         crate::init::put(&from.join(layout::MODULE_FILE), "description \"x\"\n").unwrap();
 
         Module {
-            member: Member {
+            members: vec![Member {
                 from: Found {
                     owner: "one".into(),
                     dir: from.clone(),
                 },
                 name: "module".into(),
-            },
-            also: Vec::new(),
+            }],
             listing: Listing::Cancelled,
             workflows: None,
         }
@@ -583,7 +660,8 @@ impl Copy {
     ) -> Result<Self, Error> {
         let (from, name) = select(name, root, sources, enforce, "copy", prompt)?;
         let dest = destination(root, &from, &name)?;
-        let listing = Listing::collect(root, images, &name, None, prompt)?;
+        let listing = Listing::collect(root, images, prompt)?;
+        listing.refuse_duplicate(&crate::model::image::List::load(root).0, &name, None)?;
         Ok(Self {
             from,
             dest,

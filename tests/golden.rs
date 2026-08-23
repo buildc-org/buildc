@@ -624,15 +624,11 @@ fn flows() {
         ],
     );
     let listed = |at: &str| {
-        buildc::create::Listing::collect(
-            &root,
-            vec![at.into()],
-            "dev-tools",
-            None,
-            &buildc::prompt::Prompt::silent(),
-        )
-        .err()
-        .unwrap_or_default()
+        let (list, _, _) = buildc::declarations(&root);
+        buildc::create::Listing::collect(&root, vec![at.into()], &buildc::prompt::Prompt::silent())
+            .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools", None))
+            .err()
+            .unwrap_or_default()
     };
     assert_eq!(
         listed("example/dx"),
@@ -753,6 +749,22 @@ fn flows() {
     .map(|err| err.message().to_string())
     .unwrap_or_default();
     assert_eq!(twice, "`example` already lists `flatpak`");
+
+    let several = flow_repo_sourced("flow-several");
+    flow(
+        "flow-import-several",
+        &several,
+        None,
+        &["--root", ".", "import", "module"],
+    );
+    let image = std::fs::read_to_string(several.join("example.image.kdl")).unwrap();
+    for module in ["flatpak", "browser", "custom-kernel"] {
+        assert!(image.contains(&format!("module \"{module}\"")), "{image}");
+    }
+    assert!(std::fs::read_to_string(several.join("repo.kdl"))
+        .unwrap()
+        .contains("    kernel-freshness\n"));
+    buildc(&several, &["--no-tui", "--root", ".", "check"]);
 
     let root = flow_repo_sourced("flow-copy");
     flow(

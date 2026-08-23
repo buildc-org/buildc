@@ -515,7 +515,8 @@ impl Module {
             };
 
         let text = module_kdl(&name, &family(root)?, &pkgs, &with)?;
-        let listing = Listing::collect(root, images, &path, None, prompt)?;
+        let listing = Listing::collect(root, images, prompt)?;
+        listing.refuse_duplicate(&crate::model::image::List::load(root).0, &path, None)?;
         Ok(Self {
             path,
             file,
@@ -603,13 +604,7 @@ pub struct Listed {
 }
 
 impl Listing {
-    pub fn collect(
-        root: &Path,
-        given: Vec<String>,
-        name: &str,
-        source: Option<&str>,
-        prompt: &Prompt,
-    ) -> Result<Self, String> {
+    pub fn collect(root: &Path, given: Vec<String>, prompt: &Prompt) -> Result<Self, String> {
         let (list, _) = crate::model::image::List::load(root);
         if list.images.is_empty() {
             return Ok(Self::NoImage);
@@ -651,36 +646,6 @@ impl Listing {
             ));
         }
 
-        let dir = match source {
-            Some(owner) => format!("{}/{owner}/{name}", crate::model::remote::REMOTE_DIR),
-            None => name.to_string(),
-        };
-        for target in chosen.iter().map(|at| &targets[*at]) {
-            let Some(image) = list.images.iter().find(|image| image.id == target.image) else {
-                continue;
-            };
-            let gated = target.flavour != crate::model::image::NO_FLAVOUR;
-            let Some(held) = image.entries.iter().find(|entry| {
-                entry.dir() == dir
-                    && (!gated
-                        || entry.flavour.is_none()
-                        || entry.flavour.as_deref() == Some(target.flavour.as_str()))
-            }) else {
-                continue;
-            };
-            let at = crate::model::image::Target {
-                image: image.id.clone(),
-                flavour: held
-                    .flavour
-                    .clone()
-                    .unwrap_or_else(|| crate::model::image::NO_FLAVOUR.to_string()),
-            };
-            return Err(match at.to_string() == target.to_string() {
-                true => format!("`{at}` already lists `{name}`"),
-                false => format!("`{at}` already lists `{name}`, so `{target}` lists it twice"),
-            });
-        }
-
         Ok(match chosen.is_empty() {
             true => Self::Declined {
                 asked: prompt.asks(),
@@ -709,8 +674,50 @@ impl Listing {
         })
     }
 
+    pub fn refuse_duplicate(
+        &self,
+        list: &crate::model::image::List,
+        name: &str,
+        source: Option<&str>,
+    ) -> Result<(), String> {
+        let Self::In(listed) = self else {
+            return Ok(());
+        };
+        let dir = match source {
+            Some(owner) => format!("{}/{owner}/{name}", crate::model::remote::REMOTE_DIR),
+            None => name.to_string(),
+        };
+        let target = |image: &crate::model::image::Image, flavour: &Option<String>| {
+            crate::model::image::Target {
+                image: image.id.clone(),
+                flavour: flavour
+                    .clone()
+                    .unwrap_or_else(|| crate::model::image::NO_FLAVOUR.to_string()),
+            }
+        };
+        for into in listed {
+            let Some(image) = list.images.iter().find(|image| image.name == into.image) else {
+                continue;
+            };
+            let Some(held) = image.entries.iter().find(|entry| {
+                entry.dir() == dir
+                    && (into.flavour.is_none()
+                        || entry.flavour.is_none()
+                        || entry.flavour == into.flavour)
+            }) else {
+                continue;
+            };
+            let (at, into) = (target(image, &held.flavour), target(image, &into.flavour));
+            return Err(match at.to_string() == into.to_string() {
+                true => format!("`{at}` already lists `{name}`"),
+                false => format!("`{at}` already lists `{name}`, so `{into}` lists it twice"),
+            });
+        }
+        Ok(())
+    }
+
     pub fn apply(&self, path: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(path, None)
+        self.apply_declaration(&[(path, None)])
     }
 
     pub fn cancelled(&self) -> bool {
@@ -730,16 +737,18 @@ impl Listing {
         out
     }
 
-    pub fn apply_source(&self, source: &str, name: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(name, Some(source))
+    pub fn apply_source(&self, members: &[(&str, &str)]) -> Result<Vec<(PathBuf, Change)>, String> {
+        let declarations: Vec<(&str, Option<&str>)> = members
+            .iter()
+            .map(|(source, name)| (*name, Some(*source)))
+            .collect();
+        self.apply_declaration(&declarations)
     }
 
     fn apply_declaration(
         &self,
-        name: &str,
-        source: Option<&str>,
+        declarations: &[(&str, Option<&str>)],
     ) -> Result<Vec<(PathBuf, Change)>, String> {
-        let leaf = format!("module \"{name}\"");
         match self {
             Self::Cancelled => Ok(Vec::new()),
             Self::NoImage => {
@@ -747,22 +756,26 @@ impl Listing {
                 Ok(Vec::new())
             }
             Self::Declined { .. } => {
-                let shown = wrap(&listed_in(None, source)[1..], &leaf);
-                println!(
-                    "next, to build it, list it in an image:\n {}",
-                    shown.replace('\n', "\n ")
-                );
+                for (name, source) in declarations {
+                    let shown = wrap(&listed_in(None, *source)[1..], &leaf(name));
+                    println!(
+                        "next, to build it, list it in an image:\n {}",
+                        shown.replace('\n', "\n ")
+                    );
+                }
                 Ok(Vec::new())
             }
             Self::In(listed) => {
                 let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
                 for target in listed {
-                    append(
-                        &target.file,
-                        &target.image,
-                        &listed_in(target.flavour.as_deref(), source),
-                        &leaf,
-                    )?;
+                    for (name, source) in declarations {
+                        append(
+                            &target.file,
+                            &target.image,
+                            &listed_in(target.flavour.as_deref(), *source),
+                            &leaf(name),
+                        )?;
+                    }
                     if !wrote.iter().any(|(file, _)| *file == target.file) {
                         wrote.push((target.file.clone(), Change::Updated));
                     }
@@ -771,6 +784,10 @@ impl Listing {
             }
         }
     }
+}
+
+fn leaf(name: &str) -> String {
+    format!("module \"{name}\"")
 }
 
 fn ask(

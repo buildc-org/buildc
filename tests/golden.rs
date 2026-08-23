@@ -154,6 +154,30 @@ fn create(name: &str, root: &Path) {
     .apply(here)
     .unwrap();
 
+    let repo = Path::new("repo.kdl");
+    let collections = crate_dir().join("tests/collections");
+    let text = std::fs::read_to_string(repo).unwrap().replace(
+        "sources {\n",
+        &format!(
+            "sources {{\n    one {:?}\n",
+            collections.join("one").display()
+        ),
+    );
+    std::fs::write(repo, text).unwrap();
+    let (list, issues, _) = buildc::declarations(here);
+    assert!(issues.is_empty(), "{}", issues.plain());
+    buildc::import::Module::collect(
+        Some("one/fedora-family".into()),
+        here,
+        &list.sources,
+        false,
+        vec!["example".into(), "server".into()],
+        &silent,
+    )
+    .unwrap_or_else(|err| panic!("{}", err.message()))
+    .apply(here)
+    .unwrap();
+
     let mut out = String::new();
     for file in [
         "modules/my-editor/module.kdl",
@@ -707,6 +731,19 @@ fn flows() {
             && image.contains("source \"two\" {\n            module \"browser\""),
         "{image}"
     );
+    buildc(
+        &requires,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/fedora-family",
+            "--image",
+            "example",
+        ],
+    );
     buildc(&requires, &["--no-tui", "--root", ".", "check"]);
     let declined = flow_repo_sourced("flow-declined");
     buildc(
@@ -718,6 +755,19 @@ fn flows() {
             "import",
             "module",
             "two/browser",
+            "--image",
+            "example",
+        ],
+    );
+    buildc(
+        &declined,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/fedora-family",
             "--image",
             "example",
         ],
@@ -848,6 +898,19 @@ fn flows() {
     assert!(std::fs::read_to_string(several.join("repo.kdl"))
         .unwrap()
         .contains("    kernel-freshness\n"));
+    buildc(
+        &several,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/fedora-family",
+            "--image",
+            "example",
+        ],
+    );
     buildc(&several, &["--no-tui", "--root", ".", "check"]);
 
     let root = flow_repo_sourced("flow-copy");

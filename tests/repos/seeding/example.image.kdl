@@ -13,6 +13,7 @@ image {
     }
 
     modules {
+        module "fedora-family"
         module "hello"
         source "buildc-org" {
             module "flatpak" variant="beta" {

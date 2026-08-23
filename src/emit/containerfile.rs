@@ -247,6 +247,9 @@ fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path) -> Str
          --mount=type=tmpfs,target=/tmp \\\n    \
          {secrets}{env}bash /ctx/module.sh"
     );
+    if !helpers.is_empty() {
+        out = out.replacen("target=/ctx/lib ", "target=/ctx/lib,rw ", 1);
+    }
     out
 }
 

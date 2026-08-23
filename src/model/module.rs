@@ -76,6 +76,7 @@ pub struct Module {
     pub variants: Vec<Variant>,
     pub assets: Vec<Asset>,
     pub packages: Vec<PackageGroup>,
+    pub helpers: Vec<Decl>,
     pub satisfies: Vec<Coverage>,
     pub resolved: Vec<(String, String)>,
     pub fragment: Option<String>,

@@ -1,0 +1,297 @@
+use crate::init;
+use std::cmp::Ordering;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+const REPO: &str = "buildc-org/buildc";
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Plan {
+    pub version: String,
+    pub url: String,
+    pub bin: PathBuf,
+    pub assets: PathBuf,
+}
+
+fn plan(
+    version: &str,
+    euid: u32,
+    home: Option<PathBuf>,
+    data: Option<PathBuf>,
+) -> Result<Plan, String> {
+    let unset = "HOME is not set, so there is no per-user pair to move to";
+    let (bindir, assets) = match euid {
+        0 => (
+            PathBuf::from("/usr/local/bin"),
+            PathBuf::from("/usr/local/share/buildc/assets"),
+        ),
+        _ => (
+            home.ok_or(unset)?.join(".local/bin"),
+            data.ok_or(unset)?.join("buildc/assets"),
+        ),
+    };
+    Ok(Plan {
+        version: version.to_string(),
+        url: format!(
+            "https://github.com/{REPO}/releases/download/v{version}/\
+             buildc-v{version}-x86_64-linux-musl.tar.gz"
+        ),
+        bin: bindir.join("buildc"),
+        assets,
+    })
+}
+
+fn instead(euid: u32) -> &'static str {
+    match euid {
+        0 => "the per-user pair is ~/.local/bin with $XDG_DATA_HOME/buildc/assets",
+        _ => "run as root to move /usr/local/bin and /usr/local/share/buildc/assets",
+    }
+}
+
+fn version_of(url: &str) -> Result<String, String> {
+    let url = url.trim();
+    let version = match url.rsplit_once("/tag/v") {
+        Some((_, version)) => version,
+        None => return Err(format!("cannot read a version out of {url}")),
+    };
+    let usable = !version.is_empty()
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    match usable {
+        true => Ok(version.to_string()),
+        false => Err(format!("cannot read a version out of {url}")),
+    }
+}
+
+fn parts(version: &str) -> Vec<u64> {
+    version
+        .split(['.', '-'])
+        .filter_map(|part| part.parse().ok())
+        .collect()
+}
+
+fn curl(args: &[&str]) -> Result<String, String> {
+    let out = Command::new("curl")
+        .args(args)
+        .output()
+        .map_err(|err| format!("curl: {err}"))?;
+    match out.status.success() {
+        true => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
+        false => Err(format!(
+            "curl {}: {}{}",
+            args.join(" "),
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        )),
+    }
+}
+
+fn latest() -> Result<String, String> {
+    let url = format!("https://github.com/{REPO}/releases/latest");
+    let landed = curl(&[
+        "-fsSL",
+        "--retry",
+        "3",
+        "-I",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{url_effective}",
+        &url,
+    ])?;
+    version_of(&landed)
+}
+
+fn digest(url: &str) -> Result<String, String> {
+    let hex = curl(&["-fsSL", "--retry", "3", url])?.trim().to_lowercase();
+    match hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        true => Ok(hex),
+        false => Err(format!("{url} does not hold a sha256")),
+    }
+}
+
+struct Staged(PathBuf);
+
+impl Drop for Staged {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+pub fn run() -> Result<(), String> {
+    let arch = std::env::consts::ARCH;
+    if arch != "x86_64" {
+        return Err(format!(
+            "only x86_64 Linux is published, and this is {arch}"
+        ));
+    }
+
+    let running = crate::model::image::BUILDC_VERSION;
+    let here = std::env::current_exe().map_err(|err| format!("this binary: {err}"))?;
+    println!("buildc: running {running}, at {}", here.display());
+
+    let latest = latest()?;
+    println!("buildc: the latest release is {latest}");
+    match parts(running).cmp(&parts(&latest)) {
+        Ordering::Equal => {
+            println!("buildc: already current, so nothing moves");
+            return Ok(());
+        }
+        Ordering::Greater => {
+            println!("buildc: this build is ahead of the latest release, so nothing moves");
+            return Ok(());
+        }
+        Ordering::Less => {}
+    }
+
+    let euid = unsafe { libc::geteuid() };
+    let plan = plan(
+        &latest,
+        euid,
+        std::env::var_os("HOME").map(PathBuf::from),
+        init::data_home(),
+    )?;
+    let bindir = plan
+        .bin
+        .parent()
+        .ok_or_else(|| format!("{} has no directory", plan.bin.display()))?;
+    let parent = plan
+        .assets
+        .parent()
+        .ok_or_else(|| format!("{} has no directory", plan.assets.display()))?;
+
+    let beside = bindir.join("assets");
+    if beside.exists() {
+        return Err(format!(
+            "{} outranks {}; remove it first",
+            beside.display(),
+            plan.assets.display()
+        ));
+    }
+    if let Some(set) = std::env::var_os("BUILDC_ASSETS") {
+        eprintln!(
+            "buildc: warning: BUILDC_ASSETS={} outranks {}",
+            Path::new(&set).display(),
+            plan.assets.display()
+        );
+    }
+    if !plan.assets.ends_with("buildc/assets") {
+        return Err(format!("refusing to remove {}", plan.assets.display()));
+    }
+
+    for dir in [bindir, parent] {
+        fs::create_dir_all(dir)
+            .map_err(|err| format!("{}: {err}\n\n{}", dir.display(), instead(euid)))?;
+    }
+
+    let work = Staged(parent.join(format!(".upgrade.{}", std::process::id())));
+    fs::create_dir(&work.0)
+        .map_err(|err| format!("{}: {err}\n\n{}", work.0.display(), instead(euid)))?;
+    let sha256 = digest(&format!("{}.sha256", plan.url))?;
+    crate::runtime::extract(&plan.url, Some(&sha256), &work.0, &[])?;
+
+    let (came, assets) = (work.0.join("buildc"), work.0.join("assets"));
+    if !came.is_file() {
+        return Err(format!("{} holds no buildc", plan.url));
+    }
+    if !assets.is_dir() {
+        return Err(format!("{} holds no assets directory", plan.url));
+    }
+
+    let ready = Staged(bindir.join(format!(".buildc.{}", std::process::id())));
+    fs::copy(&came, &ready.0)
+        .map_err(|err| format!("{}: {err}\n\n{}", ready.0.display(), instead(euid)))?;
+    fs::set_permissions(&ready.0, fs::Permissions::from_mode(0o755))
+        .map_err(|err| format!("{}: {err}", ready.0.display()))?;
+
+    let _ = fs::remove_dir_all(&plan.assets);
+    fs::rename(&assets, &plan.assets).map_err(|err| format!("{}: {err}", plan.assets.display()))?;
+    fs::rename(&ready.0, &plan.bin).map_err(|err| format!("{}: {err}", plan.bin.display()))?;
+
+    println!(
+        "buildc: moved buildc {latest} from {running} to {}",
+        plan.bin.display()
+    );
+    println!("buildc: moved its assets to {}", plan.assets.display());
+    if here != plan.bin {
+        println!(
+            "buildc: note: {} is what you ran, and it is not what this replaced",
+            here.display()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_version_is_the_tag_the_redirect_landed_on() {
+        assert_eq!(
+            version_of("https://github.com/buildc-org/buildc/releases/tag/v0.3.7").unwrap(),
+            "0.3.7"
+        );
+        assert_eq!(version_of("  .../tag/v1.0.0-rc1\n").unwrap(), "1.0.0-rc1");
+    }
+
+    #[test]
+    fn a_url_holding_no_tag_is_no_version() {
+        for url in [
+            "https://github.com/buildc-org/buildc/releases/latest",
+            "https://github.com/login?return_to=/buildc-org/buildc",
+            "https://github.com/buildc-org/buildc/releases/tag/v",
+            "https://github.com/buildc-org/buildc/releases/tag/v0.3.7/../..",
+            "",
+        ] {
+            assert!(version_of(url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn root_and_a_person_take_different_pairs_and_never_each_others() {
+        let root = plan("0.3.8", 0, None, None).unwrap();
+        assert_eq!(root.bin, PathBuf::from("/usr/local/bin/buildc"));
+        assert_eq!(
+            root.assets,
+            PathBuf::from("/usr/local/share/buildc/assets")
+        );
+        assert_eq!(
+            root.url,
+            "https://github.com/buildc-org/buildc/releases/download/v0.3.8/\
+             buildc-v0.3.8-x86_64-linux-musl.tar.gz"
+        );
+
+        let home = PathBuf::from("/home/someone");
+        let user = plan(
+            "0.3.8",
+            1000,
+            Some(home.clone()),
+            Some(PathBuf::from("/elsewhere/data")),
+        )
+        .unwrap();
+        assert_eq!(user.bin, home.join(".local/bin/buildc"));
+        assert_eq!(
+            user.assets,
+            PathBuf::from("/elsewhere/data/buildc/assets")
+        );
+    }
+
+    #[test]
+    fn a_person_with_no_home_is_refused_rather_than_sent_to_usr_local() {
+        assert!(plan("0.3.8", 1000, None, None).is_err());
+        assert!(plan("0.3.8", 1000, Some(PathBuf::from("/home/x")), None).is_err());
+    }
+
+    #[test]
+    fn versions_compare_as_numbers_rather_than_as_strings() {
+        assert!(parts("0.3.10") > parts("0.3.9"));
+        assert_eq!(parts("0.3.7"), parts("0.3.7"));
+        assert!(parts("0.4.0") > parts("0.3.99"));
+        assert_eq!(parts("0.4.0-rc1"), parts("0.4.0"));
+    }
+}

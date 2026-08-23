@@ -43,7 +43,7 @@ pub fn assets() -> Result<PathBuf, String> {
     }
 }
 
-fn data_home() -> Option<PathBuf> {
+pub(crate) fn data_home() -> Option<PathBuf> {
     // The XDG base directory specification counts an empty XDG_DATA_HOME as unset.
     std::env::var_os("XDG_DATA_HOME")
         .filter(|dir| !dir.is_empty())

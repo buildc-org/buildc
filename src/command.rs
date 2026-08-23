@@ -2,6 +2,7 @@ use crate::ui::Choice;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verb {
+    Upgrade,
     CreateRepo,
     CreateImage,
     CreateFlavour,
@@ -32,6 +33,7 @@ pub enum Verb {
 }
 
 pub const ALL: &[Verb] = &[
+    Verb::Upgrade,
     Verb::CreateRepo,
     Verb::CreateImage,
     Verb::CreateFlavour,
@@ -110,6 +112,15 @@ impl Spec {
 const ROOT: &[&str] = &["root"];
 
 pub const COMMANDS: &[Spec] = &[
+    Spec {
+        verb: Verb::Upgrade,
+        word: "upgrade",
+        noun: "",
+        arg: "",
+        about: "replace this buildc and its assets with the latest",
+        family: Family::Anywhere,
+        takes: &[],
+    },
     Spec {
         verb: Verb::CreateRepo,
         word: "create",

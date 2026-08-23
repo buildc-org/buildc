@@ -90,7 +90,10 @@ impl Workflows {
             std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
         std::fs::write(&file, self.spliced(&text))
             .map_err(|err| format!("{}: {err}", file.display()))?;
-        Ok(vec![(PathBuf::from(layout::REPO_FILE), Change::Updated)])
+        Ok(vec![(
+            PathBuf::from(layout::REPO_FILE),
+            Change::Updated("the workflows it generates".to_string()),
+        )])
     }
 
     fn spliced(&self, text: &str) -> String {

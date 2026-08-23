@@ -52,12 +52,8 @@ fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::R
 
 fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
     let name = target(list, named)?;
-    let (image, _, entries) = of_target(list, &name).ok_or(unknown(&name))?;
-    let claims = entries
-        .iter()
-        .filter_map(|entry| entry.module.as_ref())
-        .any(|module| !module.satisfies.is_empty());
-    if !claims && image.conforms.is_empty() {
+    let (image, _, _) = of_target(list, &name).ok_or(unknown(&name))?;
+    if image.conforms.is_empty() {
         return Ok(String::new());
     }
     let family = image.base.as_ref().map_or("", |base| base.family.as_str());
@@ -86,8 +82,8 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
         None => match datastream(&list, Some(&name))? {
             empty if empty.is_empty() => {
                 return Err(format!(
-                    "nothing in `{name}` declares `satisfies` or `conforms`, so there is nothing \
-                     to measure it against; name a datastream to scan it anyway"
+                    "`{name}` declares no `conforms`, so there is nothing to measure it against; \
+                     name a datastream to scan it anyway"
                 ))
             }
             path => PathBuf::from(path),

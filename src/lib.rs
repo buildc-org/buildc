@@ -125,7 +125,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
 
     let basis = resolve::workflow::Basis::of(&list);
     let workflows = resolve::workflow::resolve(&list, &basis, &mut issues);
-    let facts = resolve::workflow::facts(&basis);
+    let facts = resolve::workflow::facts(&basis, list.scans_scheduled);
 
     Loaded {
         list,

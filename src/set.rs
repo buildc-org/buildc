@@ -11,6 +11,7 @@ pub const BY_HAND: &str = "nothing can be asked here; edit the `workflows` block
 pub struct Workflows {
     chosen: Vec<&'static str>,
     at: (u32, u32),
+    scans_scheduled: bool,
 }
 
 impl Workflows {
@@ -33,6 +34,7 @@ impl Workflows {
                 .map(|shipped| shipped.stem)
                 .collect(),
             at: list.workflows_at,
+            scans_scheduled: list.scans_scheduled,
         }
     }
 
@@ -65,6 +67,9 @@ impl Workflows {
             return Err(format!("`{}` {}", short.stem, short.needs.unmet()));
         }
 
+        let scans_scheduled = chosen.iter().any(|shipped| shipped.stem == "build")
+            && prompt.confirm("run image scans only on scheduled builds", "Yes", "No")?;
+
         let at = match chosen.iter().any(|shipped| shipped.at.is_some()) {
             false => at,
             true => {
@@ -81,6 +86,7 @@ impl Workflows {
         Ok(Some(Self {
             chosen: chosen.iter().map(|shipped| shipped.stem).collect(),
             at,
+            scans_scheduled,
         }))
     }
 
@@ -109,7 +115,11 @@ impl Workflows {
                     true => String::new(),
                     false => format!(" at=\"{}\"", parse::repo::at_text(self.at)),
                 };
-                format!("workflows{at} {{\n{named}}}")
+                let scan = match self.scans_scheduled {
+                    true => " scan=\"scheduled\"",
+                    false => "",
+                };
+                format!("workflows{at}{scan} {{\n{named}}}")
             }
         };
         let mut out = text.to_string();
@@ -145,6 +155,7 @@ mod tests {
         Workflows {
             chosen: chosen.to_vec(),
             at,
+            scans_scheduled: false,
         }
     }
 

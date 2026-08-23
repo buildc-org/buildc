@@ -148,11 +148,16 @@ pub fn unlocked(list: &List, args: &[String]) -> Vec<&'static Shipped> {
         .collect()
 }
 
-pub fn facts(basis: &Basis) -> Vec<&'static str> {
-    match basis.kernel {
+pub fn facts(basis: &Basis, scans_scheduled: bool) -> Vec<&'static str> {
+    let mut facts = match basis.kernel {
         true => vec!["kernel"],
         false => vec!["no-kernel"],
-    }
+    };
+    facts.push(match scans_scheduled {
+        true => "scheduled-scan",
+        false => "push-scan",
+    });
+    facts
 }
 
 pub struct Declared {

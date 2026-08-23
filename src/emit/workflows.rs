@@ -68,6 +68,19 @@ mod tests {
     }
 
     #[test]
+    fn a_scheduled_scan_is_absent_from_pushes() {
+        let out = render(BODY, None, &["no-kernel", "scheduled-scan"]);
+        assert!(
+            out.contains("    if: github.event_name == 'schedule'\n"),
+            "{out}"
+        );
+        assert!(
+            !out.contains("    if: github.event_name != 'pull_request'\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn fresh_jobs_fetch_modules_before_reading_the_plan() {
         assert!(BODY
             .contains("run: |\n          ./scripts/buildc.sh fetch modules\n          selection="));
@@ -93,7 +106,10 @@ mod tests {
     #[test]
     fn no_marker_reaches_a_generated_file() {
         for shipped in crate::resolve::workflow::SHIPPED {
-            for facts in [&["kernel"][..], &["no-kernel"][..]] {
+            for facts in [
+                &["kernel", "push-scan"][..],
+                &["no-kernel", "scheduled-scan"][..],
+            ] {
                 for schedule in [None, Some("0 5 * * 1")] {
                     let out = render(shipped.body, schedule, facts);
                     assert!(!out.contains("buildc:"), "{}\n{out}", shipped.stem);

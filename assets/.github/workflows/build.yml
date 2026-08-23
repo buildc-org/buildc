@@ -645,7 +645,7 @@ jobs:
     name: Scan the claims (${{ matrix.target }})
     runs-on: ubuntu-24.04
     if: github.event_name != 'pull_request'
-
+    if: github.event_name == 'schedule'
     strategy:
       matrix:
         target: ${{ fromJson(needs.compute-matrix.outputs.targets) }}

@@ -152,6 +152,7 @@ pub struct List {
     pub images: Vec<Image>,
     pub workflows: Vec<Workflow>,
     pub workflows_at: (u32, u32),
+    pub scans_scheduled: bool,
     pub sources: Vec<Collection>,
     pub default_image_id: Option<String>,
     pub pr_image_id: Option<String>,

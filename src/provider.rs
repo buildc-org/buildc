@@ -2,6 +2,7 @@ use crate::model::remote::{Collection, REMOTE_DIR};
 use crate::parse::disk::Disk;
 use crate::parse::module::Summary;
 use crate::{layout, parse};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 pub struct Provider {
@@ -100,6 +101,18 @@ impl Index {
         self.held
             .iter()
             .filter(|held| held.declares.keys.iter().any(|has| has == kind))
+            .collect()
+    }
+
+    pub fn claiming(&self, numbers: &BTreeSet<String>) -> Vec<&Provider> {
+        self.held
+            .iter()
+            .filter(|held| {
+                held.declares
+                    .satisfies
+                    .iter()
+                    .any(|number| numbers.contains(number))
+            })
             .collect()
     }
 

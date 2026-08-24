@@ -420,39 +420,43 @@ fn read(path: &Path) -> Result<String, String> {
 }
 
 #[derive(Default)]
-struct Content {
-    rules: BTreeMap<String, String>,
+pub struct Content {
+    pub rules: BTreeMap<String, String>,
+    pub numbers: BTreeMap<String, BTreeSet<String>>,
+    pub titles: BTreeMap<String, String>,
     ids: BTreeSet<String>,
-    profiles: Vec<Profile>,
+    pub profiles: Vec<Profile>,
 }
 
 #[derive(Default)]
-struct Profile {
-    id: String,
+pub struct Profile {
+    pub id: String,
+    pub title: String,
     extends: String,
     selects: Vec<(String, bool)>,
 }
 
 impl Profile {
-    fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         match self.id.rsplit_once("_profile_") {
             Some((_, name)) => name,
             None => &self.id,
         }
     }
 
-    fn is(&self, declared: &str) -> bool {
+    pub fn is(&self, declared: &str) -> bool {
         !declared.is_empty() && (self.id == declared || self.name() == declared)
     }
 }
 
 impl Content {
-    fn read(text: &str) -> Self {
+    pub fn read(text: &str) -> Self {
         let mut content = Content::default();
         let mut rule = String::new();
-        let mut numbered = false;
+        let mut wanted: Option<&str> = None;
         let mut profile: Option<Profile> = None;
         for event in xml::scan(text) {
+            let want = wanted.take();
             match event {
                 xml::Event::Open {
                     name: "Rule",
@@ -463,16 +467,31 @@ impl Content {
                 }
                 xml::Event::Close { name: "Rule" } => rule.clear(),
                 xml::Event::Open {
-                    name: "reference" | "ident" | "version",
+                    name: name @ ("reference" | "ident" | "version" | "title"),
                     ..
-                } => numbered = !rule.is_empty(),
-                xml::Event::Text(text) if numbered => {
-                    content
-                        .rules
-                        .entry(text.to_string())
-                        .or_insert_with(|| rule.clone());
-                    numbered = false;
-                }
+                } => wanted = Some(name),
+                xml::Event::Text(text) => match want {
+                    Some("title") if !rule.is_empty() => {
+                        content
+                            .titles
+                            .entry(rule.clone())
+                            .or_insert_with(|| text.to_string());
+                    }
+                    Some("title") => {
+                        if let Some(profile) = profile.as_mut() {
+                            if profile.title.is_empty() {
+                                profile.title = text.to_string();
+                            }
+                        }
+                    }
+                    Some(_) if !rule.is_empty() => {
+                        content
+                            .rules
+                            .entry(text.to_string())
+                            .or_insert_with(|| rule.clone());
+                    }
+                    _ => {}
+                },
                 xml::Event::Open {
                     name: "Profile",
                     attrs,
@@ -480,7 +499,7 @@ impl Content {
                     profile = Some(Profile {
                         id: xml::attr(attrs, "id").unwrap_or_default().to_string(),
                         extends: xml::attr(attrs, "extends").unwrap_or_default().to_string(),
-                        selects: Vec::new(),
+                        ..Profile::default()
                     })
                 }
                 xml::Event::Close { name: "Profile" } => {
@@ -497,13 +516,30 @@ impl Content {
                         profile.selects.push((idref.to_string(), on));
                     }
                 }
-                _ => numbered = false,
+                _ => {}
             }
         }
+        let mut numbers: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (number, rule) in &content.rules {
+            numbers
+                .entry(rule.clone())
+                .or_default()
+                .insert(number.clone());
+        }
+        content.numbers = numbers;
         content
     }
 
-    fn selected(&self, id: &str) -> BTreeSet<String> {
+    pub fn numbering(&self, rules: &BTreeSet<String>) -> BTreeSet<String> {
+        rules
+            .iter()
+            .filter_map(|rule| self.numbers.get(rule))
+            .flatten()
+            .cloned()
+            .collect()
+    }
+
+    pub fn selected(&self, id: &str) -> BTreeSet<String> {
         self.select(id, 0)
     }
 
@@ -551,4 +587,47 @@ fn results(text: &str) -> BTreeMap<String, String> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::disk::Disk;
+    use crate::provider::Index;
+
+    fn fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(name)
+    }
+
+    #[test]
+    fn the_index_answers_which_modules_claim_a_profile_s_rules() {
+        let content = Content::read(&read(&fixture("tests/scap/datastream.xml")).unwrap());
+        let profile = content
+            .profiles
+            .iter()
+            .find(|profile| profile.is("cis"))
+            .expect("the fixture carries `cis`");
+        assert_eq!(profile.title, "CIS Benchmark");
+        assert_eq!(
+            content
+                .titles
+                .get("xccdf_org.ssgproject.content_rule_package_aide_installed")
+                .map(String::as_str),
+            Some("Install AIDE")
+        );
+
+        let numbers = content.numbering(&content.selected(&profile.id));
+        assert!(numbers.contains("5.2.20") && numbers.contains("RHEL-09-232010"));
+        assert!(!numbers.contains("5.5.2"), "`cis` does not select it");
+
+        let root = fixture("tests/repos/enforced");
+        let index = Index::scan(&root, &[], &Disk::scan(&root), false);
+        let claiming: Vec<String> = index
+            .claiming(&numbers)
+            .iter()
+            .map(|held| held.qualified())
+            .collect();
+        assert_eq!(claiming, ["one/hello"]);
+        assert!(index.claiming(&BTreeSet::new()).is_empty());
+    }
 }

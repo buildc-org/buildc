@@ -909,6 +909,7 @@ pub struct Summary {
     pub requires: Vec<String>,
     pub keys: Vec<String>,
     pub args: Vec<String>,
+    pub satisfies: Vec<String>,
 }
 
 pub fn summary(file: &Path) -> Summary {
@@ -949,6 +950,16 @@ pub fn summary(file: &Path) -> Summary {
         requires: strings("requires"),
         keys: strings("key"),
         args: strings("arg"),
+        satisfies: doc
+            .nodes()
+            .iter()
+            .filter(|node| node.name().value() == "satisfies")
+            .filter_map(KdlNode::children)
+            .flat_map(KdlDocument::nodes)
+            .flat_map(KdlNode::entries)
+            .filter(|entry| entry.name().is_none())
+            .filter_map(|entry| entry.value().as_string().map(str::to_string))
+            .collect(),
     }
 }
 

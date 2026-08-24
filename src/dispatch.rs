@@ -3,6 +3,7 @@ use crate::prompt::Prompt;
 use crate::Command;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const USAGE_ERROR: u8 = 1;
 pub const REPO_ERROR: u8 = 2;
@@ -62,23 +63,41 @@ fn one_name(rest: &[&str], spec: &Spec) -> Result<Option<String>, Error> {
 }
 
 fn repo_root(given: Option<PathBuf>) -> Result<PathBuf, Error> {
-    if let Some(root) = given {
-        return Ok(root);
+    let root = match given {
+        Some(root) => root,
+        None => {
+            let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let found = crate::find_root(&here).ok_or_else(|| {
+                Error::Invocation(format!(
+                    "no repo.kdl in {} or any parent directory",
+                    here.display()
+                ))
+            })?;
+            match here.strip_prefix(&found).map(|d| d.components().count()) {
+                Ok(0) => PathBuf::from("."),
+                Ok(up) => (0..up).map(|_| "..").collect(),
+                Err(_) => found,
+            }
+        }
+    };
+    note_pin(&root);
+    Ok(root)
+}
+
+static PINNED: AtomicBool = AtomicBool::new(false);
+
+fn note_pin(root: &Path) {
+    if PINNED.swap(true, Ordering::Relaxed) {
+        return;
     }
-    let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let found = crate::find_root(&here).ok_or_else(|| {
-        Error::Invocation(format!(
-            "no repo.kdl in {} or any parent directory",
-            here.display()
-        ))
-    })?;
-    Ok(
-        match here.strip_prefix(&found).map(|d| d.components().count()) {
-            Ok(0) => PathBuf::from("."),
-            Ok(up) => (0..up).map(|_| "..").collect(),
-            Err(_) => found,
-        },
-    )
+    if let Some(version) = crate::parse::repo::pinned_elsewhere(root) {
+        eprintln!(
+            "buildc: this repository pins buildc {version} and this is {}, so what it generates may \
+             differ; `buildc generate` writes this release's output, `buildc-version` moves the pin, \
+             and `scripts/buildc.sh` fetches the pinned release",
+            crate::model::image::BUILDC_VERSION
+        );
+    }
 }
 
 fn why_on_host(command: Command, arg: Option<&str>) -> Result<ExitCode, Error> {

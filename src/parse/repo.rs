@@ -17,11 +17,11 @@ pub const REPO: Node = Node::new("repo",
             .arg(Arg::Int, Say::new("`{}` needs a number", "not a version", "`schema-version 1`"))
             .once(""),
         Node::new("buildc-version",
-            "The buildc release this repository is built with, which every command holds itself to.")
+            "The buildc release this repository is built with, which `scripts/buildc.sh` fetches for the build.")
             .arg(Arg::Str, Say::new("`{}` needs a release", "not a version",
                 concat!("`buildc-version \"", env!("CARGO_PKG_VERSION"),
-                        "\"`, the release the build fetches and every command checks itself \
-                         against")))
+                        "\"`, the release the build fetches; another release reads the \
+                         repository and says so")))
             .once(""),
         Node::new("name",
             "What the repository calls itself, whatever the directory holding it is called.")
@@ -198,20 +198,12 @@ pub fn compatible(root: &Path) -> Issues {
         return issues;
     }
 
-    if let Some((version, span)) = pins.buildc.filter(|(v, _)| v != BUILDC_VERSION) {
-        issues.push(
-            Issue::new(
-                format!("this repository is pinned to buildc {version}"),
-                &pins.src,
-            )
-            .at(span, format!("this is buildc {BUILDC_VERSION}"))
-            .help(
-                "run the pinned release, which `scripts/buildc.sh` fetches, or edit `buildc-version` \
-                 to move the pin to this one",
-            ),
-        );
-    }
     issues
+}
+
+pub fn pinned_elsewhere(root: &Path) -> Option<String> {
+    let version = pins(root)?.buildc?.0;
+    (version != BUILDC_VERSION).then_some(version)
 }
 
 impl List {
@@ -644,6 +636,34 @@ pub fn at_text((hour, minute): (u32, u32)) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn root(name: &str, text: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("buildc-pin-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a temp root");
+        std::fs::write(dir.join(layout::REPO_FILE), text).expect("repo.kdl");
+        dir
+    }
+
+    #[test]
+    fn a_pin_naming_another_release_is_reported_and_this_one_is_not() {
+        let other = root("other", "schema-version 1\nbuildc-version \"0.0.1\"\n");
+        assert_eq!(pinned_elsewhere(&other).as_deref(), Some("0.0.1"));
+        let ours = root(
+            "ours",
+            &format!("schema-version 1\nbuildc-version \"{BUILDC_VERSION}\"\n"),
+        );
+        assert_eq!(pinned_elsewhere(&ours), None);
+        let none = root("none", "schema-version 1\n");
+        assert_eq!(pinned_elsewhere(&none), None);
+    }
+
+    #[test]
+    fn a_pin_naming_another_release_refuses_nothing() {
+        let dir = root("open", "schema-version 1\nbuildc-version \"0.0.1\"\n");
+        let issues = compatible(&dir);
+        assert!(issues.is_empty(), "{}", issues.plain());
+    }
 
     fn messages(text: &str) -> Vec<String> {
         let doc: KdlDocument = text.parse().expect("valid KDL");

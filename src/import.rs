@@ -35,7 +35,10 @@ pub fn find(
     enforce: bool,
 ) -> Result<Vec<Found>, String> {
     let (owner, module) = split(name);
-    if module.is_empty() || module.contains('/') || module.starts_with('.') {
+    if module
+        .split('/')
+        .any(|part| part.is_empty() || part.starts_with('.'))
+    {
         return Err(format!(
             "`{name}` is not a module: `<name>`, or `<owner>/<name>` when two collections have it"
         ));
@@ -103,23 +106,34 @@ pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<P
             },
         };
         let tree = tree.join(collection.subtree().unwrap_or(""));
-        let dirs = match std::fs::read_dir(&tree) {
-            Ok(dirs) => dirs,
+        let mut dirs: Vec<PathBuf> = match std::fs::read_dir(&tree) {
+            Ok(dirs) => dirs.flatten().map(|entry| entry.path()).collect(),
             Err(_) if !fetch => continue,
             Err(err) => return Err(format!("`{}`: {}: {err}", collection.name, tree.display())),
         };
-        for dir in dirs.flatten().map(|entry| entry.path()) {
+        while let Some(dir) = dirs.pop() {
+            let hidden = |name: &std::ffi::OsStr| name.to_string_lossy().starts_with('.');
+            if !dir.is_dir() || dir.file_name().is_some_and(hidden) {
+                continue;
+            }
             let manifest = dir.join(layout::MODULE_FILE);
             if !manifest.is_file() {
+                dirs.extend(
+                    std::fs::read_dir(&dir)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .map(|entry| entry.path()),
+                );
                 continue;
             }
             listed.push(Provider {
                 owner: Some(collection.name.clone()),
                 name: dir
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
+                    .strip_prefix(&tree)
+                    .unwrap_or(&dir)
+                    .display()
+                    .to_string(),
                 here: false,
                 declares: crate::parse::module::summary(&manifest),
             });

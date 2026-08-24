@@ -610,17 +610,24 @@ fn flow_repo_sourced(name: &str) -> PathBuf {
     root
 }
 
-fn flow_repo_claiming(name: &str) -> PathBuf {
+fn flow_repo_with(name: &str, collection: &str) -> PathBuf {
     let root = flow_repo(name);
     let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
         .unwrap()
         .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
     repo.push_str(&format!(
-        "sources {{\n    three {:?}\n}}\n",
-        crate_dir().join("tests/collections/three").display()
+        "sources {{\n    {collection} {:?}\n}}\n",
+        crate_dir()
+            .join("tests/collections")
+            .join(collection)
+            .display()
     ));
     std::fs::write(root.join("repo.kdl"), repo).unwrap();
     root
+}
+
+fn flow_repo_claiming(name: &str) -> PathBuf {
+    flow_repo_with(name, "three")
 }
 
 fn lists_sshd(root: &Path) {
@@ -1137,6 +1144,28 @@ fn flows() {
         ],
     );
     buildc(&several, &["--no-tui", "--root", ".", "check"]);
+
+    let nested = flow_repo_with("flow-nested", "four");
+    flow(
+        "flow-import-nested",
+        &nested,
+        None,
+        &["--root", ".", "import", "module"],
+    );
+    let image = std::fs::read_to_string(nested.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains("source \"four\" {\n            module \"hardening/coredumps\"\n        }"),
+        "{image}"
+    );
+    assert!(nested
+        .join("modules/.remote/four/hardening/coredumps/module.kdl")
+        .is_file());
+    buildc(&nested, &["--no-tui", "--root", ".", "fetch", "modules"]);
+    buildc(&nested, &["--no-tui", "--root", ".", "check"]);
+    buildc(&nested, &["--no-tui", "--root", ".", "generate"]);
+    assert!(nested
+        .join("generated/example.d/four/hardening/coredumps.sh")
+        .is_file());
 
     let root = flow_repo_sourced("flow-copy");
     flow(

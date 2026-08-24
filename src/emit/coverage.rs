@@ -2,7 +2,7 @@ use crate::emit::json::Json;
 use crate::emit::Table;
 use crate::model::image::{Entry, Image};
 use crate::provider::Index;
-use crate::scap::{Content, Profile};
+use crate::scap::{ordinal, Content, Profile};
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
@@ -78,13 +78,6 @@ pub fn of<'a>(image: &'a Image, content: &'a Content, index: &Index) -> Option<C
         profile,
         rows,
     })
-}
-
-fn ordinal(number: &str) -> Vec<u64> {
-    number
-        .split('.')
-        .map(|part| part.parse().unwrap_or(u64::MAX))
-        .collect()
 }
 
 const HEADER: &[&str] = &["Number", "Rule", "Claimed by", "Would claim"];

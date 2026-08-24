@@ -486,13 +486,14 @@ fn flow(name: &str, dir: &Path, gh: Option<&str>, args: &[&str]) {
     compare(name, "transcript.txt", &transcript);
 }
 
-fn drawn_flow(name: &str, dir: &Path) {
+fn drawn_flow(name: &str, dir: &Path, command: &str, after: &str, steps: &[&[u8]]) {
     use std::io::{Read, Write};
     use std::process::Stdio;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
-    let command = format!("'{}' --root . why", env!("CARGO_BIN_EXE_tect"));
     let mut child = std::process::Command::new("script")
-        .args(["-qfec", &command, "/dev/null"])
+        .args(["-qfec", command, "/dev/null"])
         .current_dir(dir)
         .env("BUILDC_ASSETS", crate_dir().join("assets"))
         .stdin(Stdio::piped())
@@ -500,21 +501,32 @@ fn drawn_flow(name: &str, dir: &Path) {
         .stderr(Stdio::piped())
         .spawn()
         .expect("script from util-linux");
-    let mut input = child.stdin.take().unwrap();
+    let input = Arc::new(Mutex::new(child.stdin.take().unwrap()));
     let mut output = child.stdout.take().unwrap();
-    let mut raw = Vec::new();
-    let mut byte = [0];
-    while !raw.ends_with(b"\x1b[6n") {
-        output.read_exact(&mut byte).unwrap();
-        raw.push(byte[0]);
+    let raw = Arc::new(Mutex::new(Vec::new()));
+    let reader = {
+        let (input, raw) = (input.clone(), raw.clone());
+        std::thread::spawn(move || {
+            let mut byte = [0];
+            while output.read_exact(&mut byte).is_ok() {
+                let mut held = raw.lock().unwrap();
+                held.push(byte[0]);
+                if held.ends_with(b"\x1b[6n") {
+                    let mut input = input.lock().unwrap();
+                    let _ = input.write_all(b"\x1b[1;1R");
+                    let _ = input.flush();
+                }
+            }
+        })
+    };
+    for keys in steps {
+        std::thread::sleep(Duration::from_millis(400));
+        let mut input = input.lock().unwrap();
+        input.write_all(keys).unwrap();
+        input.flush().unwrap();
     }
-    input.write_all(b"\x1b[1;1R").unwrap();
-    input.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    input.write_all(b"\r").unwrap();
-    drop(input);
-    output.read_to_end(&mut raw).unwrap();
     let status = child.wait().unwrap();
+    reader.join().unwrap();
     let mut errors = String::new();
     child
         .stderr
@@ -522,14 +534,19 @@ fn drawn_flow(name: &str, dir: &Path) {
         .unwrap()
         .read_to_string(&mut errors)
         .unwrap();
-    assert!(status.success(), "{errors}");
+    let raw = raw.lock().unwrap();
+    assert!(
+        status.success(),
+        "{errors}{}",
+        String::from_utf8_lossy(&raw)
+    );
 
     let text = String::from_utf8_lossy(&raw);
-    let stable = text.rsplit_once("which module:").unwrap().1;
+    let stable = text.rsplit_once(after).unwrap().1;
     compare(
         name,
         "transcript.txt",
-        &format!("which module:{stable}==== exit 0\n"),
+        &format!("{after}{stable}==== exit 0\n"),
     );
 }
 
@@ -605,6 +622,18 @@ fn flow_repo_claiming(name: &str) -> PathBuf {
     std::fs::write(root.join("repo.kdl"), repo).unwrap();
     root
 }
+
+fn lists_sshd(root: &Path) {
+    let file = root.join("example.image.kdl");
+    let listed = std::fs::read_to_string(&file).unwrap().replace(
+        "    modules {\n    }",
+        "    modules {\n        module \"sshd\"\n    }",
+    );
+    assert!(listed.contains("module \"sshd\""), "{listed}");
+    std::fs::write(file, listed).unwrap();
+}
+
+const CLAIMANT: &str = "description \"SSH daemon hardening\"\n\nsupports \"fedora\"\n";
 
 const KEYHOLDER: &str = "description \"Signs the modules it builds\"\n\n\
      supports \"fedora\"\n\n\
@@ -820,6 +849,52 @@ fn flows() {
     let copied = std::fs::read_to_string(vendored.join("example.image.kdl")).unwrap();
     assert!(!copied.contains("conforms"), "{copied}");
 
+    let claimed = flow_repo("flow-set-claims-in");
+    lists_sshd(&claimed);
+    std::fs::create_dir_all(claimed.join("modules/sshd")).unwrap();
+    std::fs::write(
+        claimed.join("modules/sshd/module.kdl"),
+        format!("{CLAIMANT}\nsatisfies {{\n    cis-fedora \"5.5.2\"\n}}\n"),
+    )
+    .unwrap();
+    let claims = [
+        "--root",
+        ".",
+        "set",
+        "claims",
+        "sshd",
+        "--datastream",
+        stream.as_str(),
+    ];
+    for name in ["flow-set-claims", "flow-set-claims-again"] {
+        flow(name, &claimed, None, &claims);
+    }
+    let declared = std::fs::read_to_string(claimed.join("modules/sshd/module.kdl")).unwrap();
+    assert_eq!(declared.matches("satisfies ").count(), 1, "{declared}");
+    assert!(
+        declared
+            .contains("    cis-fedora \"1.1.1.1\" \\\n        \"5.2.20\" \\\n        \"5.5.2\"\n"),
+        "{declared}"
+    );
+    buildc(&claimed, &["--no-tui", "--root", ".", "check"]);
+
+    let drawn = flow_repo("flow-set-claims-drawn-in");
+    lists_sshd(&drawn);
+    std::fs::create_dir_all(drawn.join("modules/sshd")).unwrap();
+    std::fs::write(drawn.join("modules/sshd/module.kdl"), CLAIMANT).unwrap();
+    drawn_flow(
+        "flow-set-claims-drawn",
+        &drawn,
+        &format!(
+            "'{}' --root . set claims sshd --datastream '{stream}'",
+            env!("CARGO_BIN_EXE_tect")
+        ),
+        "which rules `sshd` claims:",
+        &[b"\r", b"aide \x1b[B\r"],
+    );
+    let picked = std::fs::read_to_string(drawn.join("modules/sshd/module.kdl")).unwrap();
+    assert!(picked.contains("    cis-fedora \"1.1.1.1\"\n"), "{picked}");
+
     let prompted = flow_repo("flow-set");
     flow(
         "flow-set-workflows",
@@ -955,7 +1030,13 @@ fn flows() {
     );
     assert!(listed.contains("module \"core/one\""), "{listed}");
     std::fs::write(image, listed).unwrap();
-    drawn_flow("flow-why-picker", &why);
+    drawn_flow(
+        "flow-why-picker",
+        &why,
+        &format!("'{}' --root . why", env!("CARGO_BIN_EXE_tect")),
+        "which module:",
+        &[b"\r"],
+    );
 
     let kernel = flow_repo_sourced("flow-kernel");
     flow(

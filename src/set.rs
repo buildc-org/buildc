@@ -1,10 +1,11 @@
 use crate::dispatch::Error;
 use crate::prompt::Prompt;
 use crate::resolve::workflow::{Basis, Shipped, DEFAULT_AT, SHIPPED};
-use crate::scap::Content;
+use crate::scap::{ordinal, rule_name, Content};
 use crate::ui::tree::Change;
 use crate::ui::{Answer, Choice};
 use crate::{layout, parse};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const BY_HAND: &str = "nothing can be asked here; edit the `workflows` block in repo.kdl, \
@@ -13,6 +14,35 @@ pub const BY_HAND: &str = "nothing can be asked here; edit the `workflows` block
 pub const CONFORMS_BY_HAND: &str = "nothing can be asked here; write `conforms \"<profile>\"` \
                                     into the image, and `buildc scap content` prints the \
                                     datastream it is then measured with";
+
+pub const CLAIMS_BY_HAND: &str = "nothing can be asked here; write `satisfies { <benchmark> \
+                                  \"<number>\" }` into the module, and `buildc scap content` \
+                                  prints the datastream those numbers are read out of";
+
+fn splice(text: &str, was: Option<crate::diag::Span>, block: &str) -> String {
+    let mut out = text.to_string();
+    match was {
+        Some(was) => {
+            let end = was.offset + was.len;
+            let start = match block.is_empty() {
+                true => text[..was.offset].trim_end_matches(['\n', ' ']).len(),
+                false => was.offset,
+            };
+            out.replace_range(start..end, block);
+        }
+        None if block.is_empty() => {}
+        None => {
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&format!("\n{block}\n"));
+        }
+    }
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
 
 pub struct Workflows {
     chosen: Vec<&'static str>,
@@ -128,28 +158,7 @@ impl Workflows {
                 format!("workflows{at}{scan} {{\n{named}}}")
             }
         };
-        let mut out = text.to_string();
-        match parse::repo::workflows_span(text) {
-            Some(was) => {
-                let end = was.offset + was.len;
-                let start = match block.is_empty() {
-                    true => text[..was.offset].trim_end_matches(['\n', ' ']).len(),
-                    false => was.offset,
-                };
-                out.replace_range(start..end, &block);
-            }
-            None if block.is_empty() => {}
-            None => {
-                if !out.ends_with('\n') {
-                    out.push('\n');
-                }
-                out.push_str(&format!("\n{block}\n"));
-            }
-        }
-        if !out.ends_with('\n') {
-            out.push('\n');
-        }
-        out
+        splice(text, parse::repo::workflows_span(text), &block)
     }
 }
 
@@ -320,6 +329,170 @@ impl Conforms {
     }
 }
 
+fn group(number: &str) -> &str {
+    number.rsplit_once('.').map_or("other", |(head, _)| head)
+}
+
+pub struct Claims {
+    file: PathBuf,
+    benchmark: String,
+    profile: String,
+    numbers: Vec<String>,
+    claimed: usize,
+}
+
+impl Claims {
+    pub fn collect(
+        root: &Path,
+        named: &str,
+        datastream: Option<PathBuf>,
+        prompt: &Prompt,
+    ) -> Result<Option<Self>, Error> {
+        let file = Path::new(layout::MODULES)
+            .join(named)
+            .join(layout::MODULE_FILE);
+        if !root.join(&file).is_file() {
+            return Err(Error::Invocation(format!(
+                "`{named}` is not a module this repository holds; there is no {}",
+                file.display()
+            )));
+        }
+        let summary = parse::module::summary(&root.join(&file));
+        let family = summary.supports.first().map_or("", String::as_str);
+        let path = crate::scap::content_path(family, datastream.as_deref())?;
+        let text =
+            std::fs::read_to_string(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+        let content = Content::read(&text);
+        if content.profiles.is_empty() {
+            return Err(format!("{} carries no profile to claim against", path.display()).into());
+        }
+
+        let options: Vec<Choice> = content
+            .profiles
+            .iter()
+            .map(|profile| Choice::new(profile.name(), &profile.title))
+            .collect();
+        let Some(chosen) = prompt.choose("which profile", &options)? else {
+            return Ok(None);
+        };
+        let profile = &content.profiles[chosen];
+
+        let selected = content.selected(&profile.id);
+        let mut rules: Vec<(&String, &BTreeSet<String>)> = selected
+            .iter()
+            .filter_map(|rule| content.numbers.get(rule).map(|numbers| (rule, numbers)))
+            .collect();
+        rules.sort_by_key(|(rule, numbers)| {
+            (
+                numbers
+                    .iter()
+                    .next()
+                    .map(|n| ordinal(n))
+                    .unwrap_or_default(),
+                (*rule).clone(),
+            )
+        });
+        if rules.is_empty() {
+            return Err(format!(
+                "no rule `{}` selects carries a number, so nothing can be claimed against it",
+                profile.name()
+            )
+            .into());
+        }
+        match selected.len() - rules.len() {
+            0 => {}
+            missed => println!(
+                "{missed} of the rules `{}` selects are reached by no number of their own, so no \
+                 `satisfies` can name them.\n",
+                profile.name()
+            ),
+        }
+
+        let first = |at: usize| rules[at].1.iter().next().expect("a number reaches it");
+        let options: Vec<Choice> = (0..rules.len())
+            .map(|at| {
+                let (rule, _) = rules[at];
+                Choice::new(
+                    format!(
+                        "{}  {}  {}",
+                        first(at),
+                        content.titles.get(rule).unwrap_or(rule),
+                        rule_name(rule)
+                    ),
+                    content.descriptions.get(rule).cloned().unwrap_or_default(),
+                )
+                .within(group(first(at)))
+            })
+            .collect();
+        let held = crate::scap::reached(&content, summary.satisfies.iter());
+        let on: Vec<usize> = (0..rules.len())
+            .filter(|at| held.contains(rules[*at].0))
+            .collect();
+
+        let Answer::Chosen(chosen) =
+            prompt.choose_many(&format!("which rules `{named}` claims"), &options, &on)?
+        else {
+            return Ok(None);
+        };
+
+        // A number this profile offers no rule for stays, so a claim written under another profile is never dropped.
+        let offered: BTreeSet<&String> = rules
+            .iter()
+            .flat_map(|(_, numbers)| numbers.iter())
+            .collect();
+        let mut numbers: Vec<String> = summary
+            .satisfies
+            .iter()
+            .filter(|number| !offered.contains(number))
+            .cloned()
+            .collect();
+        numbers.extend(chosen.iter().map(|at| first(*at).clone()));
+        numbers.sort_by_key(|number| (ordinal(number), number.clone()));
+        numbers.dedup();
+        Ok(Some(Self {
+            file,
+            benchmark: match family.is_empty() {
+                true => profile.name().to_string(),
+                false => format!("{}-{family}", profile.name()),
+            },
+            profile: profile.name().to_string(),
+            numbers,
+            claimed: chosen.len(),
+        }))
+    }
+
+    pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
+        let file = root.join(&self.file);
+        let text =
+            std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
+        let spliced = splice(&text, parse::module::satisfies_span(&text), &self.block());
+        std::fs::write(&file, spliced).map_err(|err| format!("{}: {err}", file.display()))?;
+        Ok(vec![(
+            self.file.clone(),
+            Change::Updated(match self.claimed {
+                0 => format!("claiming no rule of `{}`", self.profile),
+                1 => format!("claiming one rule of `{}`", self.profile),
+                many => format!("claiming {many} rules of `{}`", self.profile),
+            }),
+        )])
+    }
+
+    fn block(&self) -> String {
+        match self.numbers.is_empty() {
+            true => String::new(),
+            false => format!(
+                "satisfies {{\n    {} {}\n}}",
+                self.benchmark,
+                self.numbers
+                    .iter()
+                    .map(|number| format!("\"{number}\""))
+                    .collect::<Vec<String>>()
+                    .join(" \\\n        ")
+            ),
+        }
+    }
+}
+
 fn offer(
     image: &crate::model::image::Image,
     content: &Content,
@@ -391,6 +564,13 @@ mod tests {
                 .unwrap(),
             "image {\n    name \"Example\"\nconforms \"cis\"\n\n}\n"
         );
+    }
+
+    #[test]
+    fn a_number_that_does_not_nest_goes_in_the_one_flat_branch() {
+        assert_eq!(group("1.1.1.1"), "1.1.1");
+        assert_eq!(group("5.2"), "5");
+        assert_eq!(group("RHEL-09-232010"), "other");
     }
 
     fn set(chosen: &[&'static str], at: (u32, u32)) -> Workflows {

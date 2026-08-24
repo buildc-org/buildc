@@ -901,6 +901,15 @@ pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Ke
     })
 }
 
+pub fn satisfies_span(kdl: &str) -> Option<Span> {
+    let doc: KdlDocument = kdl.parse().ok()?;
+    let node = doc
+        .nodes()
+        .iter()
+        .find(|node| node.name().value() == "satisfies")?;
+    Some(node.span().into())
+}
+
 #[derive(Default)]
 pub struct Summary {
     pub description: String,

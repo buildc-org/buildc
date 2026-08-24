@@ -748,6 +748,31 @@ fn flows() {
     );
     assert_eq!(listed("example/gaming"), "");
 
+    let measured = flow_repo("flow-set-conforms-in");
+    let mut repo = std::fs::read_to_string(measured.join("repo.kdl"))
+        .unwrap()
+        .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
+    repo.push_str(&format!(
+        "sources {{\n    three {:?}\n}}\n",
+        crate_dir().join("tests/collections/three").display()
+    ));
+    std::fs::write(measured.join("repo.kdl"), repo).unwrap();
+    for name in ["flow-set-conforms", "flow-set-conforms-again"] {
+        flow(
+            name,
+            &measured,
+            None,
+            &["--root", ".", "set", "conforms", "--datastream", &stream],
+        );
+    }
+    let declared = std::fs::read_to_string(measured.join("example.image.kdl")).unwrap();
+    assert_eq!(declared.matches("conforms ").count(), 1, "{declared}");
+    assert!(
+        declared.contains("    conforms \"cis_server_l2\"\n")
+            && declared.contains("source \"three\" {\n            module \"sshd\""),
+        "{declared}"
+    );
+
     let prompted = flow_repo("flow-set");
     flow(
         "flow-set-workflows",

@@ -153,6 +153,19 @@ impl Workflows {
     }
 }
 
+pub(crate) fn cost(measured: &str, enforce: bool) -> String {
+    match enforce {
+        false => format!(
+            "A `conforms` turns the scan on: every build measures {measured} against the profile \
+             and publishes the score."
+        ),
+        true => format!(
+            "A `conforms` turns the scan on, and this repository enforces: every build measures \
+             {measured} against the profile, and a rule it fails fails the build."
+        ),
+    }
+}
+
 pub struct Conforms {
     file: PathBuf,
     image: String,
@@ -162,6 +175,20 @@ pub struct Conforms {
 }
 
 impl Conforms {
+    pub(crate) fn declaring(
+        image: &crate::model::image::Image,
+        profile: &str,
+        brought: Vec<String>,
+    ) -> Self {
+        Self {
+            file: PathBuf::from(image.src.name()),
+            image: image.name.clone(),
+            profile: profile.to_string(),
+            brought,
+            bring: None,
+        }
+    }
+
     pub fn collect(
         root: &Path,
         named: Option<String>,
@@ -219,21 +246,7 @@ impl Conforms {
             .into());
         }
 
-        println!(
-            "{}\n",
-            match list.audit_enforce {
-                false => format!(
-                    "A `conforms` turns the scan on: every build measures `{}` against the \
-                     profile and publishes the score.",
-                    image.id
-                ),
-                true => format!(
-                    "A `conforms` turns the scan on, and this repository enforces: every build \
-                     measures `{}` against the profile, and a rule it fails fails the build.",
-                    image.id
-                ),
-            }
-        );
+        println!("{}\n", cost(&format!("`{}`", image.id), list.audit_enforce));
         let options: Vec<Choice> = content
             .profiles
             .iter()

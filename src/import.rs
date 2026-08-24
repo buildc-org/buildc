@@ -330,6 +330,7 @@ pub struct Module {
     members: Vec<Member>,
     listing: Listing,
     workflows: Option<crate::set::Workflows>,
+    conforms: Vec<crate::set::Conforms>,
 }
 
 impl Module {
@@ -339,6 +340,7 @@ impl Module {
         sources: &[Collection],
         enforce: bool,
         images: Vec<String>,
+        datastream: Option<&Path>,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
         let (list, _) = crate::model::image::List::load(root);
@@ -419,10 +421,15 @@ impl Module {
 
         let mut members = also;
         members.extend(picked.into_iter().map(|(from, name)| Member { from, name }));
+        let brought: Vec<String> = members.iter().map(|member| member.name.clone()).collect();
+        let conforms = measured(
+            &list, &listing, &named, &declares, datastream, &brought, prompt,
+        )?;
         Ok(Self {
             members,
             listing,
             workflows,
+            conforms,
         })
     }
 
@@ -472,6 +479,9 @@ impl Module {
         if let Some(workflows) = &self.workflows {
             wrote.extend(workflows.apply(root)?);
         }
+        for conforms in &self.conforms {
+            wrote.extend(conforms.apply(root)?);
+        }
         Ok(wrote)
     }
 
@@ -504,6 +514,7 @@ pub fn bring(
         members,
         listing: Listing::collect(root, vec![image.to_string()], &Prompt::silent())?,
         workflows: None,
+        conforms: Vec::new(),
     })
 }
 
@@ -602,6 +613,100 @@ fn short(
     }
 }
 
+fn measured(
+    list: &crate::model::image::List,
+    listing: &Listing,
+    named: &[String],
+    declares: &[crate::parse::module::Summary],
+    datastream: Option<&Path>,
+    brought: &[String],
+    prompt: &Prompt,
+) -> Result<Vec<crate::set::Conforms>, String> {
+    let claims: Vec<&String> = declares
+        .iter()
+        .flat_map(|held| held.satisfies.iter())
+        .collect();
+    if !prompt.asks() || claims.is_empty() {
+        return Ok(Vec::new());
+    }
+    let images: Vec<&crate::model::image::Image> = listing
+        .images()
+        .iter()
+        .filter_map(|named| list.images.iter().find(|image| image.name == *named))
+        .filter(|image| image.conforms.is_empty())
+        .collect();
+    let Some(first) = images.first() else {
+        return Ok(Vec::new());
+    };
+    let family = first.base.as_ref().map_or("", |base| base.family.as_str());
+    let Ok(path) = crate::scap::content_path(family, datastream) else {
+        return Ok(Vec::new());
+    };
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(err) if datastream.is_some() => return Err(format!("{}: {err}", path.display())),
+        Err(_) => return Ok(Vec::new()),
+    };
+    let content = crate::scap::Content::read(&text);
+    let claimed = crate::scap::reached(&content, claims.into_iter());
+    let profiles: Vec<&crate::scap::Profile> = content
+        .profiles
+        .iter()
+        .filter(|profile| !content.selected(&profile.id).is_disjoint(&claimed))
+        .collect();
+    if profiles.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let measured = said(
+        &images
+            .iter()
+            .map(|i| format!("`{}`", i.id))
+            .collect::<Vec<_>>(),
+    );
+    println!(
+        "{} {} rules {} {}, and {measured} {} no `conforms`.\n{}\n",
+        said(
+            &named
+                .iter()
+                .map(|name| format!("`{name}`"))
+                .collect::<Vec<_>>()
+        ),
+        match named.len() {
+            1 => "claims",
+            _ => "claim",
+        },
+        said(
+            &profiles
+                .iter()
+                .map(|p| format!("`{}`", p.name()))
+                .collect::<Vec<_>>()
+        ),
+        match profiles.len() {
+            1 => "selects",
+            _ => "select",
+        },
+        match images.len() {
+            1 => "declares",
+            _ => "declare",
+        },
+        crate::set::cost(&measured, list.audit_enforce),
+    );
+    let options: Vec<Choice> = profiles
+        .iter()
+        .map(|profile| Choice::new(profile.name(), &profile.title))
+        .collect();
+    let Some(chosen) = prompt.choose("which profile", &options)? else {
+        return Ok(Vec::new());
+    };
+    Ok(images
+        .iter()
+        .map(|image| {
+            crate::set::Conforms::declaring(image, profiles[chosen].name(), brought.to_vec())
+        })
+        .collect())
+}
+
 fn quoted(picked: &[(Found, String)]) -> Vec<String> {
     picked.iter().map(|(_, name)| format!("`{name}`")).collect()
 }
@@ -634,6 +739,7 @@ mod tests {
             }],
             listing: Listing::Cancelled,
             workflows: None,
+            conforms: Vec::new(),
         }
         .apply(&root)
         .unwrap();
@@ -669,6 +775,7 @@ mod tests {
             &[],
             false,
             Vec::new(),
+            None,
             &Prompt::silent(),
         );
         let message = match result {

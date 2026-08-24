@@ -97,7 +97,10 @@ pub fn owed<'a>(image: &Image, content: &Content, profile: &Profile, index: &'a 
     }
 }
 
-fn reached<'a>(content: &Content, numbers: impl Iterator<Item = &'a String>) -> BTreeSet<String> {
+pub fn reached<'a>(
+    content: &Content,
+    numbers: impl Iterator<Item = &'a String>,
+) -> BTreeSet<String> {
     numbers
         .filter_map(|number| content.rules.get(number))
         .cloned()

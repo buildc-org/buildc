@@ -1,10 +1,7 @@
+use super::{colour, width};
 use ratatui::crossterm::style::Stylize;
-use ratatui::crossterm::terminal;
 use std::collections::BTreeMap;
-use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-
-const NARROWEST: usize = 80;
 
 const GAP: usize = 2;
 
@@ -127,10 +124,6 @@ fn walk(
     }
 }
 
-fn colour() -> bool {
-    std::io::stdout().is_terminal()
-}
-
 fn fit(desc: &str, room: usize) -> &str {
     if desc.chars().count() <= room {
         return desc;
@@ -144,13 +137,6 @@ fn fit(desc: &str, room: usize) -> &str {
     match cut >= LEAST {
         true => &desc[..cut],
         false => "",
-    }
-}
-
-fn width() -> usize {
-    match colour() {
-        true => terminal::size().map_or(NARROWEST, |(cols, _)| cols as usize),
-        false => NARROWEST,
     }
 }
 

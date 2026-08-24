@@ -1,3 +1,4 @@
+pub mod table;
 pub mod tree;
 
 use ratatui::backend::Backend;
@@ -8,6 +9,20 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
+use std::io::IsTerminal;
+
+const NARROWEST: usize = 80;
+
+pub fn colour() -> bool {
+    std::io::stdout().is_terminal()
+}
+
+pub fn width() -> usize {
+    match colour() {
+        true => terminal::size().map_or(NARROWEST, |(cols, _)| cols as usize),
+        false => NARROWEST,
+    }
+}
 
 pub struct Choice {
     pub label: String,

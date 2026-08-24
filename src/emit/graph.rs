@@ -93,6 +93,12 @@ pub fn of(image: &Image) -> Graph<'_> {
     graph
 }
 
+pub struct Table {
+    pub title: &'static str,
+    pub header: &'static [&'static str],
+    pub rows: Vec<(Vec<String>, bool)>,
+}
+
 pub fn files(image: &Image) -> Vec<(PathBuf, String)> {
     let graph = of(image);
     vec![
@@ -198,6 +204,59 @@ impl<'a> Graph<'a> {
         Json::strings(nodes.iter().map(|&node| self.nodes[node].name.as_str()))
     }
 
+    pub fn tables(&self) -> Vec<Table> {
+        let mut tables = Vec::new();
+        if !self.caps.is_empty() {
+            tables.push(Table {
+                title: "Capabilities",
+                header: &["Name", "Kind", "Provided by", "Required by", "After"],
+                rows: self
+                    .caps
+                    .iter()
+                    .map(|(name, cap)| {
+                        (
+                            vec![
+                                (*name).to_string(),
+                                kind(cap).to_string(),
+                                cap.provider
+                                    .map(|node| self.nodes[node].name.clone())
+                                    .unwrap_or_default(),
+                                self.plain(&cap.required_by),
+                                self.plain(&cap.after),
+                            ],
+                            cap.provider.is_none(),
+                        )
+                    })
+                    .collect(),
+            });
+        }
+        if !self.suppressed.is_empty() {
+            tables.push(Table {
+                title: "Suppressed",
+                header: &["Module", "Provides"],
+                rows: self
+                    .suppressed
+                    .iter()
+                    .map(|(module, provides)| {
+                        (vec![(*module).to_string(), provides.join(", ")], false)
+                    })
+                    .collect(),
+            });
+        }
+        if !self.overrides.is_empty() {
+            tables.push(Table {
+                title: "Overrides",
+                header: &["Module", "Path"],
+                rows: self
+                    .overrides
+                    .iter()
+                    .map(|(module, path)| (vec![(*module).to_string(), (*path).to_string()], false))
+                    .collect(),
+            });
+        }
+        tables
+    }
+
     pub fn markdown(&self) -> String {
         let mut out = format!(
             "# {} capability graph\n\n\
@@ -233,11 +292,7 @@ impl<'a> Graph<'a> {
                 let _ = writeln!(
                     out,
                     "| `{name}` | {} | {} | {} | {} |",
-                    match (cap.file, cap.build_only) {
-                        (false, _) => "capability",
-                        (true, false) => "file",
-                        (true, true) => "file, build only",
-                    },
+                    kind(cap),
                     cap.provider
                         .map(|node| code(&self.nodes[node].name))
                         .unwrap_or_default(),
@@ -270,12 +325,28 @@ impl<'a> Graph<'a> {
         out
     }
 
+    fn plain(&self, nodes: &[usize]) -> String {
+        nodes
+            .iter()
+            .map(|&node| self.nodes[node].name.as_str())
+            .collect::<Vec<&str>>()
+            .join(", ")
+    }
+
     fn list(&self, nodes: &[usize]) -> String {
         nodes
             .iter()
             .map(|&node| code(&self.nodes[node].name))
             .collect::<Vec<String>>()
             .join(", ")
+    }
+}
+
+fn kind(cap: &Cap) -> &'static str {
+    match (cap.file, cap.build_only) {
+        (false, _) => "capability",
+        (true, false) => "file",
+        (true, true) => "file, build only",
     }
 }
 

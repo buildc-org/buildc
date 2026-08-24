@@ -54,6 +54,7 @@ fn context(list: &List, root: &Path) -> String {
 
 pub struct Run {
     pub stdout: String,
+    pub tables: Vec<emit::graph::Table>,
     pub files: Vec<(PathBuf, String)>,
     pub issues: Issues,
     pub context: String,
@@ -262,6 +263,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         verify(root, &files, &mut issues);
     }
 
+    let mut tables = Vec::new();
     let stdout = match command {
         Command::Plan => emit::plan::build(&list, &resolved, &workflows).render(),
         Command::Summary => target
@@ -275,7 +277,10 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
             Some(i) => {
                 let graph = emit::graph::of(&list.images[i]);
                 match command {
-                    Command::Graph => graph.markdown(),
+                    Command::Graph => {
+                        tables = graph.tables();
+                        graph.markdown()
+                    }
                     _ => graph.json().render(),
                 }
             }
@@ -323,6 +328,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
 
     Run {
         stdout,
+        tables,
         files,
         issues,
         context,

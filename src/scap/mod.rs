@@ -4,6 +4,7 @@ use crate::diag::{Issue, Issues, Source, Span};
 use crate::emit::json::Json;
 use crate::emit::plan::of_target;
 use crate::model::image::{Entry, Image, List, NO_FLAVOUR};
+use crate::provider::Index;
 use crate::resolve::overlay;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -29,6 +30,100 @@ pub fn content(root: &Path, named: Option<&str>) -> Result<Verdict, String> {
     };
     println!("{}", datastream(&list, named)?);
     Ok(Verdict::Clean)
+}
+
+pub fn conformance(
+    list: &List,
+    index: &Index,
+    datastream: Option<&Path>,
+) -> Result<Vec<String>, String> {
+    let content = match datastream {
+        Some(path) => Some(Content::read(&read(path)?)),
+        None => None,
+    };
+    let mut out = Vec::new();
+    for image in list.images.iter().filter(|i| !i.conforms.is_empty()) {
+        match &content {
+            Some(content) => out.extend(unclaimed(image, content, index)),
+            None if image.modules().any(|m| !m.satisfies.is_empty()) => {}
+            None => out.push(format!(
+                "`{}` conforms to `{}` and no module it lists declares `satisfies`, so nothing \
+                 here claims a rule of it. Nothing read a datastream, so that counts \
+                 declarations rather than rules: `buildc check --datastream <file>` says which of \
+                 the profile's rules are unclaimed",
+                image.id, image.conforms
+            )),
+        }
+    }
+    Ok(out)
+}
+
+fn reached<'a>(content: &Content, numbers: impl Iterator<Item = &'a String>) -> BTreeSet<String> {
+    numbers
+        .filter_map(|number| content.rules.get(number))
+        .cloned()
+        .collect()
+}
+
+fn unclaimed(image: &Image, content: &Content, index: &Index) -> Option<String> {
+    let Some(profile) = content.profiles.iter().find(|p| p.is(&image.conforms)) else {
+        let names: Vec<&str> = content.profiles.iter().map(Profile::name).collect();
+        return Some(format!(
+            "`{}` conforms to `{}`, which is none of the profiles the datastream carries: {}",
+            image.id,
+            image.conforms,
+            names.join(", ")
+        ));
+    };
+    let selected = content.selected(&profile.id);
+    let claimed = reached(
+        content,
+        image
+            .modules()
+            .flat_map(|module| module.satisfies.iter())
+            .flat_map(|coverage| coverage.rules.iter()),
+    );
+    let open: BTreeSet<String> = selected.difference(&claimed).cloned().collect();
+    if open.is_empty() {
+        return None;
+    }
+
+    let listed: BTreeSet<String> = image.entries.iter().map(Entry::dir).collect();
+    let helping: Vec<&crate::provider::Provider> = index
+        .claiming(&content.numbering(&open))
+        .into_iter()
+        .filter(|provider| !listed.contains(&provider.dir()))
+        .collect();
+    let covered: BTreeSet<String> = helping
+        .iter()
+        .flat_map(|provider| reached(content, provider.declares.satisfies.iter()))
+        .filter(|rule| open.contains(rule))
+        .collect();
+    let named: Vec<String> = helping
+        .iter()
+        .map(|provider| format!("`{}`", provider.qualified()))
+        .collect();
+
+    let searched = match index.unread().is_empty() && index.sourced() {
+        true => "the repository or its collections",
+        false => "the repository",
+    };
+    let found = match named.is_empty() {
+        true => format!("nothing in {searched} claims them"),
+        false => format!("{} would claim {} of them", named.join(", "), covered.len()),
+    };
+    let unsearched = match index.unsearched() {
+        clause if clause.is_empty() => String::new(),
+        clause => format!(". {clause}"),
+    };
+    Some(format!(
+        "`{}` conforms to `{}`, and nothing it lists claims {} of the {} rules it selects; \
+         {found}{unsearched}",
+        image.id,
+        image.conforms,
+        open.len(),
+        selected.len()
+    ))
 }
 
 fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::Resolved>)> {
@@ -593,7 +688,6 @@ fn results(text: &str) -> BTreeMap<String, String> {
 mod tests {
     use super::*;
     use crate::parse::disk::Disk;
-    use crate::provider::Index;
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join(name)
@@ -629,5 +723,27 @@ mod tests {
             .collect();
         assert_eq!(claiming, ["one/hello"]);
         assert!(index.claiming(&BTreeSet::new()).is_empty());
+    }
+
+    #[test]
+    fn the_notice_names_the_rules_no_listed_module_claims() {
+        let root = fixture("tests/repos/enforced");
+        let loaded = crate::load(&root);
+        let said = conformance(
+            &loaded.list,
+            &loaded.index,
+            Some(&fixture("tests/scap/datastream.xml")),
+        )
+        .expect("the fixture datastream reads");
+        assert_eq!(
+            said,
+            [
+                "`enforced` conforms to `cis`, and nothing it lists claims 1 of the 3 rules it \
+              selects; nothing in the repository claims them"
+            ]
+        );
+        assert!(conformance(&loaded.list, &loaded.index, None)
+            .unwrap()
+            .is_empty());
     }
 }

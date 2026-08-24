@@ -65,6 +65,7 @@ pub struct Run {
     pub shadowed: Vec<base::Shadow>,
     pub unpinned: Vec<String>,
     pub modified: Vec<String>,
+    pub(crate) index: provider::Index,
     pub(crate) list: List,
     pub(crate) resolved: Vec<Resolved>,
 }
@@ -92,6 +93,7 @@ pub(crate) struct Loaded {
     resolved: Vec<Resolved>,
     workflows: Vec<resolve::workflow::Declared>,
     facts: Vec<&'static str>,
+    index: provider::Index,
     issues: Issues,
     context: String,
 }
@@ -133,6 +135,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
         resolved,
         workflows,
         facts,
+        index,
         issues,
         context,
     }
@@ -153,6 +156,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         resolved,
         workflows,
         facts,
+        index,
         mut issues,
         context,
     } = loaded;
@@ -339,6 +343,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         shadowed,
         unpinned,
         modified,
+        index,
         list,
         resolved,
     }

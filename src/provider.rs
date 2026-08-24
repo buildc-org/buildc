@@ -84,6 +84,21 @@ impl Index {
         self.sourced
     }
 
+    pub fn unsearched(&self) -> String {
+        let named: Vec<String> = self.unread.iter().map(|name| format!("`{name}`")).collect();
+        match named.len() {
+            0 => String::new(),
+            1 => format!(
+                "The {} collection is declared but not on this machine, so nothing read it: `buildc fetch modules` downloads it",
+                named.join(", ")
+            ),
+            _ => format!(
+                "The {} collections are declared but not on this machine, so nothing read them: `buildc fetch modules` downloads them",
+                named.join(", ")
+            ),
+        }
+    }
+
     pub fn of(&self, capability: &str) -> Vec<&Provider> {
         self.held
             .iter()

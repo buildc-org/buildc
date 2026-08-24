@@ -663,20 +663,21 @@ fn flows() {
         None,
         &["--root", ".", "check"],
     );
+    let stream = crate_dir()
+        .join("tests/scap/datastream.xml")
+        .display()
+        .to_string();
     flow(
         "flow-check-claims",
         &conforms,
         None,
-        &[
-            "--root",
-            ".",
-            "check",
-            "--datastream",
-            &crate_dir()
-                .join("tests/scap/datastream.xml")
-                .display()
-                .to_string(),
-        ],
+        &["--root", ".", "check", "--datastream", &stream],
+    );
+    flow(
+        "flow-coverage",
+        &conforms,
+        None,
+        &["--root", ".", "coverage", "--datastream", &stream],
     );
 
     let root = flow_repo("flow-module");
@@ -1108,6 +1109,59 @@ fn scap_run(root: &Path, args: &[&str]) -> (String, String, i32) {
         String::from_utf8_lossy(&out.stderr).into_owned(),
         out.status.code().unwrap_or_default(),
     )
+}
+
+#[test]
+fn coverage() {
+    let enforced = crate_dir().join("tests/repos/enforced");
+    let stream = crate_dir()
+        .join("tests/scap/datastream.xml")
+        .display()
+        .to_string();
+    let read_out = |at: &Path, args: &[&str]| {
+        let mut all = vec!["--root", ".", "coverage"];
+        all.extend_from_slice(args);
+        all.extend(["--datastream", &stream]);
+        scap_run(at, &all)
+    };
+
+    let mut out = String::new();
+    for (heading, args) in [
+        ("the read-out, with no scan behind it", &[][..]),
+        ("and as json", &["--format", "json"][..]),
+    ] {
+        let (report, said, code) = read_out(&enforced, args);
+        out.push_str(&format!("==== {heading}\n{report}{said}==== exit {code}\n"));
+    }
+
+    let root = tmp().join("coverage");
+    let _ = std::fs::remove_dir_all(&root);
+    copy(&enforced, &root);
+    let image = root.join("example.image.kdl");
+    let text = std::fs::read_to_string(&image).unwrap();
+    std::fs::write(
+        &image,
+        text.replace("conforms \"cis\"", "conforms \"nosuch\""),
+    )
+    .unwrap();
+    for (heading, at) in [
+        ("conforming to a profile the content does not carry", &root),
+        (
+            "and measured against nothing at all",
+            &crate_dir().join("tests/repos/minimal"),
+        ),
+    ] {
+        let (report, said, code) = read_out(at, &[]);
+        out.push_str(&format!("==== {heading}\n{report}{said}==== exit {code}\n"));
+    }
+
+    let (_, said, code) = scap_run(&enforced, &["--root", ".", "coverage"]);
+    out.push_str(&format!(
+        "==== and with nothing to measure it against\n{}==== exit {code}\n",
+        said.split("usage:").next().unwrap_or_default()
+    ));
+
+    compare("coverage", "report.txt", &out);
 }
 
 #[test]

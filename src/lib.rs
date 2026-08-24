@@ -54,7 +54,7 @@ fn context(list: &List, root: &Path) -> String {
 
 pub struct Run {
     pub stdout: String,
-    pub tables: Vec<emit::graph::Table>,
+    pub tables: Vec<emit::Table>,
     pub files: Vec<(PathBuf, String)>,
     pub issues: Issues,
     pub context: String,
@@ -210,6 +210,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         Command::Summary | Command::Sbom => target_arg.is_none(),
         Command::Graph | Command::GraphJson | Command::Section => image_arg.is_none(),
         Command::Why | Command::WhyJson => false,
+        Command::Coverage | Command::CoverageJson => image_arg.is_none(),
         Command::Plan => true,
         Command::Check | Command::Generate | Command::Verify => false,
     };
@@ -327,7 +328,9 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
                 String::new()
             }
         },
-        Command::Check | Command::Verify => String::new(),
+        Command::Check | Command::Verify | Command::Coverage | Command::CoverageJson => {
+            String::new()
+        }
     };
 
     Run {

@@ -394,6 +394,73 @@ pub fn dispatch(
     }
 }
 
+fn coverage(
+    run: &mut crate::Run,
+    json: bool,
+    arg: Option<&str>,
+    datastream: Option<&Path>,
+) -> Result<(), Error> {
+    let Some(path) = datastream else {
+        return Err(Error::Invocation(
+            "`coverage` needs the content the image is measured against: `buildc coverage \
+             --datastream <file>`, and `buildc scap content` prints the path a scan of this \
+             repository uses"
+                .into(),
+        ));
+    };
+    let text = std::fs::read_to_string(path)
+        .map_err(|err| Error::Operation(format!("{}: {err}", path.display())))?;
+    let content = crate::scap::Content::read(&text);
+
+    let image = match arg {
+        Some(id) => match run.list.images.iter().find(|image| image.id == id) {
+            Some(image) => image,
+            None => return Ok(()),
+        },
+        None => match run.list.default_image() {
+            Some(image) => image,
+            None => return Ok(()),
+        },
+    };
+    if image.conforms.is_empty() {
+        run.issues.push(
+            crate::diag::Issue::new(format!("`{}` declares no `conforms`", image.id), &image.src)
+                .at(image.span, "this image is measured against nothing")
+                .help(
+                    "`conforms \"<profile>\"` is the profile a scan measures it against, and what \
+                 this read-out is coverage of",
+                ),
+        );
+        return Ok(());
+    }
+    let Some(read_out) = crate::emit::coverage::of(image, &content, &run.index) else {
+        let names: Vec<&str> = content
+            .profiles
+            .iter()
+            .map(crate::scap::Profile::name)
+            .collect();
+        run.issues.push(
+            crate::diag::Issue::new(
+                format!(
+                    "`{}` conforms to `{}`, which is none of the profiles this datastream carries",
+                    image.id, image.conforms
+                ),
+                &image.src,
+            )
+            .at(image.span, "this is what it is measured against")
+            .help(format!("the datastream carries: {}", names.join(", "))),
+        );
+        return Ok(());
+    };
+    let (stdout, tables) = match json {
+        true => (read_out.json().render(), read_out.tables()),
+        false => (read_out.markdown(), read_out.tables()),
+    };
+    run.stdout = stdout;
+    run.tables = tables;
+    Ok(())
+}
+
 fn reading(
     spec: &Spec,
     rest: &[&str],
@@ -408,7 +475,9 @@ fn reading(
         (Command::Graph, Some("json")) => Command::GraphJson,
         (Command::Why, None | Some("md")) => Command::Why,
         (Command::Why, Some("json")) => Command::WhyJson,
-        (Command::Graph | Command::Why, Some(other)) => {
+        (Command::Coverage, None | Some("md")) => Command::Coverage,
+        (Command::Coverage, Some("json")) => Command::CoverageJson,
+        (Command::Graph | Command::Why | Command::Coverage, Some(other)) => {
             return Err(Error::Invocation(format!(
                 "`--format` is md or json, not `{other}`"
             )));
@@ -434,26 +503,47 @@ fn reading(
     }
 
     let root = repo_root(root_arg)?;
-    let run =
-        if matches!(command.arg(), Some(crate::Arg::Module)) && arg.is_none() && prompt.draws() {
-            let loaded = crate::load(&root);
-            let known = crate::emit::why::known(&loaded.list);
-            if known.is_empty() {
-                crate::run_loaded(command, None, &root, loaded)
-            } else {
-                let options = known
-                    .iter()
-                    .map(|name| crate::ui::Choice::new(name, ""))
-                    .collect::<Vec<_>>();
-                let Some(at) = prompt.choose("which module", &options)? else {
-                    return Ok(ExitCode::SUCCESS);
-                };
-                crate::run_loaded(command, Some(&known[at]), &root, loaded)
-            }
-        } else {
-            crate::run(command, arg, &root)
+    let picks = matches!(
+        command,
+        Command::Why | Command::WhyJson | Command::Coverage | Command::CoverageJson
+    ) && arg.is_none()
+        && prompt.draws();
+    let mut chosen = None;
+    let mut run = if picks {
+        let loaded = crate::load(&root);
+        let (question, known) = match command {
+            Command::Coverage | Command::CoverageJson => (
+                "which image",
+                loaded.list.images.iter().map(|i| i.id.clone()).collect(),
+            ),
+            _ => ("which module", crate::emit::why::known(&loaded.list)),
         };
+        if known.is_empty() {
+            crate::run_loaded(command, None, &root, loaded)
+        } else {
+            let options = known
+                .iter()
+                .map(|name| crate::ui::Choice::new(name, ""))
+                .collect::<Vec<_>>();
+            let Some(at) = prompt.choose(question, &options)? else {
+                return Ok(ExitCode::SUCCESS);
+            };
+            chosen = Some(known[at].clone());
+            crate::run_loaded(command, chosen.as_deref(), &root, loaded)
+        }
+    } else {
+        crate::run(command, arg, &root)
+    };
+    let arg = chosen.as_deref().or(arg);
 
+    if matches!(command, Command::Coverage | Command::CoverageJson) {
+        coverage(
+            &mut run,
+            command == Command::CoverageJson,
+            arg,
+            datastream.as_deref(),
+        )?;
+    }
     if run.issues.report(&run.context) {
         return Ok(ExitCode::from(REPO_ERROR));
     }
@@ -462,12 +552,12 @@ fn reading(
     }
     print!(
         "{}",
-        match command == Command::Graph && prompt.draws() {
+        match matches!(command, Command::Graph | Command::Coverage) && prompt.draws() {
             false => run.stdout,
             true => run
                 .tables
                 .iter()
-                .map(|t| crate::ui::table::render(t.title, t.header, &t.rows))
+                .map(|t| crate::ui::table::render(&t.title, t.header, &t.rows))
                 .collect::<Vec<String>>()
                 .join("\n"),
         }
@@ -505,6 +595,19 @@ fn reading(
                     n => format!(", {n} the base already provides"),
                 }
             ),
+        }
+    }
+    if matches!(command, Command::Coverage | Command::CoverageJson) {
+        if let Some(table) = run.tables.first() {
+            eprintln!(
+                "buildc: {} of {} rules are unclaimed",
+                table.rows.iter().filter(|(_, defect)| *defect).count(),
+                table.rows.len()
+            );
+        }
+        match run.index.unsearched() {
+            clause if clause.is_empty() => {}
+            clause => eprintln!("buildc: {clause}"),
         }
     }
     if command == Command::Generate && run.files.is_empty() {

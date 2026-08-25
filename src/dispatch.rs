@@ -39,6 +39,7 @@ pub struct Flags {
     pub target: Option<String>,
     pub datastream: Option<PathBuf>,
     pub baseline: Option<PathBuf>,
+    pub base_scan: Option<PathBuf>,
     pub tags: Vec<String>,
     pub kernel: Option<String>,
     pub backend: Option<String>,
@@ -166,6 +167,7 @@ pub fn dispatch(
         target,
         datastream,
         baseline,
+        base_scan,
         tags,
         kernel,
         backend,
@@ -399,6 +401,7 @@ pub fn dispatch(
                 target,
                 datastream,
                 baseline,
+                base: base_scan,
             };
             Ok(
                 match crate::scap::run(&repo_root(root_arg)?, Path::new(arf), &opts)? {

@@ -1411,6 +1411,30 @@ fn scap() {
         out.push_str(&format!("==== {heading}\n{report}{said}==== exit {code}\n"));
     }
 
+    let base = fixtures.join("base.json");
+    let against_base = [
+        "--root",
+        ".",
+        "scap",
+        &fixtures.join("arf.xml").display().to_string(),
+        "--datastream",
+        &datastream.display().to_string(),
+        "--base-scan",
+        &base.display().to_string(),
+    ]
+    .map(String::from);
+    let borrowed: Vec<&str> = against_base.iter().map(String::as_str).collect();
+    let (report, said, code) = scap_run(&root, &borrowed);
+    out.push_str(&format!(
+        "==== and against what the bare base passes alone\n{report}{said}==== exit {code}\n"
+    ));
+    let (_, said, code) = scap_run(&enforced, &borrowed);
+    assert!(code == 2, "enforcement did not fail the scan: {said}");
+    assert!(
+        said.contains("quay.io/fedora/fedora-bootc:44` alone passed this rule"),
+        "the base-regression help did not name the base: {said}"
+    );
+
     let image = root.join("example.image.kdl");
     let text = std::fs::read_to_string(&image).unwrap();
     std::fs::write(

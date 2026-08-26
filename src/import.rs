@@ -656,12 +656,11 @@ fn measured(
     let Ok(path) = crate::scap::content_path(family, datastream) else {
         return Ok(Vec::new());
     };
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(err) if datastream.is_some() => return Err(format!("{}: {err}", path.display())),
+    let content = match crate::scap::content_of(&path) {
+        Ok(content) => content,
+        Err(err) if datastream.is_some() => return Err(err),
         Err(_) => return Ok(Vec::new()),
     };
-    let content = crate::scap::Content::read(&text);
     let claimed = crate::scap::reached(&content, claims.into_iter());
     let profiles: Vec<&crate::scap::Profile> = content
         .profiles

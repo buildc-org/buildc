@@ -101,7 +101,7 @@ fn note_pin(root: &Path) {
     }
 }
 
-fn why_on_host(command: Command, arg: Option<&str>) -> Result<ExitCode, Error> {
+fn why_on_host(command: Command, arg: Option<&str>, prompt: &Prompt) -> Result<ExitCode, Error> {
     use crate::provenance::build::{MANIFEST, RECORD};
 
     let Some(path) = arg else {
@@ -138,6 +138,7 @@ fn why_on_host(command: Command, arg: Option<&str>) -> Result<ExitCode, Error> {
     print!(
         "{}",
         match command {
+            Command::Why if prompt.draws() => crate::ui::parts(&why.parts(true)),
             Command::Why => why.markdown(),
             _ => why.json().render(),
         }
@@ -487,12 +488,12 @@ fn coverage(
         );
         return Ok(());
     };
-    let (stdout, tables) = match json {
-        true => (read_out.json().render(), read_out.tables()),
-        false => (read_out.markdown(), read_out.tables()),
+    let (stdout, parts) = match json {
+        true => (read_out.json().render(), read_out.parts()),
+        false => (read_out.markdown(), read_out.parts()),
     };
     run.stdout = stdout;
-    run.tables = tables;
+    run.parts = parts;
     Ok(())
 }
 
@@ -543,7 +544,7 @@ fn reading(
     }
 
     if matches!(command, Command::Why | Command::WhyJson) && repo_root(root_arg.clone()).is_err() {
-        return why_on_host(command, arg);
+        return why_on_host(command, arg, prompt);
     }
 
     let root = repo_root(root_arg)?;
@@ -625,14 +626,10 @@ fn reading(
     }
     print!(
         "{}",
-        match matches!(command, Command::Graph | Command::Coverage) && prompt.draws() {
+        match matches!(command, Command::Graph | Command::Why | Command::Coverage) && prompt.draws()
+        {
             false => run.stdout,
-            true => run
-                .tables
-                .iter()
-                .map(|t| crate::ui::table::render(&t.title, t.header, &t.rows))
-                .collect::<Vec<String>>()
-                .join("\n"),
+            true => crate::ui::parts(&run.parts),
         }
     );
     if command == Command::Check {
@@ -651,7 +648,10 @@ fn reading(
         }
     }
     if matches!(command, Command::Coverage | Command::CoverageJson) {
-        if let Some(table) = run.tables.first() {
+        if let Some(table) = run.parts.iter().find_map(|part| match part {
+            crate::emit::Part::Table(table) => Some(table),
+            _ => None,
+        }) {
             eprintln!(
                 "buildc: {} of {} rules are unclaimed",
                 table.rows.iter().filter(|(_, defect)| *defect).count(),

@@ -12,6 +12,12 @@ pub mod summary;
 pub mod why;
 pub mod workflows;
 
+pub enum Part {
+    Heading(String),
+    Text(String),
+    Table(Table),
+}
+
 pub struct Table {
     pub title: String,
     pub header: &'static [&'static str],

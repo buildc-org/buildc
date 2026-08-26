@@ -70,7 +70,7 @@ fn columns(header: &[&str], rows: &[(Vec<String>, bool)], room: u16) -> Vec<u16>
         .collect()
 }
 
-fn wrap(text: &str, room: usize) -> Vec<String> {
+pub(crate) fn wrap(text: &str, room: usize) -> Vec<String> {
     let mut lines = vec![String::new()];
     for word in text.split_whitespace() {
         for part in pieces(word, room.max(1)) {

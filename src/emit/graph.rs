@@ -1,5 +1,5 @@
 use crate::emit::json::Json;
-use crate::emit::Table;
+use crate::emit::{Part, Table};
 use crate::layout;
 use crate::model::image::Image;
 use crate::model::module::Module;
@@ -199,10 +199,10 @@ impl<'a> Graph<'a> {
         Json::strings(nodes.iter().map(|&node| self.nodes[node].name.as_str()))
     }
 
-    pub fn tables(&self) -> Vec<Table> {
+    pub fn parts(&self) -> Vec<Part> {
         let mut tables = Vec::new();
         if !self.caps.is_empty() {
-            tables.push(Table {
+            tables.push(Part::Table(Table {
                 title: "Capabilities".to_string(),
                 header: &["Name", "Kind", "Provided by", "Required by", "After"],
                 rows: self
@@ -223,10 +223,10 @@ impl<'a> Graph<'a> {
                         )
                     })
                     .collect(),
-            });
+            }));
         }
         if !self.suppressed.is_empty() {
-            tables.push(Table {
+            tables.push(Part::Table(Table {
                 title: "Suppressed".to_string(),
                 header: &["Module", "Provides"],
                 rows: self
@@ -236,10 +236,10 @@ impl<'a> Graph<'a> {
                         (vec![(*module).to_string(), provides.join(", ")], false)
                     })
                     .collect(),
-            });
+            }));
         }
         if !self.overrides.is_empty() {
-            tables.push(Table {
+            tables.push(Part::Table(Table {
                 title: "Overrides".to_string(),
                 header: &["Module", "Path"],
                 rows: self
@@ -247,7 +247,7 @@ impl<'a> Graph<'a> {
                     .iter()
                     .map(|(module, path)| (vec![(*module).to_string(), (*path).to_string()], false))
                     .collect(),
-            });
+            }));
         }
         tables
     }

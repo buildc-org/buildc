@@ -1,5 +1,5 @@
 use crate::emit::json::Json;
-use crate::emit::Table;
+use crate::emit::{Part, Table};
 use crate::model::image::{Entry, Image};
 use crate::provider::Index;
 use crate::scap::{ordinal, Content, Profile};
@@ -127,8 +127,8 @@ impl Coverage<'_> {
         out
     }
 
-    pub fn tables(&self) -> Vec<Table> {
-        vec![Table {
+    pub fn parts(&self) -> Vec<Part> {
+        vec![Part::Table(Table {
             title: format!("{} coverage of {}", self.image.id, self.profile.name()),
             header: HEADER,
             rows: self
@@ -146,7 +146,7 @@ impl Coverage<'_> {
                     )
                 })
                 .collect(),
-        }]
+        })]
     }
 
     pub fn json(&self) -> Json {

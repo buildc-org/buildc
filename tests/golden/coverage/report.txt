@@ -81,6 +81,8 @@ buildc: 1 problem in ./image.kdl, ./repo.kdl
 ==== and with nothing to measure it against
 Buildc v{version}
 
-Error: `coverage` needs the content the image is measured against: `buildc coverage --datastream <file>`, and `buildc scap content` prints the path a scan of this repository uses.
+Error: `coverage` reads the profile out of a SCAP datastream, and never probes this machine for one: `buildc coverage --datastream <file>`
+
+help: `buildc scap content` prints the path a scan of this repository uses
 
 ==== exit 1

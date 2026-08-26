@@ -434,17 +434,9 @@ fn coverage(
     run: &mut crate::Run,
     json: bool,
     arg: Option<&str>,
-    datastream: Option<&Path>,
+    datastream: &Path,
 ) -> Result<(), Error> {
-    let Some(path) = datastream else {
-        return Err(Error::Invocation(
-            "`coverage` needs the content the image is measured against: `buildc coverage \
-             --datastream <file>`, and `buildc scap content` prints the path a scan of this \
-             repository uses"
-                .into(),
-        ));
-    };
-    let content = crate::scap::content_of(path)?;
+    let content = crate::scap::content_of(datastream)?;
 
     let image = match arg {
         Some(id) => match run.list.images.iter().find(|image| image.id == id) {
@@ -530,6 +522,15 @@ fn reading(
         }
     };
 
+    if matches!(command, Command::Coverage | Command::CoverageJson) && datastream.is_none() {
+        return Err(Error::Invocation(
+            "`coverage` reads the profile out of a SCAP datastream, and never probes this machine \
+             for one: `buildc coverage --datastream <file>`\n\nhelp: `buildc scap content` prints the \
+             path a scan of this repository uses"
+                .into(),
+        ));
+    }
+
     if matches!(command, Command::Why | Command::WhyJson) && repo_root(root_arg.clone()).is_err() {
         return why_on_host(command, arg);
     }
@@ -573,7 +574,9 @@ fn reading(
             &mut run,
             command == Command::CoverageJson,
             arg,
-            datastream.as_deref(),
+            datastream
+                .as_deref()
+                .expect("coverage checked its datastream"),
         )?;
     }
     if run.issues.report(&run.context) {

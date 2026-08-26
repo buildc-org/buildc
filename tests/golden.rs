@@ -1340,6 +1340,19 @@ fn coverage() {
         let (report, said, code) = read_out(at, &[]);
         out.push_str(&format!("==== {heading}\n{report}{said}==== exit {code}\n"));
     }
+    let (report, said, code) = scap_run(
+        &enforced,
+        &[
+            "--root",
+            ".",
+            "coverage",
+            "--datastream",
+            "example.image.kdl",
+        ],
+    );
+    out.push_str(&format!(
+        "==== and a datastream that is not one\n{report}{said}==== exit {code}\n"
+    ));
 
     let (_, said, code) = scap_run(&enforced, &["--root", ".", "coverage"]);
     out.push_str(&format!(

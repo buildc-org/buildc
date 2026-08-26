@@ -108,14 +108,21 @@ pub fn reached<'a>(
         .collect()
 }
 
+pub(crate) fn profile_names(content: &Content) -> String {
+    let names: Vec<&str> = content.profiles.iter().map(Profile::name).collect();
+    match names.is_empty() {
+        true => "no profile at all".into(),
+        false => names.join(", "),
+    }
+}
+
 fn unclaimed(image: &Image, content: &Content, index: &Index) -> Option<String> {
     let Some(profile) = content.profiles.iter().find(|p| p.is(&image.conforms)) else {
-        let names: Vec<&str> = content.profiles.iter().map(Profile::name).collect();
         return Some(format!(
             "`{}` conforms to `{}`, which is none of the profiles the datastream carries: {}",
             image.id,
             image.conforms,
-            names.join(", ")
+            profile_names(content)
         ));
     };
     let owed = owed(image, content, profile, index);

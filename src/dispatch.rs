@@ -468,11 +468,6 @@ fn coverage(
         return Ok(());
     }
     let Some(read_out) = crate::emit::coverage::of(image, &content, &run.index) else {
-        let names: Vec<&str> = content
-            .profiles
-            .iter()
-            .map(crate::scap::Profile::name)
-            .collect();
         run.issues.push(
             crate::diag::Issue::new(
                 format!(
@@ -482,7 +477,10 @@ fn coverage(
                 &image.src,
             )
             .at(image.span, "this is what it is measured against")
-            .help(format!("the datastream carries: {}", names.join(", "))),
+            .help(format!(
+                "the datastream carries: {}",
+                crate::scap::profile_names(&content)
+            )),
         );
         return Ok(());
     };

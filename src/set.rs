@@ -345,6 +345,13 @@ impl Claims {
         datastream: Option<PathBuf>,
         prompt: &Prompt,
     ) -> Result<Option<Self>, Error> {
+        let remote = format!("{}/", crate::model::remote::REMOTE_DIR);
+        if let Some(source) = named.strip_prefix(&remote) {
+            return Err(Error::Invocation(format!(
+                "nothing can be changed here; `{named}` is a fetched module; `buildc copy module \
+                 {source}` makes a copy this repository owns"
+            )));
+        }
         let file = Path::new(layout::MODULES)
             .join(named)
             .join(layout::MODULE_FILE);

@@ -11,4 +11,5 @@ Buildc v{version}
         it in and lists it
 
 buildc: 1 problem in ./example.image.kdl, ./repo.kdl
+buildc: one/bases.kdl replaces the tool's own entry for quay.io/fedora/fedora-bootc:44
 ==== exit 2

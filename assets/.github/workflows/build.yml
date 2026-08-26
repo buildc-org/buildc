@@ -723,7 +723,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Scan the image
+      - name: Choose the scanner for this family
         if: steps.content.outputs.datastream != ''
         env:
           TARGET: ${{ matrix.target }}
@@ -738,13 +738,39 @@ jobs:
             fedora) installer="dnf -y install openscap-scanner" ;;
             *) installer="apt-get update && apt-get install -y openscap-scanner" ;;
           esac
+          case "$family" in
+            fedora) cleaner="dnf clean all" ;;
+            *) cleaner="apt-get clean" ;;
+          esac
+          {
+            echo "INSTALLER=${installer}"
+            echo "CLEANER=${cleaner}"
+          } >> "$GITHUB_ENV"
 
+      - name: Pull the image
+        if: steps.content.outputs.datastream != ''
+        run: |
+          set -euo pipefail
           sudo podman pull "$IMAGE_REF"
+
+      - name: Evaluate the rules
+        if: steps.content.outputs.datastream != ''
+        env:
+          DATASTREAM: ${{ steps.content.outputs.datastream }}
+        run: |
+          set -euo pipefail
           cp "$DATASTREAM" "${RUNNER_TEMP}/ds.xml"
           sudo podman run --rm --entrypoint "" \
             -v "${RUNNER_TEMP}:/scan:z" "$IMAGE_REF" \
-            sh -c "${installer} > /dev/null && oscap xccdf eval \
-              --profile '(all)' --results-arf /scan/arf.xml /scan/ds.xml" || true
+            sh -c "n=0
+              until $INSTALLER > /dev/null; do
+                n=\$((n+1))
+                [ \"\$n\" -ge 3 ] && exit 1
+                $CLEANER > /dev/null 2>&1 || true
+                sleep 15
+              done
+              oscap xccdf eval \
+                --profile '(all)' --results-arf /scan/arf.xml /scan/ds.xml" || true
           [ -s "${RUNNER_TEMP}/arf.xml" ] || { echo "::error::the scan wrote no report"; exit 1; }
           sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/arf.xml"
 

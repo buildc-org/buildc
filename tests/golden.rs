@@ -702,10 +702,11 @@ fn flows() {
     )
     .unwrap();
     let image = conforms.join("example.image.kdl");
-    let declared = std::fs::read_to_string(&image)
-        .unwrap()
-        .replace("    modules {", "    conforms \"cis\"\n\n    modules {");
-    assert!(declared.contains("conforms \"cis\""), "{declared}");
+    let declared = std::fs::read_to_string(&image).unwrap().replace(
+        "    modules {",
+        "    conforms \"standard\"\n\n    modules {",
+    );
+    assert!(declared.contains("conforms \"standard\""), "{declared}");
     std::fs::write(&image, declared).unwrap();
     flow(
         "flow-check-conforms",
@@ -810,7 +811,7 @@ fn flows() {
     let declared = std::fs::read_to_string(measured.join("example.image.kdl")).unwrap();
     assert_eq!(declared.matches("conforms ").count(), 1, "{declared}");
     assert!(
-        declared.contains("    conforms \"cis_server_l2\"\n")
+        declared.contains("    conforms \"ospp\"\n")
             && declared.contains("source \"three\" {\n            module \"sshd\""),
         "{declared}"
     );
@@ -828,7 +829,7 @@ fn flows() {
     flow("flow-import-conforms", &claiming, None, &import_sshd);
     let taken = std::fs::read_to_string(claiming.join("example.image.kdl")).unwrap();
     assert!(
-        taken.contains("    conforms \"cis\"\n")
+        taken.contains("    conforms \"standard\"\n")
             && taken.contains("source \"three\" {\n            module \"sshd\""),
         "{taken}"
     );
@@ -880,7 +881,7 @@ fn flows() {
     assert_eq!(declared.matches("satisfies ").count(), 1, "{declared}");
     assert!(
         declared
-            .contains("    cis-fedora \"1.1.1.1\" \\\n        \"5.2.20\" \\\n        \"5.5.2\"\n"),
+            .contains("    standard \"1.1.1.1\" \\\n        \"5.2.20\" \\\n        \"5.5.2\"\n"),
         "{declared}"
     );
     buildc(&claimed, &["--no-tui", "--root", ".", "check"]);
@@ -900,7 +901,7 @@ fn flows() {
         &[b"\r", b"aide \x1b[B\r"],
     );
     let picked = std::fs::read_to_string(drawn.join("modules/sshd/module.kdl")).unwrap();
-    assert!(picked.contains("    cis-fedora \"1.1.1.1\"\n"), "{picked}");
+    assert!(picked.contains("    standard \"1.1.1.1\"\n"), "{picked}");
 
     let prompted = flow_repo("flow-set");
     flow(
@@ -1326,7 +1327,7 @@ fn coverage() {
     let text = std::fs::read_to_string(&image).unwrap();
     std::fs::write(
         &image,
-        text.replace("conforms \"cis\"", "conforms \"nosuch\""),
+        text.replace("conforms \"standard\"", "conforms \"nosuch\""),
     )
     .unwrap();
     for (heading, at) in [
@@ -1371,7 +1372,7 @@ fn scap() {
     copy(&enforced, &claim_only);
     let image = claim_only.join("example.image.kdl");
     let text = std::fs::read_to_string(&image).unwrap();
-    std::fs::write(&image, text.replace("    conforms \"cis\"\n", "")).unwrap();
+    std::fs::write(&image, text.replace("    conforms \"standard\"\n", "")).unwrap();
 
     let (report, said, code) = scap_run(
         &claim_only,
@@ -1439,7 +1440,7 @@ fn scap() {
     let text = std::fs::read_to_string(&image).unwrap();
     std::fs::write(
         &image,
-        text.replace("conforms \"cis\"", "conforms \"nosuch\""),
+        text.replace("conforms \"standard\"", "conforms \"nosuch\""),
     )
     .unwrap();
     let (report, said, code) = scap_run(

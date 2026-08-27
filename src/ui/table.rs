@@ -70,6 +70,28 @@ fn columns(header: &[&str], rows: &[(Vec<String>, bool)], room: u16) -> Vec<u16>
         .collect()
 }
 
+pub(crate) fn floor(header: &[&str], rows: &[(Vec<String>, bool)]) -> usize {
+    let words: usize = header
+        .iter()
+        .enumerate()
+        .map(|(at, name)| {
+            rows.iter()
+                .map(|(cells, _)| longest_word(&cells[at]))
+                .chain(std::iter::once(longest_word(name)))
+                .max()
+                .unwrap_or(0)
+        })
+        .sum();
+    words + header.len().saturating_sub(1) + 2
+}
+
+fn longest_word(text: &str) -> usize {
+    text.split_whitespace()
+        .map(|word| word.chars().count())
+        .max()
+        .unwrap_or(0)
+}
+
 pub(crate) fn wrap(text: &str, room: usize) -> Vec<String> {
     let mut lines = vec![String::new()];
     for word in text.split_whitespace() {
@@ -187,5 +209,15 @@ mod tests {
     fn a_column_is_never_wider_than_the_longest_thing_in_it() {
         let widths = columns(&HEADER, &rows(), 78);
         assert_eq!(widths, ["nothing-provides".len() as u16, 11]);
+    }
+
+    #[test]
+    fn the_floor_is_each_column_at_its_longest_word_plus_gaps_and_frame() {
+        assert_eq!(floor(&HEADER, &rows()), 16 + 10 + 1 + 2);
+        assert_eq!(
+            floor(&["Hash"], &[(vec!["a b".into(), "cd".into()], false)]),
+            4 + 0 + 2
+        );
+        assert_eq!(floor(&[], &[]), 2);
     }
 }

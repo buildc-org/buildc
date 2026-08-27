@@ -135,10 +135,11 @@ fn why_on_host(command: Command, arg: Option<&str>, prompt: &Prompt) -> Result<E
     };
     let why = crate::emit::why::on_host(&manifest, record.as_ref(), &path)
         .expect("the resolved module is in the manifest");
+    let parts = why.parts(true);
     print!(
         "{}",
         match command {
-            Command::Why if prompt.draws() => crate::ui::parts(&why.parts(true)),
+            Command::Why if prompt.draws() && crate::ui::fits(&parts) => crate::ui::parts(&parts),
             Command::Why => why.markdown(),
             _ => why.json().render(),
         }
@@ -634,7 +635,9 @@ fn reading(
     }
     print!(
         "{}",
-        match matches!(command, Command::Graph | Command::Why | Command::Coverage) && prompt.draws()
+        match matches!(command, Command::Graph | Command::Why | Command::Coverage)
+            && prompt.draws()
+            && crate::ui::fits(&run.parts)
         {
             false => run.stdout,
             true => crate::ui::parts(&run.parts),

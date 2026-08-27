@@ -13,15 +13,33 @@ use std::io::IsTerminal;
 
 const NARROWEST: usize = 80;
 
-pub fn colour() -> bool {
+pub(crate) fn colour() -> bool {
     std::io::stdout().is_terminal()
 }
 
-pub fn width() -> usize {
-    match colour() {
-        true => terminal::size().map_or(NARROWEST, |(cols, _)| cols as usize),
-        false => NARROWEST,
+pub(crate) fn width() -> usize {
+    if !colour() {
+        return NARROWEST;
     }
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|cols| cols.parse().ok())
+        .filter(|cols| *cols > 0)
+        .or_else(|| {
+            terminal::size()
+                .map(|(cols, _)| cols as usize)
+                .ok()
+                .filter(|cols| *cols > 0)
+        })
+        .unwrap_or(NARROWEST)
+}
+
+pub(crate) fn fits(parts: &[crate::emit::Part]) -> bool {
+    let room = width();
+    parts.iter().all(|part| match part {
+        crate::emit::Part::Table(table) => room >= table::floor(table.header, &table.rows),
+        _ => true,
+    })
 }
 
 pub fn parts(parts: &[crate::emit::Part]) -> String {

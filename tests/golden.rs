@@ -547,6 +547,7 @@ fn drawn_flow(name: &str, dir: &Path, command: &str, after: &str, steps: &[&[u8]
         .args(["-qfec", command, "/dev/null"])
         .current_dir(dir)
         .env("BUILDC_ASSETS", crate_dir().join("assets"))
+        .env("COLUMNS", "80")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -599,6 +600,79 @@ fn drawn_flow(name: &str, dir: &Path, command: &str, after: &str, steps: &[&[u8]
         "transcript.txt",
         &format!("{after}{stable}==== exit 0\n"),
     );
+}
+
+#[test]
+fn narrow_readouts_fall_back() {
+    let root = crate_dir().join("tests/repos/enforced");
+    let buildc = env!("CARGO_BIN_EXE_tect");
+    let run = |command: &str, cols: Option<&str>, clear: bool| {
+        let mut child = std::process::Command::new("script");
+        child
+            .args(["-qfec", command, "/dev/null"])
+            .current_dir(&root)
+            .env("BUILDC_ASSETS", crate_dir().join("assets"))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        if clear {
+            child.env_remove("COLUMNS");
+        }
+        if let Some(cols) = cols {
+            child.env("COLUMNS", cols);
+        }
+        let out = child
+            .spawn()
+            .expect("script from util-linux")
+            .wait_with_output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    let graph = run(
+        &format!("stty cols 40 rows 24; '{buildc}' --root . graph"),
+        None,
+        true,
+    );
+    assert!(graph.contains("# Enforced capability graph"), "{graph}");
+    assert!(!graph.contains('\u{250c}'), "{graph}");
+    let why = run(
+        &format!("stty cols 40 rows 24; '{buildc}' --root . why one/hello"),
+        None,
+        true,
+    );
+    assert!(why.contains("## Where it is built"), "{why}");
+    assert!(!why.contains('\u{250c}'), "{why}");
+
+    let graph = run(&format!("'{buildc}' --root . graph"), Some("40"), false);
+    assert!(
+        graph.contains("# Enforced capability graph") && !graph.contains('\u{250c}'),
+        "{graph}"
+    );
+    let why = run(
+        &format!("'{buildc}' --root . why one/hello"),
+        Some("40"),
+        false,
+    );
+    assert!(
+        why.contains("## Where it is built") && !why.contains('\u{250c}'),
+        "{why}"
+    );
+
+    for (name, command) in [
+        ("graph", format!("'{buildc}' --root . graph")),
+        ("why", format!("'{buildc}' --root . why one/hello")),
+    ] {
+        let drawn = run(&command, Some("200"), false);
+        assert!(
+            drawn.contains('\u{250c}'),
+            "{name} drew no table at 200 columns"
+        );
+    }
 }
 
 fn tmp() -> PathBuf {

@@ -67,7 +67,7 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<Vec<PathBuf>, Str
         return Err(format!("{} is already a repository", root.display()));
     }
 
-    let mut wrote = copy_tree(assets, root)?;
+    let mut wrote = copy_tree_except(assets, root, Some("lib"))?;
     let shipped = root.join(layout::WORKFLOW_DIR);
     if shipped.is_dir() {
         fs::remove_dir_all(&shipped).map_err(|err| format!("{}: {err}", shipped.display()))?;
@@ -109,6 +109,10 @@ pub(crate) fn put(path: &Path, text: &str) -> Result<(), String> {
 }
 
 pub(crate) fn copy_tree(from: &Path, to: &Path) -> Result<Vec<PathBuf>, String> {
+    copy_tree_except(from, to, None)
+}
+
+fn copy_tree_except(from: &Path, to: &Path, skip: Option<&str>) -> Result<Vec<PathBuf>, String> {
     fs::create_dir_all(to).map_err(|err| format!("{}: {err}", to.display()))?;
     let entries = fs::read_dir(from).map_err(|err| format!("{}: {err}", from.display()))?;
     let mut wrote = Vec::new();
@@ -116,6 +120,9 @@ pub(crate) fn copy_tree(from: &Path, to: &Path) -> Result<Vec<PathBuf>, String> 
         let entry = entry.map_err(|err| format!("{}: {err}", from.display()))?;
         let source = entry.path();
         let name = entry.file_name();
+        if skip.is_some_and(|skip| name == skip) {
+            continue;
+        }
         let dest = to.join(&name);
         if source.is_dir() {
             wrote.extend(

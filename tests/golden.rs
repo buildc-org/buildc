@@ -42,6 +42,7 @@ fn capture(name: &str, root: &Path) {
     let mut generated = String::new();
     for (path, body) in &buildc::run(Command::Generate, None, here).files {
         let covered = path == std::path::Path::new("generated/plan.json")
+            || path.starts_with("generated/lib")
             || path.starts_with(buildc::layout::WORKFLOW_DIR);
         match covered {
             true => generated.push_str(&format!("==== {}\n", path.display())),
@@ -1359,6 +1360,10 @@ fn golden() {
     assert!(
         !init.join("bases.kdl").exists(),
         "bases.kdl is a control asset; it must not land at a scaffolded repository root"
+    );
+    assert!(
+        !init.join("lib").exists(),
+        "lib is generated; it must not land in the editable scaffold"
     );
     for name in names {
         capture(&name, &dir.join(&name));

@@ -963,6 +963,30 @@ fn flows() {
     assert!(prompted_build.contains("    if: github.event_name == 'schedule'\n"));
     assert!(!prompted_build.contains("    if: github.event_name != 'pull_request'\n"));
 
+    let cadence = flow_repo("flow-publish-cadence");
+    let repo_path = cadence.join("repo.kdl");
+    let push_build = generated_build(&cadence);
+    let repo = std::fs::read_to_string(&repo_path).unwrap();
+    std::fs::write(
+        &repo_path,
+        repo.replace("workflows {", "workflows publish=\"scheduled\" {"),
+    )
+    .unwrap();
+    let scheduled_build = generated_build(&cadence);
+    let publish_gate = r#"          if [ "${{ github.event_name }}" != "schedule" ] \
+             && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "PUBLISH=false" >> "${GITHUB_ENV}"
+          fi
+"#;
+    assert!(scheduled_build.contains(publish_gate), "{scheduled_build}");
+    assert_eq!(
+        scheduled_build.replace(publish_gate, "").replace(
+            "    if: github.event_name == 'schedule'\n",
+            "    if: github.event_name != 'pull_request'\n",
+        ),
+        push_build,
+    );
+
     let requires = flow_repo_sourced("flow-requires");
     flow(
         "flow-import-requires",

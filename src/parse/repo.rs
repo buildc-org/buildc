@@ -22,6 +22,15 @@ pub const REPO: Node = Node::new("repo",
                 concat!("`buildc-version \"", env!("CARGO_PKG_VERSION"),
                         "\"`, the release the build fetches; another release reads the \
                          repository and says so")))
+            .props(&[
+                Prop { name: "sha256", kind: Kind::Str,
+                    desc: "The release tarball's sha256, which `scripts/buildc.sh` holds the \
+                           download to. Absent, the script checks against the checksum fetched \
+                           beside the tarball, which proves the download and nothing more.",
+                    say: Say::new("`{}` must be a hash", "not a string", ""),
+                    missing: Say::NONE },
+            ], Say::new("unknown buildc-version property `{}`", "not part of the schema",
+                "a `buildc-version` accepts `sha256`"))
             .once(""),
         Node::new("name",
             "What the repository calls itself, whatever the directory holding it is called.")
@@ -150,6 +159,7 @@ const IMAGE_FILE: Node = Node::new("image file",
 struct Pins {
     schema: Option<(i128, Span)>,
     buildc: Option<(String, Span)>,
+    tect_sha: Option<String>,
     src: Source,
 }
 
@@ -167,6 +177,7 @@ fn pins(root: &Path) -> Option<Pins> {
         schema: node("schema-version").and_then(|n| Some((int_arg(&n)?, n.name().span().into()))),
         buildc: node("buildc-version")
             .and_then(|n| Some((string_arg(&n)?.to_string(), n.name().span().into()))),
+        tect_sha: node("buildc-version").and_then(|n| prop(&n, "sha256").map(str::to_string)),
         src: Source::new(path.display().to_string(), text),
     })
 }
@@ -209,6 +220,13 @@ pub fn compatible(root: &Path) -> Issues {
 pub fn pinned_elsewhere(root: &Path) -> Option<String> {
     let version = pins(root)?.buildc?.0;
     (version != BUILDC_VERSION).then_some(version)
+}
+
+pub fn pinned_unverified(root: &Path) -> Option<String> {
+    let pins = pins(root)?;
+    pins.buildc
+        .filter(|_| pins.tect_sha.is_none())
+        .map(|(version, _)| version)
 }
 
 impl List {
@@ -687,6 +705,20 @@ mod tests {
         assert!(issues.is_empty(), "{}", issues.plain());
     }
 
+    #[test]
+    fn a_declared_sha256_is_the_only_verifier() {
+        let hash = "a".repeat(64);
+        let declared = root(
+            "sha",
+            &format!("schema-version 1\nbuildc-version \"{BUILDC_VERSION}\" sha256=\"{hash}\"\n"),
+        );
+        assert_eq!(pinned_unverified(&declared), None);
+        let bare = root("bare", "schema-version 1\nbuildc-version \"0.0.1\"\n");
+        assert_eq!(pinned_unverified(&bare).as_deref(), Some("0.0.1"));
+        let none = root("none", "schema-version 1\n");
+        assert_eq!(pinned_unverified(&none), None);
+    }
+
     fn messages(text: &str) -> Vec<String> {
         let doc: KdlDocument = text.parse().expect("valid KDL");
         let src = Source::new(layout::REPO_FILE, text);
@@ -707,7 +739,7 @@ mod tests {
 schema-version
 schema-version 1
 name "Buildc"
-buildc-version
+buildc-version sha256=1 wat="x"
 buildc-version "0.0.0"
 default-image
 pr-image
@@ -724,6 +756,8 @@ colour "blue"
                 "`schema-version` needs a number",
                 "`schema-version` is declared twice",
                 "`buildc-version` needs a release",
+                "`sha256` must be a hash",
+                "unknown buildc-version property `wat`",
                 "`buildc-version` is declared twice",
                 "`default-image` needs an image name",
                 "`pr-image` needs an image name",

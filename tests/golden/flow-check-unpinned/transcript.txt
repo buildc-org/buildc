@@ -1,5 +1,6 @@
 Buildc v{version}
 
 buildc: `buildc-org` is unpinned, so a fetch from it takes whatever its ref holds then, unverified
+buildc: `buildc-version` names {version} with no sha256, so the binary it fetches is whatever the release holds, unverified
 buildc: 1 images, 0 modules, 0 flavours
 ==== exit 0

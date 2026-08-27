@@ -14,4 +14,5 @@ Buildc v{version}
 
 buildc: 1 problem in ./example.image.kdl, ./repo.kdl
 buildc: `buildc-org` is unpinned, so a fetch from it takes whatever its ref holds then, unverified
+buildc: `buildc-version` names {version} with no sha256, so the binary it fetches is whatever the release holds, unverified
 ==== exit 2

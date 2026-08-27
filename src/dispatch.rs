@@ -613,6 +613,12 @@ fn reading(
                  then, unverified"
             );
         }
+        if let Some(version) = crate::parse::repo::pinned_unverified(&root) {
+            eprintln!(
+                "buildc: `buildc-version` names {version} with no sha256, so the binary it fetches \
+                 is whatever the release holds, unverified"
+            );
+        }
         for name in &run.modified {
             eprintln!("buildc: `{name}` has been edited since it was imported");
         }

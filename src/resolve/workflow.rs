@@ -148,12 +148,16 @@ pub fn unlocked(list: &List, args: &[String]) -> Vec<&'static Shipped> {
         .collect()
 }
 
-pub fn facts(basis: &Basis, scans_scheduled: bool) -> Vec<&'static str> {
+pub fn facts(basis: &Basis, scans_scheduled: bool, publishes_scheduled: bool) -> Vec<&'static str> {
     let mut facts = match basis.kernel {
         true => vec!["kernel"],
         false => vec!["no-kernel"],
     };
-    facts.push(match scans_scheduled {
+    facts.push(match publishes_scheduled {
+        true => "scheduled-publish",
+        false => "push-publish",
+    });
+    facts.push(match scans_scheduled || publishes_scheduled {
         true => "scheduled-scan",
         false => "push-scan",
     });
@@ -247,5 +251,29 @@ mod tests {
         assert_eq!(cron((12, 30), 2, "*"), "30 14 * * *");
         assert_eq!(cron((12, 30), -6, "*"), "30 6 * * *");
         assert_eq!(cron((3, 0), -9, "1"), "0 18 * * 1");
+    }
+
+    #[test]
+    fn publishing_on_schedule_also_schedules_scanning() {
+        let basis = Basis {
+            fedora: true,
+            kernel: false,
+        };
+        assert_eq!(
+            facts(&basis, false, false),
+            ["no-kernel", "push-publish", "push-scan"]
+        );
+        assert_eq!(
+            facts(&basis, false, true),
+            ["no-kernel", "scheduled-publish", "scheduled-scan"]
+        );
+        assert_eq!(
+            facts(&basis, true, false),
+            ["no-kernel", "push-publish", "scheduled-scan"]
+        );
+        assert_eq!(
+            facts(&basis, true, true),
+            ["no-kernel", "scheduled-publish", "scheduled-scan"]
+        );
     }
 }

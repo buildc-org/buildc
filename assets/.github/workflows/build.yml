@@ -57,7 +57,7 @@ jobs:
 
           base="$(git merge-base "origin/${BASE_REF}" HEAD)"
           changed="$(git diff --name-only "$base" HEAD \
-            | grep -E '^(modules/.*/module\.kdl|modules\.kdl)$' || true)"
+            | grep -E '^(repo\.kdl|modules/.*/module\.kdl|modules\.kdl)$' || true)"
           if [ -z "$changed" ]; then
             echo "No manifest changed against ${BASE_REF}, nothing to do."
             exit 0
@@ -66,6 +66,22 @@ jobs:
           echo "$changed"
 
           fixed=()
+
+          if grep -qxF repo.kdl <<< "$changed"; then
+            version="$(sed -n 's/^[[:space:]]*buildc-version[[:space:]]*"\([^"]*\)".*$/\1/p' repo.kdl)"
+            asset="buildc-v${version}-x86_64-linux-musl.tar.gz"
+            url="https://github.com/buildc-org/buildc/releases/download/v${version}/${asset}.sha256"
+            actual="$(curl -fsSL --retry 3 "$url")" \
+              || { echo "::error file=repo.kdl::${url} did not download"; exit 1; }
+            [[ "$actual" =~ ^[0-9a-f]{64}$ ]] \
+              || { echo "::error file=repo.kdl::${url} did not contain a sha256"; exit 1; }
+            sed -i -E "/^[[:space:]]*buildc-version[[:space:]]+\"/ {
+              /sha256[[:space:]]*=/ s@sha256[[:space:]]*=[[:space:]]*\"[^\"]*\"@sha256=\"${actual}\"@
+              /sha256[[:space:]]*=/! s@([[:space:]]*(//.*)?)$@ sha256=\"${actual}\"\1@
+            }" repo.kdl
+            fixed+=("buildc ${version}")
+            echo "buildc ${version}: hash updated."
+          fi
 
           if grep -qE '^[^/]+\.kdl$' <<< "$changed"; then
             while IFS='|' read -r name _ ref pinned url _ file; do

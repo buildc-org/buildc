@@ -7,11 +7,26 @@ die() {
     exit 1
 }
 
-version="$(sed -n 's/^buildc-version "\([^"]*\)".*$/\1/p' repo.kdl)"
-[ -n "$version" ] || die "repo.kdl declares no buildc-version"
-sha256="$(sed -n 's/^buildc-version "[^"]*" sha256="\([^"]*\)"$/\1/p' repo.kdl)"
+line="$(sed -n '/^[[:space:]]*buildc-version[[:space:]]/p' repo.kdl)"
+if [[ "$line" =~ ^[[:space:]]*buildc-version[[:space:]]+\"([^\"]+)\"(.*)$ ]]; then
+    version="${BASH_REMATCH[1]}"
+    rest="${BASH_REMATCH[2]%%//*}"
+else
+    die "repo.kdl declares no readable buildc-version"
+fi
 
-bin="${BUILDC_BIN:-out/buildc-${version}}"
+sha256=""
+if [[ "$rest" =~ (^|[[:space:]])sha256[[:space:]]*= ]]; then
+    if [[ "$rest" =~ (^|[[:space:]])sha256[[:space:]]*=[[:space:]]*\"([^\"]*)\" ]]; then
+        sha256="${BASH_REMATCH[2]}"
+    else
+        die "repo.kdl declares no readable sha256 for buildc-version"
+    fi
+    [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "repo.kdl declares a malformed sha256 for buildc-version"
+fi
+
+bin="${BUILDC_BIN:-out/buildc-${version}${sha256:+-${sha256}}}"
 
 if [ ! -x "$bin" ]; then
     asset="buildc-v${version}-x86_64-linux-musl.tar.gz"

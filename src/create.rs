@@ -545,7 +545,8 @@ impl Module {
         }
         crate::init::put(&self.file, &self.text)?;
         let mut wrote = vec![(under(root, &self.file), Change::Created)];
-        wrote.extend(self.listing.apply(&self.path)?);
+        let (list, _) = crate::model::image::List::load(root);
+        wrote.extend(self.listing.apply(&list, &self.path)?);
         Ok(wrote)
     }
 }
@@ -697,10 +698,7 @@ impl Listing {
         let Self::In(listed) = self else {
             return Ok(());
         };
-        let dir = match source {
-            Some(owner) => format!("{}/{owner}/{name}", crate::model::remote::REMOTE_DIR),
-            None => name.to_string(),
-        };
+        let dir = dir_of(name, source);
         let target = |image: &crate::model::image::Image, flavour: &Option<String>| {
             crate::model::image::Target {
                 image: image.id.clone(),
@@ -710,15 +708,7 @@ impl Listing {
             }
         };
         for into in listed {
-            let Some(image) = list.images.iter().find(|image| image.name == into.image) else {
-                continue;
-            };
-            let Some(held) = image.entries.iter().find(|entry| {
-                entry.dir() == dir
-                    && (into.flavour.is_none()
-                        || entry.flavour.is_none()
-                        || entry.flavour == into.flavour)
-            }) else {
+            let Some((image, held)) = holds(list, into, &dir) else {
                 continue;
             };
             let (at, into) = (target(image, &held.flavour), target(image, &into.flavour));
@@ -730,8 +720,12 @@ impl Listing {
         Ok(())
     }
 
-    pub fn apply(&self, path: &str) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(&[(path, None)])
+    pub fn apply(
+        &self,
+        list: &crate::model::image::List,
+        path: &str,
+    ) -> Result<Vec<(PathBuf, Change)>, String> {
+        self.apply_declaration(list, &[(path, None)])
     }
 
     pub fn cancelled(&self) -> bool {
@@ -751,16 +745,21 @@ impl Listing {
         out
     }
 
-    pub fn apply_source(&self, members: &[(&str, &str)]) -> Result<Vec<(PathBuf, Change)>, String> {
+    pub fn apply_source(
+        &self,
+        list: &crate::model::image::List,
+        members: &[(&str, &str)],
+    ) -> Result<Vec<(PathBuf, Change)>, String> {
         let declarations: Vec<(&str, Option<&str>)> = members
             .iter()
             .map(|(source, name)| (*name, Some(*source)))
             .collect();
-        self.apply_declaration(&declarations)
+        self.apply_declaration(list, &declarations)
     }
 
     fn apply_declaration(
         &self,
+        list: &crate::model::image::List,
         declarations: &[(&str, Option<&str>)],
     ) -> Result<Vec<(PathBuf, Change)>, String> {
         match self {
@@ -781,32 +780,57 @@ impl Listing {
             }
             Self::In(listed) => {
                 let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
-                let added = format!(
-                    "{} added to modules",
-                    crate::import::said(
-                        &declarations
-                            .iter()
-                            .map(|(name, _)| (*name).to_string())
-                            .collect::<Vec<_>>()
-                    )
-                );
                 for target in listed {
+                    let mut taken: Vec<String> = Vec::new();
                     for (name, source) in declarations {
+                        if holds(list, target, &dir_of(name, *source)).is_some() {
+                            continue;
+                        }
                         append(
                             &target.file,
                             &target.image,
                             &listed_in(target.flavour.as_deref(), *source),
                             &leaf(name),
                         )?;
+                        taken.push((*name).to_string());
                     }
-                    if !wrote.iter().any(|(file, _)| *file == target.file) {
-                        wrote.push((target.file.clone(), Change::Updated(added.clone())));
+                    if !taken.is_empty() && !wrote.iter().any(|(file, _)| *file == target.file) {
+                        wrote.push((
+                            target.file.clone(),
+                            Change::Updated(format!(
+                                "{} added to modules",
+                                crate::import::said(&taken)
+                            )),
+                        ));
                     }
                 }
                 Ok(wrote)
             }
         }
     }
+}
+
+fn dir_of(name: &str, source: Option<&str>) -> String {
+    match source {
+        Some(owner) => format!("{}/{owner}/{name}", crate::model::remote::REMOTE_DIR),
+        None => name.to_string(),
+    }
+}
+
+fn holds<'a>(
+    list: &'a crate::model::image::List,
+    into: &Listed,
+    dir: &str,
+) -> Option<(
+    &'a crate::model::image::Image,
+    &'a crate::model::image::Entry,
+)> {
+    let image = list.images.iter().find(|image| image.name == into.image)?;
+    let entry = image.entries.iter().find(|entry| {
+        entry.dir() == dir
+            && (into.flavour.is_none() || entry.flavour.is_none() || entry.flavour == into.flavour)
+    })?;
+    Some((image, entry))
 }
 
 fn leaf(name: &str) -> String {

@@ -1120,6 +1120,64 @@ fn flows() {
         &["--root", ".", "check"],
     );
 
+    let skip = flow_repo_sourced("flow-skip");
+    buildc(
+        &skip,
+        &["--no-tui", "--root", ".", "create", "image", "Server"],
+    );
+    buildc(
+        &skip,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/flatpak",
+            "--image",
+            "example",
+        ],
+    );
+    flow(
+        "flow-import-skip",
+        &skip,
+        None,
+        &[
+            "--root",
+            ".",
+            "import",
+            "module",
+            "two/browser",
+            "--image",
+            "example",
+            "--image",
+            "server",
+        ],
+    );
+    let image = std::fs::read_to_string(skip.join("example.image.kdl")).unwrap();
+    assert_eq!(image.matches("module \"flatpak\"").count(), 1, "{image}");
+    assert!(image.contains("module \"browser\""), "{image}");
+    let server = std::fs::read_to_string(skip.join("server.image.kdl")).unwrap();
+    assert!(
+        server.contains("module \"flatpak\"") && server.contains("module \"browser\""),
+        "{server}"
+    );
+    buildc(
+        &skip,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/fedora-family",
+            "--image",
+            "example",
+        ],
+    );
+    buildc(&skip, &["--no-tui", "--root", ".", "fetch", "modules"]);
+    buildc(&skip, &["--no-tui", "--root", ".", "check"]);
+
     let unfetched = flow_repo("flow-unfetched");
     std::fs::create_dir_all(unfetched.join("modules/core/one")).unwrap();
     std::fs::write(

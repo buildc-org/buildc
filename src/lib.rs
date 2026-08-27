@@ -309,7 +309,16 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
                         }
                         _ => why.json().render(),
                     },
-                    None => unreachable!("the resolved module is listed"),
+                    None => {
+                        issues.push(
+                            Issue::new(
+                                format!("`{path}` is listed but was not read"),
+                                &list.repo_src,
+                            )
+                            .help("the problem reading it is above"),
+                        );
+                        String::new()
+                    }
                 },
                 [] => {
                     let known = emit::why::display(&emit::why::known(&list));

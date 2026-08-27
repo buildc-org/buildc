@@ -51,6 +51,7 @@ pub struct Why {
     pub fetches: Vec<Fetch>,
     pub repo: Option<Vec<String>>,
     pub repo_read: bool,
+    pub suppressed: Vec<String>,
 }
 
 fn named(path: &str, given: &str) -> bool {
@@ -62,6 +63,9 @@ fn named(path: &str, given: &str) -> bool {
 }
 
 pub(crate) fn matching(paths: &[String], given: &str) -> Vec<String> {
+    if let Some(exact) = paths.iter().find(|path| *path == given) {
+        return vec![exact.clone()];
+    }
     paths
         .iter()
         .filter(|path| named(path, given))
@@ -90,8 +94,9 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
     let module = list
         .images
         .iter()
-        .flat_map(Image::modules)
-        .find(|m| named(&m.path, path))?;
+        .flat_map(|image| image.entries.iter().chain(&image.suppressed))
+        .filter_map(|entry| entry.module.as_ref())
+        .find(|m| m.path == path)?;
 
     let mut why = Why {
         path: module.path.clone(),
@@ -127,6 +132,9 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
                 None => image.id.clone(),
                 Some(flavour) => format!("{}-{flavour}", image.id),
             });
+        }
+        if image.suppressed.iter().any(|entry| entry.path == path) {
+            why.suppressed.push(image.id.clone());
         }
     }
 
@@ -204,7 +212,20 @@ impl Why {
         }
 
         out.push(Part::Heading("Where it is built".into()));
-        out.push(Part::Text(listed(&self.images)));
+        // Suppressed somewhere is not suppressed everywhere, so the images
+        // that build it are said first and are never spoken for.
+        out.push(Part::Text(match self.suppressed.is_empty() {
+            true => listed(&self.images),
+            false => format!(
+                "{}. {} lists it and builds no layer for it: everything it provides, that base \
+                 already ships.",
+                match self.images.is_empty() {
+                    true => "Nowhere".to_string(),
+                    false => listed(&self.images),
+                },
+                listed(&self.suppressed),
+            ),
+        }));
 
         out.push(Part::Heading("What it exchanges".into()));
         if self.provides.is_empty() && self.requires.is_empty() {
@@ -291,11 +312,7 @@ impl Why {
                     .into(),
             )),
             Some((collection, pin)) => {
-                out.extend(evidence(
-                    "Collection",
-                    &[(collection.as_str(), pin)],
-                    terminal,
-                ));
+                out.extend(evidence(COLLECTION, &[(collection.as_str(), pin)], terminal));
                 out.push(Part::Text(match self.modified {
                     true => "**It has been edited since it was imported.** Forking a module is legitimate; what the record buys is that the fork is visible.".into(),
                     false => "Its content still matches what was imported.".into(),
@@ -312,7 +329,7 @@ impl Why {
                     .iter()
                     .map(|pin| (pin.name.as_str(), pin))
                     .collect();
-                out.extend(evidence("Asset", &rows, terminal));
+                out.extend(evidence(ASSET, &rows, terminal));
             }
         }
 
@@ -368,6 +385,7 @@ impl Why {
             ("module", Json::string(&self.path)),
             ("description", Json::string(&self.description)),
             ("images", Json::strings(self.images.clone())),
+            ("suppressed", Json::strings(self.suppressed.clone())),
             (
                 "provides",
                 Json::array(self.provides.iter().map(|(name, wanted)| {
@@ -420,15 +438,20 @@ impl Why {
     }
 }
 
-/// The four evidence slots across a row in markdown, or down rows at a terminal.
-fn evidence(first: &'static str, pins: &[(&str, &Fetch)], terminal: bool) -> Vec<Part> {
+const COLLECTION: &[&str] = &["Collection", "Locator", "Selector", "Verifier", "Tracker"];
+const ASSET: &[&str] = &["Asset", "Locator", "Selector", "Verifier", "Tracker"];
+
+/// The four evidence slots across a row in markdown, or down rows at a
+/// terminal, where five columns of hash and URL fold into a smear. `header`
+/// names what the rows are in its first cell, which is the terminal's title.
+fn evidence(header: &'static [&'static str], pins: &[(&str, &Fetch)], terminal: bool) -> Vec<Part> {
     let say = |value: &Option<String>| value.clone().unwrap_or_else(|| "not declared".into());
     if terminal {
         return pins
             .iter()
             .map(|(name, pin)| {
                 Part::Table(Table {
-                    title: format!("{first} {name}"),
+                    title: format!("{} {name}", header[0]),
                     header: &["Field", "Value"],
                     rows: vec![
                         (vec!["Locator".into(), say(&pin.locator)], false),
@@ -442,10 +465,7 @@ fn evidence(first: &'static str, pins: &[(&str, &Fetch)], terminal: bool) -> Vec
     }
     vec![Part::Table(Table {
         title: String::new(),
-        header: match first {
-            "Collection" => &["Collection", "Locator", "Selector", "Verifier", "Tracker"],
-            _ => &["Asset", "Locator", "Selector", "Verifier", "Tracker"],
-        },
+        header,
         rows: pins
             .iter()
             .map(|(name, pin)| {
@@ -533,11 +553,12 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
     let mut found = false;
 
     for target in targets(manifest) {
-        let Some(module) = items(target, "modules").iter().find(|module| {
-            text(module, "path")
-                .as_deref()
-                .is_some_and(|found| named(found, path))
-        }) else {
+        // By the whole path, as `of` is: `matching` already chose which module
+        // was meant, and a suffix match here could pick a different one.
+        let Some(module) = items(target, "modules")
+            .iter()
+            .find(|module| text(module, "path").as_deref() == Some(path))
+        else {
             continue;
         };
         found = true;
@@ -651,7 +672,7 @@ pub fn baked(
 
 #[cfg(test)]
 mod tests {
-    use super::{display, matching, Fetch, Why};
+    use super::{display, known_on_host, matching, on_host, Fetch, Why};
     use crate::emit::Part;
 
     #[test]
@@ -671,6 +692,48 @@ mod tests {
             display(&paths),
             ["one/hardening/coredumps", "two/coredumps", "updates"]
         );
+    }
+
+    /// The full path always names one module, even where it is also the tail
+    /// of another: without this the shorter of the two has no name at all.
+    #[test]
+    fn an_exact_path_beats_a_suffix() {
+        let paths = vec!["a/x".to_string(), "b/a/x".to_string()];
+
+        assert_eq!(matching(&paths, "a/x"), ["a/x"]);
+        assert_eq!(matching(&paths, "b/a/x"), ["b/a/x"]);
+        assert_eq!(matching(&paths, "x"), ["a/x", "b/a/x"]);
+    }
+
+    /// Resolving a name and then reading it out are two lookups, and the
+    /// second one has to agree with the first. `b/a/x` listed before `a/x` is
+    /// the order that catches a read-out still matching on the suffix.
+    #[test]
+    fn the_read_out_loads_the_path_that_was_resolved() {
+        let manifest = crate::emit::json::Json::parse(
+            r#"{"images": [{"targets": [{"name": "t", "modules": [
+                {"path": "b/a/x", "description": "the long one"},
+                {"path": "a/x", "description": "the short one"}
+            ]}]}]}"#,
+        )
+        .expect("the manifest is a document");
+        let known = known_on_host(&manifest);
+
+        for given in ["a/x", "b/a/x"] {
+            let resolved = matching(&known, given);
+            let [resolved] = resolved.as_slice() else {
+                panic!("`{given}` names exactly one module");
+            };
+            let why = on_host(&manifest, None, resolved).expect("the manifest names it");
+            assert_eq!(why.path, given);
+            assert_eq!(
+                why.description,
+                match given {
+                    "a/x" => "the short one",
+                    _ => "the long one",
+                }
+            );
+        }
     }
 
     #[test]

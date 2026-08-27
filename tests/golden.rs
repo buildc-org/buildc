@@ -348,6 +348,53 @@ fn why(name: &str, root: &Path, module: &str) {
     compare(name, "why.txt", &out);
 }
 
+fn why_unbuilt(root: &Path) {
+    let temp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("why-unbuilt");
+    let _ = std::fs::remove_dir_all(&temp);
+    copy(root, &temp);
+    std::env::set_current_dir(&temp).expect("the copy exists");
+    let here = Path::new(".");
+    let mut out = String::new();
+
+    out.push_str("==== a module the base suppresses\n");
+    let bare = buildc::run(Command::Why, Some("flatpak"), here).stdout;
+    out.push_str(&bare);
+
+    let full = buildc::run(Command::Why, Some("apps/flatpak"), here).stdout;
+    assert_eq!(bare, full, "the full path is a name like any other");
+
+    std::fs::write(
+        temp.join("also.image.kdl"),
+        "image {\n    name \"Also\"\n\n    base \"ghcr.io/ublue-os/bazzite:stable\" {\n        \
+         family \"fedora\"\n    }\n\n    modules {\n        module \"apps/flatpak\"\n    }\n}\n",
+    )
+    .unwrap();
+    out.push_str("==== and the same module in an image that does build it\n");
+    out.push_str(
+        buildc::run(Command::Why, Some("flatpak"), here)
+            .stdout
+            .split("## What it exchanges")
+            .next()
+            .unwrap_or_default(),
+    );
+    std::fs::remove_file(temp.join("also.image.kdl")).unwrap();
+
+    std::fs::remove_dir_all(temp.join("modules/apps/flatpak")).unwrap();
+    out.push_str("==== and one whose manifest never loaded\n");
+    let run = buildc::run(Command::Why, Some("flatpak"), here);
+    out.push_str(
+        run.issues
+            .plain()
+            .split("`apps/flatpak` is listed")
+            .nth(1)
+            .map(|rest| format!("`apps/flatpak` is listed{rest}"))
+            .expect("the unread module is reported")
+            .as_str(),
+    );
+
+    compare("suppressed", "why.txt", &out);
+}
+
 fn unenforced(root: &Path) {
     let temp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("unenforced");
     let _ = std::fs::remove_dir_all(&temp);
@@ -1297,6 +1344,7 @@ fn golden() {
     unenforced(&dir.join("enforced"));
     unpinned_import(&dir.join("unpinned-source"));
     why("enforced", &dir.join("enforced"), "one/hello");
+    why_unbuilt(&dir.join("suppressed"));
     capture("init", &init);
     verify("init", &init);
     let created = init_repo("create");

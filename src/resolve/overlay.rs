@@ -80,6 +80,39 @@ pub fn check(image: &Image, shipped: &Index, issues: &mut Issues) {
     }
 }
 
+pub fn collisions(image: &Image, shipped: &Index, brought: &BTreeSet<String>) -> Vec<String> {
+    let entries = &image.entries;
+    let mut out: Vec<String> = Vec::new();
+    for (path, owners) in shipped {
+        for (position, &later) in owners.iter().enumerate() {
+            let Some(module) = &entries[later].module else {
+                continue;
+            };
+            let Some(&earlier) = owners[..position]
+                .iter()
+                .rev()
+                .find(|&&earlier| coinstalled(&entries[earlier], &entries[later]))
+            else {
+                continue;
+            };
+            if !brought.contains(&entries[later].dir())
+                && !brought.contains(&entries[earlier].dir())
+            {
+                continue;
+            }
+            if module.overrides.iter().any(|decl| &decl.name == path) {
+                continue;
+            }
+            out.push(format!(
+                "`{}` overwrites `{path}`, which `{}` also ships — declare `overrides \"{path}\"` \
+                 in `{}` to take the replacement, or rename one of the two",
+                entries[later].path, entries[earlier].path, entries[later].path
+            ));
+        }
+    }
+    out
+}
+
 fn coinstalled(a: &Entry, b: &Entry) -> bool {
     if a.path == b.path {
         return false;

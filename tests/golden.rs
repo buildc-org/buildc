@@ -1359,6 +1359,63 @@ fn flows() {
          empty or start with a dot"
     );
 
+    let collide = flow_repo_sourced("flow-collides");
+    let remotes = "modules/editor/files/usr/share/example";
+    std::fs::create_dir_all(collide.join(remotes)).unwrap();
+    std::fs::write(
+        collide.join("modules/editor/module.kdl"),
+        "description \"Editor shipping its own flatpak remotes\"\n\nsupports \"fedora\"\n",
+    )
+    .unwrap();
+    std::fs::write(collide.join(remotes).join("remotes.list"), "editor\n").unwrap();
+    let image = collide.join("example.image.kdl");
+    let listed = std::fs::read_to_string(&image).unwrap().replace(
+        "    modules {\n    }",
+        "    modules {\n        module \"editor\"\n    }",
+    );
+    assert!(listed.contains("module \"editor\""), "{listed}");
+    std::fs::write(&image, listed).unwrap();
+    buildc(
+        &collide,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/fedora-family",
+            "--image",
+            "example",
+        ],
+    );
+    flow(
+        "flow-import-collides",
+        &collide,
+        None,
+        &[
+            "--root",
+            ".",
+            "import",
+            "module",
+            "one/flatpak",
+            "--image",
+            "example",
+        ],
+    );
+    assert!(
+        buildc::run(Command::Check, None, &collide)
+            .issues
+            .plain()
+            .contains("`one/flatpak` overwrites `/usr/share/example/remotes.list`"),
+        "check reports the collision the import said"
+    );
+    flow(
+        "flow-check-collides",
+        &collide,
+        None,
+        &["--root", ".", "check"],
+    );
+
     let copied_nested = flow_repo_with("flow-copy-nested", "four");
     flow(
         "flow-copy-nested",
@@ -1379,6 +1436,43 @@ fn flows() {
     assert!(copied_nested
         .join("generated/example.d/hardening/coredumps.sh")
         .is_file());
+
+    let copied = flow_repo_sourced("flow-copy-collides");
+    std::fs::create_dir_all(copied.join(remotes)).unwrap();
+    std::fs::write(
+        copied.join("modules/editor/module.kdl"),
+        "description \"Editor shipping its own flatpak remotes\"\n\nsupports \"fedora\"\n",
+    )
+    .unwrap();
+    std::fs::write(copied.join(remotes).join("remotes.list"), "editor\n").unwrap();
+    let image = copied.join("example.image.kdl");
+    let listed = std::fs::read_to_string(&image).unwrap().replace(
+        "    modules {\n    }",
+        "    modules {\n        module \"editor\"\n    }",
+    );
+    assert!(listed.contains("module \"editor\""), "{listed}");
+    std::fs::write(&image, listed).unwrap();
+    flow(
+        "flow-copy-collides",
+        &copied,
+        None,
+        &[
+            "--root",
+            ".",
+            "copy",
+            "module",
+            "one/flatpak",
+            "--image",
+            "example",
+        ],
+    );
+    assert!(
+        buildc::run(Command::Check, None, &copied)
+            .issues
+            .plain()
+            .contains("`flatpak` overwrites `/usr/share/example/remotes.list`"),
+        "check reports the collision the copy said"
+    );
 
     let root = flow_repo_sourced("flow-copy");
     flow(

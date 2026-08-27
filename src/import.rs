@@ -304,6 +304,12 @@ pub fn vendor(
     found: &Found,
     dest: &Path,
 ) -> Result<Vec<PathBuf>, String> {
+    let content = record::hash(&found.dir).ok_or_else(|| {
+        format!(
+            "{} cannot be hashed, so nothing can record what was copied",
+            found.dir.display()
+        )
+    })?;
     let dir = root.join(dest);
     let mut wrote: Vec<PathBuf> = crate::init::copy_tree(&found.dir, &dir)?
         .into_iter()
@@ -313,7 +319,6 @@ pub fn vendor(
         .iter()
         .find(|c| c.name == found.owner)
         .and_then(Collection::pin);
-    let content = record::hash(&dir).unwrap_or_default();
     crate::init::put(
         &dir.join(record::RECORD),
         &record::write(&found.owner, pin, &content),

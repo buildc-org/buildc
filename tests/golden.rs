@@ -1348,6 +1348,67 @@ fn flows() {
         .join("generated/example.d/four/hardening/coredumps.sh")
         .is_file());
 
+    let suffix = flow_repo_with("flow-suffix", "four");
+    flow(
+        "flow-import-suffix",
+        &suffix,
+        None,
+        &[
+            "--root",
+            ".",
+            "import",
+            "module",
+            "coredumps",
+            "--image",
+            "example",
+        ],
+    );
+    let image = std::fs::read_to_string(suffix.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains("source \"four\" {\n            module \"hardening/coredumps\"\n        }"),
+        "{image}"
+    );
+    assert!(!image.contains("module \"coredumps\""), "{image}");
+    buildc(&suffix, &["--no-tui", "--root", ".", "fetch", "modules"]);
+    buildc(&suffix, &["--no-tui", "--root", ".", "check"]);
+    buildc(&suffix, &["--no-tui", "--root", ".", "generate"]);
+    assert!(suffix
+        .join("generated/example.d/four/hardening/coredumps.sh")
+        .is_file());
+
+    let both = flow_repo("flow-suffix-ambiguous");
+    let collections = crate_dir().join("tests/collections");
+    let mut repo = std::fs::read_to_string(both.join("repo.kdl"))
+        .unwrap()
+        .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
+    repo.push_str(&format!(
+        "sources {{\n    four {:?}\n    five {:?}\n}}\n",
+        collections.join("four").display(),
+        collections.join("five").display()
+    ));
+    std::fs::write(both.join("repo.kdl"), repo).unwrap();
+    flow(
+        "flow-import-suffix-ambiguous",
+        &both,
+        None,
+        &[
+            "--root",
+            ".",
+            "import",
+            "module",
+            "coredumps",
+            "--image",
+            "example",
+        ],
+    );
+    let image = std::fs::read_to_string(both.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains("source \"four\" {\n            module \"hardening/coredumps\"\n        }"),
+        "{image}"
+    );
+    assert!(!image.contains("five"), "{image}");
+    assert!(!image.contains("sandbox"), "{image}");
+
     let (list, _, _) = buildc::declarations(&nested);
     let refused = buildc::import::find(&nested, &list.sources, "four/hardening//coredumps", false)
         .err()

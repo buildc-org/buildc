@@ -1,5 +1,6 @@
 pub mod collect;
 pub mod graph;
+pub mod name;
 pub mod options;
 pub mod order;
 pub mod overlay;

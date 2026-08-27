@@ -644,6 +644,13 @@ impl Listing {
                 })
                 .collect::<Result<_, _>>()?,
         };
+        let mut unique = Vec::new();
+        for at in chosen {
+            if !unique.contains(&at) {
+                unique.push(at);
+            }
+        }
+        let chosen = unique;
         let ungated = |target: &crate::model::image::Target| {
             chosen.iter().any(|at| {
                 targets[*at].image == target.image
@@ -745,6 +752,16 @@ impl Listing {
         out
     }
 
+    pub(crate) fn targets(&self) -> Vec<(&str, Option<&str>)> {
+        let Self::In(listed) = self else {
+            return Vec::new();
+        };
+        listed
+            .iter()
+            .map(|target| (target.image.as_str(), target.flavour.as_deref()))
+            .collect()
+    }
+
     pub fn apply_source(
         &self,
         list: &crate::model::image::List,
@@ -779,7 +796,7 @@ impl Listing {
                 Ok(Vec::new())
             }
             Self::In(listed) => {
-                let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
+                let mut wrote: Vec<(PathBuf, Vec<String>)> = Vec::new();
                 for target in listed {
                     let mut taken: Vec<String> = Vec::new();
                     for (name, source) in declarations {
@@ -794,17 +811,33 @@ impl Listing {
                         )?;
                         taken.push((*name).to_string());
                     }
-                    if !taken.is_empty() && !wrote.iter().any(|(file, _)| *file == target.file) {
-                        wrote.push((
-                            target.file.clone(),
-                            Change::Updated(format!(
-                                "{} added to modules",
-                                crate::import::said(&taken)
-                            )),
-                        ));
+                    if taken.is_empty() {
+                        continue;
+                    }
+                    if let Some((_, added)) =
+                        wrote.iter_mut().find(|(file, _)| *file == target.file)
+                    {
+                        for name in taken {
+                            if !added.contains(&name) {
+                                added.push(name);
+                            }
+                        }
+                    } else {
+                        wrote.push((target.file.clone(), taken));
                     }
                 }
-                Ok(wrote)
+                Ok(wrote
+                    .into_iter()
+                    .map(|(file, added)| {
+                        (
+                            file,
+                            Change::Updated(format!(
+                                "{} added to modules",
+                                crate::import::said(&added)
+                            )),
+                        )
+                    })
+                    .collect())
             }
         }
     }
@@ -1052,6 +1085,56 @@ fn create_remote(owner: &str, id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_targets_write_once_and_one_file_names_every_addition() {
+        let root = std::env::temp_dir().join(format!("buildc-listing-{}", std::process::id()));
+        crate::init::put(
+            &root.join("image.kdl"),
+            r#"image {
+    name "Example"
+    base "example" { family "fedora" }
+    flavours {
+        dev
+        server
+    }
+    modules {
+        flavour "dev" { source "one" { module "one" } }
+    }
+}
+"#,
+        )
+        .unwrap();
+        let listing = Listing::collect(
+            &root,
+            vec![
+                "example/dev".into(),
+                "example/dev".into(),
+                "example/server".into(),
+            ],
+            &Prompt::silent(),
+        )
+        .unwrap();
+        assert_eq!(listing.targets().len(), 2);
+
+        let (list, _) = crate::model::image::List::load(&root);
+        let wrote = listing
+            .apply_source(&list, &[("one", "one"), ("one", "two")])
+            .unwrap();
+        assert_eq!(wrote.len(), 1);
+        let Change::Updated(description) = &wrote[0].1 else {
+            panic!("an existing image file is updated")
+        };
+        assert!(
+            description.contains("one") && description.contains("two"),
+            "{description}"
+        );
+
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        assert_eq!(image.matches("module \"one\"").count(), 2, "{image}");
+        assert_eq!(image.matches("module \"two\"").count(), 2, "{image}");
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn a_catalogued_base_writes_what_it_ships_and_an_unknown_one_writes_nothing() {

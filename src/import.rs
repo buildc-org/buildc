@@ -35,8 +35,7 @@ pub fn find(
     name: &str,
     enforce: bool,
 ) -> Result<Vec<Found>, String> {
-    let (owner, module) = split(name);
-    if module
+    if name
         .split('/')
         .any(|part| part.is_empty() || part.starts_with('.'))
     {
@@ -56,6 +55,9 @@ pub fn find(
         });
     }
 
+    let (possible_owner, rest) = split(name);
+    let owner = possible_owner.filter(|owner| sources.iter().any(|source| source.name == *owner));
+    let module = owner.map_or(name, |_| rest);
     let mut searched: Vec<&str> = Vec::new();
     let mut found: Vec<Found> = Vec::new();
     for collection in sources {
@@ -81,13 +83,6 @@ pub fn find(
         }
     }
 
-    if searched.is_empty() {
-        return Err(format!(
-            "no collection called `{}`; repo.kdl declares {}",
-            owner.unwrap_or_default(),
-            names(sources)
-        ));
-    }
     if found.is_empty() {
         for collection in sources {
             if owner.is_some_and(|owner| owner != collection.name) {
@@ -102,8 +97,9 @@ pub fn find(
                 });
             }
         }
-        found.sort_by(|a, b| (&a.name, &a.owner).cmp(&(&b.name, &b.owner)));
     }
+
+    found.sort_by(|a, b| (&a.name, &a.owner).cmp(&(&b.name, &b.owner)));
 
     if found.is_empty() {
         return Err(format!(
@@ -586,10 +582,15 @@ fn short(
     declares: &[crate::parse::module::Summary],
     prompt: &Prompt,
 ) -> Result<Vec<String>, String> {
-    let images: Vec<&crate::model::image::Image> = listing
-        .images()
+    let targets: Vec<(&crate::model::image::Image, Option<&str>)> = listing
+        .targets()
         .iter()
-        .filter_map(|named| list.images.iter().find(|image| image.name == *named))
+        .filter_map(|(named, flavour)| {
+            list.images
+                .iter()
+                .find(|image| image.name == *named)
+                .map(|image| (image, *flavour))
+        })
         .collect();
     let requires: Vec<&String> = declares
         .iter()
@@ -600,7 +601,7 @@ fn short(
                 .any(|held| held.provides.iter().any(|has| &has == want))
         })
         .collect();
-    if images.is_empty() || requires.is_empty() {
+    if targets.is_empty() || requires.is_empty() {
         return Ok(Vec::new());
     }
     let disk = crate::parse::disk::Disk::scan(root);
@@ -612,7 +613,9 @@ fn short(
         if unmet.contains(&want) {
             continue;
         }
-        let any = images.iter().any(|image| !image_has(image, want, &index));
+        let any = targets
+            .iter()
+            .any(|(image, flavour)| !image_has(image, *flavour, want, &index));
         let Some(provider) = (match any {
             false => None,
             true => index.of(want).into_iter().find(|held| held.owner.is_some()),
@@ -629,10 +632,14 @@ fn short(
         return Ok(Vec::new());
     }
 
-    let lacking: Vec<&crate::model::image::Image> = images
+    let lacking: Vec<(&crate::model::image::Image, Option<&str>)> = targets
         .iter()
         .copied()
-        .filter(|image| unmet.iter().any(|want| !image_has(image, want, &index)))
+        .filter(|(image, flavour)| {
+            unmet
+                .iter()
+                .any(|want| !image_has(image, *flavour, want, &index))
+        })
         .collect();
 
     let question = format!(
@@ -656,7 +663,10 @@ fn short(
         said(
             &lacking
                 .iter()
-                .map(|image| format!("`{}`", image.id))
+                .map(|(image, flavour)| match flavour {
+                    Some(flavour) => format!("`{}/{flavour}`", image.id),
+                    None => format!("`{}`", image.id),
+                })
                 .collect::<Vec<_>>()
         ),
         said(&bring.iter().map(|at| format!("`{at}`")).collect::<Vec<_>>()),
@@ -669,6 +679,7 @@ fn short(
 
 fn image_has(
     image: &crate::model::image::Image,
+    flavour: Option<&str>,
     want: &str,
     index: &crate::provider::Index,
 ) -> bool {
@@ -678,9 +689,10 @@ fn image_has(
         .flat_map(|base| base.provides.iter().chain(base.provides_files.iter()))
         .any(|decl| decl.name == want)
         || image.entries.iter().any(|entry| {
-            index
-                .at(&entry.dir())
-                .is_some_and(|held| held.declares.provides.iter().any(|has| has == want))
+            (entry.flavour.is_none() || entry.flavour.as_deref() == flavour)
+                && index
+                    .at(&entry.dir())
+                    .is_some_and(|held| held.declares.provides.iter().any(|has| has == want))
         })
 }
 
@@ -802,6 +814,87 @@ pub(crate) fn said(items: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn collection(name: &str, path: &str) -> Collection {
+        Collection {
+            name: name.to_string(),
+            at: At::Dir(path.to_string()),
+            span: crate::diag::Span::default(),
+        }
+    }
+
+    #[test]
+    fn a_complete_nested_path_wins_before_an_owner_prefix() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let sources = [collection("four", "tests/collections/four")];
+        let found = find(root, &sources, "hardening/coredumps", false).unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].owner, "four");
+        assert_eq!(found[0].name, "hardening/coredumps");
+    }
+
+    #[test]
+    fn exact_matches_are_sorted_like_suffix_matches() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let sources = [
+            collection("two", "tests/collections/two"),
+            collection("one", "tests/collections/one"),
+        ];
+        let found = find(root, &sources, "browser", false).unwrap();
+        let owners: Vec<&str> = found.iter().map(|found| found.owner.as_str()).collect();
+
+        assert_eq!(owners, ["one", "two"]);
+    }
+
+    #[test]
+    fn a_provider_in_one_flavour_does_not_cover_its_sibling() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-flavour-provider-{}", std::process::id()));
+        crate::init::put(
+            &root.join("image.kdl"),
+            r#"image {
+    name "Example"
+    base "example" { family "fedora" }
+    flavours {
+        dev
+        server
+    }
+    modules { flavour "dev" { module "provider" } }
+}
+"#,
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("modules/provider/module.kdl"),
+            "description \"Provider\"\nsupports \"fedora\"\nprovides \"tool\"\n",
+        )
+        .unwrap();
+        let (list, _) = crate::model::image::List::load(&root);
+        let disk = crate::parse::disk::Disk::scan(&root);
+        let index = crate::provider::Index::scan(&root, &[], &disk, false);
+        let image = &list.images[0];
+
+        assert!(image_has(image, Some("dev"), "tool", &index));
+        assert!(!image_has(image, Some("server"), "tool", &index));
+        assert!(!image_has(image, None, "tool", &index));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn an_unhashable_copy_writes_nothing() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-unhashable-copy-{}", std::process::id()));
+        let found = Found {
+            owner: "one".into(),
+            name: "missing".into(),
+            dir: root.join("missing"),
+        };
+        let dest = Path::new("modules/missing");
+
+        assert!(vendor(&root, &[], &found, dest).is_err());
+        assert!(!root.join(dest).exists());
+    }
 
     #[test]
     fn a_cancelled_listing_writes_nothing() {

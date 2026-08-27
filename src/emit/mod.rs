@@ -43,6 +43,21 @@ pub(crate) const LIBRARIES: &[(&str, &str)] = &[
     ),
 ];
 
+pub(crate) const SCRIPTS: &[(&str, &str)] = &[
+    (
+        "scripts/lint.sh",
+        include_str!("../../assets/scripts/lint.sh"),
+    ),
+    (
+        "scripts/render-iso-config.sh",
+        include_str!("../../assets/scripts/render-iso-config.sh"),
+    ),
+    (
+        "scripts/buildc.sh",
+        include_str!("../../assets/scripts/buildc.sh"),
+    ),
+];
+
 pub enum Part {
     Heading(String),
     Text(String),

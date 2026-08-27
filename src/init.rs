@@ -68,6 +68,13 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<Vec<PathBuf>, Str
     }
 
     let mut wrote = copy_tree_except(assets, root, Some("lib"))?;
+    for (path, _) in crate::emit::SCRIPTS {
+        wrote.retain(|written| written != Path::new(path));
+        let at = root.join(path);
+        if at.exists() {
+            fs::remove_file(&at).map_err(|err| format!("{}: {err}", at.display()))?;
+        }
+    }
     let shipped = root.join(layout::WORKFLOW_DIR);
     if shipped.is_dir() {
         fs::remove_dir_all(&shipped).map_err(|err| format!("{}: {err}", shipped.display()))?;

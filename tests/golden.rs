@@ -43,6 +43,7 @@ fn capture(name: &str, root: &Path) {
     for (path, body) in &buildc::run(Command::Generate, None, here).files {
         let covered = path == std::path::Path::new("generated/plan.json")
             || path.starts_with("generated/lib")
+            || path.starts_with("scripts/")
             || path.starts_with(buildc::layout::WORKFLOW_DIR);
         match covered {
             true => generated.push_str(&format!("==== {}\n", path.display())),
@@ -1365,6 +1366,12 @@ fn golden() {
         !init.join("lib").exists(),
         "lib is generated; it must not land in the editable scaffold"
     );
+    for script in ["buildc.sh", "lint.sh", "render-iso-config.sh"] {
+        assert!(
+            !init.join("scripts").join(script).exists(),
+            "{script} is generated; it must not land in the editable scaffold"
+        );
+    }
     for name in names {
         capture(&name, &dir.join(&name));
     }

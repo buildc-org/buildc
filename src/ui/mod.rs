@@ -88,14 +88,18 @@ const DONE: &str = "done";
 
 pub fn select(question: &str, options: &[Choice]) -> Result<Option<usize>, String> {
     inline(height(options.len()), |terminal| {
-        pick(terminal, question, options, PICK)
+        pick(terminal, question, options, PICK, 0)
     })
 }
 
 pub fn confirm(question: &str, yes: &str, no: &str) -> Result<bool, String> {
+    confirm_current(question, yes, no, true)
+}
+
+pub fn confirm_current(question: &str, yes: &str, no: &str, current: bool) -> Result<bool, String> {
     let options = [Choice::new(yes, ""), Choice::new(no, "")];
     let chosen = inline(height(options.len()), |terminal| {
-        pick(terminal, question, &options, EITHER)
+        pick(terminal, question, &options, EITHER, usize::from(!current))
     })?;
     Ok(chosen == Some(0))
 }
@@ -140,8 +144,9 @@ fn pick<B: Backend>(
     question: &str,
     options: &[Choice],
     hint: &str,
+    selected: usize,
 ) -> Result<Option<usize>, String> {
-    let mut state = ListState::default().with_selected(Some(0));
+    let mut state = ListState::default().with_selected(Some(selected));
     loop {
         terminal
             .draw(|frame| draw(frame, question, options, None, hint, &mut state))

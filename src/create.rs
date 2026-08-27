@@ -140,6 +140,8 @@ impl Repo {
                     &basis,
                     &every,
                     crate::resolve::workflow::DEFAULT_AT,
+                    false,
+                    false,
                     prompt,
                 )?
             }

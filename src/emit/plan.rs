@@ -323,6 +323,7 @@ fn module(list: &List, entry: &Entry, family: &str) -> Json {
             "groups",
             batches(module.map(|m| m.groups.as_slice()), family),
         ),
+        ("coprs", coprs(module, family)),
         ("provenance", provenance(list, entry)),
         (
             "satisfies",
@@ -353,6 +354,24 @@ fn batches(declared: Option<&[crate::model::module::PackageGroup]>, family: &str
                     ("family", Json::string(&batch.family)),
                     ("names", Json::strings(batch.packages.iter().cloned())),
                     ("enablerepo", Json::optional(batch.enablerepo.clone())),
+                ])
+            }),
+    )
+}
+
+fn coprs(module: Option<&Module>, family: &str) -> Json {
+    if family != "fedora" {
+        return Json::array(std::iter::empty());
+    }
+    Json::array(
+        module
+            .map(|m| m.coprs.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .map(|copr| {
+                Json::object([
+                    ("id", Json::string(copr.name())),
+                    ("url", Json::string(copr.url())),
                 ])
             }),
     )

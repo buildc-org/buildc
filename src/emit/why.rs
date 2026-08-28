@@ -55,6 +55,7 @@ pub struct Why {
     pub requires: Vec<(String, Option<String>)>,
     pub packages: Vec<(String, Vec<String>, Option<String>)>,
     pub groups: Vec<(String, Vec<String>, Option<String>)>,
+    pub coprs: Vec<(String, String)>,
     pub satisfies: Vec<(String, Vec<String>)>,
     pub content: Option<String>,
     pub imported: Option<(String, Fetch)>,
@@ -148,6 +149,14 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
                     );
                     if !into.contains(&declared) {
                         into.push(declared);
+                    }
+                }
+            }
+            if family == "fedora" {
+                for copr in &module.coprs {
+                    let declared = (copr.name(), copr.url());
+                    if !why.coprs.contains(&declared) {
+                        why.coprs.push(declared);
                     }
                 }
             }
@@ -388,8 +397,26 @@ impl Why {
         }
 
         out.push(Part::Heading("Third-party repositories".into()));
+        if !self.coprs.is_empty() {
+            out.push(Part::Text(
+                "It enables these COPR repositories, each disabled again so it is on for the install and not in the shipped image."
+                    .into(),
+            ));
+            out.push(Part::Table(Table {
+                title: String::new(),
+                header: &["COPR", "URL"],
+                rows: self
+                    .coprs
+                    .iter()
+                    .map(|(id, url)| (vec![id.clone(), url.clone()], false))
+                    .collect(),
+            }));
+        }
         match &self.repo {
-            None => out.push(Part::Text("None. It ships no `repo` file.".into())),
+            None if self.coprs.is_empty() => out.push(Part::Text(
+                "None. It declares no `copr` and ships no `repo` file.".into(),
+            )),
+            None => {}
             Some(urls) => {
                 out.push(Part::Text(format!(
                     "It enables one, in `modules/{}/repo`. There is no grammar for that file, so read it: it is shell calling the family's config manager.",
@@ -460,6 +487,12 @@ impl Why {
             ),
             ("packages", batches(&self.packages)),
             ("groups", batches(&self.groups)),
+            (
+                "coprs",
+                Json::array(self.coprs.iter().map(|(id, url)| {
+                    Json::object([("id", Json::string(id)), ("url", Json::string(url))])
+                })),
+            ),
             (
                 "satisfies",
                 Json::array(self.satisfies.iter().map(|(benchmark, rules)| {
@@ -653,6 +686,14 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
                 if !into.contains(&declared) {
                     into.push(declared);
                 }
+            }
+        }
+        for copr in items(module, "coprs") {
+            let (Some(id), Some(url)) = (text(copr, "id"), text(copr, "url")) else {
+                continue;
+            };
+            if !why.coprs.iter().any(|(have, _)| *have == id) {
+                why.coprs.push((id, url));
             }
         }
         for claim in items(module, "satisfies") {

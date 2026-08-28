@@ -11,6 +11,40 @@ pub struct PackageGroup {
     pub span: Span,
 }
 
+pub struct Copr {
+    pub owner: String,
+    pub project: String,
+    pub span: Span,
+}
+
+impl Copr {
+    pub fn name(&self) -> String {
+        format!("{}/{}", self.owner, self.project)
+    }
+
+    pub fn url(&self) -> String {
+        format!(
+            "https://copr.fedorainfracloud.org/coprs/{}/{}/",
+            self.owner, self.project
+        )
+    }
+
+    pub fn env_name(&self) -> String {
+        format!(
+            "COPR_{}",
+            self.name()
+                .to_uppercase()
+                .replace(['/', '-', '.', '+'], "_")
+        )
+    }
+
+    pub fn selector(&self) -> String {
+        format!(
+            "copr:copr.fedorainfracloud.org:{}:{}",
+            self.owner, self.project
+        )
+    }
+}
 pub struct Coverage {
     pub benchmark: String,
     pub rules: Vec<String>,
@@ -84,6 +118,7 @@ pub struct Module {
     pub assets: Vec<Asset>,
     pub packages: Vec<PackageGroup>,
     pub groups: Vec<PackageGroup>,
+    pub coprs: Vec<Copr>,
     pub helpers: Vec<Decl>,
     pub satisfies: Vec<Coverage>,
     pub resolved: Vec<(String, String)>,

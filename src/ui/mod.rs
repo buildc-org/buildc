@@ -1,7 +1,7 @@
 pub mod table;
 pub mod tree;
 
-use crate::copy::{EITHER, NEST, PICK, TOGGLE};
+use crate::copy::{CREATE, EITHER, NEST, PICK, REVIEW_KEYS, TOGGLE};
 
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -102,8 +102,16 @@ pub enum Answer {
 const VISIBLE: usize = 8;
 
 pub fn select(question: &str, options: &[Choice]) -> Result<Option<usize>, String> {
+    select_current(question, options, 0)
+}
+
+pub fn select_current(
+    question: &str,
+    options: &[Choice],
+    at: usize,
+) -> Result<Option<usize>, String> {
     inline(height(options.len()), |terminal| {
-        pick(terminal, question, options, PICK, 0)
+        pick(terminal, question, options, PICK, at)
     })
 }
 
@@ -129,6 +137,24 @@ pub fn multi(question: &str, options: &[Choice], on: &[usize]) -> Result<Answer,
     inline(height(options.len()), |terminal| {
         toggle(terminal, question, options, on)
     })
+}
+
+pub fn review(question: &str, rows: &[(String, String)]) -> Result<Option<usize>, String> {
+    let width = rows
+        .iter()
+        .map(|(label, _)| label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut options: Vec<Choice> = rows
+        .iter()
+        .map(|(label, value)| Choice::new(format!("{label:<width$}"), value))
+        .collect();
+    options.push(Choice::new("", ""));
+    options.push(Choice::new(CREATE, ""));
+    let chosen = inline((options.len() + 2) as u16, |terminal| {
+        pick(terminal, question, &options, REVIEW_KEYS, 0)
+    })?;
+    Ok(chosen.map(|at| at.min(rows.len())))
 }
 
 fn height(rows: usize) -> u16 {
@@ -170,7 +196,21 @@ fn pick<B: Backend>(
         match key {
             KeyCode::Enter => return Ok(state.selected()),
             KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
-            code => move_by(code, &mut state),
+            code => {
+                move_by(code, &mut state);
+                skip_spacers(code, options, &mut state);
+            }
+        }
+    }
+}
+
+fn skip_spacers(code: KeyCode, options: &[Choice], state: &mut ListState) {
+    for _ in 0..options.len() {
+        match state.selected() {
+            Some(at) if options.get(at).is_some_and(|row| row.label.is_empty()) => {
+                move_by(code, state)
+            }
+            _ => return,
         }
     }
 }
@@ -501,7 +541,10 @@ fn nested(
     frame.render_stateful_widget(List::new(items).highlight_symbol("> "), body, state);
     frame.render_widget(
         Line::from(vec![
-            Span::raw(format!("filter: {filter}  ")),
+            Span::raw(match filter.is_empty() {
+                true => String::new(),
+                false => format!("{filter}  "),
+            }),
             Span::styled(hint(NEST, state, body.height, shown), Style::new().dim()),
         ]),
         foot,
@@ -573,6 +616,30 @@ mod tests {
     }
 
     #[test]
+    fn every_hint_fits_the_narrowest_terminal() {
+        let mut state = ListState::default().with_selected(Some(0));
+        for hint in [PICK, TOGGLE, EITHER] {
+            let mut terminal = Terminal::new(TestBackend::new(60, 4)).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw(
+                        frame,
+                        "which module",
+                        &[Choice::new("gaming", "")],
+                        None,
+                        hint,
+                        &mut state,
+                    )
+                })
+                .unwrap();
+            let drawn = terminal.backend().to_string();
+            assert!(drawn.contains(hint), "{drawn}");
+        }
+        let drawn = nest_drawn_at(60, &rules(), &[true; 7], &[], "", 0);
+        assert!(drawn.contains(NEST), "{drawn}");
+    }
+
+    #[test]
     fn a_list_longer_than_the_window_says_how_far_down_it_is() {
         let short = ListState::default();
         assert_eq!(hint(PICK, &short, 8, 3), PICK);
@@ -641,11 +708,22 @@ mod tests {
         filter: &str,
         at: usize,
     ) -> String {
+        nest_drawn_at(60, options, open, on, filter, at)
+    }
+
+    fn nest_drawn_at(
+        width: u16,
+        options: &[Choice],
+        open: &[bool],
+        on: &[usize],
+        filter: &str,
+        at: usize,
+    ) -> String {
         let nodes = nodes(options);
         let rows = shown(&nodes, options, open, filter);
         let mut state = ListState::default().with_selected(Some(at));
         let height = rows.len() as u16 + 5;
-        let mut terminal = Terminal::new(TestBackend::new(60, height)).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
             .draw(|frame| {
                 nested(
@@ -734,6 +812,6 @@ mod tests {
         assert!(drawn.contains("> [x]     1.1.2 nodev"), "{drawn}");
         assert!(drawn.contains("[-]   \u{25be} 1.1"), "{drawn}");
         assert!(drawn.contains("no device files there"), "{drawn}");
-        assert!(drawn.contains("filter:   type to filter"), "{drawn}");
+        assert!(drawn.contains(NEST), "{drawn}");
     }
 }

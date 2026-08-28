@@ -181,6 +181,8 @@ fn create_image_surfaces_an_unreadable_runtime_catalog() {
         "Example",
         None,
         "a name argument",
+        buildc::create::Field::Image,
+        None,
         &buildc::prompt::Prompt::silent(),
     )
     .err()

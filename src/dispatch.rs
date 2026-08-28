@@ -207,8 +207,11 @@ pub fn dispatch(
         Verb::CreateRepo => {
             let name = one_name(rest, spec)?;
             let image = images.last().cloned();
-            crate::create::Repo::collect(name, host, owner, image, base, root_arg, prompt)?
-                .apply()?;
+            if let Some(repo) =
+                crate::create::Repo::collect(name, host, owner, image, base, root_arg, prompt)?
+            {
+                repo.apply()?;
+            }
             Ok(ExitCode::SUCCESS)
         }
         Verb::CreateImage => {
@@ -230,6 +233,8 @@ pub fn dispatch(
                 &repo,
                 url,
                 "a name argument",
+                crate::create::Field::Image,
+                None,
                 prompt,
             )?
             .apply(&root)?;
@@ -318,6 +323,7 @@ pub fn dispatch(
                 list.workflows_at,
                 list.publishes_scheduled,
                 list.scans_scheduled,
+                crate::create::Field::Workflows,
                 prompt,
             )?
             else {

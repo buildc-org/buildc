@@ -69,6 +69,7 @@ fn init_repo(name: &str) -> PathBuf {
         &buildc::prompt::Prompt::silent(),
     )
     .unwrap()
+    .expect("a silent run draws no review screen")
     .apply()
     .unwrap();
     root
@@ -128,6 +129,8 @@ fn create(name: &str, root: &Path) {
         "example",
         None,
         "a name argument",
+        buildc::create::Field::Image,
+        None,
         &silent,
     )
     .unwrap()

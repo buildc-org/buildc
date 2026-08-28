@@ -326,7 +326,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print every fact this repository derives, as json",
         family: Family::Script,
-        host: false,
+        host: true,
         takes: ROOT,
     },
     Spec {
@@ -346,7 +346,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[target]",
         about: "print what one target is made of, as a markdown table",
         family: Family::Script,
-        host: false,
+        host: true,
         takes: ROOT,
     },
     Spec {
@@ -376,7 +376,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print the datastream the target is measured with",
         family: Family::Script,
-        host: false,
+        host: true,
         takes: &["root", "target"],
     },
     Spec {

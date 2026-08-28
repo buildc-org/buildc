@@ -1,7 +1,7 @@
 mod xml;
 
 use crate::diag::{Issue, Issues, Source, Span};
-use crate::emit::json::Json;
+use crate::emit::json::{self, Json};
 use crate::emit::plan::of_target;
 use crate::model::image::{Entry, Image, List, NO_FLAVOUR};
 use crate::provider::Index;
@@ -30,6 +30,22 @@ pub fn content(root: &Path, named: Option<&str>) -> Result<Verdict, String> {
         return Ok(Verdict::Wrong);
     };
     println!("{}", datastream(&list, named)?);
+    Ok(Verdict::Clean)
+}
+
+pub fn content_on_host(image: &Json) -> Result<Verdict, String> {
+    let path = match json::text(image, "conforms").unwrap_or_default().is_empty() {
+        true => String::new(),
+        false => installed(
+            CONTENT,
+            &json::field(image, "base")
+                .and_then(|base| json::text(base, "family"))
+                .unwrap_or_default(),
+        )?
+        .display()
+        .to_string(),
+    };
+    println!("{path}");
     Ok(Verdict::Clean)
 }
 

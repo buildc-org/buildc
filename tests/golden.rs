@@ -353,6 +353,38 @@ fn why(name: &str, root: &Path, module: &str) {
     compare(name, "why.txt", &out);
 }
 
+fn summary_on_host(root: &Path) {
+    std::env::set_current_dir(root).expect("fixture root exists");
+    let here = Path::new(".");
+    let manifest = buildc::emit::json::Json::parse(&buildc::run(Command::Plan, None, here).stdout)
+        .expect("the plan is a document");
+
+    let (every, _) = buildc::emit::why::built_as(&manifest, None);
+    assert!(!every.is_empty(), "{} publishes nothing", root.display());
+    for target in every {
+        let record = buildc::emit::json::Json::parse(&format!(
+            "{{\"target\": {:?}}}",
+            buildc::emit::json::text(target, "name").expect("a target is named")
+        ))
+        .expect("the record is a document");
+        let (scoped, _) = buildc::emit::why::built_as(&manifest, Some(&record));
+        let [scoped] = scoped.as_slice() else {
+            panic!("the record names exactly one target");
+        };
+        assert_eq!(
+            buildc::run(
+                Command::Summary,
+                buildc::emit::json::text(target, "name").as_deref(),
+                here
+            )
+            .stdout,
+            buildc::emit::summary::on_host(scoped),
+            "{} disagrees with itself",
+            root.display()
+        );
+    }
+}
+
 fn why_unbuilt(root: &Path) {
     let temp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("why-unbuilt");
     let _ = std::fs::remove_dir_all(&temp);
@@ -1711,6 +1743,15 @@ fn golden() {
     why("enforced", &dir.join("enforced"), "one/hello");
     why("minimal", &dir.join("minimal"), "core/hello");
     why_unbuilt(&dir.join("suppressed"));
+    for name in [
+        "minimal",
+        "multi-image",
+        "suppressed",
+        "collecting",
+        "pinned",
+    ] {
+        summary_on_host(&dir.join(name));
+    }
     capture("init", &init);
     verify("init", &init);
     let created = init_repo("create");

@@ -1,3 +1,4 @@
+use crate::emit::json::{field, items, strings, text, Json};
 use crate::emit::plan::of_target;
 use crate::model::image::List;
 use std::fmt::Write as _;
@@ -62,6 +63,67 @@ pub fn render(list: &List, target: &str) -> Option<String> {
         let _ = writeln!(out, " | {} | {} |", options.join(" "), satisfies.join(" "));
     }
     Some(out)
+}
+
+pub fn on_host(target: &Json) -> String {
+    let modules = items(target, "modules");
+    let gated = |module: &Json| text(module, "flavour");
+    let mut out = match text(target, "flavour") {
+        None => format!("{} modules, the ungated set.\n", modules.len()),
+        Some(flavour) => format!(
+            "{} modules, {} of them gated to `{flavour}`.\n",
+            modules.len(),
+            modules.iter().filter(|m| gated(m).is_some()).count()
+        ),
+    };
+    out.push_str("\n| Module | Description | Options | Satisfies |\n| --- | --- | --- | --- |\n");
+
+    for module in modules {
+        let _ = write!(out, "| `{}`", text(module, "path").unwrap_or_default());
+        for (word, value) in [
+            ("", gated(module)),
+            ("variant=", text(module, "variant")),
+            ("remote=", text(module, "remote")),
+        ] {
+            if let Some(value) = value {
+                let _ = match word.is_empty() {
+                    true => write!(out, " `[{value}]`"),
+                    false => write!(out, " `{word}{value}`"),
+                };
+            }
+        }
+        let _ = write!(
+            out,
+            " | {}",
+            cell(&text(module, "description").unwrap_or_default())
+        );
+        let options: Vec<String> = match field(module, "options") {
+            Some(Json::Object(fields)) => fields
+                .iter()
+                .map(|(name, value)| match value {
+                    Json::String(value) => format!("`{name}=\"{}\"`", cell(value)),
+                    other => format!("`{name}={}`", other.render()),
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let satisfies: Vec<String> = items(module, "satisfies")
+            .iter()
+            .map(|claim| {
+                format!(
+                    "`{}: {}`",
+                    cell(&text(claim, "benchmark").unwrap_or_default()),
+                    strings(claim, "rules")
+                        .iter()
+                        .map(|rule| cell(rule))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect();
+        let _ = writeln!(out, " | {} | {} |", options.join(" "), satisfies.join(" "));
+    }
+    out
 }
 
 fn cell(text: &str) -> String {

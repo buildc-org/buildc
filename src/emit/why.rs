@@ -43,6 +43,7 @@ pub struct Why {
     pub images: Vec<String>,
     pub provides: Vec<(String, Vec<String>)>,
     pub requires: Vec<(String, Option<String>)>,
+    pub packages: Vec<(String, Vec<String>, Option<String>)>,
     pub satisfies: Vec<(String, Vec<String>)>,
     pub content: Option<String>,
     pub imported: Option<(String, Fetch)>,
@@ -107,17 +108,37 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
     }
 
     for image in &list.images {
+        let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+        let mut listed = false;
         for entry in &image.entries {
             if entry.path != path {
                 continue;
             }
+            listed = true;
             why.images.push(match &entry.flavour {
                 None => image.id.clone(),
                 Some(flavour) => format!("{}-{flavour}", image.id),
             });
         }
-        if image.suppressed.iter().any(|entry| entry.path == path) {
+        let suppressed = image.suppressed.iter().any(|entry| entry.path == path);
+        if suppressed {
             why.suppressed.push(image.id.clone());
+        }
+        if listed || suppressed {
+            for group in module
+                .packages
+                .iter()
+                .filter(|group| group.family == family)
+            {
+                let declared = (
+                    group.family.clone(),
+                    group.packages.clone(),
+                    group.enablerepo.clone(),
+                );
+                if !why.packages.contains(&declared) {
+                    why.packages.push(declared);
+                }
+            }
         }
     }
 
@@ -240,6 +261,34 @@ impl Why {
                 title: String::new(),
                 header: &["Direction", "Capability", "With"],
                 rows,
+            }));
+        }
+
+        if !self.packages.is_empty() {
+            out.push(Part::Heading("What it declares to install".into()));
+            out.push(Part::Table(Table {
+                title: String::new(),
+                header: &["Family", "Packages", "Enabled repository"],
+                rows: self
+                    .packages
+                    .iter()
+                    .map(|(family, packages, repo)| {
+                        (
+                            vec![
+                                format!("`{family}`"),
+                                packages
+                                    .iter()
+                                    .map(|package| format!("`{package}`"))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                repo.as_ref()
+                                    .map(|repo| format!("`{repo}`"))
+                                    .unwrap_or_else(|| "default".into()),
+                            ],
+                            false,
+                        )
+                    })
+                    .collect(),
             }));
         }
 
@@ -384,6 +433,16 @@ impl Why {
                     Json::object([
                         ("capability", Json::string(name)),
                         ("provided_by", Json::optional(from.clone())),
+                    ])
+                })),
+            ),
+            (
+                "packages",
+                Json::array(self.packages.iter().map(|(family, packages, repo)| {
+                    Json::object([
+                        ("family", Json::string(family)),
+                        ("names", Json::strings(packages.clone())),
+                        ("enablerepo", Json::optional(repo.clone())),
                     ])
                 })),
             ),
@@ -569,6 +628,15 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
                     .find(|other| strings(other, "provides").contains(&name))
                     .and_then(|other| text(other, "path"));
                 why.requires.push((name, from));
+            }
+        }
+        for group in items(module, "packages") {
+            let Some(family) = text(group, "family") else {
+                continue;
+            };
+            let declared = (family, strings(group, "names"), text(group, "enablerepo"));
+            if !why.packages.contains(&declared) {
+                why.packages.push(declared);
             }
         }
         for claim in items(module, "satisfies") {

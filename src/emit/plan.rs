@@ -164,6 +164,7 @@ fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
 
 fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> Json {
     let flavour = target.flavour.as_str();
+    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
     let entries: Vec<&Entry> = image
         .entries
         .iter()
@@ -213,7 +214,11 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         ),
         (
             "modules",
-            Json::array(entries.iter().map(|entry| self::module(list, entry))),
+            Json::array(
+                entries
+                    .iter()
+                    .map(|entry| self::module(list, entry, family)),
+            ),
         ),
         (
             "suppressed",
@@ -222,7 +227,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
                     .suppressed
                     .iter()
                     .filter(|entry| in_target(entry, flavour))
-                    .map(|entry| self::module(list, entry)),
+                    .map(|entry| self::module(list, entry, family)),
             ),
         ),
         (
@@ -283,7 +288,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
     ])
 }
 
-fn module(list: &List, entry: &Entry) -> Json {
+fn module(list: &List, entry: &Entry, family: &str) -> Json {
     let module = entry.module.as_ref();
     Json::object([
         ("path", Json::string(&entry.path)),
@@ -310,6 +315,23 @@ fn module(list: &List, entry: &Entry) -> Json {
         ),
         ("provides", Json::strings(decls(module, |m| &m.provides))),
         ("requires", Json::strings(decls(module, |m| &m.requires))),
+        (
+            "packages",
+            Json::array(
+                module
+                    .map(|module| module.packages.as_slice())
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|group| group.family == family)
+                    .map(|group| {
+                        Json::object([
+                            ("family", Json::string(&group.family)),
+                            ("names", Json::strings(group.packages.iter().cloned())),
+                            ("enablerepo", Json::optional(group.enablerepo.clone())),
+                        ])
+                    }),
+            ),
+        ),
         ("provenance", provenance(list, entry)),
         (
             "satisfies",

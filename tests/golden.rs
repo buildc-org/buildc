@@ -1706,6 +1706,7 @@ fn golden() {
     unenforced(&dir.join("enforced"));
     unpinned_import(&dir.join("unpinned-source"));
     why("enforced", &dir.join("enforced"), "one/hello");
+    why("minimal", &dir.join("minimal"), "core/hello");
     why_unbuilt(&dir.join("suppressed"));
     capture("init", &init);
     verify("init", &init);

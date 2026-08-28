@@ -38,6 +38,7 @@ pub struct Contribution {
 pub struct FileMode {
     pub path: String,
     pub mode: u32,
+    pub span: Span,
 }
 
 pub struct Key {

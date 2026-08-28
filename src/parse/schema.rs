@@ -39,6 +39,7 @@ pub enum Arg {
     Bool,
     Int,
     Strs,
+    StrPair(&'static str),
     One(&'static [&'static str]),
 }
 
@@ -165,6 +166,16 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
         }
         Arg::Strs => {
             if string_args(node).is_empty() {
+                schema.arg_say.raise(about, here, src, issues);
+            }
+        }
+        Arg::StrPair(_) => {
+            let args: Vec<_> = node
+                .entries()
+                .iter()
+                .filter(|entry| entry.name().is_none())
+                .collect();
+            if args.len() != 2 || args.iter().any(|entry| entry.value().as_string().is_none()) {
                 schema.arg_say.raise(about, here, src, issues);
             }
         }

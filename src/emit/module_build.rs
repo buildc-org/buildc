@@ -83,24 +83,6 @@ fn script(
         }
     }
 
-    if module.packages.iter().any(|g| g.family == base_family) {
-        out.push_str("\nsource /ctx/lib/family.sh\n");
-    }
-    for group in module.packages.iter().filter(|g| g.family == base_family) {
-        let packages = group
-            .packages
-            .iter()
-            .map(|package| shell(package))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let repo = group
-            .enablerepo
-            .as_ref()
-            .map(|repo| format!("BUILDC_ENABLE_REPO={} ", shell(repo)))
-            .unwrap_or_default();
-        let _ = write!(out, "\n{repo}install_packages {packages}\n");
-    }
-
     let on_disk = layout::module(root, entry.dir());
     if on_disk.join("repo").is_file() {
         match repo_id(&on_disk.join("repo")) {
@@ -118,6 +100,24 @@ fn script(
                 let _ = write!(out, "\nsource {dir}/repo\n");
             }
         }
+    }
+
+    if module.packages.iter().any(|g| g.family == base_family) {
+        out.push_str("\nsource /ctx/lib/family.sh\n");
+    }
+    for group in module.packages.iter().filter(|g| g.family == base_family) {
+        let packages = group
+            .packages
+            .iter()
+            .map(|package| shell(package))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let repo = group
+            .enablerepo
+            .as_ref()
+            .map(|repo| format!("BUILDC_ENABLE_REPO={} ", shell(repo)))
+            .unwrap_or_default();
+        let _ = write!(out, "\n{repo}install_packages {packages}\n");
     }
 
     if on_disk.join("module.sh").is_file() {

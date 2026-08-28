@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use buildc::command::{self, Spec, Verb};
+use buildc::command::{self, Context, Spec, Verb};
 use buildc::copy;
 use buildc::dispatch::{self, Error, USAGE_ERROR};
 use buildc::model::image::BUILDC_VERSION;
@@ -90,7 +90,7 @@ fn main() -> ExitCode {
             };
             eprintln!("Error: {message}{stop}\n");
             match unknown {
-                true => eprint!("{}", command::usage()),
+                true => eprint!("{}", command::usage(&Context::of(None))),
                 false => eprintln!("{COMMANDS}"),
             }
             ExitCode::from(USAGE_ERROR)
@@ -152,10 +152,12 @@ fn run() -> Result<ExitCode, Error> {
         no_cache_from,
     };
 
+    let here = Context::of(flags.root.as_deref());
+
     let words: Vec<&str> = args.words.iter().map(String::as_str).collect();
     let (spec, rest): (&Spec, &[&str]) = if matches!(words.first(), Some(&"-h") | Some(&"--help")) {
         banner(false);
-        print!("{}", command::usage());
+        print!("{}", command::usage(&here));
         return Ok(ExitCode::SUCCESS);
     } else if picking(&words, &prompt) {
         let rows = match words.first() {
@@ -163,13 +165,13 @@ fn run() -> Result<ExitCode, Error> {
             None => command::listed(),
         };
         banner(false);
-        match buildc::ui::select(copy::WHICH_COMMAND, &command::choices(&rows))? {
+        match buildc::ui::select(copy::WHICH_COMMAND, &command::choices(&rows, &here))? {
             Some(at) => (rows[at], &[]),
             None => return Ok(ExitCode::SUCCESS),
         }
     } else if words.is_empty() {
         banner(true);
-        eprint!("{}", command::usage());
+        eprint!("{}", command::usage(&here));
         return Ok(ExitCode::from(USAGE_ERROR));
     } else {
         command::resolve(&words).map_err(Error::Usage)?
@@ -190,5 +192,5 @@ fn run() -> Result<ExitCode, Error> {
         banner(false);
     }
 
-    dispatch::dispatch(spec, rest, flags, &prompt)
+    dispatch::dispatch(spec, rest, flags, &prompt, &here)
 }

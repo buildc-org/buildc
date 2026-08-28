@@ -1,4 +1,5 @@
 use crate::ui::Choice;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verb {
@@ -85,6 +86,7 @@ pub struct Spec {
     pub arg: &'static str,
     pub about: &'static str,
     pub family: Family,
+    pub host: bool,
     pub takes: &'static [&'static str],
 }
 
@@ -102,6 +104,17 @@ impl Spec {
         match self.noun.is_empty() {
             true => self.word.to_string(),
             false => format!("{} {}", self.word, self.noun),
+        }
+    }
+
+    pub fn runs_in(&self, here: &Context) -> bool {
+        match self.family {
+            Family::Anywhere | Family::Layer => true,
+            Family::Repo | Family::Script => match here {
+                Context::Repo(_) => true,
+                Context::Host => self.host,
+                Context::Loose => false,
+            },
         }
     }
 
@@ -125,6 +138,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "replace this buildc and its assets with the latest",
         family: Family::Anywhere,
+        host: false,
         takes: &[],
     },
     Spec {
@@ -134,6 +148,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[name]",
         about: "start a repository for your own images",
         family: Family::Anywhere,
+        host: false,
         takes: &["root", "host", "owner", "image", "base"],
     },
     Spec {
@@ -143,6 +158,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[name]",
         about: "add an image: its name, and what it builds on",
         family: Family::Repo,
+        host: false,
         takes: &["root", "owner", "base"],
     },
     Spec {
@@ -152,6 +168,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[name]",
         about: "add a gated module set an image also publishes",
         family: Family::Repo,
+        host: false,
         takes: &["root", "image"],
     },
     Spec {
@@ -161,6 +178,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[name]",
         about: "write a module, and offer to list it in an image",
         family: Family::Repo,
+        host: false,
         takes: &["root", "image", "pkg", "with"],
     },
     Spec {
@@ -170,6 +188,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[name]",
         about: "reference a module from a collection repo.kdl declares",
         family: Family::Repo,
+        host: false,
         takes: &["root", "image", "datastream"],
     },
     Spec {
@@ -179,6 +198,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[name]",
         about: "copy a collection module into this repository",
         family: Family::Repo,
+        host: false,
         takes: &["root", "image"],
     },
     Spec {
@@ -188,6 +208,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "<kind>",
         about: "generate a key one of this repository's modules declares",
         family: Family::Repo,
+        host: false,
         takes: &["root", "module", "cn"],
     },
     Spec {
@@ -197,6 +218,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "choose the CI this repository generates",
         family: Family::Repo,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -206,6 +228,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[image]",
         about: "choose the benchmark profile an image is measured by",
         family: Family::Repo,
+        host: false,
         takes: &["root", "datastream"],
     },
     Spec {
@@ -215,6 +238,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "<module>",
         about: "choose the benchmark rules a module claims to cover",
         family: Family::Repo,
+        host: false,
         takes: &["root", "datastream"],
     },
     Spec {
@@ -224,6 +248,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "read every manifest and say what is wrong with it",
         family: Family::Repo,
+        host: false,
         takes: &["root", "datastream"],
     },
     Spec {
@@ -233,6 +258,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "write the build files, and list what was written",
         family: Family::Repo,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -242,6 +268,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[target]",
         about: "verify the build files, then build the image",
         family: Family::Repo,
+        host: false,
         takes: &[
             "root",
             "target",
@@ -259,6 +286,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[image]",
         about: "print the Containerfile section an image generates",
         family: Family::Repo,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -268,6 +296,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print what provides what, and what the base carries",
         family: Family::Repo,
+        host: false,
         takes: &["root", "format"],
     },
     Spec {
@@ -277,6 +306,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[module]",
         about: "print one module's trust read-out, byte by byte",
         family: Family::Repo,
+        host: true,
         takes: &["root", "format"],
     },
     Spec {
@@ -286,6 +316,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[image]",
         about: "print who claims each rule the image conforms to",
         family: Family::Repo,
+        host: false,
         takes: &["root", "format", "datastream"],
     },
     Spec {
@@ -295,6 +326,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print every fact this repository derives, as json",
         family: Family::Script,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -304,6 +336,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "byte-compare what is generated against what is committed",
         family: Family::Script,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -313,6 +346,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[target]",
         about: "print what one target is made of, as a markdown table",
         family: Family::Script,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -322,6 +356,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "[target]",
         about: "print the pinned payloads one target carries, as SPDX",
         family: Family::Script,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -331,6 +366,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "fetch every out-of-tree module the images reference",
         family: Family::Script,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -340,6 +376,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print the datastream the target is measured with",
         family: Family::Script,
+        host: false,
         takes: &["root", "target"],
     },
     Spec {
@@ -349,6 +386,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "<arf.xml>",
         about: "print what one scan says about the target",
         family: Family::Script,
+        host: false,
         takes: &["root", "target", "datastream", "baseline", "base-scan"],
     },
     Spec {
@@ -358,6 +396,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print where images publish",
         family: Family::Script,
+        host: false,
         takes: ROOT,
     },
     Spec {
@@ -367,6 +406,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "print the full reference one target publishes under",
         family: Family::Script,
+        host: false,
         takes: &["root", "target", "tag"],
     },
     Spec {
@@ -376,6 +416,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "write the image identity the build ARGs carry",
         family: Family::Layer,
+        host: false,
         takes: &[],
     },
     Spec {
@@ -385,6 +426,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "write the record of what the build resolved",
         family: Family::Layer,
+        host: false,
         takes: &[],
     },
     Spec {
@@ -394,6 +436,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "<what> <url> <sha256> [target] [extra...]",
         about: "download one payload, verify it, and place it",
         family: Family::Layer,
+        host: false,
         takes: &[],
     },
     Spec {
@@ -403,6 +446,7 @@ pub const COMMANDS: &[Spec] = &[
         arg: "",
         about: "run every check a built image has to pass",
         family: Family::Layer,
+        host: false,
         takes: &[],
     },
 ];
@@ -464,19 +508,44 @@ pub fn listed() -> Vec<&'static Spec> {
     rows
 }
 
-fn in_repo() -> bool {
-    std::env::current_dir()
-        .ok()
-        .and_then(|here| crate::find_root(&here))
-        .is_some()
+#[derive(Debug, PartialEq)]
+pub enum Context {
+    Repo(PathBuf),
+    Host,
+    Loose,
 }
 
-pub fn choices(rows: &[&Spec]) -> Vec<Choice> {
-    let here = in_repo();
+impl Context {
+    pub fn of(root: Option<&Path>) -> Self {
+        if let Some(root) = root {
+            return Self::Repo(root.to_path_buf());
+        }
+        let here = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        if let Some(found) = crate::find_root(&here) {
+            let up = here.strip_prefix(&found).map(|d| d.components().count());
+            return Self::Repo(match up {
+                Ok(0) => PathBuf::from("."),
+                Ok(up) => (0..up).map(|_| "..").collect(),
+                Err(_) => found,
+            });
+        }
+        // A booted image carries the generated manifest, so its presence means this tool runs inside its own image.
+        match Path::new(crate::provenance::build::MANIFEST).is_file() {
+            true => Self::Host,
+            false => Self::Loose,
+        }
+    }
+}
+
+pub fn on_host() -> Vec<&'static Spec> {
+    COMMANDS.iter().filter(|spec| spec.host).collect()
+}
+
+pub fn choices(rows: &[&Spec], here: &Context) -> Vec<Choice> {
     rows.iter()
-        .map(|spec| match !here && spec.family == Family::Repo {
-            true => Choice::new(spec.label(), "needs a repository"),
-            false => Choice::new(spec.label(), spec.about),
+        .map(|spec| match spec.runs_in(here) {
+            false => Choice::new(spec.label(), "needs a repository"),
+            true => Choice::new(spec.label(), spec.about),
         })
         .collect()
 }
@@ -491,26 +560,36 @@ docs/commands.md is the reference. Data goes to stdout and diagnostics to
 stderr; exit 1 is the invocation, exit 2 the repository.
 ";
 
-pub fn usage() -> String {
-    let in_repo = in_repo();
+pub fn usage(here: &Context) -> String {
     let rows = listed();
     let width = rows
         .iter()
         .map(|spec| spec.label().len())
         .max()
         .unwrap_or(0);
-    let block = |family: Family| -> String {
+    let block = |keep: &dyn Fn(&Spec) -> bool| -> String {
         rows.iter()
-            .filter(|spec| spec.family == family)
+            .filter(|spec| keep(spec))
             .map(|spec| format!("  {:width$}  {}\n", spec.label(), spec.about))
             .collect()
     };
-    let (anywhere, repo) = (block(Family::Anywhere), block(Family::Repo));
-    match in_repo {
-        true => format!("{HEAD}\n{anywhere}{repo}\n{RULE}"),
-        false => format!(
+    let anywhere = block(&|spec| spec.family == Family::Anywhere);
+    let repo = |host: bool| block(&move |spec| spec.family == Family::Repo && spec.host == host);
+    match here {
+        Context::Repo(_) => format!(
+            "{HEAD}\n{anywhere}{}\n{RULE}",
+            block(&|spec| spec.family == Family::Repo)
+        ),
+        Context::Host => format!(
+            "{HEAD}\n{anywhere}\nthis is a buildc image, and it answers these about itself:\n\n\
+             {}\nthese read the source tree, and there is none here:\n\n{}\n{RULE}",
+            repo(true),
+            repo(false),
+        ),
+        Context::Loose => format!(
             "{HEAD}\n{anywhere}\nthese need a repository, and there is none here or above:\n\n\
-             {repo}\n{RULE}"
+             {}\n{RULE}",
+            block(&|spec| spec.family == Family::Repo),
         ),
     }
 }
@@ -599,6 +678,33 @@ mod tests {
             let (found, rest) = resolve(&words).unwrap();
             assert_eq!(found.verb, spec.verb, "{} resolved elsewhere", spec.label());
             assert!(rest.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_place_decides_what_runs_and_the_help_groups_by_it() {
+        let why = Verb::Why.spec();
+        let check = Verb::Check.spec();
+        let upgrade = Verb::Upgrade.spec();
+        let repo = Context::Repo(".".into());
+
+        for spec in [why, check, upgrade] {
+            assert!(spec.runs_in(&repo), "{}", spec.name());
+        }
+        assert!(why.runs_in(&Context::Host) && !check.runs_in(&Context::Host));
+        assert!(upgrade.runs_in(&Context::Loose) && !why.runs_in(&Context::Loose));
+
+        let host = usage(&Context::Host);
+        let (answers, rest) = host
+            .split_once("these read the source tree")
+            .expect("the host help groups what it can answer");
+        assert!(answers.contains("  why [module]"), "{host}");
+        assert!(!answers.contains("  check "), "{host}");
+        assert!(rest.contains("  check "), "{host}");
+        for spec in listed() {
+            for here in [Context::Repo(".".into()), Context::Host, Context::Loose] {
+                assert!(usage(&here).contains(&spec.label()), "{}", spec.label());
+            }
         }
     }
 

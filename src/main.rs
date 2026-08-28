@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use buildc::command::{self, Spec, Verb};
+use buildc::copy;
 use buildc::dispatch::{self, Error, USAGE_ERROR};
 use buildc::model::image::BUILDC_VERSION;
 use buildc::prompt::Prompt;
@@ -162,7 +163,7 @@ fn run() -> Result<ExitCode, Error> {
             None => command::listed(),
         };
         banner(false);
-        match buildc::ui::select("which command", &command::choices(&rows))? {
+        match buildc::ui::select(copy::WHICH_COMMAND, &command::choices(&rows))? {
             Some(at) => (rows[at], &[]),
             None => return Ok(ExitCode::SUCCESS),
         }

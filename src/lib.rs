@@ -1,6 +1,7 @@
 pub mod base;
 pub mod build;
 pub mod command;
+pub mod copy;
 pub mod create;
 pub mod diag;
 pub mod dispatch;

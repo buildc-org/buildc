@@ -1043,7 +1043,7 @@ fn flows() {
             "'{}' --root . set claims sshd --datastream '{stream}'",
             env!("CARGO_BIN_EXE_tect")
         ),
-        "which rules `sshd` claims:",
+        "Which rules does `sshd` claim?:",
         &[b"\r", b"aide \x1b[B\r"],
     );
     let picked = std::fs::read_to_string(drawn.join("modules/sshd/module.kdl")).unwrap();
@@ -1072,7 +1072,7 @@ fn flows() {
         "flow-set-workflows-drawn",
         &drawn,
         &format!("'{}' --root . set workflows", env!("CARGO_BIN_EXE_tect")),
-        "the CI to generate:",
+        "Which workflows?:",
         &[b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r", b"\r", b"\r"],
     );
     let repo = std::fs::read_to_string(&repo_path).unwrap();
@@ -1302,7 +1302,7 @@ fn flows() {
             "stty cols 80; '{}' --root . why",
             env!("CARGO_BIN_EXE_tect")
         ),
-        "which module:",
+        "Which module?:",
         &[b"\r"],
     );
 

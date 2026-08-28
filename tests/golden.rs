@@ -329,7 +329,7 @@ fn why(name: &str, root: &Path, module: &str) {
     out.push_str(&host.markdown());
     out.push_str(&format!(
         "==== the names it knows\n{}\n",
-        buildc::emit::why::display(&buildc::emit::why::known_on_host(&manifest)).join(", ")
+        buildc::emit::why::display(&buildc::emit::why::known_on_host(&manifest, None)).join(", ")
     ));
 
     let record = buildc::emit::json::Json::parse(&format!(

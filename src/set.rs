@@ -97,13 +97,19 @@ impl Workflows {
                     .iter()
                     .map(|shipped| match shipped.met(basis) {
                         true => Choice::new(shipped.stem, shipped.about),
-                        false => Choice::new(shipped.stem, shipped.needs.unmet()),
+                        false => Choice::new(shipped.stem, shipped.needs.unmet()).unavailable(),
                     })
                     .collect();
+                for shipped in SHIPPED
+                    .iter()
+                    .filter(|shipped| on.contains(&shipped.stem) && !shipped.met(basis))
+                {
+                    println!("{}", copy::cleared(shipped.stem, shipped.needs.unmet()));
+                }
                 let held: Vec<usize> = SHIPPED
                     .iter()
                     .enumerate()
-                    .filter(|(_, shipped)| on.contains(&shipped.stem))
+                    .filter(|(_, shipped)| on.contains(&shipped.stem) && shipped.met(basis))
                     .map(|(at, _)| at)
                     .collect();
 
@@ -171,14 +177,9 @@ impl Workflows {
         from: Field,
         prompt: &Prompt,
     ) -> Result<Option<Self>, String> {
-        let held: Vec<&str> = SHIPPED
-            .iter()
-            .filter(|shipped| self.chosen.contains(&shipped.stem) && shipped.met(basis))
-            .map(|shipped| shipped.stem)
-            .collect();
         Self::collect(
             basis,
-            &held,
+            &self.chosen,
             self.at,
             self.publishes_scheduled,
             self.scans_scheduled,
@@ -717,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn a_workflow_the_new_base_cannot_run_is_dropped_rather_than_refused() {
+    fn a_workflow_the_basis_cannot_run_opens_cleared_rather_than_refused() {
         let held = set(&["build", "build-disk"], DEFAULT_AT);
         let prompt = Prompt::scripted(["", "No", "No", "06:00"].map(str::to_string).to_vec());
         let again = held

@@ -71,6 +71,7 @@ pub struct Choice {
     pub detail: String,
     pub parent: Option<usize>,
     pub group: String,
+    pub available: bool,
 }
 
 impl Choice {
@@ -80,7 +81,13 @@ impl Choice {
             detail: detail.into(),
             parent: None,
             group: String::new(),
+            available: true,
         }
+    }
+
+    pub fn unavailable(mut self) -> Self {
+        self.available = false;
+        self
     }
 
     pub fn under(mut self, parent: usize) -> Self {
@@ -194,7 +201,10 @@ fn pick<B: Backend>(
             .map_err(|err| err.to_string())?;
         let Some(key) = read()? else { continue };
         match key {
-            KeyCode::Enter => return Ok(state.selected()),
+            KeyCode::Enter => match state.selected() {
+                Some(at) if !available(options, at) => {}
+                chosen => return Ok(chosen),
+            },
             KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
             code => {
                 move_by(code, &mut state);
@@ -231,13 +241,17 @@ fn toggle<B: Backend>(
         match key {
             KeyCode::Enter => return Ok(Answer::Chosen(on)),
             KeyCode::Char(' ') => match state.selected() {
-                Some(at) if at < options.len() => flip(&mut on, at, options),
+                Some(at) if available(options, at) => flip(&mut on, at, options),
                 _ => {}
             },
             KeyCode::Esc | KeyCode::Char('q') => return Ok(Answer::Cancelled),
             code => move_by(code, &mut state),
         }
     }
+}
+
+fn available(options: &[Choice], at: usize) -> bool {
+    options.get(at).is_some_and(|choice| choice.available)
 }
 
 fn flip(on: &mut Vec<usize>, at: usize, options: &[Choice]) {
@@ -314,10 +328,14 @@ fn draw(
                 Some(on) if on.contains(&at) => "[x] ",
                 Some(_) => "[ ] ",
             };
+            let row = match choice.available {
+                true => Style::new(),
+                false => Style::new().dim(),
+            };
             ListItem::new(Line::from(vec![
-                Span::raw(mark),
-                Span::raw(branch(options, at)),
-                Span::raw(&choice.label),
+                Span::styled(mark, row),
+                Span::styled(branch(options, at), row),
+                Span::styled(&choice.label, row),
                 Span::raw("  "),
                 Span::styled(&choice.detail, Style::new().dim()),
             ]))

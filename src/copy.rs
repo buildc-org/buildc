@@ -34,6 +34,10 @@ pub fn list_in(target: &str) -> String {
 pub const IMPORT_REQUIRED: &str = "Import what these modules require?";
 pub const IMPORT_CLAIMING: &str = "Import the modules claiming these rules?";
 
+pub fn cleared(named: &str, unmet: &str) -> String {
+    format!("{named} {unmet} and was cleared")
+}
+
 pub const GENERATE_WORKFLOWS: &str = "Generate the workflows this makes runnable?";
 
 pub const WORKFLOWS: &str = "Which workflows?";

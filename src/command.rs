@@ -541,13 +541,17 @@ pub fn on_host() -> Vec<&'static Spec> {
     COMMANDS.iter().filter(|spec| spec.host).collect()
 }
 
-pub fn choices(rows: &[&Spec], here: &Context) -> Vec<Choice> {
-    rows.iter()
-        .map(|spec| match spec.runs_in(here) {
-            false => Choice::new(spec.label(), "needs a repository"),
-            true => Choice::new(spec.label(), spec.about),
-        })
-        .collect()
+pub fn choices<'a>(rows: &[&'a Spec], here: &Context) -> (Vec<&'a Spec>, Vec<Choice>) {
+    let kept: Vec<&Spec> = rows
+        .iter()
+        .copied()
+        .filter(|spec| spec.runs_in(here))
+        .collect();
+    let drawn = kept
+        .iter()
+        .map(|spec| Choice::new(spec.label(), spec.about))
+        .collect();
+    (kept, drawn)
 }
 
 const HEAD: &str = "usage: buildc [--root <dir>] <command>\n";
@@ -693,6 +697,16 @@ mod tests {
         }
         assert!(why.runs_in(&Context::Host) && !check.runs_in(&Context::Host));
         assert!(upgrade.runs_in(&Context::Loose) && !why.runs_in(&Context::Loose));
+
+        let (rows, drawn) = choices(&listed(), &Context::Loose);
+        assert!(rows.iter().all(|spec| spec.family == Family::Anywhere));
+        assert_eq!(rows.len(), drawn.len());
+        assert!(drawn
+            .iter()
+            .all(|choice| choice.detail != "needs a repository"));
+        let (rows, _) = choices(&listed(), &Context::Host);
+        let verbs: Vec<Verb> = rows.iter().map(|spec| spec.verb).collect();
+        assert!(verbs.contains(&Verb::Why) && !verbs.contains(&Verb::Check));
 
         let host = usage(&Context::Host);
         let (answers, rest) = host

@@ -1815,8 +1815,7 @@ fn coverage() {
 
     let (_, said, code) = scap_run(&enforced, &["--root", ".", "coverage"]);
     out.push_str(&format!(
-        "==== and with nothing to measure it against\n{}==== exit {code}\n",
-        said.split("usage:").next().unwrap_or_default()
+        "==== and with nothing to measure it against\n{said}==== exit {code}\n"
     ));
 
     compare("coverage", "report.txt", &out);

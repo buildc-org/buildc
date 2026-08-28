@@ -10,6 +10,7 @@ pub const USAGE_ERROR: u8 = 1;
 pub const REPO_ERROR: u8 = 2;
 
 pub enum Error {
+    Usage(String),
     Invocation(String),
     Operation(String),
 }
@@ -17,7 +18,7 @@ pub enum Error {
 impl Error {
     pub fn message(&self) -> &str {
         match self {
-            Self::Invocation(message) | Self::Operation(message) => message,
+            Self::Usage(message) | Self::Invocation(message) | Self::Operation(message) => message,
         }
     }
 }

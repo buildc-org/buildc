@@ -82,14 +82,14 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(error) => {
             banner(true);
-            let invocation = matches!(error, Error::Invocation(_));
+            let unknown = matches!(error, Error::Usage(_));
             let message = error.message();
             let stop = match message.ends_with(['.', '!', '?']) || message.contains('\n') {
                 true => "",
                 false => ".",
             };
             eprintln!("Error: {message}{stop}\n");
-            match invocation {
+            match unknown {
                 true => eprint!("{}", command::usage()),
                 false => eprintln!("{COMMANDS}"),
             }
@@ -172,7 +172,7 @@ fn run() -> Result<ExitCode, Error> {
         eprint!("{}", command::usage());
         return Ok(ExitCode::from(USAGE_ERROR));
     } else {
-        command::resolve(&words).map_err(Error::Invocation)?
+        command::resolve(&words).map_err(Error::Usage)?
     };
 
     args.only(spec)?;

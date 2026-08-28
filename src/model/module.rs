@@ -35,6 +35,11 @@ pub struct Contribution {
     pub span: Span,
 }
 
+pub struct FileMode {
+    pub path: String,
+    pub mode: u32,
+}
+
 pub struct Key {
     pub kind: String,
     pub generator: String,
@@ -69,6 +74,7 @@ pub struct Module {
     pub flavour: Option<String>,
     pub collects: Vec<Collect>,
     pub contributes: Vec<Contribution>,
+    pub modes: Vec<FileMode>,
     pub keys: Vec<Key>,
     pub secrets: Vec<Decl>,
     pub args: Vec<Decl>,

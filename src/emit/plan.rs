@@ -317,20 +317,11 @@ fn module(list: &List, entry: &Entry, family: &str) -> Json {
         ("requires", Json::strings(decls(module, |m| &m.requires))),
         (
             "packages",
-            Json::array(
-                module
-                    .map(|module| module.packages.as_slice())
-                    .unwrap_or_default()
-                    .iter()
-                    .filter(|group| group.family == family)
-                    .map(|group| {
-                        Json::object([
-                            ("family", Json::string(&group.family)),
-                            ("names", Json::strings(group.packages.iter().cloned())),
-                            ("enablerepo", Json::optional(group.enablerepo.clone())),
-                        ])
-                    }),
-            ),
+            batches(module.map(|m| m.packages.as_slice()), family),
+        ),
+        (
+            "groups",
+            batches(module.map(|m| m.groups.as_slice()), family),
         ),
         ("provenance", provenance(list, entry)),
         (
@@ -349,6 +340,22 @@ fn module(list: &List, entry: &Entry, family: &str) -> Json {
             ),
         ),
     ])
+}
+
+fn batches(declared: Option<&[crate::model::module::PackageGroup]>, family: &str) -> Json {
+    Json::array(
+        declared
+            .unwrap_or_default()
+            .iter()
+            .filter(|batch| batch.family == family)
+            .map(|batch| {
+                Json::object([
+                    ("family", Json::string(&batch.family)),
+                    ("names", Json::strings(batch.packages.iter().cloned())),
+                    ("enablerepo", Json::optional(batch.enablerepo.clone())),
+                ])
+            }),
+    )
 }
 
 fn decls(

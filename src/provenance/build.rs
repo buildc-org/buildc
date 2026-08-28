@@ -72,6 +72,7 @@ fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
         ("image", Json::optional(env("IMAGE_ID"))),
         ("version", Json::optional(env("IMAGE_VERSION"))),
         ("buildc", Json::string(env!("CARGO_PKG_VERSION"))),
+        ("backend", Json::optional(env("BUILD_BACKEND"))),
         ("source_commit", Json::optional(env("SOURCE_COMMIT"))),
         (
             "base",
@@ -143,6 +144,7 @@ mod tests {
                 "TARGET" => "example-desktop",
                 "IMAGE_ID" => "example",
                 "SOURCE_COMMIT" => "deadbeef",
+                "BUILD_BACKEND" => "buildah",
                 "MODULE_HASHES" => "core/hello|aaa apps/browser|bbb",
                 "ASSET_RESOLUTIONS" => "mods/xone|xone|B7|3484f60",
                 _ => return None,
@@ -154,6 +156,7 @@ mod tests {
         assert!(out.contains("\"resolved\": \"quay.io/fedora/fedora-bootc:44@sha256:abc\""));
         assert!(out.contains("\"declared\": \"quay.io/fedora/fedora-bootc:44\""));
         assert!(out.contains("\"target\": \"example-desktop\""));
+        assert!(out.contains("\"backend\": \"buildah\""));
         assert!(out.contains("\"path\": \"apps/browser\""));
         assert!(out.contains("\"selector\": \"B7\""));
         assert!(out.contains("\"enforce\": false"));

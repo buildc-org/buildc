@@ -133,7 +133,9 @@ pub const MODULE: Node = Node::new("module",
                 "only `provides-file` declares a lifetime", "")),
         Node::new("mode", "An octal file mode applied to one path in this module's overlay.")
             .arg(Arg::Strs, Say::NONE)
-            .unique(Say::new("mode for `{}` is declared twice", "already declared above", "")),
+            .unique(Say::new("mode for `{}` is declared twice", "already declared above", ""))
+            .props(&[], Say::new("`{}` is not a `mode` property", "not part of the schema",
+                "`mode \"/etc/example.conf\" \"0440\"`")),
 
         KEY,
 
@@ -627,7 +629,7 @@ impl Module {
             return;
         }
 
-        if !given.bytes().all(|byte| (b'0'..=b'7').contains(&byte)) {
+        if given.is_empty() || !given.bytes().all(|byte| (b'0'..=b'7').contains(&byte)) {
             issues.push(
                 Issue::new(format!("`{given}` is not an octal file mode"), src)
                     .at(args[1].span(), "use only digits 0 through 7")
@@ -646,9 +648,6 @@ impl Module {
             }
         };
 
-        if self.modes.iter().any(|decl| decl.path == path) {
-            return;
-        }
         let overlay = dir.join(layout::OVERLAY).join(path.trim_start_matches('/'));
         if overlay.symlink_metadata().is_err() || overlay.is_dir() {
             issues.push(

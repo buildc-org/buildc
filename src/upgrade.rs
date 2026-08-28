@@ -132,20 +132,17 @@ pub fn run() -> Result<(), String> {
 
     let running = crate::model::image::BUILDC_VERSION;
     let here = std::env::current_exe().map_err(|err| format!("this binary: {err}"))?;
-    println!("buildc: running {running}, at {}", here.display());
-
     let latest = latest()?;
-    println!("buildc: the latest release is {latest}");
     match parts(running).cmp(&parts(&latest)) {
         Ordering::Equal => {
-            println!("buildc: already current, so nothing moves");
+            println!("buildc: {running} is the latest release");
             return Ok(());
         }
         Ordering::Greater => {
-            println!("buildc: this build is ahead of the latest release, so nothing moves");
+            println!("buildc: {running} is ahead of the latest release, {latest}");
             return Ok(());
         }
-        Ordering::Less => {}
+        Ordering::Less => println!("buildc: running {running}, at {}", here.display()),
     }
 
     let euid = unsafe { libc::geteuid() };

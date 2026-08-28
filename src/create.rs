@@ -166,10 +166,12 @@ impl Repo {
         report(&self.root, &wrote);
 
         let Self { host, id, .. } = self;
-        let mut next = vec![
-            "buildc generate".to_string(),
-            "git add -A && git commit".to_string(),
-        ];
+        let mut next = Vec::new();
+        if std::fs::canonicalize(&self.root).ok() != std::env::current_dir().ok() {
+            next.push(format!("cd {}", self.root.display()));
+        }
+        next.push("buildc generate".to_string());
+        next.push("git add -A && git commit".to_string());
         if self.install_gh {
             next.push(GH_INSTALL.to_string());
         }
@@ -183,7 +185,7 @@ impl Repo {
             });
         }
         let next: Vec<String> = next.iter().map(|line| format!("\x20 {line}")).collect();
-        println!("\nnext, in {}:\n{}\n", self.root.display(), next.join("\n"));
+        println!("\nnext:\n{}\n", next.join("\n"));
         Ok(())
     }
 }

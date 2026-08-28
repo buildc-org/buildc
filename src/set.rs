@@ -171,9 +171,14 @@ impl Workflows {
         from: Field,
         prompt: &Prompt,
     ) -> Result<Option<Self>, String> {
+        let held: Vec<&str> = SHIPPED
+            .iter()
+            .filter(|shipped| self.chosen.contains(&shipped.stem) && shipped.met(basis))
+            .map(|shipped| shipped.stem)
+            .collect();
         Self::collect(
             basis,
-            &self.chosen,
+            &held,
             self.at,
             self.publishes_scheduled,
             self.scans_scheduled,
@@ -709,6 +714,17 @@ mod tests {
         assert!(!again.publishes_scheduled);
         assert!(again.scans_scheduled);
         assert_eq!(again.at, (7, 30));
+    }
+
+    #[test]
+    fn a_workflow_the_new_base_cannot_run_is_dropped_rather_than_refused() {
+        let held = set(&["build", "build-disk"], DEFAULT_AT);
+        let prompt = Prompt::scripted(["", "No", "No", "06:00"].map(str::to_string).to_vec());
+        let again = held
+            .again(&Basis::scaffolding(""), Field::Workflows, &prompt)
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.chosen, ["build"]);
     }
 
     #[test]

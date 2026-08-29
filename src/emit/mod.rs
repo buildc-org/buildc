@@ -56,6 +56,7 @@ pub(crate) const SCRIPTS: &[(&str, &str)] = &[
         "scripts/buildc.sh",
         include_str!("../../assets/scripts/buildc.sh"),
     ),
+    ("scripts/vm.sh", include_str!("../../assets/scripts/vm.sh")),
 ];
 
 #[cfg(test)]

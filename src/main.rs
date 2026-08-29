@@ -122,6 +122,7 @@ fn run() -> Result<ExitCode, Error> {
     let prompt = Prompt::new(args.switch("no-tui"));
     let cache_to = args.switch("cache-to");
     let no_cache_from = args.switch("no-cache-from");
+    let rebuild = args.switch("rebuild");
     let flags = dispatch::Flags {
         root: args.flag("root")?.map(PathBuf::from),
         owner: args.flag("owner")?,
@@ -137,6 +138,7 @@ fn run() -> Result<ExitCode, Error> {
         base_scan: args.flag("base-scan")?.map(PathBuf::from),
         tags: args.flags("tag")?,
         kernel: args.flag("kernel")?,
+        ram: args.flag("ram")?,
         backend: args.flag("backend")?,
         oci_output: args.flag("oci-output")?,
         secrets: args.flags("secret")?,
@@ -153,6 +155,7 @@ fn run() -> Result<ExitCode, Error> {
             .collect::<Result<Vec<_>, Error>>()?,
         cache_to,
         no_cache_from,
+        rebuild,
     };
 
     let here = Context::of(flags.root.as_deref());

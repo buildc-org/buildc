@@ -44,6 +44,7 @@ pub struct Flags {
     pub base_scan: Option<PathBuf>,
     pub tags: Vec<String>,
     pub kernel: Option<String>,
+    pub ram: Option<String>,
     pub backend: Option<String>,
     pub oci_output: Option<String>,
     pub secrets: Vec<String>,
@@ -51,6 +52,7 @@ pub struct Flags {
     pub with: Vec<(String, String)>,
     pub cache_to: bool,
     pub no_cache_from: bool,
+    pub rebuild: bool,
 }
 
 fn one_name(rest: &[&str], spec: &Spec) -> Result<Option<String>, Error> {
@@ -299,6 +301,7 @@ pub fn dispatch(
         base_scan,
         tags,
         kernel,
+        ram,
         backend,
         oci_output,
         secrets,
@@ -306,6 +309,7 @@ pub fn dispatch(
         with,
         cache_to,
         no_cache_from,
+        rebuild,
     } = flags;
     if *here == Context::Host && spec.host {
         return on_host(spec, rest, format.as_deref(), target.as_deref(), prompt);
@@ -508,6 +512,18 @@ pub fn dispatch(
             Ok(match crate::build::run(&repo_root(here)?, &opts)? {
                 crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
             })
+        }
+        Verb::VmBuild | Verb::VmRun | Verb::VmSpawn => {
+            let root = repo_root(here)?;
+            let opts = crate::vm::Options {
+                target,
+                image: images.last().cloned(),
+                tag: tags.last().cloned(),
+                ram,
+                rebuild,
+            };
+            crate::vm::run(&root, spec, one_name(rest, spec)?.as_deref(), &opts, prompt)?;
+            Ok(ExitCode::SUCCESS)
         }
         Verb::RegistryNamespace => {
             println!("{}", crate::registry::namespace(&repo_root(here)?)?);

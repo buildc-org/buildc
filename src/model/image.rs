@@ -79,6 +79,7 @@ pub struct Flavour {
     pub name: String,
     pub default: bool,
     pub pr_build: bool,
+    pub conforms: String,
     pub span: Span,
 }
 
@@ -169,6 +170,17 @@ pub struct List {
 impl Image {
     pub fn modules(&self) -> impl Iterator<Item = &Module> {
         self.entries.iter().filter_map(|e| e.module.as_ref())
+    }
+
+    pub fn conforms_of(&self, flavour: &str) -> &str {
+        match flavour {
+            NO_FLAVOUR => &self.conforms,
+            name => self
+                .flavours
+                .iter()
+                .find(|f| f.name == name)
+                .map_or("", |f| f.conforms.as_str()),
+        }
     }
 
     pub fn default_flavour(&self) -> Option<&str> {

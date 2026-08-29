@@ -33,8 +33,11 @@ pub fn content(root: &Path, named: Option<&str>) -> Result<Verdict, String> {
     Ok(Verdict::Clean)
 }
 
-pub fn content_on_host(image: &Json) -> Result<Verdict, String> {
-    let path = match json::text(image, "conforms").unwrap_or_default().is_empty() {
+pub fn content_on_host(image: &Json, target: &Json) -> Result<Verdict, String> {
+    let path = match json::text(target, "conforms")
+        .unwrap_or_default()
+        .is_empty()
+    {
         true => String::new(),
         false => installed(
             CONTENT,
@@ -198,8 +201,11 @@ fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::R
 
 fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
     let name = target(list, named)?;
-    let (image, _, _) = of_target(list, &name).ok_or(unknown(&name))?;
-    if image.conforms.is_empty() {
+    let (image, flavour, _) = of_target(list, &name).ok_or(unknown(&name))?;
+    if image
+        .conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR))
+        .is_empty()
+    {
         return Ok(String::new());
     }
     Ok(installed(

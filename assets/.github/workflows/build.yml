@@ -223,6 +223,7 @@ jobs:
       contents: read
     outputs:
       targets: ${{ steps.set.outputs.targets }}
+      scanned: ${{ steps.set.outputs.scanned }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -236,8 +237,11 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             selection='[.pr_target]'
           fi
-          targets="$(./scripts/buildc.sh plan --json | jq -c "$selection")"
-          echo "targets=${targets}" >> "$GITHUB_OUTPUT"
+          plan="$(./scripts/buildc.sh plan --json)"
+          {
+            echo "targets=$(jq -c "$selection" <<< "$plan")"
+            echo "scanned=$(jq -c '[.images[].targets[] | select(.conforms != "") | .name]' <<< "$plan")"
+          } >> "$GITHUB_OUTPUT"
 
   build_push:
     needs: [checksums, compute-matrix]
@@ -669,11 +673,11 @@ jobs:
     needs: [checksums, compute-matrix, build_push]
     name: Scan the claims (${{ matrix.target }})
     runs-on: ubuntu-24.04
-    if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request'
-    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request' && needs.compute-matrix.outputs.scanned != '[]'
+    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'
     strategy:
       matrix:
-        target: ${{ fromJson(needs.compute-matrix.outputs.targets) }}
+        target: ${{ fromJson(needs.compute-matrix.outputs.scanned) }}
       fail-fast: false
 
     permissions:

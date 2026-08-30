@@ -172,12 +172,7 @@ fn on_host(
     }
 
     let (manifest, record) = crate::emit::why::baked(Path::new(MANIFEST), Path::new(RECORD))
-        .map_err(|err| {
-            Error::Invocation(format!(
-                "{err}\n\nno repo.kdl here and no baked manifest either, so there is nothing to \
-                 answer from"
-            ))
-        })?;
+        .map_err(Error::Invocation)?;
     let (targets, scope) = built_as(&manifest, record.as_ref());
 
     if spec.verb == Verb::Why {
@@ -693,6 +688,15 @@ fn reading(
         Command::Why | Command::WhyJson | Command::Coverage | Command::CoverageJson
     ) && arg.is_none()
         && prompt.draws();
+    if command == Command::Generate {
+        let (list, issues, _) = crate::declarations(&root);
+        if issues.is_empty() {
+            for line in crate::fetch::modules(&root, &list)? {
+                eprintln!("buildc: {line}");
+            }
+        }
+    }
+
     let mut chosen = None;
     let mut run = if picks {
         let loaded = crate::load(&root);
@@ -759,6 +763,9 @@ fn reading(
         }
         for name in &run.modified {
             eprintln!("buildc: `{name}` has been edited since it was imported");
+        }
+        for line in run.index.hidden() {
+            eprintln!("buildc: {line}");
         }
         for line in crate::scap::conformance(&run.list, &run.index, datastream.as_deref())? {
             eprintln!("buildc: {line}");

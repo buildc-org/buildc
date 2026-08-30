@@ -226,7 +226,7 @@ fn copied(name: &str, root: &Path) {
     }
 
     out.push_str("==== the catalog\n");
-    for module in buildc::import::catalog(here, &sources, true).unwrap() {
+    for module in buildc::import::catalog(here, &sources, true).unwrap().0 {
         out.push_str(&format!("{}  {}\n", module.qualified(), module.about()));
     }
 
@@ -849,6 +849,13 @@ fn flows() {
     flow(
         "flow-check-unpinned",
         &flow_repo("flow-unpinned"),
+        None,
+        &["--root", ".", "check"],
+    );
+
+    flow(
+        "flow-check-nested",
+        &flow_repo_with("flow-nested", "six"),
         None,
         &["--root", ".", "check"],
     );

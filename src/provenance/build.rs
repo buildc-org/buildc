@@ -63,11 +63,13 @@ pub fn build() -> Json {
     record(&env)
 }
 
+pub const SCHEMA_VERSION: u32 = 1;
+
 fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
     let declared = env("BASE_DECLARED");
     let resolved = env("BASE");
     Json::object([
-        ("schema_version", Json::Number(1)),
+        ("schema_version", Json::Number(SCHEMA_VERSION)),
         ("target", Json::optional(env("TARGET"))),
         ("image", Json::optional(env("IMAGE_ID"))),
         ("version", Json::optional(env("IMAGE_VERSION"))),

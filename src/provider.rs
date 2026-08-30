@@ -43,6 +43,7 @@ pub struct Index {
     held: Vec<Provider>,
     unread: Vec<String>,
     sourced: bool,
+    hidden: Vec<String>,
 }
 
 impl Index {
@@ -57,13 +58,15 @@ impl Index {
                 declares: parse::module::summary(&layout::manifest(root, dir)),
             });
         }
-        for module in crate::import::catalog(root, sources, fetch).unwrap_or_default() {
+        let (found, hidden) = crate::import::catalog(root, sources, fetch).unwrap_or_default();
+        for module in found {
             if !out.iter().any(|held| held.dir() == module.dir()) {
                 out.push(module);
             }
         }
         Self {
             held: out,
+            hidden,
             unread: match fetch {
                 true => Vec::new(),
                 false => sources
@@ -82,6 +85,10 @@ impl Index {
 
     pub fn sourced(&self) -> bool {
         self.sourced
+    }
+
+    pub fn hidden(&self) -> &[String] {
+        &self.hidden
     }
 
     pub fn unsearched(&self) -> String {

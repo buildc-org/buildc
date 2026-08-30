@@ -457,8 +457,7 @@ jobs:
             IMAGE_REGISTRY="$IMAGE_REGISTRY" \
             IMAGE_VERSION="$IMAGE_VERSION" \
             LABELS="$LABELS" \
-            KERNEL="$KERNEL" \
-            "${PWD}/$(./scripts/buildc.sh --path)" build "${args[@]}"
+            "$(realpath "$(./scripts/buildc.sh --path)")" build "${args[@]}"
 
       - name: Summarize the resolved build
         env:
@@ -550,9 +549,8 @@ jobs:
           path: ${{ runner.temp }}/sbom.spdx.json
           retention-days: 30
 
-      - name: Reclaim the build cache
+      - name: Reclaim the runner's docker images
         run: |
-          sudo podman image prune --force > /dev/null
           docker image prune --all --force > /dev/null
           df -h /
 

@@ -1,6 +1,6 @@
 use crate::emit::json::Json;
 use crate::model::asset::Asset;
-use crate::model::image::{Entry, Image, List, Target, NO_FLAVOUR, SCHEMA_VERSION};
+use crate::model::image::{Entry, Image, List, Target, NO_FLAVOUR};
 use crate::model::module::Module;
 use crate::provenance::Evidence;
 use crate::resolve::overlay;
@@ -25,12 +25,11 @@ pub(crate) fn of_target<'a>(
     Some((image, flavour, entries))
 }
 
+pub const SCHEMA_VERSION: u32 = 1;
+
 pub fn build(list: &List, resolved: &[Resolved], workflows: &[Declared]) -> Json {
     Json::object([
-        (
-            "schema_version",
-            Json::Number(list.schema_version.unwrap_or(SCHEMA_VERSION)),
-        ),
+        ("schema_version", Json::Number(SCHEMA_VERSION)),
         (
             "default_image",
             Json::optional(list.default_image().map(|i| i.id.clone())),

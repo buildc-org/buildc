@@ -457,6 +457,48 @@ mod tests {
                 .exists(),
             "stale file survived: {said:?}"
         );
+
+        let hash = || {
+            let out = std::process::Command::new("sha256sum")
+                .arg(&archive)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout)
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .to_string()
+        };
+        let pinned = || {
+            crate::init::put(
+                &root.join("repo.kdl"),
+                &format!(
+                    "schema-version 1\nname \"Example\"\nsources {{\n    one {{\n        pin {{\n            manual \"test\"\n            version \"main\"\n            url \"file://{}\"\n            sha256 \"{}\"\n        }}\n    }}\n}}\n",
+                    archive.display(),
+                    hash()
+                ),
+            )
+            .unwrap();
+            let (list, issues, _) = crate::declarations(&root);
+            assert!(issues.is_empty(), "{}", issues.plain());
+            list
+        };
+        crate::init::put(&collection.join("hello/files/back.conf"), "new\n").unwrap();
+        pack();
+        super::modules(&root, &pinned()).unwrap();
+        assert!(root
+            .join("modules/.remote/one/hello/files/back.conf")
+            .is_file());
+
+        std::fs::remove_file(collection.join("hello/files/back.conf")).unwrap();
+        pack();
+        let said = super::modules(&root, &pinned()).unwrap();
+        assert!(
+            !root
+                .join("modules/.remote/one/hello/files/back.conf")
+                .exists(),
+            "a pinned collection kept a file its new hash does not carry: {said:?}"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }

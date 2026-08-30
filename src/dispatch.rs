@@ -767,6 +767,10 @@ fn reading(
         for line in run.index.hidden() {
             eprintln!("buildc: {line}");
         }
+        match run.index.unsearched() {
+            clause if clause.is_empty() => {}
+            clause => eprintln!("buildc: {clause}"),
+        }
         for line in crate::scap::conformance(&run.list, &run.index, datastream.as_deref())? {
             eprintln!("buildc: {line}");
         }

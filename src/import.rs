@@ -145,7 +145,9 @@ fn nested(tree: &Path) -> Vec<(String, String)> {
         while let Some(dir) = dirs.pop() {
             for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
                 let path = entry.path();
-                if !path.is_dir() || entry.file_name().to_string_lossy().starts_with('.') {
+                if !entry.file_type().is_ok_and(|kind| kind.is_dir())
+                    || entry.file_name().to_string_lossy().starts_with('.')
+                {
                     continue;
                 }
                 if path.join(layout::MODULE_FILE).is_file() {
@@ -291,13 +293,22 @@ pub(crate) fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, Stri
     let pin = root
         .join(layout::SOURCES_CACHE)
         .join(format!("{}.pin", collection.name));
-    let _ = std::fs::remove_dir_all(&dir);
     let url = remote.url_resolved().unwrap_or_default();
     let sha256 = (!remote.unpinned())
         .then(|| remote.sha256.as_deref())
         .flatten();
-    crate::runtime::extract(&url, sha256, &dir, &["--strip-components=1"])
-        .map_err(|err| format!("`{}`: {err}", collection.name))?;
+    let work = root.join(layout::SOURCES_CACHE).join(format!(
+        ".{}.fetching.{}",
+        collection.name,
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&work);
+    if let Err(err) = crate::runtime::extract(&url, sha256, &work, &["--strip-components=1"]) {
+        let _ = std::fs::remove_dir_all(&work);
+        return Err(format!("`{}`: {err}", collection.name));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::rename(&work, &dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     match sha256 {
         Some(sha256) => {
             std::fs::write(&pin, sha256).map_err(|err| format!("{}: {err}", pin.display()))?

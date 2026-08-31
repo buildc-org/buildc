@@ -79,7 +79,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "${branch}"
-          git add ./*.kdl
+          ./scripts/buildc.sh generate
+          git add ./*.kdl generated
           git commit -m "Record the base image signature status" \
             -m "${SUMMARY}"
           git push --force origin "${branch}"
@@ -97,9 +98,10 @@ jobs:
           [this workflow](.github/workflows/base-sig-probe.yml) rather than by
           hand, so this PR only makes the declaration match the registry.
 
-          **Nothing about the build changes.** `signed` reaches no generated
-          file, no build arg and no layer, and the images this repository
-          publishes are cosign signed either way.
+          **Nothing about the build changes.** `signed` reaches no build arg and
+          no layer, and the images this repository publishes are cosign signed
+          either way. It does reach `generated/plan.json`, which is why this PR
+          carries the regenerated file beside the manifest.
 
           The FROM pull can now be gated, which is the point of tracking this:
 

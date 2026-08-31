@@ -39,10 +39,18 @@ jobs:
             [ -n "${image}" ] || continue
             if cosign download signature "${base}" > /dev/null 2>&1; then
               actual="true"
+              # The probe asks only whether the signature carries a certificate identity, so any signer is accepted.
+              if cosign verify --certificate-identity-regexp='.*' \
+                --certificate-oidc-issuer-regexp='.*' "${base}" > /dev/null 2>&1; then
+                kind="signed, and the signature names its signer"
+              else
+                kind="signed, but the signature names no signer, so it can be verified only with a key obtained elsewhere"
+              fi
             else
               actual="false"
+              kind="unsigned"
             fi
-            echo "${image}: ${base} is $([ "${actual}" = true ] && echo signed || echo unsigned), recorded as ${recorded}"
+            echo "${image}: ${base} is ${kind}, recorded as ${recorded}"
             [ "${actual}" != "${recorded}" ] || continue
 
             sed -i "s/signed #${recorded}/signed #${actual}/" "${file}"

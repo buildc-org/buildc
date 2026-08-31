@@ -14,10 +14,6 @@ const TYPES: [(&str, &str); 3] = [
     ("iso", copy::DISK_ISO),
 ];
 
-const DEFAULT_SIZE: &str = "buildc: the disk is the image builder's default size; the \
-                            root `disk_config/disk.toml` declares is in a block it \
-                            does not apply";
-
 pub struct Options {
     pub target: Option<String>,
     pub image: Option<String>,
@@ -42,9 +38,6 @@ pub fn run(
             "{} is not there; `buildc generate` writes it",
             script.display()
         ));
-    }
-    if kind != "iso" {
-        eprintln!("{DEFAULT_SIZE}");
     }
     Err(format!(
         "{}: {}",

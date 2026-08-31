@@ -113,10 +113,15 @@ impl Index {
             .collect()
     }
 
-    pub fn adapter(&self, capability: &str, family: &str) -> Option<&Provider> {
+    pub fn fitting(&self, capability: &str, family: &str) -> Vec<&Provider> {
         self.of(capability)
             .into_iter()
-            .find(|held| held.declares.supports.iter().any(|has| has == family))
+            .filter(|held| held.declares.supports.iter().any(|has| has == family))
+            .collect()
+    }
+
+    pub fn adapter(&self, capability: &str, family: &str) -> Option<&Provider> {
+        self.fitting(capability, family).into_iter().next()
     }
 
     pub fn declaring_key(&self, kind: &str) -> Vec<&Provider> {

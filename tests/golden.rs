@@ -1092,6 +1092,19 @@ fn flows() {
         "the refusal leaves the repository as it was: {untouched}"
     );
 
+    let family = flow_repo_with("flow-import-family-in", "one");
+    flow(
+        "flow-import-family",
+        &family,
+        None,
+        &["--root", ".", "import", "module", "one/needs-family"],
+    );
+    let listed = std::fs::read_to_string(family.join("example.image.kdl")).unwrap();
+    assert!(
+        listed.contains("module \"fedora-family\"") && !listed.contains("debian-family"),
+        "the adapter brought has to support the base's family: {listed}"
+    );
+
     let vendored = flow_repo_claiming("flow-copy-conforms-in");
     flow(
         "flow-copy-conforms",

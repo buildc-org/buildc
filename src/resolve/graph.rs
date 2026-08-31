@@ -238,7 +238,12 @@ pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issue
             }
 
             let Some(providers) = offered.get(decl.name.as_str()) else {
-                let candidates = index.of(&decl.name);
+                let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+                let fits = index.fitting(&decl.name, family);
+                let candidates = match fits.is_empty() {
+                    true => index.of(&decl.name),
+                    false => fits,
+                };
                 let named: Vec<String> = candidates.iter().map(|p| p.qualified()).collect();
                 let help = match candidates.iter().find(|p| p.here) {
                     Some(_) => format!(

@@ -59,6 +59,30 @@ fn nowhere(index: &Index, capability: &str, src: &str) -> String {
     )
 }
 
+fn satisfied_by(index: &Index, image: &Image, name: &str) -> String {
+    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let fits = index.fitting(name, family);
+    let candidates = match fits.is_empty() {
+        true => index.of(name),
+        false => fits,
+    };
+    let named: Vec<String> = candidates.iter().map(|p| p.qualified()).collect();
+    match candidates.iter().find(|p| p.here) {
+        Some(_) => format!(
+            "{} would satisfy it; add it to this image. Nothing is included automatically, so the list stays the complete statement of what is in the image",
+            named.join(" or ")
+        ),
+        None => match candidates.first() {
+            Some(first) => format!(
+                "{} would satisfy it; `buildc import module {}` brings it in and lists it",
+                named.join(" or "),
+                first.qualified()
+            ),
+            None => nowhere(index, name, &image.src.name()),
+        },
+    }
+}
+
 pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issues) {
     let mut offered: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
     for module in image.modules() {
@@ -200,29 +224,44 @@ pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issue
         }
     }
 
-    const MAC_POLICY: &str = "mac-policy";
     for module in image.modules() {
         let dir = layout::module(root, &module.dir);
-        let has_policy = std::fs::read_dir(dir.join("selinux"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .any(|e| e.path().extension().is_some_and(|ext| ext == "te"));
-        if !has_policy || module.requires.iter().any(|d| d.name == MAC_POLICY) {
-            continue;
+        for policy in layout::POLICIES {
+            let capability = policy.capability;
+            if policy.files(&dir).is_empty() || module.requires.iter().any(|d| d.name == capability)
+            {
+                continue;
+            }
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` ships {} without requiring `{capability}`",
+                        module.path, policy.about
+                    ),
+                    &module.src,
+                )
+                .help(format!("add `requires \"{capability}\"`; {}", policy.help)),
+            );
         }
-        issues.push(
-            Issue::new(
-                format!(
-                    "`{}` ships SELinux policy without requiring `{MAC_POLICY}`",
-                    module.path
-                ),
-                &module.src,
-            )
-            .help(format!(
-                "add `requires \"{MAC_POLICY}\"`; the generated build script compiles selinux/*.te against the base image's policy store"
-            )),
-        );
+    }
+
+    if let Some(base) = &image.base {
+        for decl in &base.requires {
+            if offered.contains_key(decl.name.as_str()) {
+                continue;
+            }
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` requires `{}`, which nothing enabled provides",
+                        base.image, decl.name
+                    ),
+                    &image.src,
+                )
+                .at(decl.span, "the base is not usable without it")
+                .help(satisfied_by(index, image, &decl.name)),
+            );
+        }
     }
 
     for module in image.modules() {
@@ -238,27 +277,6 @@ pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issue
             }
 
             let Some(providers) = offered.get(decl.name.as_str()) else {
-                let family = image.base.as_ref().map_or("", |base| base.family.as_str());
-                let fits = index.fitting(&decl.name, family);
-                let candidates = match fits.is_empty() {
-                    true => index.of(&decl.name),
-                    false => fits,
-                };
-                let named: Vec<String> = candidates.iter().map(|p| p.qualified()).collect();
-                let help = match candidates.iter().find(|p| p.here) {
-                    Some(_) => format!(
-                        "{} would satisfy it; add it to this image. Nothing is included automatically, so the list stays the complete statement of what is in the image",
-                        named.join(" or ")
-                    ),
-                    None => match candidates.first() {
-                        Some(first) => format!(
-                            "{} would satisfy it; `buildc import module {}` brings it in and lists it",
-                            named.join(" or "),
-                            first.qualified()
-                        ),
-                        None => nowhere(index, &decl.name, &image.src.name()),
-                    },
-                };
                 issues.push(
                     Issue::new(
                         format!(
@@ -268,7 +286,7 @@ pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issue
                         &module.src,
                     )
                     .at(decl.span, "unsatisfied")
-                    .help(help),
+                    .help(satisfied_by(index, image, &decl.name)),
                 );
                 continue;
             };

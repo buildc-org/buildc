@@ -14,6 +14,10 @@ pub mod workflows;
 
 pub(crate) const LIBRARIES: &[(&str, &str)] = &[
     (
+        "apparmor-helpers.sh",
+        include_str!("../../assets/lib/apparmor-helpers.sh"),
+    ),
+    (
         "dkms-helpers.sh",
         include_str!("../../assets/lib/dkms-helpers.sh"),
     ),

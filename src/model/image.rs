@@ -66,6 +66,7 @@ pub struct Base {
     pub family: String,
     pub provides: Vec<Decl>,
     pub provides_files: Vec<Decl>,
+    pub requires: Vec<Decl>,
     pub signed: bool,
     pub span: Span,
 }

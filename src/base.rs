@@ -11,6 +11,7 @@ pub struct Base {
     pub family: String,
     pub provides: Vec<String>,
     pub provides_files: Vec<String>,
+    pub requires: Vec<String>,
     pub about: String,
     pub signed: bool,
     pub span: Span,
@@ -21,6 +22,7 @@ impl Base {
         self.family != other.family
             || self.provides != other.provides
             || self.provides_files != other.provides_files
+            || self.requires != other.requires
             || self.about != other.about
             || self.signed != other.signed
     }

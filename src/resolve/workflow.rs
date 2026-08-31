@@ -88,7 +88,7 @@ pub const SHIPPED: &[Shipped] = &[
     shipped!(
         "smoke-test",
         "installs the image to a disk and boots it under qemu",
-        Needs::Fedora,
+        Needs::Nothing,
         Some((-9, "1"))
     ),
 ];
@@ -243,6 +243,21 @@ mod tests {
                 shipped.stem
             );
         }
+    }
+
+    #[test]
+    fn a_deb_repository_may_smoke_test_and_may_not_build_a_disk() {
+        let deb = Basis {
+            fedora: false,
+            kernel: false,
+        };
+        let met = |stem: &str| find(stem).expect(stem).met(&deb);
+        assert!(met("build"));
+        assert!(
+            met("smoke-test"),
+            "it installs out of the image, not a family"
+        );
+        assert!(!met("build-disk"), "the installer iso is Anaconda's");
     }
 
     #[test]

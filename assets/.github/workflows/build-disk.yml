@@ -46,7 +46,7 @@ jobs:
             '.images[] | select([.targets[].name] | index($t)) | .base.family' \
             <<< "$plan")"
           echo "family=${family}" >> "$GITHUB_OUTPUT"
-          [ "$family" = fedora ] || echo "::warning::the builder relabels its buildroot with SELinux and installs with Anaconda, so it builds no disk for the ${family} family"
+          [ "$family" = fedora ] || echo "::warning::the builder installs with Anaconda and relabels its buildroot with SELinux, and the ${family} family carries neither, so it builds no disk here"
 
   build:
     name: Build disk images

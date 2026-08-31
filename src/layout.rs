@@ -13,28 +13,19 @@ pub struct Policy {
     pub dir: &'static str,
     pub ext: Option<&'static str>,
     pub capability: &'static str,
-    pub about: &'static str,
-    pub help: &'static str,
 }
 
 pub const SELINUX: Policy = Policy {
     dir: "selinux",
     ext: Some("te"),
     capability: "selinux-policy",
-    about: "SELinux policy",
-    help: "the generated build script compiles selinux/*.te against the base image's policy store",
 };
 
 pub const APPARMOR: Policy = Policy {
     dir: "apparmor",
     ext: None,
     capability: "apparmor-policy",
-    about: "an AppArmor profile",
-    help: "the generated build script validates apparmor/* with `apparmor_parser -Q` and places \
-           each one in /etc/apparmor.d under its own filename",
 };
-
-pub const POLICIES: &[Policy] = &[SELINUX, APPARMOR];
 
 impl Policy {
     pub fn files(&self, module_dir: &Path) -> Vec<String> {

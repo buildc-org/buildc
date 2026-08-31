@@ -1,5 +1,4 @@
 use crate::diag::{Issue, Issues};
-use crate::layout;
 use crate::model::image::{Entry, Image};
 use crate::model::module::{Decl, Module};
 use crate::provider::Index;
@@ -83,7 +82,7 @@ fn satisfied_by(index: &Index, image: &Image, name: &str) -> String {
     }
 }
 
-pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issues) {
+pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
     let mut offered: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
     for module in image.modules() {
         for decl in module.provides.iter().chain(module.provides_files.iter()) {
@@ -220,27 +219,6 @@ pub fn check_graph(image: &Image, root: &Path, index: &Index, issues: &mut Issue
                     "provided by: {}. Enable one provider, so that what satisfies a requirement is never ambiguous",
                     names.join(", ")
                 )),
-            );
-        }
-    }
-
-    for module in image.modules() {
-        let dir = layout::module(root, &module.dir);
-        for policy in layout::POLICIES {
-            let capability = policy.capability;
-            if policy.files(&dir).is_empty() || module.requires.iter().any(|d| d.name == capability)
-            {
-                continue;
-            }
-            issues.push(
-                Issue::new(
-                    format!(
-                        "`{}` ships {} without requiring `{capability}`",
-                        module.path, policy.about
-                    ),
-                    &module.src,
-                )
-                .help(format!("add `requires \"{capability}\"`; {}", policy.help)),
             );
         }
     }

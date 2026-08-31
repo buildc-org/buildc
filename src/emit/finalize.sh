@@ -64,10 +64,12 @@ for keep in "${var_keep[@]}"; do
 done
 unset 'var_prune[-1]'
 
+var_remove=()
 while IFS=$'\t' read -r -d '' type mode owner group path; do
     esc="$(var_escape "$path")"
     [ -n "${var_declared[$esc]:-}" ] && continue
     var_declared[$esc]=1
+    var_remove+=("$path")
     case "$type" in
         d) printf 'd %s %s %s %s -\n' "$esc" "$mode" "$owner" "$group" >> "$var_conf" ;;
         l) printf 'L+ %s - - - - %s\n' "$esc" "$(var_escape "$(readlink "$path")")" >> "$var_conf" ;;
@@ -75,7 +77,11 @@ while IFS=$'\t' read -r -d '' type mode owner group path; do
     esac
 done < <(find /var -mindepth 1 -xdev \( "${var_prune[@]}" \) -prune -o -printf '%y\t%m\t%u\t%g\t%p\0')
 
-find /var -mindepth 1 -xdev \( "${var_prune[@]}" \) -prune -o ! -type d -print0 \
-    | xargs -0 -r rm -f
-find /var -mindepth 1 -xdev -depth \( "${var_prune[@]}" \) -prune -o -type d -print0 \
-    | xargs -0 -r rmdir --ignore-fail-on-non-empty
+for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
+    path="${var_remove[i]}"
+    if [ -d "$path" ] && [ ! -L "$path" ]; then
+        rmdir --ignore-fail-on-non-empty "$path"
+    else
+        rm -f "$path"
+    fi
+done

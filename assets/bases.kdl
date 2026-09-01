@@ -36,29 +36,8 @@ base "ghcr.io/ublue-os/kinoite-main:44" {
     signed #true
 }
 
-base "ghcr.io/bootcrew/debian-bootc:latest" {
-    about "Experimental Debian bootc base from Bootcrew"
-    family "debian"
-    provides "initramfs-generation" "apparmor-policy"
-    signed #true
-}
-
-base "ghcr.io/bootcrew/ubuntu-bootc:latest" {
-    about "Experimental Ubuntu bootc base from Bootcrew"
-    family "ubuntu"
-    provides "initramfs-generation"
-    signed #true
-}
-
-base "ghcr.io/jmarrero/ubuntu-bootc:latest" {
-    about "Experimental Ubuntu 26.04 bootc base with cloud-init"
-    family "ubuntu"
-    provides "initramfs-generation"
-    signed #false
-}
-
-base "docker.io/library/debian:trixie" {
-    about "Debian 13, which a module set has to turn into a bootc image"
+base "docker.io/library/debian:forky" {
+    about "Debian 14, which a module set has to turn into a bootc image"
     family "debian"
     requires "bootc-base"
     signed #false

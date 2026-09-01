@@ -288,6 +288,14 @@ impl Image {
                     .help("it becomes an image tag, a cache tag and the default hostname, all of which restrict it"),
             );
         }
+        if self.id == crate::layout::LIB {
+            issues.push(
+                Issue::new(format!("`{}` is not available as an image name", self.id), src)
+                    .at(self.span, "generated/lib/ is the shared helper library")
+                    .help("declare `id \"something\"`: everything else this image generates lands in generated/<id>/, which would be that directory"),
+            );
+            self.id = String::new();
+        }
     }
 
     fn parse_flavours(&mut self, block: &KdlNode, issues: &mut Issues) {

@@ -96,6 +96,14 @@ pub fn generated(root: &Path) -> PathBuf {
     root.join(GENERATED)
 }
 
+pub fn generated_image(id: &str) -> PathBuf {
+    PathBuf::from(GENERATED).join(id)
+}
+
+pub const CONTAINERFILE: &str = "Containerfile";
+
+pub const LIB: &str = "lib";
+
 pub fn out(root: &Path) -> PathBuf {
     root.join(OUT)
 }

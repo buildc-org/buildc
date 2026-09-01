@@ -14,7 +14,7 @@ set -euxo pipefail
 ";
 
 pub fn dir(image: &Image) -> PathBuf {
-    PathBuf::from(layout::GENERATED).join(format!("{}.d", image.id))
+    layout::generated_image(&image.id).join(layout::MODULES)
 }
 
 pub fn path(image: &Image, entry: &Entry) -> PathBuf {

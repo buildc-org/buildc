@@ -178,10 +178,11 @@ fn create(name: &str, root: &Path) {
         false,
         vec!["example".into(), "server".into()],
         None,
+        buildc::import::Place::Reference,
         &silent,
     )
     .unwrap_or_else(|err| panic!("{}", err.message()))
-    .apply(here)
+    .apply(here, &list.sources)
     .unwrap();
 
     let mut out = String::new();
@@ -1110,10 +1111,21 @@ fn flows() {
         "flow-copy-conforms",
         &vendored,
         None,
-        &["--root", ".", "copy", "module", "three/sshd"],
+        &[
+            "--root",
+            ".",
+            "copy",
+            "module",
+            "three/sshd",
+            "--datastream",
+            stream.as_str(),
+        ],
     );
     let copied = std::fs::read_to_string(vendored.join("example.image.kdl")).unwrap();
-    assert!(!copied.contains("conforms"), "{copied}");
+    assert!(
+        copied.contains("conforms \"standard\"") && copied.contains("module \"sshd\""),
+        "{copied}"
+    );
 
     let claimed = flow_repo("flow-set-claims-in");
     lists_sshd(&claimed);
@@ -1506,10 +1518,11 @@ fn flows() {
         false,
         Vec::new(),
         None,
+        buildc::import::Place::Reference,
         &buildc::prompt::Prompt::silent(),
     )
     .unwrap_or_else(|err| panic!("{}", err.message()))
-    .apply(&root)
+    .apply(&root, &list.sources)
     .unwrap_err();
     assert!(declined.contains("--image"), "{declined}");
 
@@ -1520,10 +1533,11 @@ fn flows() {
         false,
         vec!["example".into()],
         None,
+        buildc::import::Place::Reference,
         &buildc::prompt::Prompt::silent(),
     )
     .unwrap_or_else(|err| panic!("{}", err.message()))
-    .apply(&root)
+    .apply(&root, &list.sources)
     .unwrap();
     let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
     assert_eq!(image.matches("source \"one\"").count(), 1);
@@ -1536,6 +1550,7 @@ fn flows() {
         false,
         vec!["example".into()],
         None,
+        buildc::import::Place::Reference,
         &buildc::prompt::Prompt::silent(),
     )
     .err()
@@ -1591,7 +1606,7 @@ fn flows() {
     buildc(&nested, &["--no-tui", "--root", ".", "check"]);
     buildc(&nested, &["--no-tui", "--root", ".", "generate"]);
     assert!(nested
-        .join("generated/example.d/four/hardening/coredumps.sh")
+        .join("generated/example/modules/four/hardening/coredumps.sh")
         .is_file());
 
     let suffix = flow_repo_with("flow-suffix", "four");
@@ -1619,7 +1634,7 @@ fn flows() {
     buildc(&suffix, &["--no-tui", "--root", ".", "check"]);
     buildc(&suffix, &["--no-tui", "--root", ".", "generate"]);
     assert!(suffix
-        .join("generated/example.d/four/hardening/coredumps.sh")
+        .join("generated/example/modules/four/hardening/coredumps.sh")
         .is_file());
 
     let both = flow_repo("flow-suffix-ambiguous");
@@ -1741,7 +1756,7 @@ fn flows() {
     buildc(&copied_nested, &["--no-tui", "--root", ".", "check"]);
     buildc(&copied_nested, &["--no-tui", "--root", ".", "generate"]);
     assert!(copied_nested
-        .join("generated/example.d/hardening/coredumps.sh")
+        .join("generated/example/modules/hardening/coredumps.sh")
         .is_file());
 
     let copied = flow_repo_sourced("flow-copy-collides");

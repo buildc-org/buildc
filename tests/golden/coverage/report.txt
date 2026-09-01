@@ -71,7 +71,7 @@ buildc: 2 of 4 rules are unclaimed
    ╰────
   help: the datastream carries: standard, ospp
 
-buildc: 1 problem in ./example.image.kdl, ./repo.kdl
+buildc: 1 problem in ./example.image.kdl; none in ./repo.kdl
 ==== exit 2
 ==== and measured against nothing at all
   × `minimal` declares no `conforms`
@@ -84,7 +84,7 @@ buildc: 1 problem in ./example.image.kdl, ./repo.kdl
   help: `conforms "<profile>"` is the profile a scan measures it against, and
         what this read-out is coverage of
 
-buildc: 1 problem in ./image.kdl, ./repo.kdl
+buildc: 1 problem in ./image.kdl; none in ./repo.kdl
 ==== exit 2
 ==== and a datastream that is not one
 Buildc v{version}

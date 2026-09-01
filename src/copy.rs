@@ -31,7 +31,7 @@ pub fn list_in(target: &str) -> String {
     format!("List it in {target}?")
 }
 
-pub const IMPORT_REQUIRED: &str = "Import what these modules require?";
+pub const BRING_REQUIRED: &str = "Bring what these modules require?";
 pub const IMPORT_CLAIMING: &str = "Import the modules claiming these rules?";
 
 pub fn cleared(named: &str, unmet: &str) -> String {

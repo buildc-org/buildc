@@ -9,6 +9,7 @@ use crate::provider::Provider;
 use crate::ui::Choice;
 use std::path::{Path, PathBuf};
 
+#[derive(Clone)]
 pub struct Found {
     pub owner: String,
     pub name: String,
@@ -223,19 +224,6 @@ fn unchosen(command: &str) -> String {
     format!("no module chosen; `buildc {command} module <name>` names one")
 }
 
-pub fn choose(
-    root: &Path,
-    sources: &[Collection],
-    command: &str,
-    prompt: &Prompt,
-) -> Result<String, String> {
-    let (listed, options) = offered(root, sources)?;
-    match prompt.choose(copy::WHICH_MODULE, &options)? {
-        Some(chosen) => Ok(listed[chosen].qualified()),
-        None => Err(unchosen(command)),
-    }
-}
-
 fn choose_several(
     root: &Path,
     sources: &[Collection],
@@ -370,21 +358,6 @@ pub fn vendor(
     Ok(wrote)
 }
 
-fn select(
-    name: Option<String>,
-    root: &Path,
-    sources: &[Collection],
-    enforce: bool,
-    command: &str,
-    prompt: &Prompt,
-) -> Result<(Found, String), Error> {
-    let name = match name {
-        Some(name) => name,
-        None => choose(root, sources, command, prompt)?,
-    };
-    resolve(&name, root, sources, enforce, prompt)
-}
-
 fn resolve(
     name: &str,
     root: &Path,
@@ -422,11 +395,46 @@ fn resolve(
 struct Member {
     from: Found,
     name: String,
+    dest: PathBuf,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Place {
+    Reference,
+    Vendored,
+}
+
+impl Place {
+    fn word(self) -> &'static str {
+        match self {
+            Self::Reference => "import",
+            Self::Vendored => "copy",
+        }
+    }
+
+    fn dest(self, found: &Found) -> PathBuf {
+        let modules = PathBuf::from(layout::MODULES);
+        match self {
+            Self::Reference => modules
+                .join(REMOTE_DIR)
+                .join(&found.owner)
+                .join(&found.name),
+            Self::Vendored => modules.join(&found.name),
+        }
+    }
+
+    fn source(self, found: &Found) -> Option<&str> {
+        match self {
+            Self::Reference => Some(&found.owner),
+            Self::Vendored => None,
+        }
+    }
 }
 
 pub struct Module {
     members: Vec<Member>,
     listing: Listing,
+    place: Place,
     workflows: Option<crate::set::Workflows>,
     conforms: Vec<crate::set::Conforms>,
 }
@@ -439,10 +447,11 @@ impl Module {
         enforce: bool,
         images: Vec<String>,
         datastream: Option<&Path>,
+        place: Place,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
         let (list, _) = crate::model::image::List::load(root);
-        if list.images.is_empty() {
+        if place == Place::Reference && list.images.is_empty() {
             return Err(
                 "`import module` needs an image; run `buildc create image <name>` first"
                     .to_string()
@@ -451,20 +460,24 @@ impl Module {
         }
         let asked = match name {
             Some(name) => vec![name],
-            None => choose_several(root, sources, "import", prompt)?,
+            None => choose_several(root, sources, place.word(), prompt)?,
         };
         let picked = asked
             .iter()
             .map(|name| resolve(name, root, sources, enforce, prompt))
             .collect::<Result<Vec<(Found, String)>, Error>>()?;
+        let chosen = picked
+            .iter()
+            .map(|(from, name)| member(root, from, name, place))
+            .collect::<Result<Vec<Member>, String>>()?;
         let declares: Vec<crate::parse::module::Summary> = picked
             .iter()
             .map(|(from, _)| crate::parse::module::summary(&from.dir.join(layout::MODULE_FILE)))
             .collect();
 
         let listing = Listing::collect(root, images, prompt)?;
-        for (from, name) in &picked {
-            listing.refuse_duplicate(&list, name, Some(&from.owner))?;
+        for member in &chosen {
+            listing.refuse_duplicate(&list, &member.name, place.source(&member.from))?;
         }
         let named: Vec<String> = picked.iter().map(|(_, name)| name.clone()).collect();
 
@@ -479,7 +492,7 @@ impl Module {
                 let mut found = find(root, sources, &qualified, enforce)?;
                 let from = found.swap_remove(0);
                 let name = from.name.clone();
-                Ok(Member { from, name })
+                member(root, &from, &name, place)
             })
             .collect::<Result<Vec<Member>, String>>()?;
 
@@ -506,8 +519,7 @@ impl Module {
             }
         };
 
-        let mut members = also;
-        members.extend(picked.into_iter().map(|(from, name)| Member { from, name }));
+        let members: Vec<Member> = also.into_iter().chain(chosen).collect();
         let brought: Vec<String> = members.iter().map(|member| member.name.clone()).collect();
         let conforms = measured(
             &list, &listing, &named, &declares, datastream, &brought, prompt,
@@ -515,22 +527,28 @@ impl Module {
         Ok(Self {
             members,
             listing,
+            place,
             workflows,
             conforms,
         })
     }
 
-    pub fn apply(&self, root: &Path) -> Result<(), String> {
-        let wrote = self.write(root)?;
+    pub fn apply(&self, root: &Path, sources: &[Collection]) -> Result<(), String> {
+        let wrote = self.write(root, sources)?;
         if !wrote.is_empty() {
             report(root, &wrote);
         }
         Ok(())
     }
 
-    pub(crate) fn write(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
+    pub(crate) fn write(
+        &self,
+        root: &Path,
+        sources: &[Collection],
+    ) -> Result<Vec<(PathBuf, Change)>, String> {
         match self.listing {
             Listing::Cancelled => return Ok(Vec::new()),
+            _ if self.place == Place::Vendored => {}
             Listing::NoImage => {
                 return Err(
                     "`import module` needs an image; run `buildc create image <name>` first".into(),
@@ -550,20 +568,28 @@ impl Module {
             }
             Listing::In(_) => {}
         }
+        let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
         for member in &self.members {
-            let dir = layout::module(root, REMOTE_DIR)
-                .join(&member.from.owner)
-                .join(&member.name);
-            let _ = std::fs::remove_dir_all(&dir);
-            crate::init::copy_tree(&member.from.dir, &dir)?;
+            match self.place {
+                Place::Reference => {
+                    let dir = root.join(&member.dest);
+                    let _ = std::fs::remove_dir_all(&dir);
+                    crate::init::copy_tree(&member.from.dir, &dir)?;
+                }
+                Place::Vendored => wrote.extend(
+                    vendor(root, sources, &member.from, &member.dest)?
+                        .into_iter()
+                        .map(|path| (path, Change::Created)),
+                ),
+            }
         }
-        let listed: Vec<(&str, &str)> = self
+        let listed: Vec<(&str, Option<&str>)> = self
             .members
             .iter()
-            .map(|member| (member.from.owner.as_str(), member.name.as_str()))
+            .map(|member| (member.name.as_str(), self.place.source(&member.from)))
             .collect();
         let (list, _) = crate::model::image::List::load(root);
-        let mut wrote: Vec<(PathBuf, Change)> = self.listing.apply_source(&list, &listed)?;
+        wrote.extend(self.listing.apply_declaration(&list, &listed)?);
         if let Some(workflows) = &self.workflows {
             wrote.extend(workflows.apply(root)?);
         }
@@ -573,7 +599,14 @@ impl Module {
         let brought: Vec<String> = self
             .members
             .iter()
-            .map(|member| format!("{REMOTE_DIR}/{}/{}", member.from.owner, member.name))
+            .map(|member| {
+                member
+                    .dest
+                    .strip_prefix(layout::MODULES)
+                    .unwrap_or(&member.dest)
+                    .display()
+                    .to_string()
+            })
             .collect();
         collisions(root, &brought);
         Ok(wrote)
@@ -600,14 +633,27 @@ pub fn bring(
             let mut found = find(root, sources, qualified, enforce)?;
             let from = found.swap_remove(0);
             let name = from.name.clone();
-            Ok(Member { from, name })
+            member(root, &from, &name, Place::Reference)
         })
         .collect::<Result<Vec<Member>, String>>()?;
     Ok(Module {
         members,
         listing: Listing::collect(root, vec![image.to_string()], &Prompt::silent())?,
+        place: Place::Reference,
         workflows: None,
         conforms: Vec::new(),
+    })
+}
+
+fn member(root: &Path, from: &Found, name: &str, place: Place) -> Result<Member, String> {
+    let dest = match place {
+        Place::Reference => place.dest(from),
+        Place::Vendored => destination(root, from, name)?,
+    };
+    Ok(Member {
+        from: from.clone(),
+        name: name.to_string(),
+        dest,
     })
 }
 
@@ -675,7 +721,7 @@ fn short(
         return Ok(Vec::new());
     }
 
-    match prompt.confirm(copy::IMPORT_REQUIRED, copy::YES, copy::NO)? {
+    match prompt.confirm(copy::BRING_REQUIRED, copy::YES, copy::NO)? {
         true => Ok(bring),
         false => Ok(Vec::new()),
     }
@@ -902,36 +948,28 @@ mod tests {
         let from = root.join("collection/module");
         crate::init::put(&from.join(layout::MODULE_FILE), "description \"x\"\n").unwrap();
 
-        Module {
-            members: vec![Member {
-                from: Found {
-                    owner: "one".into(),
-                    name: "module".into(),
-                    dir: from.clone(),
-                },
-                name: "module".into(),
-            }],
-            listing: Listing::Cancelled,
-            workflows: None,
-            conforms: Vec::new(),
-        }
-        .apply(&root)
-        .unwrap();
-        assert!(!root.join("modules/.remote/one/module").exists());
-
-        Copy {
-            from: Found {
+        for place in [Place::Reference, Place::Vendored] {
+            let found = Found {
                 owner: "one".into(),
                 name: "module".into(),
-                dir: from,
-            },
-            dest: PathBuf::from("modules/module"),
-            name: "module".into(),
-            listing: Listing::Cancelled,
+                dir: from.clone(),
+            };
+            let dest = place.dest(&found);
+            Module {
+                members: vec![Member {
+                    from: found,
+                    name: "module".into(),
+                    dest: dest.clone(),
+                }],
+                listing: Listing::Cancelled,
+                place,
+                workflows: None,
+                conforms: Vec::new(),
+            }
+            .apply(&root, &[])
+            .unwrap();
+            assert!(!root.join(&dest).exists());
         }
-        .apply(&root, &[])
-        .unwrap();
-        assert!(!root.join("modules/module").exists());
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -951,6 +989,7 @@ mod tests {
             false,
             Vec::new(),
             None,
+            Place::Reference,
             &Prompt::silent(),
         );
         let message = match result {
@@ -959,56 +998,5 @@ mod tests {
         };
         assert!(message.contains("needs an image"), "{message}");
         let _ = std::fs::remove_dir_all(root);
-    }
-}
-
-pub struct Copy {
-    from: Found,
-    dest: PathBuf,
-    name: String,
-    listing: Listing,
-}
-
-impl Copy {
-    pub fn collect(
-        name: Option<String>,
-        root: &Path,
-        sources: &[Collection],
-        enforce: bool,
-        images: Vec<String>,
-        prompt: &Prompt,
-    ) -> Result<Self, Error> {
-        let (from, name) = select(name, root, sources, enforce, "copy", prompt)?;
-        let dest = destination(root, &from, &name)?;
-        let listing = Listing::collect(root, images, prompt)?;
-        listing.refuse_duplicate(&crate::model::image::List::load(root).0, &name, None)?;
-        Ok(Self {
-            from,
-            dest,
-            name,
-            listing,
-        })
-    }
-
-    pub fn apply(&self, root: &Path, sources: &[Collection]) -> Result<(), String> {
-        if self.listing.cancelled() {
-            return Ok(());
-        }
-        let mut wrote: Vec<(PathBuf, Change)> = vendor(root, sources, &self.from, &self.dest)?
-            .into_iter()
-            .map(|path| (path, Change::Created))
-            .collect();
-        let (list, _) = crate::model::image::List::load(root);
-        wrote.extend(self.listing.apply(&list, &self.name)?);
-        collisions(
-            root,
-            &[self
-                .dest
-                .strip_prefix(layout::MODULES)
-                .map(|path| path.display().to_string())
-                .unwrap_or_default()],
-        );
-        report(root, &wrote);
-        Ok(())
     }
 }

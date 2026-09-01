@@ -1,4 +1,3 @@
-use crate::emit::module_build;
 use crate::layout;
 use crate::model::image::{Entry, Image};
 use crate::resolve::collect::Collection;
@@ -12,7 +11,7 @@ set -euxo pipefail
 ";
 
 pub fn path(image: &Image) -> PathBuf {
-    module_build::dir(image).join("finalize.sh")
+    layout::generated_image(&image.id).join("finalize.sh")
 }
 
 pub fn hooks<'a>(image: &'a Image, root: &Path) -> Vec<&'a Entry> {

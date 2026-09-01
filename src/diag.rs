@@ -128,13 +128,31 @@ impl Issues {
     pub fn report(self, context: &str) -> bool {
         let found = !self.0.is_empty();
         let count = self.0.len();
+        let mut bad: Vec<&str> = Vec::new();
+        for issue in &self.0 {
+            if !bad.contains(&issue.src.name()) {
+                bad.push(issue.src.name());
+            }
+        }
+        let clean: Vec<&str> = match context.contains(", ") {
+            false => Vec::new(),
+            true => context
+                .split(", ")
+                .filter(|file| !bad.contains(file))
+                .collect(),
+        };
+        let (bad, clean) = (bad.join(", "), clean.join(", "));
         for issue in self.0 {
             eprintln!("{:?}", miette::Report::new(issue));
         }
         if found {
             eprintln!(
-                "buildc: {count} problem{} in {context}",
-                if count == 1 { "" } else { "s" }
+                "buildc: {count} problem{} in {bad}{}",
+                if count == 1 { "" } else { "s" },
+                match clean.is_empty() {
+                    true => String::new(),
+                    false => format!("; none in {clean}"),
+                }
             );
         }
         found

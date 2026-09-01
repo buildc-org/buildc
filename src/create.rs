@@ -861,13 +861,19 @@ impl Listing {
             }
         };
         for into in listed {
-            let Some((image, held)) = holds(list, into, &dir) else {
+            let Some((image, held)) = holds(list, into, name, source) else {
                 continue;
             };
             let (at, into) = (target(image, &held.flavour), target(image, &into.flavour));
+            let elsewhere = match held.dir() == dir {
+                true => String::new(),
+                false => format!(", as {}/{}", crate::layout::MODULES, held.dir()),
+            };
             return Err(match at.to_string() == into.to_string() {
-                true => format!("`{at}` already lists `{name}`"),
-                false => format!("`{at}` already lists `{name}`, so `{into}` lists it twice"),
+                true => format!("`{at}` already lists `{name}`{elsewhere}"),
+                false => {
+                    format!("`{at}` already lists `{name}`{elsewhere}, so `{into}` lists it twice")
+                }
             });
         }
         Ok(())
@@ -908,19 +914,7 @@ impl Listing {
             .collect()
     }
 
-    pub fn apply_source(
-        &self,
-        list: &crate::model::image::List,
-        members: &[(&str, &str)],
-    ) -> Result<Vec<(PathBuf, Change)>, String> {
-        let declarations: Vec<(&str, Option<&str>)> = members
-            .iter()
-            .map(|(source, name)| (*name, Some(*source)))
-            .collect();
-        self.apply_declaration(list, &declarations)
-    }
-
-    fn apply_declaration(
+    pub(crate) fn apply_declaration(
         &self,
         list: &crate::model::image::List,
         declarations: &[(&str, Option<&str>)],
@@ -946,7 +940,7 @@ impl Listing {
                 for target in listed {
                     let mut taken: Vec<String> = Vec::new();
                     for (name, source) in declarations {
-                        if holds(list, target, &dir_of(name, *source)).is_some() {
+                        if holds(list, target, name, *source).is_some() {
                             continue;
                         }
                         append(
@@ -999,14 +993,20 @@ fn dir_of(name: &str, source: Option<&str>) -> String {
 fn holds<'a>(
     list: &'a crate::model::image::List,
     into: &Listed,
-    dir: &str,
+    name: &str,
+    source: Option<&str>,
 ) -> Option<(
     &'a crate::model::image::Image,
     &'a crate::model::image::Entry,
 )> {
     let image = list.images.iter().find(|image| image.name == into.image)?;
     let entry = image.entries.iter().find(|entry| {
-        entry.dir() == dir
+        let same_module = match (entry.source.as_deref(), source) {
+            (Some(held), Some(want)) => held == want,
+            _ => true,
+        };
+        entry.name() == name
+            && same_module
             && (into.flavour.is_none() || entry.flavour.is_none() || entry.flavour == into.flavour)
     })?;
     Some((image, entry))
@@ -1266,7 +1266,7 @@ mod tests {
 
         let (list, _) = crate::model::image::List::load(&root);
         let wrote = listing
-            .apply_source(&list, &[("one", "one"), ("one", "two")])
+            .apply_declaration(&list, &[("one", Some("one")), ("two", Some("one"))])
             .unwrap();
         assert_eq!(wrote.len(), 1);
         let Change::Updated(description) = &wrote[0].1 else {

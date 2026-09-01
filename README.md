@@ -69,7 +69,8 @@ This is the whole surface today. The rest of it is not built yet.
                           declares, with both halves under keys/
     buildc check            validate every manifest, and say where and why
     buildc generate         write the Containerfile per image, the per-module
-                          build scripts and the graph, under generated/
+                          build scripts and the graph, under
+                          generated/<image>/
     buildc build [target]   verify the build files, then build the image
     buildc section [image]  the generated Containerfile module section
     buildc graph [--format md|json]

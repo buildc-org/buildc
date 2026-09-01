@@ -10,7 +10,7 @@ pub const BEGIN: &str = "# ---- BEGIN GENERATED (module layers) ----";
 pub const END: &str = "# ---- END GENERATED ----";
 
 pub fn path(image: &Image) -> PathBuf {
-    PathBuf::from(layout::GENERATED).join(&image.id)
+    layout::generated_image(&image.id).join(layout::CONTAINERFILE)
 }
 
 pub fn file(skeleton: &str, image: &Image, section: &str) -> String {

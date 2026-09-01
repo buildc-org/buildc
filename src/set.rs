@@ -397,7 +397,7 @@ impl Conforms {
 
     pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
         let mut wrote = match &self.bring {
-            Some(bring) => bring.write(root)?,
+            Some(bring) => bring.write(root, &crate::model::image::List::load(root).0.sources)?,
             None => Vec::new(),
         };
         let text = std::fs::read_to_string(&self.file)

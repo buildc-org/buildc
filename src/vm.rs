@@ -34,17 +34,7 @@ pub fn run(
     let Some(kind) = kind(spec, given, prompt)? else {
         return Ok(());
     };
-    if converts(root, spec, kind, opts) {
-        if let Some(family) = family(root, opts).filter(|family| family != FEDORA) {
-            return Err(format!(
-                "the `{family}` family builds no disk here: bootc-image-builder installs with \
-                 Anaconda and relabels its buildroot with SELinux, and a `{family}` image carries \
-                 neither.\n\nhelp: push the image and `bootc install to-disk --via-loopback \
-                 --composefs-backend --filesystem ext4` writes one from the pushed ref, and \
-                 `buildc vm spawn` boots what that leaves"
-            ));
-        }
-    }
+    let installer = installer(root, spec, kind, opts)?;
     let script = root.join(SCRIPT);
     if !script.is_file() {
         return Err(format!(
@@ -55,7 +45,9 @@ pub fn run(
     Err(format!(
         "{}: {}",
         script.display(),
-        Command::new(&script).args(argv(spec, kind, opts)).exec()
+        Command::new(&script)
+            .args(argv(spec, kind, opts, installer))
+            .exec()
     ))
 }
 
@@ -87,8 +79,35 @@ fn family(root: &Path, opts: &Options) -> Option<String> {
         .filter(|family| !family.is_empty())
 }
 
-fn argv(spec: &Spec, kind: &str, opts: &Options) -> Vec<String> {
+fn installer(
+    root: &Path,
+    spec: &Spec,
+    kind: &str,
+    opts: &Options,
+) -> Result<Option<&'static str>, String> {
+    if !converts(root, spec, kind, opts) {
+        return Ok(None);
+    }
+    let Some(family) = family(root, opts).filter(|family| family != FEDORA) else {
+        return Ok(None);
+    };
+    if kind == "iso" {
+        return Err(format!(
+            "an installer iso is built with Anaconda, which no `{family}` image \
+             carries.\n\nhelp: `qcow2` and `raw` are installed with `bootc install to-disk` \
+             on this family, and both boot"
+        ));
+    }
+    Ok(Some(BOOTC))
+}
+
+const BOOTC: &str = "bootc";
+
+fn argv(spec: &Spec, kind: &str, opts: &Options, installer: Option<&str>) -> Vec<String> {
     let mut args = vec![spec.noun.to_string(), kind.to_string()];
+    if let Some(installer) = installer {
+        args.extend(["--installer".to_string(), installer.to_string()]);
+    }
     for (flag, value) in [
         ("--target", &opts.target),
         ("--image", &opts.image),
@@ -163,7 +182,7 @@ mod tests {
             rebuild: true,
         };
         assert_eq!(
-            argv(Verb::VmRun.spec(), "qcow2", &opts),
+            argv(Verb::VmRun.spec(), "qcow2", &opts, None),
             [
                 "run",
                 "qcow2",
@@ -173,6 +192,10 @@ mod tests {
                 "42",
                 "--rebuild"
             ]
+        );
+        assert_eq!(
+            argv(Verb::VmBuild.spec(), "raw", &opts, Some(BOOTC))[..4],
+            ["build", "raw", "--installer", "bootc"]
         );
     }
 
@@ -213,10 +236,19 @@ mod tests {
             .unwrap_err()
         };
 
-        let err = refuse("qcow2", &opts(None));
+        let build = Verb::VmBuild.spec();
+        for kind in ["qcow2", "raw"] {
+            assert_eq!(
+                installer(&root, build, kind, &opts(None)).unwrap(),
+                Some(BOOTC)
+            );
+        }
+        let installed = refuse("qcow2", &opts(None));
+        assert!(installed.contains("vm.sh is not there"), "{installed}");
+        let iso = installer(&root, build, "iso", &opts(None)).unwrap_err();
         assert!(
-            err.starts_with("the `debian` family builds no disk here"),
-            "{err}"
+            iso.starts_with("an installer iso is built with Anaconda"),
+            "{iso}"
         );
 
         let unasked = run(
@@ -235,6 +267,10 @@ mod tests {
         crate::init::put(&root.join("out/raw/disk.raw"), "").unwrap();
         assert!(!converts(&root, Verb::VmSpawn.spec(), "raw", &opts(None)));
         assert!(!converts(&root, Verb::VmRun.spec(), "raw", &opts(None)));
+        assert_eq!(
+            installer(&root, Verb::VmRun.spec(), "raw", &opts(None)).unwrap(),
+            None
+        );
         let booted = refuse("raw", &opts(None));
         assert!(booted.contains("vm.sh is not there"), "{booted}");
 
@@ -262,6 +298,9 @@ mod tests {
         assert_eq!(family(&root, &opts(None)).as_deref(), Some("fedora"));
         let fedora = refuse("qcow2", &opts(None));
         assert!(fedora.contains("vm.sh is not there"), "{fedora}");
+        for kind in ["qcow2", "raw", "iso"] {
+            assert_eq!(installer(&root, build, kind, &opts(None)).unwrap(), None);
+        }
 
         let _ = std::fs::remove_dir_all(&root);
     }

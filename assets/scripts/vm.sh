@@ -23,9 +23,15 @@ usage: scripts/vm.sh <command> <qcow2|raw|iso> [options]
                       (default: the plan's ungated target)
   --rebuild           build the container image first
   --ram <size>        memory for the virtual machine (default: 8G)
+  --installer <which> what converts the image into a disk: `bib` for
+                      bootc-image-builder, `bootc` for `bootc install to-disk`.
+                      `buildc vm` passes this off the target's base family; the
+                      default here is bib, which is fedora-only.
 
 Environment:
   BIB_IMAGE           bootc-image-builder image
+  DISK_SIZE           size of the disk `--installer bootc` writes (default: 20G).
+                      The file is sparse, so this is a ceiling rather than a cost.
 EOF
 }
 
@@ -55,16 +61,23 @@ tag="${DEFAULT_TAG:-latest}"
 target=""
 rebuild=0
 ram=8G
+installer=bib
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --image | --tag | --target | --ram)
+        --image | --tag | --target | --ram | --installer)
             [ "$#" -ge 2 ] || die "$1 needs a value"
             case "$1" in
                 --image) image="$2" ;;
                 --tag) tag="$2" ;;
                 --target) target="$2" ;;
                 --ram) ram="$2" ;;
+                --installer)
+                    case "$2" in
+                        bib | bootc) installer="$2" ;;
+                        *) die "--installer is bib or bootc, not '$2'" ;;
+                    esac
+                    ;;
             esac
             shift 2
             ;;
@@ -144,6 +157,79 @@ build_disk() {
     sudoif chown -R "$(id -u):$(id -g)" out/
 }
 
+registry_up() {
+    local port=5000
+    while ss -tunal | grep -q ":${port} "; do
+        port=$((port + 1))
+    done
+    registry_port="$port"
+    registry_id="$(podman run --rm --detach --publish "127.0.0.1:${port}:5000" \
+        docker.io/library/registry:2)"
+    local waited=0
+    until curl -sf -m 2 "http://localhost:${port}/v2/" > /dev/null; do
+        waited=$((waited + 1))
+        [ "$waited" -lt 60 ] || die "the registry did not come up on :${port}"
+        sleep 0.5
+    done
+}
+
+registry_down() {
+    [ -z "${registry_id:-}" ] || podman rm -f "$registry_id" > /dev/null 2>&1 || true
+    registry_id=""
+}
+
+arm_registry_trap() {
+    trap registry_down EXIT
+    trap 'registry_down; exit 130' INT TERM HUP
+}
+
+disarm_registry_trap() {
+    trap - EXIT INT TERM HUP
+}
+
+install_disk() {
+    if [ "$type" = iso ]; then
+        die "an installer iso is Anaconda's, and no deb family carries it"
+    fi
+    command -v curl > /dev/null 2>&1 || die "curl is not installed, and this needs it"
+    if [ "$type" = qcow2 ]; then
+        command -v qemu-img > /dev/null 2>&1 \
+            || die "qemu-img is not installed, and a qcow2 is converted from the raw disk"
+    fi
+
+    local raw="out/${type}/disk.raw.part" pushed
+    mkdir -p "out/${type}"
+    rm -f "$raw"
+    truncate -s "${DISK_SIZE:-20G}" "$raw"
+
+    arm_registry_trap
+    registry_up
+    pushed="localhost:${registry_port}/$(basename "${ref%:*}"):${ref##*:}"
+    podman push --tls-verify=false "$ref" "$pushed"
+
+    sudoif podman run \
+        --rm --privileged --pull=always --tls-verify=false \
+        --pid=host --net=host \
+        -v /var/lib/containers:/var/lib/containers \
+        -v /dev:/dev \
+        -v "${PWD}/out/${type}":/out \
+        --security-opt label=type:unconfined_t \
+        "$pushed" \
+        bootc install to-disk --via-loopback --composefs-backend \
+        --filesystem ext4 --wipe --generic-image /out/disk.raw.part
+    registry_down
+    disarm_registry_trap
+
+    sudoif chown -R "$(id -u):$(id -g)" out/
+    if [ "$type" = qcow2 ]; then
+        qemu-img convert -O qcow2 "$raw" "${image_file}.part"
+        rm -f "$raw"
+        mv -f "${image_file}.part" "$image_file"
+    else
+        mv -f "$raw" "$image_file"
+    fi
+}
+
 run_qemu() {
     local port=8006
     while ss -tunal | grep -q ":${port} "; do
@@ -170,7 +256,10 @@ if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
         [ -z "$target" ] || args+=(--target "$target")
         ./scripts/buildc.sh build "${args[@]}"
     fi
-    build_disk
+    case "$installer" in
+        bib) build_disk ;;
+        *) install_disk ;;
+    esac
 fi
 
 case "$command" in

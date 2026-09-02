@@ -63,7 +63,7 @@ pub const SHIPPED: &[Shipped] = &[
     ),
     shipped!(
         "build-disk",
-        "builds a disk image and an installer iso",
+        "builds a disk image with bootc-image-builder",
         Needs::Fedora,
         None
     ),
@@ -257,7 +257,7 @@ mod tests {
             met("smoke-test"),
             "it installs out of the image, not a family"
         );
-        assert!(!met("build-disk"), "the installer iso is Anaconda's");
+        assert!(!met("build-disk"), "the builder relabels with SELinux");
     }
 
     #[test]

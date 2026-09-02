@@ -67,6 +67,10 @@ pub const STORE: &str = "/var/lib/buildc/store";
 
 const SIZE: &str = "20G";
 
+pub const LIVE_ENV: &str = include_str!("installer.Containerfile");
+
+pub const EFI_PATCH: &str = include_str!("installer-efi-from-image.patch");
+
 pub fn live(published: &str) -> String {
     format!("localhost/{published}-installer:latest")
 }

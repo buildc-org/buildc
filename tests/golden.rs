@@ -1982,7 +1982,7 @@ fn golden() {
         !init.join("lib").exists(),
         "lib is generated; it must not land in the editable scaffold"
     );
-    for script in ["buildc.sh", "lint.sh", "render-iso-config.sh"] {
+    for script in ["buildc.sh", "lint.sh", "vm.sh"] {
         assert!(
             !init.join("scripts").join(script).exists(),
             "{script} is generated; it must not land in the editable scaffold"

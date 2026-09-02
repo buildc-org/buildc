@@ -27,7 +27,11 @@ usage: scripts/vm.sh <command> <qcow2|raw|iso> [options]
   --installer <which> what converts the image into a disk: `bib` for
                       bootc-image-builder, `bootc` for `bootc install to-disk`.
                       `buildc vm` passes this off the target's base family; the
-                      default here is bib, which is fedora-only.
+                      default here is bib, which is fedora-only. An iso is
+                      converted by neither and passes none.
+  --live-image <ref>  what the installer media boots, built here from
+                      out/bootiso/Containerfile. `buildc vm` names it, because
+                      this script has no JSON reader to find it with.
 
 Environment:
   BIB_IMAGE           bootc-image-builder image
@@ -66,12 +70,13 @@ target=""
 rebuild=0
 ram=8G
 installer=bib
+live_image=""
 login=0
 ssh_key=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --image | --tag | --target | --ram | --installer | --ssh-key)
+        --image | --tag | --target | --ram | --installer | --ssh-key | --live-image)
             [ "$#" -ge 2 ] || die "$1 needs a value"
             case "$1" in
                 --image) image="$2" ;;
@@ -79,6 +84,7 @@ while [ $# -gt 0 ]; do
                 --target) target="$2" ;;
                 --ram) ram="$2" ;;
                 --ssh-key) ssh_key="$2" ;;
+                --live-image) live_image="$2" ;;
                 --installer)
                     case "$2" in
                         bib | bootc) installer="$2" ;;
@@ -113,8 +119,9 @@ else
     ref="$(IMAGE_REGISTRY=localhost ./scripts/buildc.sh registry ref --tag "$tag")"
 fi
 
+staged=out/bootiso
 image_file="out/${type}/disk.${type}"
-[ "$type" != iso ] || image_file="out/bootiso/install.iso"
+[ "$type" != iso ] || image_file="${staged}/install.iso"
 
 sudoif() {
     if [ "${UID}" -eq 0 ]; then
@@ -147,11 +154,7 @@ load_rootful() {
 }
 
 build_disk() {
-    local config=disk_config/disk.toml tmp args=()
-    if [ "$type" = iso ]; then
-        [ -z "$target" ] || args=(--target "$target")
-        config="$(./scripts/render-iso-config.sh "${args[@]}")"
-    fi
+    local config=disk_config/disk.toml tmp
     load_rootful
     mkdir -p out
     tmp="$(mktemp -p "${PWD}/out" -d bib.XXXXXXXX)"
@@ -169,9 +172,6 @@ build_disk() {
 }
 
 install_disk() {
-    if [ "$type" = iso ]; then
-        die "an installer iso is Anaconda's, and no deb family carries it"
-    fi
     command -v skopeo > /dev/null 2>&1 \
         || die "skopeo is not installed, and it writes the layout bootc installs from"
     if [ "$type" = qcow2 ]; then
@@ -220,6 +220,38 @@ install_disk() {
     fi
 }
 
+build_iso() {
+    local tools=localhost/bootc-anywhere-tools:latest tbx="${staged}/tacklebox" cid
+    local build="${PWD}/${staged}/build"
+    [ -n "$live_image" ] || die "--live-image names what the media boots; \`buildc vm\` passes it"
+    [ -f "${staged}/Containerfile" ] \
+        || die "${staged}/Containerfile is not there; \`buildc vm build iso\` stages it"
+
+    load_rootful
+
+    sudoif podman build --target tools -t "$tools" \
+        --build-arg "PAYLOAD=${ref}" "$staged"
+    cid="$(sudoif podman create "$tools")"
+    sudoif podman cp "${cid}:/out/tacklebox" "$tbx"
+    sudoif podman rm "$cid" > /dev/null
+    sudoif chown "$(id -u):$(id -g)" "$tbx"
+
+    sudoif podman build --build-arg "PAYLOAD=${ref}" -t "$live_image" "$staged"
+
+    if mountpoint -q "${build}/tbox-offline-store/overlay" 2> /dev/null; then
+        sudoif umount "${build}/tbox-offline-store/overlay"
+    fi
+
+    rm -f "${image_file}.part"
+    if ! sudoif env HOME=/root "$tbx" build "${PWD}/${staged}/media.json" \
+        --iso "${PWD}/${image_file}.part" -b "$build"; then
+        sudoif chown -R "$(id -u):$(id -g)" "$staged"
+        die "tacklebox could not assemble the media; it left its staging under ${build}"
+    fi
+    sudoif chown -R "$(id -u):$(id -g)" "$staged"
+    mv -f "${image_file}.part" "$image_file"
+}
+
 login_credentials() {
     vm_user="${VM_USER:-buildc}"
     [[ "$vm_user" =~ ^[a-z_][a-z0-9_-]*$ ]] && [ "${#vm_user}" -le 31 ] \
@@ -246,7 +278,11 @@ login_credentials() {
 }
 
 run_qemu() {
-    local port=8006 arguments sysusers_base64 credential_args=()
+    local port=8006 arguments sysusers_base64 credential_args=() storage=()
+    if [ "$type" = iso ]; then
+        mkdir -p "${staged}/storage"
+        storage=(--volume "${PWD}/${staged}/storage":/storage)
+    fi
     while ss -tunal | grep -q ":${port} "; do
         port=$((port + 1))
     done
@@ -267,6 +303,7 @@ run_qemu() {
         --env TPM=Y \
         --env "GPU=${GPU:-N}" \
         "${credential_args[@]}" \
+        "${storage[@]}" \
         --device=/dev/kvm \
         --volume "${PWD}/${image_file}":"/boot.${type}" \
         docker.io/qemux/qemu
@@ -280,9 +317,14 @@ if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
         [ -z "$target" ] || args+=(--target "$target")
         ./scripts/buildc.sh build "${args[@]}"
     fi
-    case "$installer" in
-        bib) build_disk ;;
-        *) install_disk ;;
+    case "$type" in
+        iso) build_iso ;;
+        *)
+            case "$installer" in
+                bib) build_disk ;;
+                *) install_disk ;;
+            esac
+            ;;
     esac
 fi
 

@@ -101,6 +101,7 @@ pub struct Module {
     pub provides: Vec<Decl>,
     pub requires: Vec<Decl>,
     pub after: Vec<Decl>,
+    pub policies: Vec<&'static str>,
     pub provides_files: Vec<Decl>,
     pub provides_files_build_only: Vec<String>,
     pub requires_files: Vec<Decl>,

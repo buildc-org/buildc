@@ -28,8 +28,13 @@ pub fn sort(image: &Image, issues: &mut Issues) -> Vec<usize> {
                 }
             }
         }
-        for decl in &module.after {
-            let Some(&provider) = offered.get(decl.name.as_str()) else {
+        let soft = module
+            .after
+            .iter()
+            .map(|decl| decl.name.as_str())
+            .chain(module.policies.iter().copied());
+        for name in soft {
+            let Some(&provider) = offered.get(name) else {
                 continue;
             };
             let drags_below_gate =

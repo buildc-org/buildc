@@ -8,6 +8,8 @@ use std::process::Command;
 
 const SCRIPT: &str = "scripts/vm.sh";
 
+use crate::resolve::workflow::FEDORA;
+
 const TYPES: [(&str, &str); 3] = [
     ("qcow2", copy::DISK_QCOW2),
     ("raw", copy::DISK_RAW),
@@ -32,6 +34,17 @@ pub fn run(
     let Some(kind) = kind(spec, given, prompt)? else {
         return Ok(());
     };
+    if converts(root, spec, kind, opts) {
+        if let Some(family) = family(root, opts).filter(|family| family != FEDORA) {
+            return Err(format!(
+                "the `{family}` family builds no disk here: bootc-image-builder installs with \
+                 Anaconda and relabels its buildroot with SELinux, and a `{family}` image carries \
+                 neither.\n\nhelp: push the image and `bootc install to-disk --via-loopback \
+                 --composefs-backend --filesystem ext4` writes one from the pushed ref, and \
+                 `buildc vm spawn` boots what that leaves"
+            ));
+        }
+    }
     let script = root.join(SCRIPT);
     if !script.is_file() {
         return Err(format!(
@@ -44,6 +57,34 @@ pub fn run(
         script.display(),
         Command::new(&script).args(argv(spec, kind, opts)).exec()
     ))
+}
+
+fn converts(root: &Path, spec: &Spec, kind: &str, opts: &Options) -> bool {
+    if spec.noun == "build" || opts.rebuild {
+        return true;
+    }
+    let at = match kind {
+        "iso" => "out/bootiso/install.iso".to_string(),
+        kind => format!("out/{kind}/disk.{kind}"),
+    };
+    !root.join(at).is_file()
+}
+
+fn family(root: &Path, opts: &Options) -> Option<String> {
+    if opts.image.is_some() {
+        return None;
+    }
+    let list = crate::model::image::List::load(root).0;
+    let target = match &opts.target {
+        Some(named) => list.find_target(named).ok()?,
+        None => list.ungated_target()?,
+    };
+    let image = list.images.iter().find(|image| image.id == target.image)?;
+    image
+        .base
+        .as_ref()
+        .map(|base| base.family.clone())
+        .filter(|family| !family.is_empty())
 }
 
 fn argv(spec: &Spec, kind: &str, opts: &Options) -> Vec<String> {
@@ -140,6 +181,89 @@ mod tests {
         let iso = |spec| rows(spec).pop().expect("iso is the last row");
         assert!(!iso(Verb::VmSpawn.spec()).available);
         assert!(iso(Verb::VmRun.spec()).available);
+    }
+
+    #[test]
+    fn a_family_the_builder_cannot_convert_is_refused_before_anything_is_pulled() {
+        let root = std::env::temp_dir().join(format!("buildc-vm-family.{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\nname \"Deb\"\n").unwrap();
+        crate::init::put(
+            &root.join("deb.image.kdl"),
+            "image {\n    name \"deb\"\n\n    base \"docker.io/library/debian:forky\" {\n\
+             \x20       family \"debian\"\n    }\n\n    modules {\n    }\n}\n",
+        )
+        .unwrap();
+        let opts = |image: Option<&str>| Options {
+            target: None,
+            image: image.map(str::to_string),
+            tag: None,
+            ram: None,
+            rebuild: false,
+        };
+        assert_eq!(family(&root, &opts(None)).as_deref(), Some("debian"));
+        let refuse = |kind, opts: &Options| {
+            run(
+                &root,
+                Verb::VmRun.spec(),
+                Some(kind),
+                opts,
+                &Prompt::silent(),
+            )
+            .unwrap_err()
+        };
+
+        let err = refuse("qcow2", &opts(None));
+        assert!(
+            err.starts_with("the `debian` family builds no disk here"),
+            "{err}"
+        );
+
+        let unasked = run(
+            &root,
+            Verb::VmRun.spec(),
+            None,
+            &opts(None),
+            &Prompt::silent(),
+        )
+        .unwrap_err();
+        assert!(
+            unasked.contains("takes `qcow2`, `raw` or `iso`"),
+            "{unasked}"
+        );
+
+        crate::init::put(&root.join("out/raw/disk.raw"), "").unwrap();
+        assert!(!converts(&root, Verb::VmSpawn.spec(), "raw", &opts(None)));
+        assert!(!converts(&root, Verb::VmRun.spec(), "raw", &opts(None)));
+        let booted = refuse("raw", &opts(None));
+        assert!(booted.contains("vm.sh is not there"), "{booted}");
+
+        assert!(converts(&root, Verb::VmBuild.spec(), "raw", &opts(None)));
+        assert!(converts(&root, Verb::VmRun.spec(), "qcow2", &opts(None)));
+        let rebuilding = Options {
+            rebuild: true,
+            ..opts(None)
+        };
+        assert!(converts(&root, Verb::VmSpawn.spec(), "raw", &rebuilding));
+
+        assert_eq!(family(&root, &opts(Some("localhost/other"))), None);
+
+        crate::init::put(
+            &root.join("fed.image.kdl"),
+            "image {\n    name \"fed\"\n\n    base \"quay.io/fedora/fedora-bootc:44\" {\n\
+             \x20       family \"fedora\"\n    }\n\n    modules {\n    }\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\nname \"Deb\"\ndefault-image \"fed\"\n",
+        )
+        .unwrap();
+        assert_eq!(family(&root, &opts(None)).as_deref(), Some("fedora"));
+        let fedora = refuse("qcow2", &opts(None));
+        assert!(fedora.contains("vm.sh is not there"), "{fedora}");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

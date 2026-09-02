@@ -129,7 +129,7 @@ impl Basis {
     }
 }
 
-const FEDORA: &str = "fedora";
+pub(crate) const FEDORA: &str = "fedora";
 const KERNEL_ARG: &str = "KERNEL";
 
 pub fn unlocked(list: &List, args: &[String]) -> Vec<&'static Shipped> {

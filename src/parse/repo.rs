@@ -743,7 +743,7 @@ mod tests {
         assert_eq!(pinned_unverified(&declared), None);
         let bare = root("bare", "schema-version 1\nbuildc-version \"0.0.1\"\n");
         assert_eq!(pinned_unverified(&bare).as_deref(), Some("0.0.1"));
-        let none = root("none", "schema-version 1\n");
+        let none = root("unpinned", "schema-version 1\n");
         assert_eq!(pinned_unverified(&none), None);
     }
 

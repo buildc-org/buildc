@@ -568,6 +568,30 @@ pub fn dispatch(
             );
             Ok(ExitCode::SUCCESS)
         }
+        Verb::Recipe => {
+            let root = repo_root(here)?;
+            let (list, issues, context) = crate::declarations(&root);
+            if issues.report(&context) {
+                return Ok(ExitCode::from(REPO_ERROR));
+            }
+            let selected = match target.as_deref() {
+                Some(name) => list.find_target(name)?,
+                None => list
+                    .ungated_target()
+                    .ok_or_else(|| "no default image to take a target from".to_string())?,
+            }
+            .to_string();
+            let imgref = crate::registry::reference(&list, &root, Some(&selected), tags.last())?;
+            let image = images.last().cloned().unwrap_or_else(|| imgref.clone());
+            let recipe = crate::emit::recipe::build(&list, &selected, &image, &imgref, &[])
+                .ok_or_else(|| {
+                    Error::Invocation(format!(
+                        "`{selected}` declares no base family an installer has an answer for"
+                    ))
+                })?;
+            print!("{}", recipe.render());
+            Ok(ExitCode::SUCCESS)
+        }
         Verb::ScapContent => Ok(
             match crate::scap::content(&repo_root(here)?, target.as_deref())? {
                 crate::scap::Verdict::Clean => ExitCode::SUCCESS,

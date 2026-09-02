@@ -63,6 +63,45 @@ pub fn build(
     Some(Json::object(fields))
 }
 
+pub const STORE: &str = "/var/lib/buildc/store";
+
+const SIZE: &str = "20G";
+
+pub fn live(published: &str) -> String {
+    format!("localhost/{published}-installer:latest")
+}
+
+pub fn media(list: &List, name: &str, image: &str, imgref: &str) -> Option<Json> {
+    let target = list.targets().into_iter().find(|t| t.to_string() == name)?;
+    let declared = list.images.iter().find(|i| i.id == target.image)?;
+    self::family(&declared.base.as_ref()?.family)?;
+    let published = target.published();
+
+    Some(Json::object([
+        ("media_name", Json::string(format!("{published}-install"))),
+        ("size", Json::string(SIZE)),
+        (
+            "bootable_environments",
+            Json::array([Json::object([
+                ("id", Json::string("installer")),
+                ("image", Json::string(live(&published))),
+                (
+                    "title",
+                    Json::string(format!("{} installer", declared.name)),
+                ),
+                ("modes", Json::strings(["live"])),
+            ])]),
+        ),
+        (
+            "offline_payloads",
+            Json::array([Json::object([
+                ("source", Json::string(image)),
+                ("ref", Json::string(imgref)),
+            ])]),
+        ),
+    ]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,17 +124,19 @@ mod tests {
             "forky",
             "localhost/forky:latest",
             "ghcr.io/someone/forky:latest",
-            &["/var/lib/tectstore".to_string()],
+            &[STORE.to_string()],
         )
         .expect("a debian target has an answer");
         assert_eq!(
             recipe.render(),
-            "{\n  \"image\": \"localhost/forky:latest\",\n  \"targetImgref\": \
-             \"ghcr.io/someone/forky:latest\",\n  \"composeFsBackend\": true,\n  \
-             \"genericImage\": true,\n  \"bootloader\": \"systemd\",\n  \"filesystem\": \
-             \"ext4\",\n  \"hostname\": \"forky\",\n  \"user\": {\n    \"groups\": [\n      \
-             \"sudo\"\n    ]\n  },\n  \"additionalImageStores\": [\n    \
-             \"/var/lib/tectstore\"\n  ]\n}\n"
+            format!(
+                "{{\n  \"image\": \"localhost/forky:latest\",\n  \"targetImgref\": \
+                 \"ghcr.io/someone/forky:latest\",\n  \"composeFsBackend\": true,\n  \
+                 \"genericImage\": true,\n  \"bootloader\": \"systemd\",\n  \
+                 \"filesystem\": \"ext4\",\n  \"hostname\": \"forky\",\n  \"user\": \
+                 {{\n    \"groups\": [\n      \"sudo\"\n    ]\n  }},\n  \
+                 \"additionalImageStores\": [\n    \"{STORE}\"\n  ]\n}}\n"
+            )
         );
 
         let field =
@@ -133,6 +174,29 @@ mod tests {
         );
 
         assert!(field(&deb, "forky", "additionalImageStores").is_none());
+    }
+
+    #[test]
+    fn the_media_embeds_the_local_build_under_the_published_name() {
+        let deb = fixture("deb-families");
+        let assembled = media(
+            &deb,
+            "forky",
+            "localhost/forky:latest",
+            "ghcr.io/someone/forky:latest",
+        )
+        .expect("a debian target has an answer");
+        assert_eq!(
+            assembled.render(),
+            "{\n  \"media_name\": \"forky-install\",\n  \"size\": \"20G\",\n  \
+             \"bootable_environments\": [\n    {\n      \"id\": \"installer\",\n      \
+             \"image\": \"localhost/forky-installer:latest\",\n      \"title\": \
+             \"Forky installer\",\n      \"modes\": [\n        \"live\"\n      ]\n    }\n  ],\n  \"offline_payloads\": [\n    {\n      \"source\": \
+             \"localhost/forky:latest\",\n      \"ref\": \
+             \"ghcr.io/someone/forky:latest\"\n    }\n  ]\n}\n"
+        );
+
+        assert!(media(&deb, "not-a-target", "image", "imgref").is_none());
     }
 
     #[test]

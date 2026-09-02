@@ -395,12 +395,11 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
 fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issues) {
     const HELP: &str = "run `buildc generate` and commit what it writes";
 
+    let mut absent: Vec<String> = Vec::new();
     for (path, generated) in files {
         let name = path.display().to_string();
         let Ok(found) = std::fs::read_to_string(root.join(path)) else {
-            issues.push(
-                Issue::new(format!("`{name}` is not there"), &Source::new(&name, "")).help(HELP),
-            );
+            absent.push(name);
             continue;
         };
         if found == *generated {
@@ -415,6 +414,19 @@ fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issues) {
             .at(span, line)
             .help(HELP),
         );
+    }
+
+    match absent.as_slice() {
+        [] => {}
+        [name] => issues
+            .push(Issue::new(format!("`{name}` is not there"), &Source::new(name, "")).help(HELP)),
+        many => issues.push(
+            Issue::new(
+                format!("{} generated files are not there", many.len()),
+                &Source::new(layout::GENERATED, ""),
+            )
+            .help(format!("{HELP}; it writes all {} of them", many.len())),
+        ),
     }
 
     let stale = tracked(&layout::generated(root))

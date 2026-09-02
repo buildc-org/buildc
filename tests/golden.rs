@@ -114,6 +114,9 @@ fn verify(name: &str, root: &Path) {
         }
     ));
 
+    std::fs::remove_dir_all("generated").unwrap();
+    out.push_str(&format!("==== never generated\n{}", issues()));
+
     compare(name, "verify.txt", &out);
 }
 

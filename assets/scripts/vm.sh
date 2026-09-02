@@ -32,6 +32,8 @@ Environment:
   BIB_IMAGE           bootc-image-builder image
   DISK_SIZE           size of the disk `--installer bootc` writes (default: 20G).
                       The file is sparse, so this is a ceiling rather than a cost.
+  VM_USER             console account passed as a systemd credential (default: buildc)
+  VM_PASSWORD_HASH    its crypt(5) hash; when unset, run and spawn ask for a password
 EOF
 }
 
@@ -62,16 +64,19 @@ target=""
 rebuild=0
 ram=8G
 installer=bib
+login=0
+ssh_key=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --image | --tag | --target | --ram | --installer)
+        --image | --tag | --target | --ram | --installer | --ssh-key)
             [ "$#" -ge 2 ] || die "$1 needs a value"
             case "$1" in
                 --image) image="$2" ;;
                 --tag) tag="$2" ;;
                 --target) target="$2" ;;
                 --ram) ram="$2" ;;
+                --ssh-key) ssh_key="$2" ;;
                 --installer)
                     case "$2" in
                         bib | bootc) installer="$2" ;;
@@ -83,6 +88,10 @@ while [ $# -gt 0 ]; do
             ;;
         --rebuild)
             rebuild=1
+            shift
+            ;;
+        --login)
+            login=1
             shift
             ;;
         -h | --help)
@@ -197,7 +206,7 @@ install_disk() {
             || die "qemu-img is not installed, and a qcow2 is converted from the raw disk"
     fi
 
-    local raw="out/${type}/disk.raw.part" pushed
+    local raw="out/${type}/disk.raw.part" pushed key_args=() key_mount=()
     mkdir -p "out/${type}"
     rm -f "$raw"
     truncate -s "${DISK_SIZE:-20G}" "$raw"
@@ -207,16 +216,25 @@ install_disk() {
     pushed="localhost:${registry_port}/$(basename "${ref%:*}"):${ref##*:}"
     podman push --tls-verify=false "$ref" "$pushed"
 
+    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    if [ -n "$ssh_key" ]; then
+        [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
+        key_mount=(-v "$(realpath "$ssh_key"):/root-ssh-authorized-keys:ro")
+        key_args=(--root-ssh-authorized-keys /root-ssh-authorized-keys)
+    fi
+
     sudoif podman run \
         --rm --privileged --pull=always --tls-verify=false \
         --pid=host --net=host \
         -v /var/lib/containers:/var/lib/containers \
         -v /dev:/dev \
         -v "${PWD}/out/${type}":/out \
+        "${key_mount[@]}" \
         --security-opt label=type:unconfined_t \
         "$pushed" \
         bootc install to-disk --via-loopback --composefs-backend \
-        --filesystem ext4 --wipe --generic-image /out/disk.raw.part
+        --filesystem ext4 --wipe --generic-image \
+        "${key_args[@]}" /out/disk.raw.part
     registry_down
     disarm_registry_trap
 
@@ -230,11 +248,42 @@ install_disk() {
     fi
 }
 
+login_credentials() {
+    vm_user="${VM_USER:-buildc}"
+    [[ "$vm_user" =~ ^[a-z_][a-z0-9_-]*$ ]] && [ "${#vm_user}" -le 31 ] \
+        || die "VM_USER must be a Linux user name of at most 31 characters"
+    vm_password_hash="${VM_PASSWORD_HASH:-}"
+    if [ -z "$vm_password_hash" ]; then
+        [ -t 0 ] || die "set VM_PASSWORD_HASH when no terminal can ask for a VM password"
+        command -v openssl > /dev/null 2>&1 \
+            || die "openssl is not installed, and it hashes the VM password"
+        read -rsp "vm: password for ${vm_user}: " vm_password
+        echo
+        [ -n "$vm_password" ] || die "the VM password cannot be empty"
+        read -rsp "vm: password again: " repeated
+        echo
+        [ "$vm_password" = "$repeated" ] || die "the VM passwords do not match"
+        vm_password_hash="$(printf '%s\n' "$vm_password" | openssl passwd -6 -stdin)"
+        unset vm_password repeated
+    fi
+    # The run path passes the hash in a space-separated string, so whitespace would split the credential.
+    [[ "$vm_password_hash" != *[[:space:]]* ]] \
+        || die "VM_PASSWORD_HASH must not contain whitespace"
+    sysusers="u ${vm_user} - \"VM user\" /var/home/${vm_user} /bin/bash"
+    echo "vm: login as ${vm_user}; credentials provision the account on its first boot"
+}
+
 run_qemu() {
-    local port=8006
+    local port=8006 arguments sysusers_base64 credential_args=()
     while ss -tunal | grep -q ":${port} "; do
         port=$((port + 1))
     done
+    if [ "$login" = 1 ]; then
+        sysusers_base64="$(printf %s "$sysusers" | base64 -w0)"
+        arguments="-smbios type=11,value=io.systemd.credential.binary:sysusers.extra=${sysusers_base64}"
+        arguments+=" -smbios type=11,value=io.systemd.credential:passwd.hashed-password.${vm_user}=${vm_password_hash}"
+        credential_args=(--env "ARGUMENTS=${arguments}")
+    fi
     echo "vm: connect to http://localhost:${port}"
     (sleep 30 && xdg-open "http://localhost:${port}") &
     podman run \
@@ -245,6 +294,7 @@ run_qemu() {
         --env DISK_SIZE=64G \
         --env TPM=Y \
         --env GPU=Y \
+        "${credential_args[@]}" \
         --device=/dev/kvm \
         --volume "${PWD}/${image_file}":"/boot.${type}" \
         docker.io/qemux/qemu
@@ -262,9 +312,20 @@ if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
     esac
 fi
 
+if [ "$login" = 1 ] && [ "$command" != build ]; then
+    login_credentials
+fi
+
 case "$command" in
     run) run_qemu ;;
     spawn)
+        spawn_args=()
+        if [ "$login" = 1 ]; then
+            spawn_args=(
+                --set-credential="sysusers.extra:${sysusers}"
+                --set-credential="passwd.hashed-password.${vm_user}:${vm_password_hash}"
+            )
+        fi
         systemd-vmspawn \
             -M "bootc-image" \
             --console=gui \
@@ -272,6 +333,7 @@ case "$command" in
             --ram="$(numfmt --from=iec "$ram")" \
             --network-user-mode \
             --vsock=false --pass-ssh-key=false \
+            "${spawn_args[@]}" \
             -i "$image_file"
         ;;
 esac

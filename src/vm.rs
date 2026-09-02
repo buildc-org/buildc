@@ -24,6 +24,12 @@ pub struct Options {
     pub rebuild: bool,
 }
 
+#[derive(Default)]
+struct Access {
+    login: bool,
+    ssh_key: Option<String>,
+}
+
 pub fn run(
     root: &Path,
     spec: &Spec,
@@ -35,6 +41,7 @@ pub fn run(
         return Ok(());
     };
     let installer = installer(root, spec, kind, opts)?;
+    let access = access(root, opts);
     let script = root.join(SCRIPT);
     if !script.is_file() {
         return Err(format!(
@@ -46,7 +53,7 @@ pub fn run(
         "{}: {}",
         script.display(),
         Command::new(&script)
-            .args(argv(spec, kind, opts, installer))
+            .args(argv(spec, kind, opts, installer, &access))
             .exec()
     ))
 }
@@ -67,16 +74,76 @@ fn family(root: &Path, opts: &Options) -> Option<String> {
         return None;
     }
     let list = crate::model::image::List::load(root).0;
-    let target = match &opts.target {
-        Some(named) => list.find_target(named).ok()?,
-        None => list.ungated_target()?,
-    };
+    let target = target(&list, opts)?;
     let image = list.images.iter().find(|image| image.id == target.image)?;
     image
         .base
         .as_ref()
         .map(|base| base.family.clone())
         .filter(|family| !family.is_empty())
+}
+
+fn target(list: &crate::model::image::List, opts: &Options) -> Option<crate::model::image::Target> {
+    match &opts.target {
+        Some(named) => list.find_target(named).ok(),
+        None => list.ungated_target(),
+    }
+}
+
+fn access(root: &Path, opts: &Options) -> Access {
+    if opts.image.is_some() {
+        return Access::default();
+    }
+    let list = crate::model::image::List::load(root).0;
+    let Some(target) = target(&list, opts) else {
+        return Access::default();
+    };
+    let Some((_, _, entries)) = crate::emit::plan::of_target(&list, &target.to_string()) else {
+        return Access::default();
+    };
+    let dirs: Vec<_> = entries.iter().map(|entry| entry.dir()).collect();
+    let disk = crate::parse::disk::Disk::scan(root);
+    let keys: Vec<_> = disk
+        .keys
+        .get("ssh")
+        .into_iter()
+        .flatten()
+        .filter(|(dir, _)| dirs.contains(dir))
+        .map(|(_, key)| key)
+        .collect();
+    let existing: Vec<_> = keys
+        .iter()
+        .map(|key| crate::layout::public_key(root, &key.public))
+        .filter(|path| crate::layout::nonempty(path))
+        .collect();
+    Access {
+        login: dirs.iter().any(|dir| imports_passwords(root, dir)),
+        ssh_key: match existing.as_slice() {
+            [path] => Some(path.display().to_string()),
+            _ => None,
+        },
+    }
+}
+
+fn imports_passwords(root: &Path, module: &str) -> bool {
+    let mut dirs = vec![crate::layout::module(root, module).join(crate::layout::OVERLAY)];
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if std::fs::read_to_string(path).is_ok_and(|text| {
+                text.lines()
+                    .any(|line| line.trim() == "ImportCredential=passwd.hashed-password.*")
+            }) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn installer(
@@ -103,7 +170,13 @@ fn installer(
 
 const BOOTC: &str = "bootc";
 
-fn argv(spec: &Spec, kind: &str, opts: &Options, installer: Option<&str>) -> Vec<String> {
+fn argv(
+    spec: &Spec,
+    kind: &str,
+    opts: &Options,
+    installer: Option<&str>,
+    access: &Access,
+) -> Vec<String> {
     let mut args = vec![spec.noun.to_string(), kind.to_string()];
     if let Some(installer) = installer {
         args.extend(["--installer".to_string(), installer.to_string()]);
@@ -120,6 +193,12 @@ fn argv(spec: &Spec, kind: &str, opts: &Options, installer: Option<&str>) -> Vec
     }
     if opts.rebuild {
         args.push("--rebuild".to_string());
+    }
+    if access.login {
+        args.push("--login".to_string());
+    }
+    if let Some(key) = &access.ssh_key {
+        args.extend(["--ssh-key".to_string(), key.clone()]);
     }
     args
 }
@@ -182,7 +261,7 @@ mod tests {
             rebuild: true,
         };
         assert_eq!(
-            argv(Verb::VmRun.spec(), "qcow2", &opts, None),
+            argv(Verb::VmRun.spec(), "qcow2", &opts, None, &Access::default()),
             [
                 "run",
                 "qcow2",
@@ -194,7 +273,13 @@ mod tests {
             ]
         );
         assert_eq!(
-            argv(Verb::VmBuild.spec(), "raw", &opts, Some(BOOTC))[..4],
+            argv(
+                Verb::VmBuild.spec(),
+                "raw",
+                &opts,
+                Some(BOOTC),
+                &Access::default()
+            )[..4],
             ["build", "raw", "--installer", "bootc"]
         );
     }
@@ -214,7 +299,12 @@ mod tests {
         crate::init::put(
             &root.join("deb.image.kdl"),
             "image {\n    name \"deb\"\n\n    base \"docker.io/library/debian:forky\" {\n\
-             \x20       family \"debian\"\n    }\n\n    modules {\n    }\n}\n",
+             \x20       family \"debian\"\n    }\n\n    modules {\n        module \"login\"\n    }\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("modules/login/module.kdl"),
+            "description \"login\"\nsupports \"debian\"\nkey \"ssh\" {\n    generator \"ssh-keygen\"\n    public \"/usr/lib/buildc/authorized_keys\"\n    private \"id_ed25519\"\n}\n",
         )
         .unwrap();
         let opts = |image: Option<&str>| Options {
@@ -225,6 +315,35 @@ mod tests {
             rebuild: false,
         };
         assert_eq!(family(&root, &opts(None)).as_deref(), Some("debian"));
+        let declared = access(&root, &opts(None));
+        assert!(!declared.login);
+        assert!(declared.ssh_key.is_none());
+        crate::init::put(
+            &root.join(
+                "modules/login/files/usr/lib/systemd/system/systemd-sysusers.service.d/login.conf",
+            ),
+            "[Service]\nImportCredential=passwd.hashed-password.*\n",
+        )
+        .unwrap();
+        assert!(access(&root, &opts(None)).login);
+        crate::init::put(
+            &crate::layout::public_key(&root, "/usr/lib/buildc/authorized_keys"),
+            "ssh-ed25519 AAAA test\n",
+        )
+        .unwrap();
+        let recorded = access(&root, &opts(None));
+        assert!(recorded.login);
+        assert!(recorded.ssh_key.is_some());
+        let args = argv(
+            Verb::VmRun.spec(),
+            "raw",
+            &opts(None),
+            Some(BOOTC),
+            &recorded,
+        );
+        assert!(args.contains(&"--login".to_string()));
+        assert!(args.contains(&"--ssh-key".to_string()));
+        assert!(!access(&root, &opts(Some("localhost/other"))).login);
         let refuse = |kind, opts: &Options| {
             run(
                 &root,

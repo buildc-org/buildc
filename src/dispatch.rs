@@ -37,6 +37,9 @@ pub struct Flags {
     pub module: Option<String>,
     pub cn: Option<String>,
     pub from: Option<String>,
+    pub disk: Option<String>,
+    pub user: Option<String>,
+    pub password: Option<String>,
     pub base: Option<String>,
     pub format: Option<String>,
     pub target: Option<String>,
@@ -313,6 +316,9 @@ pub fn dispatch(
         module: module_arg,
         cn,
         from,
+        disk,
+        user,
+        password,
         base,
         format,
         target,
@@ -343,6 +349,26 @@ pub fn dispatch(
                 )));
             }
             crate::upgrade::run()?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::Install => {
+            if let [word, ..] = rest {
+                return Err(Error::Invocation(format!(
+                    "`{}` does not take {word}",
+                    spec.name()
+                )));
+            }
+            let root = from
+                .map(PathBuf::from)
+                .unwrap_or_else(crate::install::media);
+            let found = crate::install::classify(&root)?;
+            let payload = found.payload()?;
+            let answers = crate::install::Answers {
+                disk: prompt.text(disk, "which disk to erase and install onto", "--disk", None)?,
+                user: prompt.text(user, "the account to create", "--user", None)?,
+                password: prompt.text(password, "its password", "--password", None)?,
+            };
+            crate::install::run(payload, &answers)?;
             Ok(ExitCode::SUCCESS)
         }
         Verb::CreateRepo => {

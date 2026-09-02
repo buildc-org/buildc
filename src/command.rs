@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verb {
     Upgrade,
+    Install,
     CreateRepo,
     CreateImage,
     CreateFlavour,
@@ -43,6 +44,7 @@ pub enum Verb {
 
 pub const ALL: &[Verb] = &[
     Verb::Upgrade,
+    Verb::Install,
     Verb::CreateRepo,
     Verb::CreateImage,
     Verb::CreateFlavour,
@@ -151,6 +153,16 @@ pub const COMMANDS: &[Spec] = &[
         family: Family::Anywhere,
         host: false,
         takes: &[],
+    },
+    Spec {
+        verb: Verb::Install,
+        word: "install",
+        noun: "",
+        arg: "",
+        about: "install a built buildc image onto this machine",
+        family: Family::Anywhere,
+        host: false,
+        takes: &["from", "disk", "user", "password"],
     },
     Spec {
         verb: Verb::CreateRepo,

@@ -29,18 +29,18 @@ RUN set -eux; \
     if command -v apt-get > /dev/null 2>&1; then \
         apt-get update -y; \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            podman fuse-overlayfs systemd-cryptsetup cryptsetup skopeo \
+            podman fuse-overlayfs systemd-cryptsetup cryptsetup skopeo openssl \
             fdisk dosfstools e2fsprogs xfsprogs; \
         apt-get clean -y; \
         rm -rf /var/lib/apt/lists/*; \
     else \
         dnf install -y --setopt=install_weak_deps=False \
-            podman fuse-overlayfs cryptsetup skopeo \
+            podman fuse-overlayfs cryptsetup skopeo openssl \
             util-linux dosfstools e2fsprogs xfsprogs; \
         dnf clean all; \
     fi; \
     for tool in podman fuse-overlayfs skopeo cryptsetup systemd-cryptenroll \
-        sfdisk mkfs.fat mkfs.ext4 mkfs.xfs; do \
+        openssl sfdisk mkfs.fat mkfs.ext4 mkfs.xfs; do \
         command -v "$tool" > /dev/null 2>&1 \
             || { echo "the live environment has no ${tool}" >&2; exit 1; }; \
     done

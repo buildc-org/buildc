@@ -55,6 +55,7 @@ pub fn claimed_rules(named: &str) -> String {
 
 pub const WHICH_KEY: &str = "Which key?";
 pub const KEY_CN: &str = "common name, which is what the enrolment prompt shows";
+pub const KEY_FROM: &str = "path to the public half you already hold";
 
 pub fn key_provider(kind: &str) -> String {
     format!("Which module's {kind} key?")

@@ -36,6 +36,7 @@ pub struct Flags {
     pub images: Vec<String>,
     pub module: Option<String>,
     pub cn: Option<String>,
+    pub from: Option<String>,
     pub base: Option<String>,
     pub format: Option<String>,
     pub target: Option<String>,
@@ -311,6 +312,7 @@ pub fn dispatch(
         images,
         module: module_arg,
         cn,
+        from,
         base,
         format,
         target,
@@ -406,6 +408,14 @@ pub fn dispatch(
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             crate::key::Key::collect(&root, kind, module_arg, cn, prompt)?.apply(&root)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::SetKey => {
+            let kind = one_name(rest, spec)?;
+            let Some(root) = open(here)? else {
+                return Ok(ExitCode::from(REPO_ERROR));
+            };
+            crate::key::Recorded::collect(&root, kind, module_arg, from, prompt)?.apply(&root)?;
             Ok(ExitCode::SUCCESS)
         }
         Verb::ImportModule => {

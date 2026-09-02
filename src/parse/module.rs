@@ -37,7 +37,7 @@ fn bad_token(value: &str) -> Option<&'static str> {
     None
 }
 
-const GENERATORS: [&str; 2] = ["cosign", "openssl"];
+const GENERATORS: [&str; 3] = ["cosign", "openssl", "ssh-keygen"];
 
 const BITS: u32 = 4096;
 
@@ -61,8 +61,8 @@ const KEY: Node = Node::new("key",
         Node::new("generator", "Which of the generators the tool implements writes this key.")
             .arg(Arg::One(&GENERATORS), Say::new("`{}` is not a generator the tool has",
                 "not a generator",
-                "the generators are `cosign` and `openssl`; a manifest picks one of them rather \
-                 than naming a command of its own"))
+                "the generators are `cosign`, `openssl` and `ssh-keygen`; a manifest picks one \
+                 of them rather than naming a command of its own"))
             .once("")
             .missing(NEEDED)
             .props(&[

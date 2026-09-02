@@ -588,7 +588,7 @@ A key `buildc create key` generates for this module, and where each half of it g
 
 Which of the generators the tool implements writes this key.
 
-*`cosign`, `openssl`, exactly one*
+*`cosign`, `openssl`, `ssh-keygen`, exactly one*
 
 | Property | Value | Meaning |
 | --- | --- | --- |

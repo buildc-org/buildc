@@ -130,6 +130,7 @@ fn run() -> Result<ExitCode, Error> {
         images: args.flags("image")?,
         module: args.flag("module")?,
         cn: args.flag("cn")?,
+        from: args.flag("from")?,
         base: args.flag("base")?,
         format: args.flag("format")?,
         target: args.flag("target")?,
@@ -192,6 +193,7 @@ fn run() -> Result<ExitCode, Error> {
             | Verb::CreateFlavour
             | Verb::CreateModule
             | Verb::CreateKey
+            | Verb::SetKey
             | Verb::ImportModule
             | Verb::CopyModule
             | Verb::Check

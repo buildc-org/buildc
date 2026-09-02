@@ -167,55 +167,24 @@ build_disk() {
     sudoif chown -R "$(id -u):$(id -g)" out/
 }
 
-registry_up() {
-    local port=5000
-    while ss -tunal | grep -q ":${port} "; do
-        port=$((port + 1))
-    done
-    registry_port="$port"
-    registry_id="$(podman run --rm --detach --publish "127.0.0.1:${port}:5000" \
-        docker.io/library/registry:2)"
-    local waited=0
-    until curl -sf -m 2 "http://localhost:${port}/v2/" > /dev/null; do
-        waited=$((waited + 1))
-        [ "$waited" -lt 60 ] || die "the registry did not come up on :${port}"
-        sleep 0.5
-    done
-}
-
-registry_down() {
-    [ -z "${registry_id:-}" ] || podman rm -f "$registry_id" > /dev/null 2>&1 || true
-    registry_id=""
-}
-
-arm_registry_trap() {
-    trap registry_down EXIT
-    trap 'registry_down; exit 130' INT TERM HUP
-}
-
-disarm_registry_trap() {
-    trap - EXIT INT TERM HUP
-}
-
 install_disk() {
     if [ "$type" = iso ]; then
         die "an installer iso is Anaconda's, and no deb family carries it"
     fi
-    command -v curl > /dev/null 2>&1 || die "curl is not installed, and this needs it"
+    command -v skopeo > /dev/null 2>&1 \
+        || die "skopeo is not installed, and it writes the layout bootc installs from"
     if [ "$type" = qcow2 ]; then
         command -v qemu-img > /dev/null 2>&1 \
             || die "qemu-img is not installed, and a qcow2 is converted from the raw disk"
     fi
 
-    local raw="out/${type}/disk.raw.part" pushed key_args=() key_mount=()
+    local raw="out/${type}/disk.raw.part" layout="out/oci-cache" key_args=() key_mount=()
     mkdir -p "out/${type}"
     rm -f "$raw"
     truncate -s "${DISK_SIZE:-20G}" "$raw"
 
-    arm_registry_trap
-    registry_up
-    pushed="localhost:${registry_port}/$(basename "${ref%:*}"):${ref##*:}"
-    podman push --tls-verify=false "$ref" "$pushed"
+    rm -rf "$layout"
+    skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
     # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
     if [ -n "$ssh_key" ]; then
@@ -224,20 +193,21 @@ install_disk() {
         key_args=(--root-ssh-authorized-keys /root-ssh-authorized-keys)
     fi
 
+    load_rootful
     sudoif podman run \
-        --rm --privileged --pull=always --tls-verify=false \
+        --rm --privileged --pull=never \
         --pid=host --net=host \
         -v /var/lib/containers:/var/lib/containers \
         -v /dev:/dev \
         -v "${PWD}/out/${type}":/out \
+        -v "${PWD}/${layout}":/oci:ro \
         "${key_mount[@]}" \
         --security-opt label=type:unconfined_t \
-        "$pushed" \
+        "$ref" \
         bootc install to-disk --via-loopback --composefs-backend \
+        --source-imgref oci:/oci \
         --filesystem ext4 --wipe --generic-image \
         "${key_args[@]}" /out/disk.raw.part
-    registry_down
-    disarm_registry_trap
 
     sudoif chown -R "$(id -u):$(id -g)" out/
     if [ "$type" = qcow2 ]; then

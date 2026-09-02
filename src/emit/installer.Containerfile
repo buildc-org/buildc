@@ -1,13 +1,14 @@
 # renovate: datasource=docker depName=docker.io/library/golang
 ARG GO_IMAGE=docker.io/library/golang:1.26
-ARG PAYLOAD
+# renovate: datasource=docker depName=quay.io/fedora/fedora-bootc
+ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44
 
 FROM ${GO_IMAGE} AS tools
 ARG FISHERMAN_COMMIT=027fa25c1d8bc01e2ac97d119cda9e8bb9c99ac7
 ARG FISHERMAN_SHA256=ffab2a2c1094fa02a9b4862958c280045c9390425c93195855a9f0f93956c72e
 ARG TACKLEBOX_ORG=buildc-org
-ARG TACKLEBOX_COMMIT=734e14de7d0170febd791286196e4235d45226c6
-ARG TACKLEBOX_SHA256=926c000f84a06b240d07455a4649151480c921f0448ee9ec0f02064d7af866b2
+ARG TACKLEBOX_COMMIT=06d62ed0452958cec17a5f95184a7a3ce5f34032
+ARG TACKLEBOX_SHA256=09edec7c20c9900871c4243247852656afcb20e3ab42cbe9bd9f6374aa78f07b
 COPY efi-from-image.patch /tmp/efi-from-image.patch
 RUN set -eux; \
     fetch() { \
@@ -24,7 +25,7 @@ RUN set -eux; \
     cd /src/fisherman/fisherman && CGO_ENABLED=0 go build -trimpath -o /out/fisherman ./cmd/fisherman/; \
     cd /src/tacklebox && CGO_ENABLED=0 go build -trimpath -o /out/tacklebox ./cmd/tacklebox
 
-FROM ${PAYLOAD}
+FROM ${LIVE_BASE}
 
 RUN set -eux; \
     if command -v apt-get > /dev/null 2>&1; then \

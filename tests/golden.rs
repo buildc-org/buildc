@@ -573,6 +573,106 @@ fn flow(name: &str, dir: &Path, gh: Option<&str>, args: &[&str]) {
     compare(name, "transcript.txt", &transcript);
 }
 
+fn flow_offering(name: &str, dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let work = tmp().join(format!("{name}-src"));
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+
+    let tarball = work.join("one.tar.gz");
+    let status = std::process::Command::new("tar")
+        .args(["czf", &tarball.display().to_string(), "one"])
+        .current_dir(crate_dir().join("tests/collections"))
+        .status()
+        .unwrap();
+    assert!(status.success(), "tar the fixture collection");
+    let out = std::process::Command::new("sha256sum")
+        .arg(&tarball)
+        .output()
+        .unwrap();
+    let sha256 = String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_string();
+
+    let assets = work.join("assets");
+    std::fs::create_dir_all(&assets).unwrap();
+    let status = std::process::Command::new("cp")
+        .arg("-r")
+        .arg(crate_dir().join("assets").join("."))
+        .arg(&assets)
+        .status()
+        .unwrap();
+    assert!(status.success(), "copy the shipped assets");
+    std::fs::write(
+        assets.join(buildc::init::SOURCES_FILE),
+        format!(
+            "sources {{\n    one {{\n        pin {{\n            version \"1\"\n\
+             \x20           url \"file://{}\"\n            sha256 \"{sha256}\"\n\
+             \x20       }}\n    }}\n}}\n",
+            tarball.display()
+        ),
+    )
+    .unwrap();
+
+    let path = bin(name, None);
+    for tool in ["curl", "tar", "gzip"] {
+        let at = std::env::var("PATH")
+            .unwrap_or_default()
+            .split(':')
+            .map(|at| Path::new(at).join(tool))
+            .find(|at| at.is_file())
+            .unwrap_or_else(|| panic!("{tool} on PATH"));
+        std::os::unix::fs::symlink(at, path.join(tool)).unwrap();
+    }
+
+    let fixture = crate_dir().join("tests/golden").join(name);
+    let log = tmp().join(format!("{name}.log"));
+    let file = std::fs::File::create(&log).unwrap();
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+    let status = command
+        .env("PATH", &path)
+        .env("HOME", tmp())
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("BUILDC_ASSETS", &assets)
+        .env("BUILDC_ANSWERS", fixture.join("answers.txt"))
+        .args(["create", "repo"])
+        .current_dir(dir)
+        .stdout(std::process::Stdio::from(file.try_clone().unwrap()))
+        .stderr(std::process::Stdio::from(file))
+        .status()
+        .unwrap();
+    let transcript = format!(
+        "{}==== exit {}\n",
+        std::fs::read_to_string(&log).unwrap(),
+        status.code().unwrap_or_default()
+    );
+    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+    compare(name, "transcript.txt", &transcript);
+
+    let root = dir.join("example");
+    assert!(!root.join("out").exists(), "the fetch cached into the repo");
+    let strays: Vec<PathBuf> = std::fs::read_dir(std::env::temp_dir())
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("buildc-bases."))
+        })
+        .collect();
+    assert!(strays.is_empty(), "scratch left behind: {strays:?}");
+
+    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains("source \"one\" {\n            module \"fedora-family\"\n"),
+        "{image}"
+    );
+}
+
 fn drawn_flow(name: &str, dir: &Path, command: &str, after: &str, steps: &[&[u8]]) {
     use std::io::{Read, Write};
     use std::process::Stdio;
@@ -842,6 +942,11 @@ fn flows() {
     ] {
         flow(name, &empty(&format!("{name}-in")), gh, &repo);
     }
+
+    flow_offering(
+        "flow-create-repo-offer",
+        &empty("flow-create-repo-offer-in"),
+    );
 
     let root = flow_repo_sourced("flow-image");
     flow(

@@ -231,6 +231,19 @@ pub fn pinned_unverified(root: &Path) -> Option<String> {
         .map(|(version, _)| version)
 }
 
+pub fn sources_in(text: &str) -> Vec<crate::model::remote::Collection> {
+    let src = Source::new(layout::REPO_FILE, text);
+    let Ok(doc) = text.parse::<KdlDocument>() else {
+        return Vec::new();
+    };
+    let mut list = List::empty(Path::new(""));
+    let mut issues = Issues::default();
+    for node in doc.nodes().iter().filter(|n| n.name().value() == "sources") {
+        list.parse_sources(node, &src, &mut issues);
+    }
+    list.sources
+}
+
 impl List {
     pub fn load(root: &Path) -> (Self, Issues) {
         let issues = compatible(root);

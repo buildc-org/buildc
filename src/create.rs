@@ -410,6 +410,7 @@ pub struct Image {
     pub name: String,
     pub base: String,
     pub family: String,
+    took: bool,
     names_default: Option<String>,
 }
 
@@ -436,6 +437,7 @@ impl Image {
                     .or_else(|| crate::init::id(repo).is_ok().then_some(repo)),
             )?,
         };
+        let took = prev.map_or(true, |prev| prev.took);
         let id = crate::init::id(&name)?;
         let file = root.join(format!("{id}{}", layout::IMAGE_SUFFIX));
         if file.exists() {
@@ -468,22 +470,49 @@ impl Image {
                 bases.first().map(|base| base.family.as_str()),
             )?,
         };
+        let scaffolded;
+        let sources = match list.sources.is_empty() && !root.join(layout::REPO_FILE).is_file() {
+            true => {
+                scaffolded =
+                    crate::parse::repo::sources_in(&crate::init::sources(&crate::init::assets()?));
+                scaffolded.as_slice()
+            }
+            false => list.sources.as_slice(),
+        };
         let disk = crate::parse::disk::Disk::scan(root);
-        let index = crate::provider::Index::scan(root, &list.sources, &disk, false);
-        let text = image_kdl(
-            &name,
-            url.as_deref(),
-            &base,
-            &family,
-            crate::base::find(&bases, &base),
-            &seeded(index.adapter(BUILD_ENVIRONMENT, &family)),
-        );
+        let known = crate::base::find(&bases, &base);
+        let roles = roles(known);
+        let index = crate::provider::Index::scan(root, sources, &disk, false);
+        let mut wanted = wanted(&index, &family, &roles);
+        let fetched;
+        if wanted.len() < roles.len() && prompt.asks() && !index.unread().is_empty() {
+            let scratch = std::env::temp_dir().join(format!("buildc-bases.{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&scratch);
+            let _ = std::fs::create_dir_all(&scratch);
+            let _ = std::fs::set_permissions(
+                &scratch,
+                std::os::unix::fs::PermissionsExt::from_mode(0o700),
+            );
+            let cache = match root.join(layout::REPO_FILE).is_file() {
+                true => root,
+                false => scratch.as_path(),
+            };
+            fetched = crate::provider::Index::scan(cache, sources, &disk, true);
+            wanted = self::wanted(&fetched, &family, &roles);
+            let _ = std::fs::remove_dir_all(&scratch);
+        }
+        let seed = match wanted.is_empty() || offer(&base, &wanted, prompt, took)? {
+            true => seeded(&wanted),
+            false => String::new(),
+        };
+        let text = image_kdl(&name, url.as_deref(), &base, &family, known, &seed);
         Ok(Self {
             text,
             file,
             name,
             base,
             family,
+            took: wanted.is_empty() || !seed.is_empty(),
             names_default,
         })
     }
@@ -1107,17 +1136,70 @@ fn append(
     std::fs::write(file, text).map_err(|err| format!("{}: {err}", file.display()))
 }
 
-fn seeded(adapter: Option<&crate::provider::Provider>) -> String {
-    let Some(adapter) = adapter else {
-        return String::new();
-    };
-    let chain: Vec<(&str, Option<&str>)> = adapter
-        .owner
-        .iter()
-        .map(|owner| ("source", Some(owner.as_str())))
-        .collect();
-    wrap(&chain, &format!("module \"{}\"", adapter.name))
-        .lines()
+fn wanted<'a>(
+    index: &'a crate::provider::Index,
+    family: &str,
+    roles: &[&str],
+) -> Vec<&'a crate::provider::Provider> {
+    let mut out: Vec<&crate::provider::Provider> = Vec::new();
+    for capability in roles {
+        let Some(provider) = index.adapter(capability, family) else {
+            continue;
+        };
+        if !out.iter().any(|held| held.dir() == provider.dir()) {
+            out.push(provider);
+        }
+    }
+    out
+}
+
+fn roles(base: Option<&crate::base::Base>) -> Vec<&str> {
+    std::iter::once(BUILD_ENVIRONMENT)
+        .chain(
+            base.into_iter()
+                .flat_map(|base| base.requires.iter().map(String::as_str)),
+        )
+        .collect()
+}
+
+fn offer(
+    base: &str,
+    wanted: &[&crate::provider::Provider],
+    prompt: &Prompt,
+    current: bool,
+) -> Result<bool, String> {
+    if prompt.asks() {
+        println!("{base} needs the following modules:");
+        for provider in wanted {
+            println!("\x20   {}", provider.qualified());
+        }
+        println!();
+    }
+    prompt.confirm_current(copy::BRING_FOR_BASE, copy::YES, copy::NO, current)
+}
+
+fn seeded(wanted: &[&crate::provider::Provider]) -> String {
+    let mut owners: Vec<Option<&str>> = Vec::new();
+    for provider in wanted {
+        let owner = provider.owner.as_deref();
+        if !owners.contains(&owner) {
+            owners.push(owner);
+        }
+    }
+    let mut out = String::new();
+    for owner in owners {
+        let leaf: String = wanted
+            .iter()
+            .filter(|provider| provider.owner.as_deref() == owner)
+            .map(|provider| format!("module \"{}\"", provider.name))
+            .collect::<Vec<String>>()
+            .join("\n");
+        let chain: Vec<(&str, Option<&str>)> =
+            owner.iter().map(|owner| ("source", Some(*owner))).collect();
+        out.push_str(&wrap(&chain, &leaf));
+        out.push('\n');
+    }
+    out.lines()
         .map(|line| format!("\x20       {line}\n"))
         .collect()
 }
@@ -1232,6 +1314,31 @@ fn create_remote(owner: &str, id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_seeded_block_groups_each_collections_modules_under_one_source() {
+        let provider = |owner: Option<&str>, name: &str| crate::provider::Provider {
+            owner: owner.map(str::to_string),
+            name: name.to_string(),
+            here: false,
+            declares: crate::parse::module::Summary::default(),
+        };
+        let held = [
+            provider(Some("buildc-org"), "debian-family"),
+            provider(None, "mine"),
+            provider(Some("buildc-org"), "debian-bootc-base/bootc"),
+        ];
+        let wanted: Vec<&crate::provider::Provider> = held.iter().collect();
+        assert_eq!(
+            seeded(&wanted),
+            "        source \"buildc-org\" {\n\
+             \x20           module \"debian-family\"\n\
+             \x20           module \"debian-bootc-base/bootc\"\n\
+             \x20       }\n\
+             \x20       module \"mine\"\n"
+        );
+        assert_eq!(seeded(&[]), "");
+    }
 
     #[test]
     fn repeated_targets_write_once_and_one_file_names_every_addition() {

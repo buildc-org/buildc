@@ -58,7 +58,11 @@ impl Index {
                 declares: parse::module::summary(&layout::manifest(root, dir)),
             });
         }
-        let (found, hidden) = crate::import::catalog(root, sources, fetch).unwrap_or_default();
+        let fetched = crate::import::catalog(root, sources, fetch);
+        let reached = fetched.is_ok();
+        let (found, hidden) = fetched
+            .or_else(|_| crate::import::catalog(root, sources, false))
+            .unwrap_or_default();
         for module in found {
             if !out.iter().any(|held| held.dir() == module.dir()) {
                 out.push(module);
@@ -67,7 +71,7 @@ impl Index {
         Self {
             held: out,
             hidden,
-            unread: match fetch {
+            unread: match fetch && reached {
                 true => Vec::new(),
                 false => sources
                     .iter()

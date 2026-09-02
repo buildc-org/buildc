@@ -32,6 +32,7 @@ pub fn list_in(target: &str) -> String {
 }
 
 pub const BRING_REQUIRED: &str = "Bring what these modules require?";
+pub const BRING_FOR_BASE: &str = "Do you want to add them now?";
 pub const IMPORT_CLAIMING: &str = "Import the modules claiming these rules?";
 
 pub fn cleared(named: &str, unmet: &str) -> String {

@@ -43,9 +43,6 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     }
     let target = target(&list, opts.target.as_deref())?;
 
-    for line in crate::fetch::modules(root, &list)? {
-        eprintln!("buildc: {line}");
-    }
     let gate = crate::run(crate::Command::Verify, None, root);
     if gate.issues.report(&gate.context) {
         return Ok(Stopped::Repository);

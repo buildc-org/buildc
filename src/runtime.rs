@@ -171,10 +171,18 @@ fn verified(url: &str, sha256: Option<&str>, dest: &Path) -> Result<(), String> 
     if let Some(dir) = dest.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     }
-    run(
-        "curl",
-        &["--retry", "3", "-fsSLo", &dest.to_string_lossy(), url],
-    )??;
+    let said = Command::new("curl")
+        .args(["--retry", "3", "-fsSLo", &dest.to_string_lossy(), url])
+        .output()
+        .map_err(|err| format!("curl: {err}"))?;
+    if !said.status.success() {
+        let why = String::from_utf8_lossy(&said.stderr);
+        let why = why.trim();
+        return Err(match why.is_empty() {
+            true => format!("cannot fetch {url}: curl {}", said.status),
+            false => format!("cannot fetch {url}: {why}"),
+        });
+    }
 
     let Some(sha256) = sha256 else {
         return Ok(());

@@ -44,6 +44,7 @@ pub struct Index {
     unread: Vec<String>,
     sourced: bool,
     hidden: Vec<String>,
+    unreached: Option<String>,
 }
 
 impl Index {
@@ -59,6 +60,7 @@ impl Index {
             });
         }
         let fetched = crate::import::catalog(root, sources, fetch);
+        let unreached = fetched.as_ref().err().cloned();
         let reached = fetched.is_ok();
         let (found, hidden) = fetched
             .or_else(|_| crate::import::catalog(root, sources, false))
@@ -71,6 +73,7 @@ impl Index {
         Self {
             held: out,
             hidden,
+            unreached,
             unread: match fetch && reached {
                 true => Vec::new(),
                 false => sources
@@ -87,6 +90,10 @@ impl Index {
         &self.unread
     }
 
+    pub fn unreached(&self) -> Option<&str> {
+        self.unreached.as_deref()
+    }
+
     pub fn sourced(&self) -> bool {
         self.sourced
     }
@@ -96,6 +103,11 @@ impl Index {
     }
 
     pub fn unsearched(&self) -> String {
+        if let Some(why) = &self.unreached {
+            return format!(
+                "A declared collection could not be read, so nothing searched it: {why}"
+            );
+        }
         let named: Vec<String> = self.unread.iter().map(|name| format!("`{name}`")).collect();
         match named.len() {
             0 => String::new(),

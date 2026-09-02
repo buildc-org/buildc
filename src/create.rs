@@ -498,6 +498,11 @@ impl Image {
                 false => scratch.as_path(),
             };
             fetched = crate::provider::Index::scan(cache, sources, &disk, true);
+            if let Some(why) = fetched.unreached() {
+                eprintln!(
+                    "buildc: {why}; what is offered below is only what is already on this machine"
+                );
+            }
             wanted = self::wanted(&fetched, &family, &roles);
             let _ = std::fs::remove_dir_all(&scratch);
         }

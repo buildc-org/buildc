@@ -68,6 +68,25 @@ pub const DISK_RAW: &str = "a raw disk, under out/raw/";
 pub const DISK_ISO: &str = "an installer iso, under out/bootiso/";
 pub const NO_ISO_SPAWN: &str = "systemd-vmspawn cannot boot an iso";
 
+pub const INSTALL_DISK: &str = "Installation Disk:";
+pub const INSTALL_NAME: &str = "Computer Name:";
+pub const INSTALL_USER: &str = "Username:";
+pub const INSTALL_PASSWORD: &str = "Password:";
+pub const PASSWORD_AGAIN: &str = "Retype password:";
+pub const NO_MATCH: &str = "Passwords did not match.";
+pub const INSTALL_ENCRYPTION: &str = "Encryption type";
+pub const LUKS_PASSPHRASE: &str = "LUKS passphrase";
+pub const ENC_NONE: &str = "not encrypted";
+pub const ENC_TPM2: &str = "unlocked by TPM";
+pub const ENC_PASSPHRASE: &str = "unlocked by passphrase";
+pub const ENC_BOTH: &str = "TPM with passphrase fallback";
+pub const NO_TPM: &str = "No TPM available";
+pub const REMOVABLE: &str = "removable";
+
+pub fn erasing(disk: &str) -> String {
+    format!("Everything on {disk} is erased. Nothing survives.")
+}
+
 pub const WHICH_COMMAND: &str = "Which command?";
 
 pub const YES: &str = "Yes";
@@ -83,6 +102,8 @@ pub const TOGGLE: &str = "space toggles, enter confirms, esc cancels";
 pub const EITHER: &str = "up and down to move, enter to answer";
 pub const NEST: &str = "filter, space toggles, ←/→ opens, enter confirms";
 pub const REVIEW_KEYS: &str = "enter to change a field, Create to write, esc cancels";
+pub const INSTALL_KEYS: &str = "enter to change a field, esc cancels";
+pub const SECRET_KEYS: &str = "typed and not shown, enter confirms";
 
 pub const REVIEW: &str = "Review what will be created";
 pub const CREATE: &str = "Create";
@@ -101,6 +122,14 @@ pub const REMOTE_NOT: &str = "not created";
 pub const ON_EVERY_PUSH: &str = "on every push";
 pub const ON_EVERY_BUILD: &str = "on every build";
 pub const ON_SCHEDULED: &str = "on scheduled builds only";
+
+pub const INSTALL: &str = "Erase and install";
+pub const ROW_DISK: &str = "disk";
+pub const ROW_HOSTNAME: &str = "machine name";
+pub const ROW_ACCOUNT: &str = "user name";
+pub const ROW_PASSWORD: &str = "password";
+pub const ROW_ENCRYPTION: &str = "encryption";
+pub const PASSWORD_SET: &str = "set";
 
 #[cfg(test)]
 mod tests {

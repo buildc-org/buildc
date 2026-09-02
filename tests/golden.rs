@@ -1947,6 +1947,40 @@ fn flows() {
 }
 
 #[test]
+fn install_screens() {
+    let dir = empty("flow-install-drawn");
+    std::fs::write(
+        dir.join(buildc::install::RECIPE),
+        r#"{
+  "image": "ghcr.io/buildc-org/deb2:latest",
+  "targetImgref": "ghcr.io/buildc-org/deb2:latest",
+  "composeFsBackend": true,
+  "genericImage": true,
+  "bootloader": "systemd",
+  "filesystem": "ext4",
+  "hostname": "deb2",
+  "user": { "groups": ["sudo"] }
+}
+"#,
+    )
+    .unwrap();
+    drawn_flow(
+        "flow-install-drawn",
+        &dir,
+        &format!(
+            "'{}' install --from . --disk /dev/null",
+            env!("CARGO_BIN_EXE_tect")
+        ),
+        "Computer Name [deb2]: ",
+        &[b"\r", b"buildc\r", b"hunter2\r", b"hunter2\r", b"\r", b"\x1b"],
+    );
+    let transcript =
+        std::fs::read_to_string(crate_dir().join("tests/golden/flow-install-drawn/transcript.txt"))
+            .unwrap();
+    assert!(!transcript.contains("hunter2"), "{transcript}");
+}
+
+#[test]
 fn schema_doc() {
     let path = crate_dir().join("docs/schema.md");
     let doc = std::fs::read_to_string(&path).expect("docs/schema.md exists");

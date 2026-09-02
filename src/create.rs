@@ -91,7 +91,7 @@ impl Repo {
                 .iter()
                 .map(|(_, label, value)| (label.to_string(), value.clone()))
                 .collect();
-            match crate::ui::review(copy::REVIEW, &drawn)? {
+            match crate::ui::review(copy::REVIEW, &drawn, copy::CREATE, copy::REVIEW_KEYS)? {
                 None => return Ok(None),
                 Some(at) if at == rows.len() => break,
                 Some(at) => repo = Self::ask(rows[at].0, &given, Some(&repo), prompt)?,

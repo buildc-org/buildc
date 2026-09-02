@@ -35,6 +35,7 @@ Environment:
                       The file is sparse, so this is a ceiling rather than a cost.
   VM_USER             console account passed as a systemd credential (default: buildc)
   VM_PASSWORD_HASH    its crypt(5) hash; when unset, run and spawn ask for a password
+  GPU                 Y for hardware rendering in the qemu viewer (default: N)
 EOF
 }
 
@@ -264,7 +265,7 @@ run_qemu() {
         --env "RAM_SIZE=${ram}" \
         --env DISK_SIZE=64G \
         --env TPM=Y \
-        --env GPU=Y \
+        --env "GPU=${GPU:-N}" \
         "${credential_args[@]}" \
         --device=/dev/kvm \
         --volume "${PWD}/${image_file}":"/boot.${type}" \

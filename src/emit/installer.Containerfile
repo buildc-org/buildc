@@ -89,3 +89,12 @@ ExecStart=-/sbin/agetty -o '-p -f -- \\u' --autologin root --noclear %I $TERM
 AUTOLOGIN
 
 RUN systemctl enable var-lib-buildc-store.mount
+
+COPY buildc /usr/bin/buildc
+RUN /usr/bin/buildc --version
+
+COPY <<'START' /etc/profile.d/bootc-anywhere.sh
+if [ "$(id -u)" = 0 ] && [ -t 0 ]; then
+    buildc install
+fi
+START

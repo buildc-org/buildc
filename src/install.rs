@@ -115,6 +115,12 @@ const NONE: &str = "none";
 
 const TPM: &str = "/dev/tpmrm0";
 
+fn tpm() -> PathBuf {
+    std::env::var_os("BUILDC_TPM")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(TPM))
+}
+
 pub struct Encryption {
     pub kind: String,
     pub passphrase: String,
@@ -325,7 +331,7 @@ fn ask_encryption(
         Some(kind) => kind,
         None if !prompt.asks() => current.kind.clone(),
         None => {
-            let options = kinds(Path::new(TPM).exists());
+            let options = kinds(tpm().exists());
             let at = KINDS
                 .iter()
                 .position(|(name, _)| *name == current.kind)

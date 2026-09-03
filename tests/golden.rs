@@ -711,6 +711,7 @@ fn drawn_flow(name: &str, dir: &Path, command: &str, after: &str, steps: &[&[u8]
         .current_dir(dir)
         .env("BUILDC_ASSETS", crate_dir().join("assets"))
         .env("COLUMNS", "80")
+        .env("BUILDC_TPM", "/nonexistent")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

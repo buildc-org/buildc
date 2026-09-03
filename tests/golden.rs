@@ -1981,7 +1981,7 @@ fn install_screens() {
   "targetImgref": "ghcr.io/buildc-org/deb2:latest",
   "composeFsBackend": true,
   "genericImage": true,
-  "bootloader": "systemd",
+  "bootloader": "grub2",
   "filesystem": "ext4",
   "hostname": "deb2",
   "user": { "groups": ["sudo"] }

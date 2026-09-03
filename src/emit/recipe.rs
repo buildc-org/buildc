@@ -22,7 +22,7 @@ fn family(name: &str) -> Option<Family> {
         "debian" | "ubuntu" => Family {
             composefs: true,
             generic: true,
-            bootloader: "systemd",
+            bootloader: "grub2",
             filesystem: "ext4",
             admin: "sudo",
         },
@@ -137,7 +137,7 @@ mod tests {
             format!(
                 "{{\n  \"image\": \"localhost/forky:latest\",\n  \"targetImgref\": \
                  \"ghcr.io/someone/forky:latest\",\n  \"composeFsBackend\": true,\n  \
-                 \"genericImage\": true,\n  \"bootloader\": \"systemd\",\n  \
+                 \"genericImage\": true,\n  \"bootloader\": \"grub2\",\n  \
                  \"filesystem\": \"ext4\",\n  \"hostname\": \"forky\",\n  \"user\": \
                  {{\n    \"groups\": [\n      \"sudo\"\n    ]\n  }},\n  \
                  \"additionalImageStores\": [\n    \"{STORE}\"\n  ]\n}}\n"
@@ -154,7 +154,7 @@ mod tests {
             };
         assert_eq!(
             field(&deb, "ubuntu", "bootloader").as_deref(),
-            Some("\"systemd\"")
+            Some("\"grub2\"")
         );
         assert_eq!(field(&deb, "ubuntu", "user"), field(&deb, "forky", "user"));
 

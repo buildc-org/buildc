@@ -84,6 +84,7 @@ fn public_catalog_lists_every_shipped_base_in_order() {
             "ghcr.io/ublue-os/bluefin:stable",
             "ghcr.io/ublue-os/kinoite-main:44",
             "docker.io/library/debian:forky",
+            "docker.io/library/ubuntu:26.04",
         ]
     );
 }
@@ -117,12 +118,39 @@ fn missing_runtime_file_falls_back_to_embedded_catalog() {
 
     assert!(issues.is_empty(), "{}", issues.plain());
     assert!(shadows.is_empty());
-    assert_eq!(bases.len(), 6);
-    assert_eq!(bases[5].image, "docker.io/library/debian:forky");
-    assert_eq!(bases[5].family, "debian");
-    assert!(bases[5].provides.is_empty());
-    assert_eq!(bases[5].requires, ["bootc-base"]);
-    assert!(!bases[5].signed);
+    assert_eq!(bases.len(), 7);
+    for (at, image, family) in [
+        (5, "docker.io/library/debian:forky", "debian"),
+        (6, "docker.io/library/ubuntu:26.04", "ubuntu"),
+    ] {
+        assert_eq!(bases[at].image, image);
+        assert_eq!(bases[at].family, family);
+        assert!(bases[at].provides.is_empty(), "{image}");
+        assert_eq!(bases[at].requires, ["bootc-base"], "{image}");
+        assert!(!bases[at].signed, "{image}");
+    }
+}
+
+#[test]
+fn a_digest_pinned_reference_still_finds_its_catalog_row() {
+    let _assets = Assets::new("task-2-digest-pinned");
+    let mut issues = Issues::default();
+    let (bases, _) = buildc::base::catalog(Path::new("."), &[], &mut issues);
+    assert!(issues.is_empty(), "{}", issues.plain());
+
+    let tagged = "docker.io/library/ubuntu:26.04";
+    let pinned = format!("{tagged}@sha256:{}", "0".repeat(64));
+    let found = buildc::base::find(&bases, &pinned).expect("the pinned base is the catalogued base");
+
+    assert_eq!(found.image, tagged);
+    assert_eq!(found.family, "ubuntu");
+    assert_eq!(found.requires, ["bootc-base"]);
+
+    assert!(buildc::base::find(
+        &bases,
+        &format!("example.invalid/nosuch:1@sha256:{}", "0".repeat(64))
+    )
+    .is_none());
 }
 
 #[test]
@@ -211,7 +239,7 @@ fn collection_still_overrides_and_shadows_selected_catalog() {
     let (bases, shadows) = buildc::base::catalog(&root, &sources, &mut issues);
 
     assert!(issues.is_empty(), "{}", issues.plain());
-    assert_eq!(bases.len(), 6);
+    assert_eq!(bases.len(), 7);
     assert_eq!(bases[0].about, "collection replacement");
     assert!(bases[0].signed);
     assert_eq!(shadows.len(), 1);

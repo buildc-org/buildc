@@ -42,3 +42,10 @@ base "docker.io/library/debian:forky" {
     requires "bootc-base"
     signed #false
 }
+
+base "docker.io/library/ubuntu:26.04" {
+    about "Ubuntu 26.04 LTS, which a module set has to turn into a bootc image"
+    family "ubuntu"
+    requires "bootc-base"
+    signed #false
+}

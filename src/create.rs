@@ -1331,14 +1331,14 @@ mod tests {
         let held = [
             provider(Some("buildc-org"), "debian-family"),
             provider(None, "mine"),
-            provider(Some("buildc-org"), "debian-bootc-base/bootc"),
+            provider(Some("buildc-org"), "deb-bootc-base/bootc"),
         ];
         let wanted: Vec<&crate::provider::Provider> = held.iter().collect();
         assert_eq!(
             seeded(&wanted),
             "        source \"buildc-org\" {\n\
              \x20           module \"debian-family\"\n\
-             \x20           module \"debian-bootc-base/bootc\"\n\
+             \x20           module \"deb-bootc-base/bootc\"\n\
              \x20       }\n\
              \x20       module \"mine\"\n"
         );

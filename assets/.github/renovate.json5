@@ -43,7 +43,7 @@
       "managerFilePatterns": ["/^[^/]+\\.kdl$/"],
       "datasourceTemplate": "docker",
       "matchStrings": [
-        "base \"(?<depName>[^\":]+):(?<currentValue>[^\"]+)\"",
+        "base \"(?<depName>[^\":]+):(?<currentValue>[^\"@]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?\"",
       ],
     },
     {

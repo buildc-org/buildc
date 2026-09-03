@@ -92,6 +92,11 @@ pub fn catalog(
     (bases, shadows)
 }
 
+fn undigested(image: &str) -> &str {
+    image.split_once('@').map_or(image, |(before, _)| before)
+}
+
 pub fn find<'a>(bases: &'a [Base], image: &str) -> Option<&'a Base> {
-    bases.iter().find(|base| base.image == image)
+    let image = undigested(image);
+    bases.iter().find(|base| undigested(&base.image) == image)
 }

@@ -253,8 +253,10 @@ build_iso() {
 
 login_credentials() {
     vm_user="${VM_USER:-buildc}"
-    [[ "$vm_user" =~ ^[a-z_][a-z0-9_-]*$ ]] && [ "${#vm_user}" -le 31 ] \
-        || die "VM_USER must be a Linux user name of at most 31 characters"
+    # The name reaches a systemd credential key and a sysusers line, so it is held to the Linux account-name alphabet.
+    if ! [[ "$vm_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || [ "${#vm_user}" -gt 31 ]; then
+        die "VM_USER must be a Linux user name of at most 31 characters"
+    fi
     vm_password_hash="${VM_PASSWORD_HASH:-}"
     if [ -z "$vm_password_hash" ]; then
         [ -t 0 ] || die "set VM_PASSWORD_HASH when no terminal can ask for a VM password"

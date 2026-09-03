@@ -4,6 +4,7 @@ ARG GO_IMAGE=docker.io/library/golang:1.26
 ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44
 
 FROM ${GO_IMAGE} AS tools
+ARG FISHERMAN_ORG=tuna-os
 ARG FISHERMAN_COMMIT=027fa25c1d8bc01e2ac97d119cda9e8bb9c99ac7
 ARG FISHERMAN_SHA256=ffab2a2c1094fa02a9b4862958c280045c9390425c93195855a9f0f93956c72e
 ARG TACKLEBOX_ORG=buildc-org
@@ -18,7 +19,7 @@ RUN set -eux; \
         mkdir -p "/src/$2"; \
         tar -xf "/tmp/$2.tar.gz" -C "/src/$2" --strip-components=1; \
     }; \
-    fetch tuna-os fisherman "${FISHERMAN_COMMIT}" "${FISHERMAN_SHA256}"; \
+    fetch "${FISHERMAN_ORG}" fisherman "${FISHERMAN_COMMIT}" "${FISHERMAN_SHA256}"; \
     fetch "${TACKLEBOX_ORG}" tacklebox "${TACKLEBOX_COMMIT}" "${TACKLEBOX_SHA256}"; \
     git -C /src/tacklebox apply -p1 /tmp/efi-from-image.patch; \
     mkdir -p /out; \

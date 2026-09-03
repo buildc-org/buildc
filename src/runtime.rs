@@ -562,12 +562,23 @@ pub fn validate_image() -> Result<(), String> {
         report.fail(message);
     }
 
+    clear_run_systemd();
+
     println!();
     if report.failures == 0 {
         println!("All validation checks passed.");
         Ok(())
     } else {
         Err(format!("{} validation check(s) failed.", report.failures))
+    }
+}
+
+fn clear_run_systemd() {
+    let path = Path::new("/run/systemd");
+    if path.is_dir() {
+        if let Err(err) = fs::remove_dir_all(path) {
+            eprintln!("    could not remove {}: {err}", path.display());
+        }
     }
 }
 

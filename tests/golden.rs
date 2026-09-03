@@ -17,9 +17,33 @@ fn compare(name: &str, file: &str, actual: &str) {
         .unwrap_or_else(|err| panic!("{}: {err}\nrun UPDATE_GOLDEN=1 cargo test", path.display()));
     assert!(
         expected == actual,
-        "{} changed. Rerun with UPDATE_GOLDEN=1 and read the diff",
-        path.display()
+        "{} changed. Rerun with UPDATE_GOLDEN=1 and read the diff.\n{}",
+        path.display(),
+        first_difference(&expected, &actual)
     );
+}
+
+fn first_difference(expected: &str, actual: &str) -> String {
+    let at = expected
+        .bytes()
+        .zip(actual.bytes())
+        .position(|(a, b)| a != b)
+        .unwrap_or(expected.len().min(actual.len()));
+    let window = |s: &str| {
+        let from = at.saturating_sub(60);
+        let to = (at + 60).min(s.len());
+        s.get(from..to)
+            .unwrap_or("<not a char boundary>")
+            .escape_debug()
+            .to_string()
+    };
+    format!(
+        "first difference at byte {at} of {} expected, {} actual\n  expected: {}\n    actual: {}",
+        expected.len(),
+        actual.len(),
+        window(expected),
+        window(actual)
+    )
 }
 
 fn capture(name: &str, root: &Path) {

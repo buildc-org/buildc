@@ -476,6 +476,82 @@ fn say(line: &str) -> String {
     }
 }
 
+const RENDERER: &str = "/usr/libexec/grub-menu-from-bls";
+
+const TARGET: &str = "/run/buildc-target";
+
+fn render_menu(image: &str, disk: &str) -> Result<(), String> {
+    let at = PathBuf::from(TARGET);
+    let boot = at.join("boot");
+    std::fs::create_dir_all(&boot).map_err(|err| format!("{TARGET}: {err}"))?;
+
+    let Some(device) = boot_partition(disk, &boot)? else {
+        return Err(format!(
+            "no partition of {disk} carries `loader/entries`, so there is no menu to render"
+        ));
+    };
+    let rendered = run_renderer(image);
+    let _ = Command::new("umount").arg(&boot).output();
+    match rendered {
+        Ok(true) => {
+            eprintln!("buildc: wrote the boot menu {device} needs, since its GRUB reads no BLS");
+            Ok(())
+        }
+        Ok(false) => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+fn boot_partition(disk: &str, boot: &Path) -> Result<Option<String>, String> {
+    let listed = Command::new("lsblk")
+        .args(["-nrpo", "NAME", disk])
+        .output()
+        .map_err(|err| format!("lsblk: {err}, and it is what lists a disk's partitions"))?;
+    for device in labelled(&String::from_utf8_lossy(&listed.stdout)) {
+        if device == disk {
+            continue;
+        }
+        let mounted = Command::new("mount")
+            .args([&device, &boot.to_string_lossy().to_string()])
+            .output();
+        if !matches!(&mounted, Ok(out) if out.status.success()) {
+            continue;
+        }
+        if boot.join("loader/entries").is_dir() {
+            return Ok(Some(device));
+        }
+        let _ = Command::new("umount").arg(boot).output();
+    }
+    Ok(None)
+}
+
+fn run_renderer(image: &str) -> Result<bool, String> {
+    let out = Command::new("podman")
+        .args([
+            "run",
+            "--rm",
+            "--net=none",
+            "--security-opt",
+            "label=disable",
+            "-v",
+            &format!("{TARGET}:/target"),
+            image,
+            "/bin/sh",
+            "-c",
+            &format!("test -x {RENDERER} || exit 3; exec {RENDERER} /target"),
+        ])
+        .output()
+        .map_err(|err| format!("podman: {err}, and it is what runs the image's renderer"))?;
+    match out.status.code() {
+        Some(0) => Ok(true),
+        Some(3) => Ok(false),
+        _ => Err(format!(
+            "{RENDERER} in {image}: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+    }
+}
+
 pub fn run(payload: &Payload, answers: &Answers) -> Result<(), String> {
     let path = stage(&complete(&payload.recipe, answers)?)?;
     eprintln!(
@@ -497,10 +573,10 @@ pub fn run(payload: &Payload, answers: &Answers) -> Result<(), String> {
     }
     let status = child.wait().map_err(|err| format!("{BACKEND}: {err}"))?;
     let _ = std::fs::remove_file(&path);
-    match status.success() {
-        true => Ok(()),
-        false => Err(format!("{BACKEND} did not finish: {status}")),
+    if !status.success() {
+        return Err(format!("{BACKEND} did not finish: {status}"));
     }
+    render_menu(&payload.image, &answers.disk)
 }
 
 #[cfg(test)]

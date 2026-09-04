@@ -277,18 +277,25 @@ build_iso() {
 
     sudoif podman build -t "$live_image" "$staged"
 
-    if mountpoint -q "${build}/tbox-offline-store/overlay" 2> /dev/null; then
-        sudoif umount "${build}/tbox-offline-store/overlay"
-    fi
+    unmount_offline_store "$build"
 
     rm -f "${image_file}.part"
     if ! sudoif env HOME=/root "$tbx" build "${PWD}/${staged}/media.json" \
         --iso "${PWD}/${image_file}.part" -b "$build"; then
+        unmount_offline_store "$build"
         sudoif chown -R "$(id -u):$(id -g)" "$staged"
         die "tacklebox could not assemble the media; it left its staging under ${build}"
     fi
+    unmount_offline_store "$build"
     sudoif chown -R "$(id -u):$(id -g)" "$staged"
     mv -f "${image_file}.part" "$image_file"
+}
+
+unmount_offline_store() {
+    local overlay="$1/tbox-offline-store/overlay"
+    if mountpoint -q "$overlay" 2> /dev/null; then
+        sudoif umount "$overlay"
+    fi
 }
 
 login_credentials() {

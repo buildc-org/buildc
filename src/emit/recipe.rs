@@ -84,7 +84,6 @@ pub fn media(list: &List, name: &str, image: &str, imgref: &str) -> Option<Json>
     Some(Json::object([
         ("media_name", Json::string(format!("{published}-install"))),
         ("size", Json::string(SIZE)),
-        ("esp_partition", Json::Bool(true)),
         (
             "bootable_environments",
             Json::array([Json::object([
@@ -194,7 +193,6 @@ mod tests {
         assert_eq!(
             assembled.render(),
             "{\n  \"media_name\": \"forky-install\",\n  \"size\": \"20G\",\n  \
-             \"esp_partition\": true,\n  \
              \"bootable_environments\": [\n    {\n      \"id\": \"installer\",\n      \
              \"image\": \"localhost/forky-installer:latest\",\n      \"title\": \
              \"Forky installer\",\n      \"modes\": [\n        \"live\"\n      ]\n    }\n  ],\n  \"offline_payloads\": [\n    {\n      \"source\": \

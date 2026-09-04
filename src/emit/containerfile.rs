@@ -50,6 +50,8 @@ const FAMILY_ARG: &str = "\
 # ---- base family ----
 ARG FAMILY";
 
+const MODULE_DIR: &str = "@MODULE@";
+
 const BUILDC_MOUNT: &str = "--mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    ";
 
 const IMAGE_VERSION_ARG: &str = "\
@@ -251,12 +253,13 @@ fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path) -> Str
 }
 
 fn fragment(entry: &Entry, body: &str) -> String {
+    let dir = entry.dir();
     let mut out = String::new();
     let _ = write!(
         out,
-        "# verbatim from modules/{}/Containerfile.inc:\n{}",
-        entry.dir(),
+        "# verbatim from modules/{dir}/Containerfile.inc:\n{}",
         body.trim_end_matches('\n')
+            .replace(MODULE_DIR, &format!("/modules/{dir}"))
     );
     out
 }

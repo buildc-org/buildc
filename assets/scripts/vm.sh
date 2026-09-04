@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+RENDERER=/usr/libexec/grub-menu-from-bls
 cd "$(dirname "$0")/.."
 
 die() {
@@ -171,6 +173,43 @@ build_disk() {
     sudoif chown -R "$(id -u):$(id -g)" out/
 }
 
+render_menu() {
+    local raw="$1" lo target device root=""
+    target="$(mktemp -d)"
+    mkdir -p "${target}/boot"
+    lo="$(sudoif losetup --show -fP "$raw")"
+    for device in "${lo}"p*; do
+        [ -b "$device" ] || continue
+        sudoif mount "$device" "${target}/boot" 2> /dev/null || continue
+        if [ -d "${target}/boot/loader/entries" ]; then
+            root=/target
+            break
+        fi
+        if [ -d "${target}/boot/boot/loader/entries" ]; then
+            root=/target/boot
+            break
+        fi
+        sudoif umount "${target}/boot"
+    done
+    if [ -z "$root" ]; then
+        sudoif losetup -d "$lo"
+        rmdir "${target}/boot" "$target" 2> /dev/null || true
+        die "no partition of the disk carries \`loader/entries\`, so there is no menu to render"
+    fi
+    local status=0
+    sudoif podman run --rm --net=none --security-opt label=disable \
+        -v "${target}:/target" --entrypoint "" "$ref" \
+        /bin/sh -c "test -x ${RENDERER} || exit 3; exec ${RENDERER} ${root}" || status=$?
+    sudoif umount "${target}/boot"
+    sudoif losetup -d "$lo"
+    rmdir "${target}/boot" "$target" 2> /dev/null || true
+    case "$status" in
+        0) echo "vm: wrote the boot menu, since this image's GRUB reads no BLS" ;;
+        3) ;;
+        *) die "${RENDERER} in ${ref} failed: exit ${status}" ;;
+    esac
+}
+
 install_disk() {
     command -v skopeo > /dev/null 2>&1 \
         || die "skopeo is not installed, and it writes the layout bootc installs from"
@@ -211,6 +250,7 @@ install_disk() {
         "${key_args[@]}" /out/disk.raw.part
 
     sudoif chown -R "$(id -u):$(id -g)" out/
+    render_menu "$raw"
     if [ "$type" = qcow2 ]; then
         qemu-img convert -O qcow2 "$raw" "${image_file}.part"
         rm -f "$raw"

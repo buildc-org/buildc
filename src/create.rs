@@ -769,7 +769,7 @@ fn module_kdl(
         for pkg in pkgs {
             listed.push_str(&format!(" \"{}\"", quotable(pkg)?));
         }
-        text.push_str(&format!("\npackages {{\n    {family}{listed}\n}}\n"));
+        text.push_str(&format!("\npackages{listed}\n"));
     }
     Ok(text)
 }

@@ -125,6 +125,18 @@ const FETCHES: [&str; 8] = [
 
 const SCRIPTS: [&str; 2] = ["module.sh", "finalize.sh"];
 
+fn scripts() -> Vec<String> {
+    SCRIPTS
+        .iter()
+        .map(|name| name.to_string())
+        .chain(
+            crate::parse::module::FAMILIES
+                .iter()
+                .flat_map(|family| SCRIPTS.iter().map(move |name| format!("{family}/{name}"))),
+        )
+        .collect()
+}
+
 pub fn check_fetch(
     module: &crate::model::module::Module,
     dir: &std::path::Path,
@@ -133,8 +145,8 @@ pub fn check_fetch(
     if !module.assets.is_empty() {
         return;
     }
-    for script in SCRIPTS {
-        let Ok(text) = std::fs::read_to_string(dir.join(script)) else {
+    for script in scripts() {
+        let Ok(text) = std::fs::read_to_string(dir.join(&script)) else {
             continue;
         };
         let Some(verb) = FETCHES.into_iter().find(|verb| {

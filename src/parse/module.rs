@@ -9,7 +9,7 @@ use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
 use crate::parse::prop_span;
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
-use crate::parse::{asset, boolean, check_capability, child, flag, int_prop, options, prop};
+use crate::parse::{asset, boolean, check_capability, child, flag, int_prop, kids, options, prop};
 use crate::parse::{string_arg, string_args, syntax_issue};
 use crate::resolve::options as resolve_options;
 use crate::runtime::{class_names, VERIFY_CLASSES};
@@ -17,7 +17,7 @@ use kdl::{KdlDocument, KdlNode};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-const FAMILIES: [&str; 3] = ["fedora", "debian", "ubuntu"];
+pub const FAMILIES: [&str; 3] = ["fedora", "debian", "ubuntu"];
 
 const TOKEN_HELP: &str = "package names and repo IDs are emitted straight into the RUN line, so they are limited to letters, digits and . _ + : -; anything else belongs in module.sh, where it can be quoted deliberately";
 
@@ -95,6 +95,83 @@ const KEY: Node = Node::new("key",
     ], Say::new("unknown node `{}` in a key", "not part of the schema",
         "a key holds `generator`, `public` and `private`"));
 
+const GATED: &[Node] = &[PACKAGES, PACKAGE_GROUPS, COPR, REQUIRES, AFTER, SATISFIES];
+
+#[rustfmt::skip]
+const REQUIRES: Node = Node::new("requires",
+    "A capability another module has to provide, which also orders the build.")
+    .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", ""));
+
+#[rustfmt::skip]
+const AFTER: Node = Node::new("after",
+    "A module this one builds after without requiring anything of it.")
+    .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", ""));
+
+#[rustfmt::skip]
+const PACKAGES: Node = Node::new("packages",
+    "The packages this module installs, on every family it supports or, inside a `family` block, \
+     on the families that names.")
+    .arg(Arg::Strs, Say::new("`packages` needs at least one name", "nothing to install",
+        "`packages \"htop\" \"tmux\"`, or `family \"fedora\" { packages \"vim-enhanced\" }` where \
+         the names differ by family"))
+    .props(&[
+        Prop { name: "enablerepo", kind: Kind::Str,
+            desc: "A repository enabled for this install and disabled otherwise. Fedora only, so \
+                   the batch has to resolve to Fedora alone.",
+            say: Say::NONE,
+            missing: Say::NONE },
+    ], Say::new("unknown `packages` property `{}`", "not part of the schema",
+        "`packages` accepts `enablerepo`"));
+
+#[rustfmt::skip]
+const PACKAGE_GROUPS: Node = Node::new("package-groups",
+    "The package groups this module installs. Fedora only, so an ungated one is a module \
+     supporting Fedora alone.")
+    .arg(Arg::Strs, Say::new("`package-groups` needs at least one name", "nothing to install",
+        "`package-groups \"kde-desktop\"`"))
+    .props(&[
+        Prop { name: "enablerepo", kind: Kind::Str,
+            desc: "A repository enabled for this install and disabled otherwise.",
+            say: Say::NONE,
+            missing: Say::NONE },
+    ], Say::new("unknown `package-groups` property `{}`", "not part of the schema",
+        "`package-groups` accepts `enablerepo`"));
+
+#[rustfmt::skip]
+const COPR: Node = Node::new("copr",
+    "A COPR repository this module enables for its own installs, as owner/project. Fedora only.")
+    .arg(Arg::Str, Say::new("`copr` needs one owner/project string", "nothing named",
+        "`copr \"owner/project\"`"))
+    .unique(Say::new("copr `{}` is declared twice", "already declared above", ""))
+    .props(&[], Say::new("`{}` is not a `copr` property", "not part of the schema",
+        "`copr \"owner/project\"`"));
+
+#[rustfmt::skip]
+const SATISFIES: Node = Node::new("satisfies",
+    "The benchmarks and rules this module claims to harden, as an audit declaration the tool \
+     records rather than certifies.")
+    .once("a module makes one claim set per gate; two blocks in one place split it")
+    .children(&[
+        Node::new("", "One benchmark, and the rule IDs it covers.")
+            .arg(Arg::Strs, Say::new("`{}` has no rules listed", "nothing to cover", ""))
+            .unique(Say::new("benchmark `{}` is declared twice", "already declared above", "")),
+    ], Say::NONE);
+
+#[rustfmt::skip]
+const FAMILY: Node = Node::new("family",
+    "The declarations inside taken only on the base families named, everything outside a gate \
+     being taken on every family the module supports.")
+    .arg(Arg::Strs, Say::new("`family` needs at least one family name", "nothing named",
+        "`family \"debian\" \"ubuntu\" { packages \"vim\" }`; one gate takes as many families as \
+         share the declaration, rather than one gate each"))
+    .empty(Say::new("`{}` gates nothing", "an empty block",
+        "a gate with nothing in it says the module does something on that family and then does \
+         not; drop it, or move the declaration inside"))
+    .children(GATED, Say::new("`{}` is not gated by family", "not allowed in a `family` block",
+        "a `family` block holds `packages`, `package-groups`, `copr`, `requires`, `after` and \
+         `satisfies`; `module.sh`, `finalize.sh` and `files/` are gated by putting them in a \
+         `<family>/` directory, and everything else a manifest declares is family-neutral"));
+
 #[rustfmt::skip]
 pub const MODULE: Node = Node::new("module",
     "One module: what it builds on, what it needs from the rest, and what it installs.")
@@ -108,11 +185,8 @@ pub const MODULE: Node = Node::new("module",
 
         Node::new("provides", "A capability this module satisfies for the modules that require it.")
             .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", "")),
-        Node::new("requires", "A capability another module has to provide, which also orders the \
-             build.")
-            .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", "")),
-        Node::new("after", "A module this one builds after without requiring anything of it.")
-            .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", "")),
+        REQUIRES,
+        AFTER,
 
         Node::new("provides-file", "An absolute path this module guarantees, which another module \
              may require.")
@@ -206,46 +280,12 @@ pub const MODULE: Node = Node::new("module",
         options::VARIANT,
         asset::ASSET,
 
-        Node::new("packages", "The packages this module installs, listed per base family.")
-            .children(&[
-                Node::new("", "One base family, and the packages to install on it.")
-                    .arg(Arg::Strs, Say::NONE)
-                    .props(&[
-                        Prop { name: "enablerepo", kind: Kind::Str,
-                            desc: "A repository enabled for this install and disabled otherwise. \
-                                   Fedora only.",
-                            say: Say::NONE,
-                            missing: Say::NONE },
-                    ], Say::new("unknown property `{}` in packages block", "not part of the schema",
-                        "a family entry in `packages` accepts `enablerepo`")),
-            ], Say::NONE),
+        PACKAGES,
+        PACKAGE_GROUPS,
+        COPR,
+        SATISFIES,
 
-        Node::new("package-groups", "The package groups this module installs, listed per base family. Fedora only.")
-            .children(&[
-                Node::new("", "One base family, and the groups to install on it.")
-                    .arg(Arg::Strs, Say::NONE)
-                    .props(&[
-                        Prop { name: "enablerepo", kind: Kind::Str,
-                            desc: "A repository enabled for this install and disabled otherwise.",
-                            say: Say::NONE,
-                            missing: Say::NONE },
-                    ], Say::new("unknown property `{}` in package-groups block", "not part of the schema",
-                        "a family entry in `package-groups` accepts `enablerepo`")),
-            ], Say::NONE),
-        Node::new("copr", "A COPR repository this module enables for its own installs, as owner/project. Fedora only.")
-            .arg(Arg::Str, Say::new("`copr` needs one owner/project string", "nothing named",
-                "`copr \"owner/project\"`"))
-            .unique(Say::new("copr `{}` is declared twice", "already declared above", ""))
-            .props(&[], Say::new("`{}` is not a `copr` property", "not part of the schema",
-                "`copr \"owner/project\"`")),
-
-        Node::new("satisfies", "The benchmarks and rules this module claims to harden, as an audit declaration the tool records rather than certifies.")
-            .once("a module makes one claim set; two blocks split it")
-            .children(&[
-                Node::new("", "One benchmark, and the rule IDs it covers.")
-                    .arg(Arg::Strs, Say::new("`{}` has no rules listed", "nothing to cover", ""))
-                    .unique(Say::new("benchmark `{}` is declared twice", "already declared above", "")),
-            ], Say::NONE),
+        FAMILY,
     ], Say::new("unknown node `{}`", "not part of the schema",
         "docs/schema.md documents every node a manifest may hold"));
 
@@ -255,106 +295,145 @@ fn copr_parts(value: &str) -> Option<(&str, &str)> {
     both_safe.then_some((owner, project))
 }
 
-fn family_names(
+fn batch(
     node: &KdlNode,
+    gate: &[String],
     src: &Source,
     issues: &mut Issues,
     noun: &str,
     sample: &str,
-    fedora_only: bool,
 ) -> Vec<PackageGroup> {
     let block = node.name().value();
-    let Some(children) = node.children() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for child in children.nodes() {
-        let family = child.name().value().to_string();
-        if family.is_empty() {
+    let mut names: Vec<String> = Vec::new();
+    for arg in node.entries().iter().filter(|e| e.name().is_none()) {
+        let Some(value) = arg.value().as_string() else {
             issues.push(
-                Issue::new(format!("a family name is required inside `{block}`"), src)
-                    .at(child.name().span(), "empty name")
-                    .help(format!("`{block} {{ fedora \"{sample}\" }}`")),
+                Issue::new(format!("a {noun} name has to be a string"), src)
+                    .at(arg.span(), "not a string")
+                    .help(format!("quote it: `{block} \"{sample}\"`")),
+            );
+            continue;
+        };
+        if let Some(problem) = bad_token(value) {
+            issues.push(
+                Issue::new(format!("{noun} name `{value}` {problem}"), src)
+                    .at(arg.span(), "would not survive the RUN line")
+                    .help(TOKEN_HELP),
             );
             continue;
         }
-        if !FAMILIES.contains(&family.as_str()) {
+        names.push(value.to_string());
+    }
+    if names.is_empty() {
+        return Vec::new();
+    }
+
+    let mut enablerepo: Option<String> = None;
+    if let Some(span) = prop_span(node, "enablerepo") {
+        match prop(node, "enablerepo").filter(|v| !v.is_empty()) {
+            Some(repo) => match bad_token(repo).filter(|_| copr_parts(repo).is_none()) {
+                Some(problem) => issues.push(
+                    Issue::new(format!("repo ID `{repo}` {problem}"), src)
+                        .at(span, "would not survive the RUN line")
+                        .help(TOKEN_HELP),
+                ),
+                None => enablerepo = Some(repo.to_string()),
+            },
+            None => issues.push(
+                Issue::new("`enablerepo` needs a repo ID string", src).at(span, "not a string"),
+            ),
+        }
+    }
+
+    let families: Vec<String> = match gate.is_empty() {
+        true => vec![String::new()],
+        false => gate.to_vec(),
+    };
+    families
+        .into_iter()
+        .map(|family| PackageGroup {
+            family,
+            packages: names.clone(),
+            enablerepo: enablerepo.clone(),
+            span: node.name().span().into(),
+        })
+        .collect()
+}
+
+fn spread(
+    batches: &mut Vec<PackageGroup>,
+    supports: &[String],
+    block: &str,
+    fedora_only: bool,
+    src: &Source,
+    issues: &mut Issues,
+) {
+    let mut said: Option<Span> = None;
+    for mut batch in std::mem::take(batches) {
+        let families: Vec<String> = match batch.family.is_empty() {
+            false => vec![std::mem::take(&mut batch.family)],
+            true => supports.to_vec(),
+        };
+        let first = said.replace(batch.span) != Some(batch.span);
+        if let Some(stray) = families.iter().find(|family| *family != "fedora") {
+            if fedora_only {
+                if first {
+                    issues.push(
+                        Issue::new(format!("`{block}` is Fedora-only, and this one covers `{stray}`"), src)
+                        .at(batch.span, "no group installer on this family")
+                            .help("only the Fedora adapter installs package groups; a module supporting more than Fedora declares it inside `family \"fedora\"`"),
+                    );
+                }
+                continue;
+            }
+            if batch.enablerepo.is_some() {
+                if first {
+                    issues.push(
+                        Issue::new(format!("`enablerepo` is Fedora-only, and this batch covers `{stray}`"), src)
+                            .at(batch.span, "no repo to enable on this family")
+                            .help("declare the batch inside `family \"fedora\"`; a Debian or Ubuntu install takes the base image's configured sources"),
+                    );
+                }
+                batch.enablerepo = None;
+            }
+        }
+        batches.extend(families.into_iter().map(|family| PackageGroup {
+            family,
+            packages: batch.packages.clone(),
+            enablerepo: batch.enablerepo.clone(),
+            span: batch.span,
+        }));
+    }
+}
+
+fn gate_families(node: &KdlNode, src: &Source, issues: &mut Issues) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in string_args(node) {
+        if !FAMILIES.contains(&name) {
             issues.push(
-                Issue::new(format!("unknown base family `{family}`"), src)
-                    .at(
-                        child.name().span(),
-                        "not a family this repository builds on",
-                    )
+                Issue::new(format!("unknown base family `{name}`"), src)
+                    .at(node.name().span(), "not a family this repository builds on")
                     .help(format!("known families: {}", FAMILIES.join(", "))),
             );
             continue;
         }
-        if fedora_only && family != "fedora" {
+        if out.iter().any(|seen| seen == name) {
             issues.push(
-                Issue::new(format!("`{block}` is Fedora-only, not `{family}`"), src)
-                    .at(child.name().span(), "no group installer on this family")
-                    .help("only the Fedora adapter installs package groups"),
+                Issue::new(format!("`{name}` is named twice on one gate"), src)
+                    .at(node.name().span(), "already named here"),
             );
             continue;
         }
-        let mut names: Vec<String> = Vec::new();
-        for arg in child.entries().iter().filter(|e| e.name().is_none()) {
-            let Some(value) = arg.value().as_string() else {
-                issues.push(
-                    Issue::new(format!("a {noun} name has to be a string"), src)
-                        .at(arg.span(), "not a string")
-                        .help(format!("quote it: `fedora \"{sample}\"`")),
-                );
-                continue;
-            };
-            if let Some(problem) = bad_token(value) {
-                issues.push(
-                    Issue::new(format!("{noun} name `{value}` {problem}"), src)
-                        .at(arg.span(), "would not survive the RUN line")
-                        .help(TOKEN_HELP),
-                );
-                continue;
-            }
-            names.push(value.to_string());
-        }
-        if names.is_empty() {
-            issues.push(
-                Issue::new(format!("`{family}` has no {noun}s listed"), src)
-                    .at(child.name().span(), "nothing to install"),
-            );
-            continue;
-        }
-        let mut enablerepo: Option<String> = None;
-        if let Some(span) = prop_span(child, "enablerepo") {
-            if family != "fedora" {
-                issues.push(
-                    Issue::new(format!("`enablerepo` is Fedora-only, not `{family}`"), src)
-                        .at(span, "no repo to enable on this family")
-                        .help("only Fedora groups take `enablerepo`; a Debian or Ubuntu group installs from the base image's configured sources"),
-                );
-            } else if let Some(repo) = prop(child, "enablerepo").filter(|v| !v.is_empty()) {
-                match bad_token(repo).filter(|_| copr_parts(repo).is_none()) {
-                    Some(problem) => issues.push(
-                        Issue::new(format!("repo ID `{repo}` {problem}"), src)
-                            .at(span, "would not survive the RUN line")
-                            .help(TOKEN_HELP),
-                    ),
-                    None => enablerepo = Some(repo.to_string()),
-                }
-            } else {
-                issues.push(
-                    Issue::new("`enablerepo` needs a repo ID string", src).at(span, "not a string"),
-                );
-            }
-        }
-        out.push(PackageGroup {
-            family,
-            packages: names,
-            enablerepo,
-            span: child.name().span().into(),
-        });
+        out.push(name.to_string());
     }
     out
+}
+
+struct Gated {
+    coprs: usize,
+    requires: usize,
+    after: usize,
+    satisfies: usize,
 }
 
 fn priority(node: &KdlNode) -> Option<u32> {
@@ -427,7 +506,14 @@ impl Module {
             return None;
         };
 
-        let mut module = Self::parse(&entry.path, &dir_rel, root, text, issues)?;
+        let mut module = Self::parse(
+            &entry.path,
+            &dir_rel,
+            root,
+            text,
+            image.base.as_ref().map(|base| base.family.as_str()),
+            issues,
+        )?;
         module.flavour = entry.flavour.clone();
         let src = &module.src.clone();
         module.resolved =
@@ -440,6 +526,7 @@ impl Module {
         dir_rel: &str,
         root: &Path,
         text: String,
+        family: Option<&str>,
         issues: &mut Issues,
     ) -> Option<Self> {
         let dir = layout::module(root, dir_rel);
@@ -500,7 +587,60 @@ impl Module {
         check_doc(&doc, &MODULE, src, issues);
 
         let mut fragment_seen = false;
+        let mut gated: Vec<(String, Span)> = Vec::new();
         for node in doc.nodes() {
+            if node.name().value() != "family" {
+                module.take(node, &[], &dir, src, issues, &mut fragment_seen);
+                continue;
+            }
+            let gate = gate_families(node, src, issues);
+            gated.extend(
+                gate.iter()
+                    .map(|name| (name.clone(), node.name().span().into())),
+            );
+            let keep = family.is_none_or(|want| gate.iter().any(|name| name == want));
+            let mark = module.gated();
+            for child in kids(node) {
+                module.take(child, &gate, &dir, src, issues, &mut fragment_seen);
+            }
+            if !keep {
+                module.ungate(mark);
+            }
+        }
+
+        let supports = module.supports.clone();
+        spread(
+            &mut module.packages,
+            &supports,
+            "packages",
+            false,
+            src,
+            issues,
+        );
+        spread(
+            &mut module.groups,
+            &supports,
+            "package-groups",
+            true,
+            src,
+            issues,
+        );
+
+        return Self::rest(module, path, root, &dir, &gated, src, issues);
+    }
+
+    fn take(
+        &mut self,
+        node: &KdlNode,
+        gate: &[String],
+        dir: &Path,
+        src: &Source,
+        issues: &mut Issues,
+        fragment_seen: &mut bool,
+    ) {
+        let module = self;
+        let path = module.path.clone();
+        {
             match node.name().value() {
                 "description" => {
                     if module.description.is_empty() {
@@ -514,7 +654,7 @@ impl Module {
                 kind @ ("provides-file" | "requires-file" | "overrides") => {
                     module.parse_paths(kind, node, src, issues)
                 }
-                "mode" => module.parse_mode(node, &dir, src, issues),
+                "mode" => module.parse_mode(node, dir, src, issues),
                 kind @ ("secret" | "arg") => {
                     for name in string_args(node) {
                         let decl = Decl {
@@ -528,15 +668,15 @@ impl Module {
                         }
                     }
                 }
-                "helpers" => module.parse_helpers(node, &dir, src, issues),
+                "helpers" => module.parse_helpers(node, dir, src, issues),
                 "allow-verify" => module.parse_allow_verify(node, src, issues),
                 "collects" => module.parse_collects(node, src, issues),
-                "contributes" => module.parse_contributes(node, &dir, src, issues),
+                "contributes" => module.parse_contributes(node, dir, src, issues),
                 "fragment" => {
-                    if fragment_seen {
-                        continue;
+                    if *fragment_seen {
+                        return;
                     }
-                    fragment_seen = true;
+                    *fragment_seen = true;
                     if module.fragment.is_none() {
                         issues.push(
                             Issue::new(
@@ -577,14 +717,40 @@ impl Module {
                         }
                     }
                 }
-                "packages" => module.parse_packages(node, src, issues),
-                "package-groups" => module.parse_package_groups(node, src, issues),
+                "packages" => module.parse_packages(node, gate, src, issues),
+                "package-groups" => module.parse_package_groups(node, gate, src, issues),
                 "copr" => module.parse_copr(node, src, issues),
                 "satisfies" => module.parse_satisfies(node, src, issues),
                 _ => {}
             }
         }
+    }
 
+    fn gated(&self) -> Gated {
+        Gated {
+            coprs: self.coprs.len(),
+            requires: self.requires.len(),
+            after: self.after.len(),
+            satisfies: self.satisfies.len(),
+        }
+    }
+
+    fn ungate(&mut self, mark: Gated) {
+        self.coprs.truncate(mark.coprs);
+        self.requires.truncate(mark.requires);
+        self.after.truncate(mark.after);
+        self.satisfies.truncate(mark.satisfies);
+    }
+
+    fn rest(
+        mut module: Module,
+        path: &str,
+        root: &Path,
+        dir: &Path,
+        gated: &[(String, Span)],
+        src: &Source,
+        issues: &mut Issues,
+    ) -> Option<Self> {
         let derived: Vec<Decl> = module
             .keys
             .iter()
@@ -681,6 +847,40 @@ impl Module {
             }
         }
 
+        for family in FAMILIES {
+            if layout::family_dir(dir, family).is_some()
+                && !module.supports.iter().any(|claimed| claimed == family)
+            {
+                issues.push(
+                    Issue::new(
+                        format!("`{path}` ships a `{family}/` directory and does not support `{family}`"),
+                        src,
+                    )
+                    .help(format!(
+                        "nothing would ever read it, since the directory is taken on `{family}` \
+                         and no image on it may enable this module: add `{family}` to `supports`, \
+                         or drop the directory"
+                    )),
+                );
+            }
+        }
+        for (family, span) in gated {
+            if module.supports.iter().any(|claimed| claimed == family) {
+                continue;
+            }
+            issues.push(
+                Issue::new(
+                    format!("`{path}` gates on `{family}` and does not support it"),
+                    src,
+                )
+                .at(*span, "no image reaches this block")
+                .help(format!(
+                    "a gate narrows what a module already builds on: add `{family}` to \
+                         `supports`, or drop the block"
+                )),
+            );
+        }
+
         if module.supports.is_empty() {
             issues.push(
                 Issue::new(format!("`{}` declares no `supports`", path), src)
@@ -688,7 +888,7 @@ impl Module {
             );
         }
 
-        crate::provenance::check_fetch(&module, &dir, issues);
+        crate::provenance::check_fetch(&module, dir, issues);
 
         Some(module)
     }
@@ -1007,9 +1207,15 @@ impl Module {
         }
     }
 
-    fn parse_packages(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
+    fn parse_packages(
+        &mut self,
+        node: &KdlNode,
+        gate: &[String],
+        src: &Source,
+        issues: &mut Issues,
+    ) {
         self.packages
-            .extend(family_names(node, src, issues, "package", "7zip", false));
+            .extend(batch(node, gate, src, issues, "package", "htop"));
     }
 
     fn parse_copr(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
@@ -1031,14 +1237,20 @@ impl Module {
         });
     }
 
-    fn parse_package_groups(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
-        self.groups.extend(family_names(
+    fn parse_package_groups(
+        &mut self,
+        node: &KdlNode,
+        gate: &[String],
+        src: &Source,
+        issues: &mut Issues,
+    ) {
+        self.groups.extend(batch(
             node,
+            gate,
             src,
             issues,
             "package group",
             "kde-desktop",
-            true,
         ));
     }
 
@@ -1196,7 +1408,7 @@ pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues
         }
         let file = layout::manifest(root, dir);
         if let Ok(text) = std::fs::read_to_string(&file) {
-            Module::parse(dir, dir, root, text, issues);
+            Module::parse(dir, dir, root, text, None, issues);
         }
     }
 }
@@ -1234,12 +1446,8 @@ collects "justfile.inc" into="/etc/one" priority=90000 mode="append"
 contributes "justfile.inc" priority=100 mode="append"
 fragment "here" position="sideways" standard-layer="no" placement="last"
 fragment
-packages {
-    fedora "one" enablerepo="two" weak=#true
-}
-package-groups {
-    fedora "one" weak=#true
-}
+packages "one" enablerepo="two" weak=#true
+package-groups "one" weak=#true
 drives "a truck"
 satisfies {
     "" "1.1.1.1"
@@ -1248,6 +1456,9 @@ satisfies {
     cis-fedora "2"
 }
 satisfies
+family
+family "fedora" { }
+family "fedora" { supports "debian"; packages }
 "#,
         );
         assert_eq!(
@@ -1271,12 +1482,17 @@ satisfies
                 "`standard-layer` must be #true or #false",
                 "unknown fragment property `placement`",
                 "`fragment` is declared twice",
-                "unknown property `weak` in packages block",
-                "unknown property `weak` in package-groups block",
+                "unknown `packages` property `weak`",
+                "unknown `package-groups` property `weak`",
                 "unknown node `drives`",
                 "`cis-fedora` has no rules listed",
                 "benchmark `cis-fedora` is declared twice",
                 "`satisfies` is declared twice",
+                "`family` needs at least one family name",
+                "`family` gates nothing",
+                "`family` gates nothing",
+                "`supports` is not gated by family",
+                "`packages` needs at least one name",
             ]
         );
     }
@@ -1308,6 +1524,7 @@ mode "/etc/regular.conf" "0440"
 fragment standard-layer=#false
 "#
             .to_string(),
+            None,
             &mut issues,
         );
         let found = issues.plain();
@@ -1332,12 +1549,10 @@ fragment standard-layer=#false
             r#"
 description "package groups"
 supports "fedora" "debian"
-package-groups {
-    fedora "kde-desktop"
-    debian "kde-desktop"
-}
+package-groups "kde-desktop"
 "#
             .to_string(),
+            None,
             &mut issues,
         );
         assert_eq!(
@@ -1346,7 +1561,7 @@ package-groups {
                 .lines()
                 .filter_map(|line| line.strip_prefix("  x "))
                 .collect::<Vec<_>>(),
-            ["`package-groups` is Fedora-only, not `debian`"]
+            ["`package-groups` is Fedora-only, and this one covers `debian`"]
         );
     }
 
@@ -1367,6 +1582,7 @@ copr "owner/project/extra"
 copr "owner/pro ject"
 "#
             .to_string(),
+            None,
             &mut issues,
         );
         assert_eq!(
@@ -1396,11 +1612,10 @@ copr "owner/pro ject"
 description "coprs"
 supports "fedora"
 copr "owner/project"
-packages {
-    fedora "thing" enablerepo="other/project"
-}
+packages "thing" enablerepo="other/project"
 "#
             .to_string(),
+            None,
             &mut issues,
         );
         assert_eq!(
@@ -1414,22 +1629,105 @@ packages {
     }
 
     #[test]
-    fn debian_and_ubuntu_are_known_families_and_enablerepo_stays_fedora_only() {
+    fn a_gate_is_taken_on_its_families_and_read_on_every_other() {
+        let manifest = r#"
+description "gated"
+supports "fedora" "debian" "ubuntu"
+packages "curl"
+family "fedora" {
+    after "hardened-malloc"
+    copr "secureblue/hardened_malloc"
+    satisfies { stig "CCI-000199" }
+    packages "vim-enhanced" "BAD NAME"
+}
+family "debian" "ubuntu" { packages "vim" }
+"#;
+        let read = |family: Option<&str>| {
+            let mut issues = Issues::default();
+            let module = Module::parse(
+                "gated",
+                "gated",
+                Path::new("."),
+                manifest.to_string(),
+                family,
+                &mut issues,
+            )
+            .expect("the manifest parses");
+            let packages: Vec<String> = module
+                .packages
+                .iter()
+                .map(|batch| format!("{}:{}", batch.family, batch.packages.join(" ")))
+                .collect();
+            let said: Vec<String> = issues
+                .plain()
+                .lines()
+                .filter_map(|line| line.strip_prefix("  x "))
+                .map(str::to_string)
+                .collect();
+            (
+                module.after.len(),
+                module.coprs.len(),
+                module.satisfies.len(),
+                packages,
+                said,
+            )
+        };
+
+        let (after, coprs, satisfies, packages, said) = read(Some("fedora"));
+        assert_eq!((after, coprs, satisfies), (1, 1, 1));
+        assert_eq!(
+            packages,
+            [
+                "fedora:curl",
+                "debian:curl",
+                "ubuntu:curl",
+                "fedora:vim-enhanced",
+                "debian:vim",
+                "ubuntu:vim",
+            ]
+        );
+        assert_eq!(
+            said,
+            ["package name `BAD NAME` has a character that is not allowed"]
+        );
+
+        let (after, coprs, satisfies, packages, said) = read(Some("debian"));
+        assert_eq!((after, coprs, satisfies), (0, 0, 0));
+        assert_eq!(
+            packages,
+            [
+                "fedora:curl",
+                "debian:curl",
+                "ubuntu:curl",
+                "fedora:vim-enhanced",
+                "debian:vim",
+                "ubuntu:vim",
+            ]
+        );
+        assert_eq!(
+            said,
+            ["package name `BAD NAME` has a character that is not allowed"]
+        );
+
+        let (after, coprs, satisfies, _, _) = read(None);
+        assert_eq!((after, coprs, satisfies), (1, 1, 1));
+    }
+
+    #[test]
+    fn a_gate_on_an_unsupported_family_is_refused() {
         let mut issues = Issues::default();
         Module::parse(
-            "known",
-            "known",
+            "narrow",
+            "narrow",
             Path::new("."),
             r#"
-description "known families and packages"
-supports "fedora" "debian" "ubuntu"
-packages {
-    fedora "curl" enablerepo="rpmfusion"
-    debian "curl" enablerepo="backports"
-    ubuntu "curl" enablerepo="backports"
-}
+description "narrow"
+supports "fedora"
+family "debian" { packages "vim" }
+family "redhat" { packages "vim" }
 "#
             .to_string(),
+            None,
             &mut issues,
         );
         assert_eq!(
@@ -1439,8 +1737,38 @@ packages {
                 .filter_map(|line| line.strip_prefix("  x "))
                 .collect::<Vec<_>>(),
             [
-                "`enablerepo` is Fedora-only, not `debian`",
-                "`enablerepo` is Fedora-only, not `ubuntu`",
+                "unknown base family `redhat`",
+                "`narrow` gates on `debian` and does not support it",
+            ]
+        );
+    }
+
+    #[test]
+    fn debian_and_ubuntu_are_known_families_and_enablerepo_stays_fedora_only() {
+        let mut issues = Issues::default();
+        Module::parse(
+            "known",
+            "known",
+            Path::new("."),
+            r#"
+description "known families and packages"
+supports "fedora" "debian" "ubuntu"
+packages "curl" enablerepo="rpmfusion"
+family "debian" "ubuntu" { packages "curl" enablerepo="backports" }
+"#
+            .to_string(),
+            None,
+            &mut issues,
+        );
+        assert_eq!(
+            issues
+                .plain()
+                .lines()
+                .filter_map(|line| line.strip_prefix("  x "))
+                .collect::<Vec<_>>(),
+            [
+                "`enablerepo` is Fedora-only, and this batch covers `debian`",
+                "`enablerepo` is Fedora-only, and this batch covers `debian`",
             ]
         );
     }

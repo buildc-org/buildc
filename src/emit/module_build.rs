@@ -162,8 +162,15 @@ fn script(
         }
     }
 
-    if on_disk.join("module.sh").is_file() {
-        let _ = write!(out, "\nsource {dir}/module.sh\n");
+    let mut roots = vec![(on_disk.clone(), dir.clone())];
+    if let Some(gated) = layout::family_dir(&on_disk, base_family) {
+        roots.push((gated, format!("{dir}/{base_family}")));
+    }
+
+    for (at, ctx) in &roots {
+        if at.join("module.sh").is_file() {
+            let _ = write!(out, "\nsource {ctx}/module.sh\n");
+        }
     }
 
     let policy = match has.contains(layout::SELINUX.capability) {
@@ -192,8 +199,15 @@ fn script(
         }
     }
 
-    if on_disk.join(layout::OVERLAY).is_dir() {
-        let _ = write!(out, "\ncp -rT {dir}/files /\n");
+    let overlays: Vec<&String> = roots
+        .iter()
+        .filter(|(at, _)| at.join(layout::OVERLAY).is_dir())
+        .map(|(_, ctx)| ctx)
+        .collect();
+    for ctx in &overlays {
+        let _ = write!(out, "\ncp -rT {ctx}/files /\n");
+    }
+    if !overlays.is_empty() {
         for declared in &module.modes {
             let _ = writeln!(
                 out,

@@ -46,6 +46,11 @@ impl Policy {
     }
 }
 
+pub fn family_dir(module_dir: &Path, family: &str) -> Option<PathBuf> {
+    let dir = module_dir.join(family);
+    (!family.is_empty() && dir.is_dir()).then_some(dir)
+}
+
 pub const WORKFLOW_DIR: &str = ".github/workflows";
 
 pub const REPO_FILE: &str = "repo.kdl";

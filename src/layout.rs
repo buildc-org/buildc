@@ -46,9 +46,20 @@ impl Policy {
     }
 }
 
-pub fn family_dir(module_dir: &Path, family: &str) -> Option<PathBuf> {
-    let dir = module_dir.join(family);
-    (!family.is_empty() && dir.is_dir()).then_some(dir)
+pub const FAMILY_DIRS: [(&str, &[&str]); 4] = [
+    ("deb", &["debian", "ubuntu"]),
+    ("fedora", &["fedora"]),
+    ("debian", &["debian"]),
+    ("ubuntu", &["ubuntu"]),
+];
+
+pub fn family_dirs(module_dir: &Path, family: &str) -> Vec<&'static str> {
+    FAMILY_DIRS
+        .iter()
+        .filter(|(_, taken_on)| taken_on.contains(&family))
+        .map(|(name, _)| *name)
+        .filter(|name| module_dir.join(name).is_dir())
+        .collect()
 }
 
 pub const WORKFLOW_DIR: &str = ".github/workflows";

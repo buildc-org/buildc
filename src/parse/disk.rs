@@ -42,8 +42,8 @@ impl Disk {
                     .display()
                     .to_string();
                 let mut paths = overlay_paths(&path.join(layout::OVERLAY));
-                for family in crate::parse::module::FAMILIES {
-                    paths.extend(overlay_paths(&path.join(family).join(layout::OVERLAY)));
+                for (gated, _) in layout::FAMILY_DIRS {
+                    paths.extend(overlay_paths(&path.join(gated).join(layout::OVERLAY)));
                 }
                 out.overlays.insert(name.clone(), paths);
 

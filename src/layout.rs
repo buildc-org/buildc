@@ -53,6 +53,22 @@ pub const FAMILY_DIRS: [(&str, &[&str]); 4] = [
     ("ubuntu", &["ubuntu"]),
 ];
 
+pub fn family_first(module_dir: &Path, family: &str) -> Vec<String> {
+    family_dirs(module_dir, family)
+        .into_iter()
+        .rev()
+        .map(|gated| format!("{gated}/"))
+        .chain(std::iter::once(String::new()))
+        .collect()
+}
+
+pub fn shipped(module_dir: &Path, family: &str, file: &str) -> Option<String> {
+    family_first(module_dir, family)
+        .into_iter()
+        .map(|at| format!("{at}{file}"))
+        .find(|at| module_dir.join(at).is_file())
+}
+
 pub fn family_dirs(module_dir: &Path, family: &str) -> Vec<&'static str> {
     FAMILY_DIRS
         .iter()

@@ -1,5 +1,5 @@
 use crate::layout;
-use crate::model::image::{is_name, SCHEMA_VERSION, BUILDC_VERSION};
+use crate::model::image::{is_name, SCHEMA_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -96,9 +96,7 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<Vec<PathBuf>, Str
         &root.join(layout::REPO_FILE),
         &format!(
             "schema-version {SCHEMA_VERSION}\n\
-             name \"{name}\"\n\n\
-             // renovate: datasource=github-releases depName=buildc-org/buildc\n\
-             buildc-version \"{BUILDC_VERSION}\"\n\
+             name \"{name}\"\n\
              {sources}"
         ),
     )?;

@@ -1,6 +1,5 @@
 Buildc v{version}
 
-buildc: `buildc-version` names {version} with no sha256, so the binary it fetches is whatever the release holds, unverified
 buildc: `six/a/b` is inside `six/a`, so nothing can list it: the walk stops at the first module.kdl and everything below one is that module's own content. Move it beside `a` for it to be a module
 buildc: 1 images, 0 modules, 0 flavours
 ==== exit 0

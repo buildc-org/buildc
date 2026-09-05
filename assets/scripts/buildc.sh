@@ -7,12 +7,23 @@ die() {
     exit 1
 }
 
+REPO="buildc-org/buildc"
+
 line="$(sed -n '/^[[:space:]]*buildc-version[[:space:]]/p' repo.kdl)"
 if [[ "$line" =~ ^[[:space:]]*buildc-version[[:space:]]+\"([^\"]+)\"(.*)$ ]]; then
     version="${BASH_REMATCH[1]}"
     rest="${BASH_REMATCH[2]%%//*}"
-else
+elif [ -n "$line" ]; then
     die "repo.kdl declares no readable buildc-version"
+else
+    latest="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+        "https://github.com/${REPO}/releases/latest")" \
+        || die "cannot resolve the latest release of ${REPO}"
+    [[ "$latest" =~ /tag/v([^/]+)$ ]] \
+        || die "cannot read a release out of ${latest}"
+    version="${BASH_REMATCH[1]}"
+    rest=""
+    echo "buildc: repo.kdl pins no release, using the latest, ${version}" >&2
 fi
 
 sha256=""
@@ -30,7 +41,7 @@ bin="${BUILDC_BIN:-out/buildc-${version}${sha256:+-${sha256}}}"
 
 if [ ! -x "$bin" ]; then
     asset="buildc-v${version}-x86_64-linux-musl.tar.gz"
-    url="https://github.com/buildc-org/buildc/releases/download/v${version}/${asset}"
+    url="https://github.com/${REPO}/releases/download/v${version}/${asset}"
 
     mkdir -p out
     tmp="$(mktemp -d -p out download.XXXXXXXX)"

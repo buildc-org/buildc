@@ -219,8 +219,14 @@ fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
 fn installed(dir: &str, family: &str) -> Result<PathBuf, String> {
     let file = match family {
         "fedora" => "ssg-fedora-ds.xml",
-        "debian" => "ssg-debian12-ds.xml",
-        "ubuntu" => "ssg-ubuntu2404-ds.xml",
+        "debian" | "ubuntu" => {
+            return Err(format!(
+                "SSG publishes no content a `{family}` image can be measured against\n\nhelp: \
+                 every SSG benchmark names the one release it applies to, and there is no Debian \
+                 14 benchmark and no usable Ubuntu 26.04 one; drop `conforms` from this image, or \
+                 name content of your own with `--datastream <file>`"
+            ))
+        }
         _ => return Err(format!("no SSG content is known for the `{family}` family")),
     };
     Ok(Path::new(dir).join(file))
@@ -939,6 +945,23 @@ mod tests {
         assert!(content_at("/nowhere", "arch", None)
             .unwrap_err()
             .contains("no SSG content is known"));
+    }
+
+    #[test]
+    fn a_deb_family_is_refused_rather_than_given_content_that_measures_nothing() {
+        for family in ["debian", "ubuntu"] {
+            let err = content_at("/nowhere", family, None).unwrap_err();
+            assert!(
+                err.contains(&format!("no content a `{family}` image")),
+                "{err}"
+            );
+            assert!(err.contains("drop `conforms`"), "{err}");
+        }
+        let given = fixture("tests/scap/datastream.xml");
+        assert_eq!(
+            content_at("/nowhere", "debian", Some(&given)).unwrap(),
+            given
+        );
     }
 
     #[test]

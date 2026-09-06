@@ -102,20 +102,20 @@ fn script(
     }
 
     let on_disk = layout::module(root, entry.dir());
-    if on_disk.join("repo").is_file() {
-        match repo_id(&on_disk.join("repo")) {
+    if let Some(at) = layout::shipped(&on_disk, base_family, "repo") {
+        match repo_id(&on_disk.join(&at)).filter(|_| base_family == "fedora") {
             Some(id) => {
                 let _ = write!(
                     out,
                     "\nif [ -f /etc/yum.repos.d/{id}.repo ]; then\n\
                      \x20   echo \"repo {id} is already configured\"\n\
                      else\n\
-                     \x20   source {dir}/repo\n\
+                     \x20   source {dir}/{at}\n\
                      fi\n"
                 );
             }
             None => {
-                let _ = write!(out, "\nsource {dir}/repo\n");
+                let _ = write!(out, "\nsource {dir}/{at}\n");
             }
         }
     }

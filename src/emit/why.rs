@@ -202,9 +202,14 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
 }
 
 fn repo_urls(root: &std::path::Path, dir: &str) -> Vec<String> {
-    let Ok(text) = std::fs::read_to_string(layout::module(root, dir).join("repo")) else {
-        return Vec::new();
-    };
+    let at = layout::module(root, dir);
+    let text: String = layout::FAMILY_DIRS
+        .iter()
+        .map(|(gated, _)| at.join(gated).join("repo"))
+        .chain(std::iter::once(at.join("repo")))
+        .filter_map(|file| std::fs::read_to_string(file).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut out: Vec<String> = Vec::new();
     for word in text.split(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
         // A URL is as likely to be the value of a flag as a word of its own.

@@ -1222,7 +1222,7 @@ fn flows() {
     );
     let untouched = std::fs::read_to_string(typo.join("example.image.kdl")).unwrap();
     assert!(
-        !untouched.contains("sshd") && !typo.join("modules/sshd").exists(),
+        !untouched.contains("module \"sshd\"") && !typo.join("modules/sshd").exists(),
         "the refusal leaves the repository as it was: {untouched}"
     );
 

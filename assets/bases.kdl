@@ -2,6 +2,8 @@ base "quay.io/fedora/fedora-bootc:44" {
     about "Fedora 44, nothing above the base system"
     family "fedora"
     provides "rechunking" "initramfs-generation" "selinux-policy"
+    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
+        "/usr/bin/podman" "/usr/bin/crun"
 }
 
 base "ghcr.io/ublue-os/bazzite:stable" {

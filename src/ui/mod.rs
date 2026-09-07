@@ -123,6 +123,14 @@ pub fn select_current(
     })
 }
 
+pub fn offer(question: &str, action: &str, keys: &str) -> Result<bool, String> {
+    let options = [Choice::new(action, "")];
+    let chosen = inline(height(options.len()), |terminal| {
+        pick(terminal, question, &options, keys, 0)
+    })?;
+    Ok(chosen == Some(0))
+}
+
 pub fn confirm(question: &str, yes: &str, no: &str) -> Result<bool, String> {
     confirm_current(question, yes, no, true)
 }
@@ -606,6 +614,7 @@ pub struct Progress {
     terminal: DefaultTerminal,
     pct: u16,
     flight: u16,
+    within: u32,
     step: String,
     notes: Vec<String>,
     foot: String,
@@ -619,6 +628,7 @@ impl Progress {
             terminal,
             pct: 0,
             flight: 0,
+            within: 0,
             step: String::new(),
             notes: Vec::new(),
             foot: foot.to_string(),
@@ -628,12 +638,18 @@ impl Progress {
     pub fn step(&mut self, pct: u16, flight: u16, name: &str) -> Result<(), String> {
         self.pct = pct.min(100);
         self.flight = flight.min(100);
+        self.within = 0;
         self.step = name.to_string();
         self.notes.clear();
         self.show()
     }
 
+    fn at(&self) -> u16 {
+        crept(self.pct, self.flight, self.within)
+    }
+
     pub fn note(&mut self, text: &str) -> Result<(), String> {
+        self.within += 1;
         if self.notes.len() == NOTED {
             self.notes.remove(0);
         }
@@ -642,15 +658,14 @@ impl Progress {
     }
 
     fn show(&mut self) -> Result<(), String> {
-        let (pct, flight, step, notes, foot) = (
-            self.pct,
-            self.flight,
+        let (pct, step, notes, foot) = (
+            self.at(),
             self.step.as_str(),
             self.notes.as_slice(),
             self.foot.as_str(),
         );
         render(&mut self.terminal, ROWS, foot, |frame, area| {
-            working(frame, area, pct, flight, step, notes, foot)
+            working(frame, area, pct, step, notes, foot)
         })
     }
 
@@ -659,15 +674,7 @@ impl Progress {
     }
 }
 
-fn working(
-    frame: &mut Frame,
-    area: Rect,
-    pct: u16,
-    flight: u16,
-    step: &str,
-    notes: &[String],
-    foot: &str,
-) {
+fn working(frame: &mut Frame, area: Rect, pct: u16, step: &str, notes: &[String], foot: &str) {
     let [meter, name, body, tail] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -675,7 +682,7 @@ fn working(
         Constraint::Length(1),
     ])
     .areas(area);
-    frame.render_widget(bar(pct, flight, meter.width), meter);
+    frame.render_widget(bar(pct, meter.width), meter);
     frame.render_widget(Line::from(step.bold().cyan()), name);
     let pane = Block::new()
         .borders(Borders::TOP)
@@ -690,22 +697,28 @@ fn working(
 const COLD: (u8, u8, u8) = (0x5a, 0x56, 0xe0);
 const HOT: (u8, u8, u8) = (0xee, 0x6f, 0xf8);
 
-fn bar<'a>(pct: u16, flight: u16, width: u16) -> Line<'a> {
+fn crept(pct: u16, flight: u16, within: u32) -> u16 {
+    let left = HELD.powi(within.min(400) as i32);
+    pct + (f64::from(flight) * (1.0 - left)) as u16
+}
+
+const HELD: f64 = 0.97;
+
+fn bar<'a>(pct: u16, width: u16) -> Line<'a> {
     let label = format!(" {pct:>3}%");
     let room = usize::from(width).saturating_sub(label.chars().count());
-    let cell = |share: u16| room * usize::from(share.min(100)) / 100;
-    let done = cell(pct);
-    let running = cell(pct.saturating_add(flight));
+    let done = room * usize::from(pct.min(100)) / 100;
     let mut spans: Vec<Span> = (0..room)
-        .map(|at| match (at < done, at < running) {
-            (true, _) => Span::styled("\u{2588}", Style::new().fg(blend(at, room))),
-            (false, true) => Span::styled("\u{2592}", Style::new().fg(blend(at, room)).dim()),
-            _ => Span::styled("\u{2591}", Style::new().dim()),
+        .map(|at| match at < done {
+            true => Span::styled("\u{2588}", Style::new().fg(blend(at, room))),
+            false => Span::styled("\u{2588}", Style::new().fg(TRACK)),
         })
         .collect();
     spans.push(Span::styled(label, Style::new().bold()));
     Line::from(spans)
 }
+
+const TRACK: Color = Color::DarkGray;
 
 fn blend(at: usize, room: usize) -> Color {
     let step = |cold: u8, hot: u8| {
@@ -819,7 +832,7 @@ fn chrome(frame: &mut Frame, title: Option<&str>, rows: u16, keys: &str) -> Rect
         .title_bottom(
             Line::from(vec![
                 Span::styled("\u{2500} ", Style::new().fg(ACCENT)),
-                Span::styled(keys.to_string(), Style::new().fg(Color::DarkGray)),
+                Span::styled(keys.to_string(), Style::new().fg(TRACK)),
                 Span::raw(" "),
             ])
             .left_aligned(),
@@ -1368,10 +1381,10 @@ mod tests {
                 let area = chrome(
                     frame,
                     Some("Buildc installer"),
-                    shown.len() as u16 + 1,
+                    shown.len() as u16,
                     crate::copy::INSTALL_KEYS,
                 );
-                sheet_of(frame, area, &shown, crate::copy::INSTALL_KEYS)
+                sheet_of(frame, area, &shown, "")
             })
             .unwrap();
         let drawn = terminal.backend().to_string();
@@ -1386,6 +1399,30 @@ mod tests {
         assert!(drawn.contains(crate::copy::INSTALL), "{drawn}");
         assert!(drawn.contains(crate::copy::SHUT_DOWN), "{drawn}");
         assert!(drawn.contains("still needs a disk, a password"), "{drawn}");
+        assert_eq!(
+            drawn.matches(crate::copy::INSTALL_KEYS).count(),
+            1,
+            "{drawn}"
+        );
+        let last = rows
+            .iter()
+            .rposition(|row| row.contains('\u{2570}'))
+            .unwrap();
+        assert!(rows[last].contains(crate::copy::INSTALL_KEYS), "{drawn}");
+    }
+
+    #[test]
+    fn the_bar_climbs_through_a_step_and_stops_short_of_the_next() {
+        let seen: Vec<u16> = (0..400).map(|within| crept(2, 87, within)).collect();
+        assert_eq!(seen[0], 2);
+        assert!(
+            seen.windows(2).all(|pair| pair[1] >= pair[0]),
+            "{:?}",
+            &seen[..40]
+        );
+        assert!(seen[10] > 10, "{}", seen[10]);
+        assert!(seen[50] > 45, "{}", seen[50]);
+        assert!(seen.iter().all(|at| *at < 89), "{}", seen[399]);
     }
 
     #[test]
@@ -1398,7 +1435,6 @@ mod tests {
                     frame,
                     frame.area(),
                     50,
-                    20,
                     "7/12 install OS",
                     &notes,
                     "log: /run/bootc-anywhere.log",

@@ -172,8 +172,9 @@ pub const LEAVING: &str = "Leave the installer?";
 pub const LEAVE_BACK: &str = "Keep going";
 pub const LEAVE_OVER: &str = "Start the form again";
 pub const LEAVE_SHELL: &str = "Leave to a shell";
-pub const INSTALL_DONE: &str = "The installation finished.";
+pub const INSTALL_DONE: &str = "Installation Complete!";
 pub const RESTART: &str = "Restart now";
+pub const DONE_KEYS: &str = "enter to restart, esc for a shell";
 pub const KEY_NOT_LOGGED: &str = "It is not in the install log.";
 
 #[cfg(test)]

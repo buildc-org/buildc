@@ -20,6 +20,8 @@ pub struct Payload {
     pub recipe: PathBuf,
     pub image: String,
     pub hostname: String,
+    pub filesystem: String,
+    pub bootloader: String,
 }
 
 #[derive(Debug)]
@@ -40,9 +42,12 @@ pub fn classify(root: &Path) -> Result<Found, String> {
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| format!("{}: no `{key}`", recipe.display()))
         };
+        let told = |key: &str| json::text(&doc, key).unwrap_or_default();
         return Ok(Found::Image(Payload {
             image: field("image")?,
             hostname: field("hostname")?,
+            filesystem: told("filesystem"),
+            bootloader: told("bootloader"),
             recipe,
         }));
     }
@@ -203,7 +208,7 @@ impl Answers {
         if !prompt.draws() {
             return Ok(Some(seeded));
         }
-        let mut fields = seeded.fields();
+        let mut fields = seeded.fields(&payload.filesystem, &payload.bootloader);
         loop {
             let actions = [copy::INSTALL, copy::SHUT_DOWN];
             let filled =
@@ -213,7 +218,7 @@ impl Answers {
                     let answers = Self::of(&fields);
                     if crate::ui::confirm_over(
                         &copy::erasing(&answers.disk),
-                        &answers.summary(),
+                        &answers.summary(payload),
                         copy::CONTINUE,
                         copy::GO_BACK,
                     )? {
@@ -227,14 +232,16 @@ impl Answers {
                 Ok(crate::ui::Filled::Left) => match leave(prompt)? {
                     Leave::Shell => return Ok(None),
                     Leave::Over => {
-                        fields = Self::seeded(payload, Given::default(), prompt)?.fields()
+                        fields = Self::seeded(payload, Given::default(), prompt)?
+                            .fields(&payload.filesystem, &payload.bootloader)
                     }
                     Leave::Back => {}
                 },
                 Err(err) if leaving(&err) => match leave(prompt)? {
                     Leave::Shell => return Ok(None),
                     Leave::Over => {
-                        fields = Self::seeded(payload, Given::default(), prompt)?.fields()
+                        fields = Self::seeded(payload, Given::default(), prompt)?
+                            .fields(&payload.filesystem, &payload.bootloader)
                     }
                     Leave::Back => {}
                 },
@@ -281,9 +288,9 @@ impl Answers {
         })
     }
 
-    fn fields(&self) -> Vec<crate::ui::Field> {
+    fn fields(&self, filesystem: &str, bootloader: &str) -> Vec<crate::ui::Field> {
         use crate::ui::Field;
-        let found = disks(&sys_block());
+        let found = disks(&sys_block(), &in_use_now());
         let at = found.iter().position(|(disk, _)| *disk == self.disk);
         let disk = match found.is_empty() {
             true => Field::text(copy::ROW_DISK, &self.disk),
@@ -298,6 +305,7 @@ impl Answers {
         };
         vec![
             disk,
+            Field::fixed(copy::ROW_LAYOUT, &copy::layout(filesystem, bootloader)),
             Field::text(copy::ROW_HOSTNAME, &self.hostname),
             Field::text(copy::ROW_ACCOUNT, &self.user),
             Field::secret(copy::ROW_PASSWORD, &self.password),
@@ -327,8 +335,8 @@ impl Answers {
         }
     }
 
-    fn summary(&self) -> Vec<(String, String)> {
-        vec![
+    fn summary(&self, payload: &Payload) -> Vec<(String, String)> {
+        let mut rows = vec![
             (copy::ROW_DISK.to_string(), self.disk.clone()),
             (copy::ROW_HOSTNAME.to_string(), self.hostname.clone()),
             (copy::ROW_ACCOUNT.to_string(), self.user.clone()),
@@ -340,17 +348,20 @@ impl Answers {
                 copy::ROW_ENCRYPTION.to_string(),
                 self.encryption.kind.clone(),
             ),
-        ]
+        ];
+        rows.extend(copy::written_over(&payload.bootloader, &payload.filesystem));
+        rows
     }
 }
 
 const ROW_DISK: usize = 0;
-const ROW_HOSTNAME: usize = 1;
-const ROW_ACCOUNT: usize = 2;
-const ROW_PASSWORD: usize = 3;
-const ROW_CONFIRM: usize = 4;
-const ROW_ENCRYPTION: usize = 5;
-const ROW_PASSPHRASE: usize = 6;
+const ROW_LAYOUT: usize = 1;
+const ROW_HOSTNAME: usize = 2;
+const ROW_ACCOUNT: usize = 3;
+const ROW_PASSWORD: usize = 4;
+const ROW_CONFIRM: usize = 5;
+const ROW_ENCRYPTION: usize = 6;
+const ROW_PASSPHRASE: usize = 7;
 
 fn asked(fields: &[crate::ui::Field]) -> Vec<usize> {
     let wants = Encryption::wants_passphrase(&fields[ROW_ENCRYPTION].value());
@@ -399,7 +410,30 @@ const SECTOR: u64 = 512;
 
 const VIRTUAL: [&str; 7] = ["loop", "ram", "zram", "sr", "fd", "dm-", "md"];
 
-pub fn disks(sys: &Path) -> Vec<(String, String)> {
+fn in_use_now() -> String {
+    std::fs::read_to_string("/proc/mounts").unwrap_or_default()
+}
+
+fn in_use(disk: &Path, name: &str, mounts: &str) -> bool {
+    let is_source = |dev: &str| {
+        mounts
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .any(|source| source == dev)
+    };
+    if is_source(&format!("/dev/{name}")) {
+        return true;
+    }
+    let Ok(parts) = std::fs::read_dir(disk) else {
+        return false;
+    };
+    parts.flatten().any(|part| {
+        part.path().join("partition").is_file()
+            && is_source(&format!("/dev/{}", part.file_name().to_string_lossy()))
+    })
+}
+
+pub fn disks(sys: &Path, mounts: &str) -> Vec<(String, String)> {
     let Ok(entries) = std::fs::read_dir(sys) else {
         return Vec::new();
     };
@@ -416,6 +450,9 @@ pub fn disks(sys: &Path) -> Vec<(String, String)> {
         };
         let sectors: u64 = read("size").parse().unwrap_or(0);
         if sectors == 0 {
+            continue;
+        }
+        if read("ro") == "1" || in_use(&entry.path(), &name, mounts) {
             continue;
         }
         let removable = match read("removable").as_str() {
@@ -449,7 +486,7 @@ fn ask_disk(
     if let Some(disk) = given.filter(|disk| !disk.is_empty()) {
         return Ok(disk);
     }
-    let found = disks(&sys_block());
+    let found = disks(&sys_block(), &in_use_now());
     if !prompt.asks() || found.is_empty() {
         return prompt.text(None, copy::INSTALL_DISK, "--disk", current);
     }
@@ -1053,22 +1090,44 @@ mod tests {
     #[test]
     fn only_the_disks_a_person_could_install_onto_are_offered() {
         let sys = scratch("sys");
-        let block = |name: &str, sectors: &str, model: Option<&str>, removable: &str| {
+        let block = |name: &str, sectors: &str, model: Option<&str>, removable: &str, ro: &str| {
             let at = sys.join(name);
             std::fs::create_dir_all(at.join("device")).expect("a block device");
             std::fs::write(at.join("size"), sectors).expect("a size");
             std::fs::write(at.join("removable"), removable).expect("a removable");
+            std::fs::write(at.join("ro"), ro).expect("a read-only flag");
             if let Some(model) = model {
                 std::fs::write(at.join("device/model"), model).expect("a model");
             }
         };
-        block("sda", "937703088\n", Some("Samsung SSD 980\n"), "0\n");
-        block("sdb", "60088320\n", None, "1\n");
-        block("loop0", "204800\n", None, "0\n");
-        block("sdc", "0\n", None, "1\n");
+        block(
+            "sda",
+            "937703088\n",
+            Some("Samsung SSD 980\n"),
+            "0\n",
+            "0\n",
+        );
+        block("sdb", "60088320\n", None, "1\n", "0\n");
+        block("loop0", "204800\n", None, "0\n", "0\n");
+        block("sdc", "0\n", None, "1\n", "0\n");
+        block(
+            "sdd",
+            "6291456\n",
+            Some("QEMU USB HARDDRIVE\n"),
+            "1\n",
+            "1\n",
+        );
+        block("sde", "60088320\n", Some("Cruzer Blade\n"), "1\n", "0\n");
+        let part = sys.join("sde/sde1");
+        std::fs::create_dir_all(&part).expect("a partition");
+        std::fs::write(part.join("partition"), "1\n").expect("a partition number");
+        let mounts = "\
+/dev/sde1 /run/initramfs/live iso9660 ro,relatime 0 0
+tmpfs /run tmpfs rw,nosuid,nodev 0 0
+";
 
         assert_eq!(
-            disks(&sys),
+            disks(&sys, mounts),
             vec![
                 (
                     "/dev/sda".to_string(),
@@ -1080,6 +1139,7 @@ mod tests {
                 ),
             ]
         );
+        assert!(disks(&sys, "").iter().any(|(disk, _)| disk == "/dev/sde"));
         let _ = std::fs::remove_dir_all(&sys);
     }
 
@@ -1136,7 +1196,13 @@ mod tests {
             encryption: Encryption::none(),
         };
         assert_eq!(
-            answers.summary(),
+            answers.summary(&Payload {
+                recipe: "/mnt/buildc/install-recipe.json".into(),
+                image: "ghcr.io/buildc-org/deb2:latest".to_string(),
+                hostname: "deb2".to_string(),
+                filesystem: "ext4".to_string(),
+                bootloader: "grub2".to_string(),
+            }),
             vec![
                 (copy::ROW_DISK.to_string(), "/dev/vda".to_string()),
                 (copy::ROW_HOSTNAME.to_string(), "deb2".to_string()),
@@ -1146,6 +1212,9 @@ mod tests {
                     copy::PASSWORD_SET.to_string()
                 ),
                 (copy::ROW_ENCRYPTION.to_string(), NONE.to_string()),
+                ("esp".to_string(), "2 GB  fat32".to_string()),
+                ("/boot".to_string(), "2 GB  ext4".to_string()),
+                ("root".to_string(), "the rest  ext4".to_string()),
             ]
         );
         let question = copy::erasing(&answers.disk);
@@ -1162,6 +1231,7 @@ mod tests {
         let form = |kind: &str| {
             vec![
                 Field::text(copy::ROW_DISK, "/dev/vda"),
+                Field::fixed(copy::ROW_LAYOUT, "esp + ext4 /boot + ext4 root"),
                 Field::text(copy::ROW_HOSTNAME, "deb2"),
                 Field::text(copy::ROW_ACCOUNT, "buildc"),
                 Field::secret(copy::ROW_PASSWORD, "hunter2"),
@@ -1174,7 +1244,7 @@ mod tests {
         assert!(!asked(&form("tpm2-luks")).contains(&ROW_PASSPHRASE));
         assert!(asked(&form("luks-passphrase")).contains(&ROW_PASSPHRASE));
         assert!(asked(&form("tpm2-luks-passphrase")).contains(&ROW_PASSPHRASE));
-        assert_eq!(asked(&form(NONE)).len(), 6);
+        assert_eq!(asked(&form(NONE)).len(), 7);
     }
 
     #[test]
@@ -1183,6 +1253,7 @@ mod tests {
         let form = |password: &str, confirm: &str, kind: &str, passphrase: &str| {
             vec![
                 Field::text(copy::ROW_DISK, "/dev/vda"),
+                Field::fixed(copy::ROW_LAYOUT, "esp + ext4 /boot + ext4 root"),
                 Field::text(copy::ROW_HOSTNAME, "deb2"),
                 Field::text(copy::ROW_ACCOUNT, "buildc"),
                 Field::secret(copy::ROW_PASSWORD, password),

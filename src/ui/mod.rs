@@ -163,6 +163,7 @@ pub enum Field {
         options: Vec<Choice>,
         at: Option<usize>,
     },
+    Fixed { label: String, value: String },
 }
 
 impl Field {
@@ -188,17 +189,31 @@ impl Field {
         }
     }
 
+    pub fn fixed(label: &str, value: &str) -> Self {
+        Self::Fixed {
+            label: label.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    fn answerable(&self) -> bool {
+        !matches!(self, Self::Fixed { .. })
+    }
+
     fn label(&self) -> &str {
         match self {
-            Self::Text { label, .. } | Self::Secret { label, .. } | Self::Pick { label, .. } => {
-                label
-            }
+            Self::Text { label, .. }
+            | Self::Secret { label, .. }
+            | Self::Pick { label, .. }
+            | Self::Fixed { label, .. } => label,
         }
     }
 
     pub fn value(&self) -> String {
         match self {
-            Self::Text { value, .. } | Self::Secret { value, .. } => value.clone(),
+            Self::Text { value, .. } | Self::Secret { value, .. } | Self::Fixed { value, .. } => {
+                value.clone()
+            }
             Self::Pick { options, at, .. } => at
                 .and_then(|at| options.get(at))
                 .map(|choice| choice.label.clone())
@@ -226,7 +241,7 @@ impl Field {
     fn push(&mut self, letter: char) {
         match self {
             Self::Text { value, .. } | Self::Secret { value, .. } => value.push(letter),
-            Self::Pick { .. } => {}
+            Self::Pick { .. } | Self::Fixed { .. } => {}
         }
     }
 
@@ -235,7 +250,7 @@ impl Field {
             Self::Text { value, .. } | Self::Secret { value, .. } => {
                 value.pop();
             }
-            Self::Pick { .. } => {}
+            Self::Pick { .. } | Self::Fixed { .. } => {}
         }
     }
 }
@@ -304,6 +319,8 @@ pub fn form(
                 Mode::Typing => match key {
                     KeyCode::Enter => mode = onward(fields, &visible, &mut cursor),
                     KeyCode::Esc => mode = Mode::Rows,
+                    KeyCode::Up => mode = backward(fields, &visible, &mut cursor),
+                    KeyCode::Down => mode = onward(fields, &visible, &mut cursor),
                     KeyCode::Backspace => fields[row].pop(),
                     KeyCode::Char(letter) => fields[row].push(letter),
                     _ => {}
@@ -344,16 +361,33 @@ pub fn form(
 }
 
 fn onward(fields: &[Field], visible: &[usize], cursor: &mut usize) -> Mode {
-    *cursor = (*cursor + 1).min(visible.len());
-    match visible.get(*cursor) {
-        Some(row) => opened(&fields[*row]),
-        None => Mode::Rows,
+    loop {
+        *cursor = (*cursor + 1).min(visible.len());
+        match visible.get(*cursor) {
+            Some(row) if !fields[*row].answerable() && *cursor < visible.len() => continue,
+            Some(row) => return opened(&fields[*row]),
+            None => return Mode::Rows,
+        }
+    }
+}
+
+fn backward(fields: &[Field], visible: &[usize], cursor: &mut usize) -> Mode {
+    loop {
+        let above = cursor.saturating_sub(1);
+        let stuck = above == *cursor;
+        *cursor = above;
+        match visible.get(*cursor) {
+            Some(row) if !fields[*row].answerable() && !stuck => continue,
+            Some(row) => return opened(&fields[*row]),
+            None => return Mode::Rows,
+        }
     }
 }
 
 fn opened(field: &Field) -> Mode {
     match field {
         Field::Pick { at, .. } => Mode::Open(at.unwrap_or(0)),
+        Field::Fixed { .. } => Mode::Rows,
         _ => Mode::Typing,
     }
 }
@@ -383,9 +417,10 @@ fn laid_out(
             true => format!("{}\u{2588}", field.typing()),
             false => field.shown(),
         };
-        let label = match here {
-            true => Style::new().fg(HIGHLIGHT).bold(),
-            false => Style::new(),
+        let label = match (here, field.answerable()) {
+            (true, _) => Style::new().fg(HIGHLIGHT).bold(),
+            (false, false) => Style::new().dim(),
+            (false, true) => Style::new(),
         };
         lines.push(Line::from(vec![
             Span::styled(

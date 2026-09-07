@@ -132,6 +132,23 @@ pub const SHUT_DOWN: &str = "Shut down";
 pub const CONTINUE: &str = "Continue";
 pub const GO_BACK: &str = "Go back";
 pub const ROW_CONFIRM: &str = "password (confirm)";
+pub const ROW_LAYOUT: &str = "layout";
+
+pub fn layout(filesystem: &str, bootloader: &str) -> String {
+    match bootloader {
+        "systemd" => format!("esp + {filesystem} root"),
+        _ => format!("esp + ext4 /boot + {filesystem} root"),
+    }
+}
+
+pub fn written_over(bootloader: &str, filesystem: &str) -> Vec<(String, String)> {
+    let mut rows = vec![("esp".to_string(), "2 GB  fat32".to_string())];
+    if bootloader != "systemd" {
+        rows.push(("/boot".to_string(), "2 GB  ext4".to_string()));
+    }
+    rows.push(("root".to_string(), format!("the rest  {filesystem}")));
+    rows
+}
 pub const NO_MATCH_ROW: &str = "the passwords do not match";
 pub const ROW_DISK: &str = "disk";
 pub const ROW_HOSTNAME: &str = "computer name";

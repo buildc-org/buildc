@@ -39,14 +39,16 @@ RUN set -eux; \
     else \
         dnf install -y --setopt=install_weak_deps=False \
             podman fuse-overlayfs cryptsetup skopeo openssl \
-            util-linux dosfstools e2fsprogs xfsprogs; \
+            util-linux dosfstools e2fsprogs xfsprogs kmscon; \
         dnf clean all; \
     fi; \
     for tool in podman fuse-overlayfs skopeo cryptsetup systemd-cryptenroll \
         openssl sfdisk mkfs.fat mkfs.ext4 mkfs.xfs; do \
         command -v "$tool" > /dev/null 2>&1 \
             || { echo "the live environment has no ${tool}" >&2; exit 1; }; \
-    done
+    done; \
+    command -v kmscon > /dev/null 2>&1 \
+        || echo "no kmscon here; the console falls back to the kernel VT" >&2
 
 COPY --from=tools /out/fisherman /usr/bin/fisherman
 COPY recipe.json /usr/share/buildc/install-recipe.json
@@ -91,7 +93,15 @@ ExecStart=
 ExecStart=-/sbin/agetty -o '-p -f -- \\u' --autologin root --noclear %I $TERM
 AUTOLOGIN
 
-RUN systemctl enable var-lib-buildc-store.mount
+COPY <<'KMSCON' /usr/lib/systemd/system/kmsconvt@.service.d/autologin.conf
+[Service]
+ExecStart=
+ExecStart=kmscon --vt=%I --no-switchvt --login -- /bin/login -f root
+KMSCON
+
+RUN systemctl enable var-lib-buildc-store.mount \
+    && { [ ! -f /usr/lib/systemd/system/kmsconvt@.service ] \
+        || systemctl enable kmsconvt@tty1.service; }
 
 COPY buildc /usr/bin/buildc
 RUN /usr/bin/buildc --version

@@ -1993,7 +1993,7 @@ fn install_screens() {
         "flow-install-drawn",
         &dir,
         &format!(
-            "'{}' install --from . --disk /dev/null",
+            "'{}' installer --from . --disk /dev/null",
             env!("CARGO_BIN_EXE_tect")
         ),
         "buildc: ghcr.io/buildc-org/deb2:latest, from .\r\n",

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verb {
     Upgrade,
-    Install,
+    Installer,
     CreateRepo,
     CreateImage,
     CreateFlavour,
@@ -44,7 +44,7 @@ pub enum Verb {
 
 pub const ALL: &[Verb] = &[
     Verb::Upgrade,
-    Verb::Install,
+    Verb::Installer,
     Verb::CreateRepo,
     Verb::CreateImage,
     Verb::CreateFlavour,
@@ -155,8 +155,8 @@ pub const COMMANDS: &[Spec] = &[
         takes: &[],
     },
     Spec {
-        verb: Verb::Install,
-        word: "install",
+        verb: Verb::Installer,
+        word: "installer",
         noun: "",
         arg: "",
         about: "install a built buildc image onto this machine",
@@ -580,12 +580,21 @@ fn either(rows: &[&'static Spec]) -> String {
     }
 }
 
+const UNLISTED: &[Verb] = &[Verb::Installer];
+
 pub fn listed() -> Vec<&'static Spec> {
+    let shown = |spec: &&'static Spec| !UNLISTED.contains(&spec.verb);
     let mut rows: Vec<&'static Spec> = COMMANDS
         .iter()
         .filter(|spec| spec.family == Family::Anywhere)
+        .filter(shown)
         .collect();
-    rows.extend(COMMANDS.iter().filter(|spec| spec.family == Family::Repo));
+    rows.extend(
+        COMMANDS
+            .iter()
+            .filter(|spec| spec.family == Family::Repo)
+            .filter(shown),
+    );
     rows
 }
 
@@ -800,6 +809,21 @@ mod tests {
             for here in [Context::Repo(".".into()), Context::Host, Context::Loose] {
                 assert!(usage(&here).contains(&spec.label()), "{}", spec.label());
             }
+        }
+    }
+
+    #[test]
+    fn the_installer_is_in_no_list_and_still_runs() {
+        let installer = Verb::Installer.spec();
+        assert_eq!(installer.word, "installer");
+        assert!(resolve(&["installer"]).is_ok());
+        assert!(resolve(&["install"]).is_err());
+
+        assert!(!listed().iter().any(|spec| spec.verb == Verb::Installer));
+        for here in [Context::Repo(".".into()), Context::Host, Context::Loose] {
+            let (rows, _) = choices(&listed(), &here);
+            assert!(!rows.iter().any(|spec| spec.verb == Verb::Installer));
+            assert!(!usage(&here).contains(installer.about), "{}", usage(&here));
         }
     }
 

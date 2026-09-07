@@ -69,7 +69,7 @@ pub fn root() -> Result<PathBuf, String> {
         [device] => mounted(device),
         many => Err(format!(
             "{} partitions are labelled {LABEL}, so which one to install from is not \
-             clear: {}\n\nhelp: `buildc install --from <root>` names one outright",
+             clear: {}\n\nhelp: `buildc installer --from <root>` names one outright",
             many.len(),
             many.join(", ")
         )),
@@ -440,7 +440,7 @@ impl Found {
             Self::Image(payload) => Ok(payload),
             Self::Repo(root) => Err(format!(
                 "{} is a repository and not a built image, so there is nothing here to install \
-                 yet\n\nhelp: `buildc build` in it, then `buildc install --from <the built payload>`",
+                 yet\n\nhelp: `buildc build` in it, then `buildc installer --from <the built payload>`",
                 root.display()
             )),
             Self::Nothing(root) => Err(format!(

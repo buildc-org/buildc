@@ -357,7 +357,7 @@ pub fn dispatch(
             crate::upgrade::run()?;
             Ok(ExitCode::SUCCESS)
         }
-        Verb::Install => {
+        Verb::Installer => {
             if let [word, ..] = rest {
                 return Err(Error::Invocation(format!(
                     "`{}` does not take {word}",

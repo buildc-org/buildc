@@ -604,6 +604,8 @@ fn stage(recipe: &Json) -> Result<PathBuf, String> {
 
 const BACKEND: &str = "fisherman";
 
+const TICK: std::time::Duration = std::time::Duration::from_millis(120);
+
 impl Found {
     pub fn payload(&self) -> Result<&Payload, String> {
         match self {
@@ -805,10 +807,28 @@ pub fn run(payload: &Payload, answers: &Answers, prompt: &Prompt) -> Result<(), 
     };
     let mut recovery = None;
     {
-        for line in std::io::BufReader::new(events)
-            .lines()
-            .map_while(Result::ok)
-        {
+        let (lines, arriving) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for line in std::io::BufReader::new(events)
+                .lines()
+                .map_while(Result::ok)
+            {
+                if lines.send(line).is_err() {
+                    return;
+                }
+            }
+        });
+        loop {
+            let line = match arriving.recv_timeout(TICK) {
+                Ok(line) => line,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if let Some(region) = &mut region {
+                        let _ = region.tick();
+                    }
+                    continue;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             let event = Event::of(&line);
             if let Event::Recovery(key) = &event {
                 recovery = Some(key.clone());

@@ -261,7 +261,7 @@ install_disk() {
 }
 
 build_iso() {
-    local tools=localhost/bootc-anywhere-tools:latest tbx="${staged}/tacklebox" cid
+    local tools=localhost/bootc-anywhere-tools:latest tbx="${PWD}/${staged}/tacklebox"
     local build="${PWD}/${staged}/build"
     [ -n "$live_image" ] || die "--live-image names what the media boots; \`buildc vm\` passes it"
     [ -f "${staged}/Containerfile" ] \
@@ -269,33 +269,38 @@ build_iso() {
 
     load_rootful
 
-    sudoif podman build --target tools -t "$tools" "$staged"
-    cid="$(sudoif podman create "$tools")"
-    sudoif podman cp "${cid}:/out/tacklebox" "$tbx"
-    sudoif podman rm "$cid" > /dev/null
-    sudoif chown "$(id -u):$(id -g)" "$tbx"
-
-    sudoif podman build -t "$live_image" "$staged"
-
-    unmount_offline_store "$build"
-
     rm -f "${image_file}.part"
-    if ! sudoif env HOME=/root "$tbx" build "${PWD}/${staged}/media.json" \
-        --iso "${PWD}/${image_file}.part" -b "$build"; then
-        unmount_offline_store "$build"
-        sudoif chown -R "$(id -u):$(id -g)" "$staged"
-        die "tacklebox could not assemble the media; it left its staging under ${build}"
-    fi
-    unmount_offline_store "$build"
-    sudoif chown -R "$(id -u):$(id -g)" "$staged"
-    mv -f "${image_file}.part" "$image_file"
-}
+
+    sudoif env HOME=/root \
+        TOOLS="$tools" LIVE="$live_image" STAGED="${PWD}/${staged}" TBX="$tbx" \
+        BUILD="$build" ISO="${PWD}/${image_file}.part" OWNER="$(id -u):$(id -g)" \
+        bash -s << 'ROOT' || die "the media could not be assembled; the staging is under ${build}"
+set -euo pipefail
 
 unmount_offline_store() {
-    local overlay="$1/tbox-offline-store/overlay"
-    if mountpoint -q "$overlay" 2> /dev/null; then
-        sudoif umount "$overlay"
+    if mountpoint -q "${BUILD}/tbox-offline-store/overlay" 2> /dev/null; then
+        umount "${BUILD}/tbox-offline-store/overlay"
     fi
+}
+
+finish() {
+    unmount_offline_store
+    chown -R "$OWNER" "$STAGED"
+}
+trap finish EXIT
+
+podman build --target tools -t "$TOOLS" "$STAGED"
+cid="$(podman create "$TOOLS")"
+podman cp "${cid}:/out/tacklebox" "$TBX"
+podman rm "$cid" > /dev/null
+
+podman build -t "$LIVE" "$STAGED"
+
+unmount_offline_store
+env HOME=/root "$TBX" build "${STAGED}/media.json" --iso "$ISO" -b "$BUILD"
+ROOT
+
+    mv -f "${image_file}.part" "$image_file"
 }
 
 login_credentials() {

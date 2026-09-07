@@ -1,7 +1,7 @@
 pub mod table;
 pub mod tree;
 
-use crate::copy::{EITHER, NEST, PICK, SECRET_KEYS, TOGGLE};
+use crate::copy::{EITHER, LINE_KEYS, NEST, PICK, SECRET_KEYS, TOGGLE};
 
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -193,6 +193,43 @@ pub fn secret(question: &str) -> Result<String, String> {
             }
         }
     })
+}
+
+pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<String, String> {
+    inline(3, |terminal| {
+        let mut typed = String::new();
+        loop {
+            terminal
+                .draw(|frame| written(frame, question, prefix, &typed, default))
+                .map_err(|err| err.to_string())?;
+            let Some(key) = read()? else { continue };
+            match key {
+                KeyCode::Enter => return Ok(typed),
+                KeyCode::Esc => return Ok(String::new()),
+                KeyCode::Backspace => {
+                    typed.pop();
+                }
+                KeyCode::Char(letter) => typed.push(letter),
+                _ => {}
+            }
+        }
+    })
+}
+
+fn written(frame: &mut Frame, question: &str, prefix: &str, typed: &str, default: Option<&str>) {
+    let [head, body, foot] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    frame.render_widget(Line::from(question.bold().cyan()), head);
+    let answer = match (typed.is_empty(), default) {
+        (true, Some(default)) => Span::styled(default, Style::new().dim()),
+        _ => Span::raw(typed),
+    };
+    frame.render_widget(Line::from(vec![Span::raw(prefix), answer]), body);
+    frame.render_widget(Line::from(LINE_KEYS.dim()), foot);
 }
 
 fn masked(frame: &mut Frame, question: &str, typed: usize) {
@@ -701,6 +738,30 @@ mod tests {
         assert!(drawn.contains("*******"), "{drawn}");
         assert!(!drawn.contains("hunter2"), "{drawn}");
         assert!(drawn.contains(SECRET_KEYS), "{drawn}");
+    }
+
+    fn typed_line(prefix: &str, typed: &str, default: Option<&str>) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(60, 3)).unwrap();
+        terminal
+            .draw(|frame| written(frame, "who owns it", prefix, typed, default))
+            .unwrap();
+        terminal.backend().to_string()
+    }
+
+    #[test]
+    fn a_default_is_shown_until_something_is_typed_over_it() {
+        let empty = typed_line("github.com/", "", Some("someone"));
+        assert!(empty.contains("github.com/someone"), "{empty}");
+        assert!(empty.contains(LINE_KEYS), "{empty}");
+
+        let over = typed_line("github.com/", "else", Some("someone"));
+        assert!(over.contains("github.com/else"), "{over}");
+        assert!(!over.contains("someone"), "{over}");
+
+        let bare = typed_line("", "", None);
+        assert!(bare.contains("who owns it"), "{bare}");
+        let answer = bare.lines().nth(1).unwrap().replace('"', "");
+        assert_eq!(answer.trim(), "", "{bare}");
     }
 
     #[test]

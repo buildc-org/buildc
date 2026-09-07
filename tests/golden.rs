@@ -1996,7 +1996,7 @@ fn install_screens() {
             "'{}' install --from . --disk /dev/null",
             env!("CARGO_BIN_EXE_tect")
         ),
-        "Computer Name [deb2]: ",
+        "buildc: ghcr.io/buildc-org/deb2:latest, from .\r\n",
         &[b"\r", b"buildc\r", b"hunter2\r", b"hunter2\r", b"\r", b"\x1b"],
     );
     let transcript =

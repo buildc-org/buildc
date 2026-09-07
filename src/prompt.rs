@@ -96,6 +96,9 @@ impl Prompt {
         if !self.ask {
             return missing();
         }
+        if self.draw {
+            return self.written(question, "", default, missing);
+        }
         let answer = match default {
             Some(default) => {
                 let question = format!("{} [{default}]", stem(question));
@@ -107,6 +110,22 @@ impl Prompt {
             true => missing(),
             false => Ok(answer),
         }
+    }
+
+    fn written(
+        &self,
+        question: &str,
+        prefix: &str,
+        default: Option<&str>,
+        missing: impl Fn() -> Result<String, String>,
+    ) -> Result<String, String> {
+        let typed = crate::ui::line(stem(question), prefix, default)?;
+        let answer = match typed.is_empty() {
+            true => missing()?,
+            false => typed,
+        };
+        println!("{}: {prefix}{answer}\n", stem(question));
+        Ok(answer)
     }
 
     pub fn secret(
@@ -157,6 +176,9 @@ impl Prompt {
         };
         if !self.ask {
             return missing();
+        }
+        if self.draw {
+            return self.written(question, prefix, default, missing);
         }
         let question = match default {
             Some(default) => format!("{} [{default}]", stem(question)),

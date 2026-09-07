@@ -204,6 +204,20 @@ mod tests {
     }
 
     #[test]
+    fn the_verb_the_live_environment_autostarts_is_one_that_resolves() {
+        let typed: Vec<&str> = LIVE_ENV
+            .lines()
+            .map(str::trim)
+            .find(|line| line.starts_with("buildc "))
+            .expect("the live environment types one command")
+            .split_whitespace()
+            .skip(1)
+            .collect();
+        let resolved = crate::command::resolve(&typed);
+        assert!(resolved.is_ok(), "{typed:?}: {:?}", resolved.err());
+    }
+
+    #[test]
     fn a_family_with_no_measured_answer_is_refused_rather_than_defaulted() {
         assert!(self::family("plan9").is_none());
         assert!(self::family("").is_none());

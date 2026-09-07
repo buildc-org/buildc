@@ -98,6 +98,6 @@ RUN /usr/bin/buildc --version
 
 COPY <<'START' /etc/profile.d/bootc-anywhere.sh
 if [ "$(id -u)" = 0 ] && [ -t 0 ]; then
-    buildc install
+    buildc installer
 fi
 START

@@ -93,6 +93,13 @@ ExecStart=
 ExecStart=-/sbin/agetty -o '-p -f -- \\u' --autologin root --noclear %I $TERM
 AUTOLOGIN
 
+# The installer draws its interface on the console.
+# Kernel messages at the default level overwrite the interface.
+# The console loglevel therefore admits alerts and emergencies alone.
+COPY <<'QUIET' /usr/lib/sysctl.d/50-bootc-anywhere-console.conf
+kernel.printk = 1 4 1 4
+QUIET
+
 COPY <<'KMSCON' /usr/lib/systemd/system/kmsconvt@.service.d/autologin.conf
 [Service]
 ExecStart=

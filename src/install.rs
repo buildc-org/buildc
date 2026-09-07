@@ -206,7 +206,8 @@ impl Answers {
         let mut fields = seeded.fields();
         loop {
             let actions = [copy::INSTALL, copy::SHUT_DOWN];
-            let filled = crate::ui::form(&mut fields, &actions, short_of, copy::INSTALL_KEYS);
+            let filled =
+                crate::ui::form(&mut fields, &actions, short_of, asked, copy::INSTALL_KEYS);
             match filled {
                 Ok(crate::ui::Filled::Took(0)) => {
                     let answers = Self::of(&fields);
@@ -350,6 +351,13 @@ const ROW_PASSWORD: usize = 3;
 const ROW_CONFIRM: usize = 4;
 const ROW_ENCRYPTION: usize = 5;
 const ROW_PASSPHRASE: usize = 6;
+
+fn asked(fields: &[crate::ui::Field]) -> Vec<usize> {
+    let wants = Encryption::wants_passphrase(&fields[ROW_ENCRYPTION].value());
+    (0..fields.len())
+        .filter(|row| *row != ROW_PASSPHRASE || wants)
+        .collect()
+}
 
 fn short_of(fields: &[crate::ui::Field]) -> Option<String> {
     let at = |row: usize| fields[row].value();
@@ -1123,6 +1131,27 @@ mod tests {
             "{question}"
         );
         assert!(!question.contains("hunter2"));
+    }
+
+    #[test]
+    fn the_passphrase_is_a_row_only_where_it_is_owed() {
+        use crate::ui::{Choice, Field};
+        let form = |kind: &str| {
+            vec![
+                Field::text(copy::ROW_DISK, "/dev/vda"),
+                Field::text(copy::ROW_HOSTNAME, "deb2"),
+                Field::text(copy::ROW_ACCOUNT, "buildc"),
+                Field::secret(copy::ROW_PASSWORD, "hunter2"),
+                Field::secret(copy::ROW_CONFIRM, "hunter2"),
+                Field::pick(copy::ROW_ENCRYPTION, vec![Choice::new(kind, "")], Some(0)),
+                Field::secret(copy::ROW_PASSPHRASE, ""),
+            ]
+        };
+        assert!(!asked(&form(NONE)).contains(&ROW_PASSPHRASE));
+        assert!(!asked(&form("tpm2-luks")).contains(&ROW_PASSPHRASE));
+        assert!(asked(&form("luks-passphrase")).contains(&ROW_PASSPHRASE));
+        assert!(asked(&form("tpm2-luks-passphrase")).contains(&ROW_PASSPHRASE));
+        assert_eq!(asked(&form(NONE)).len(), 6);
     }
 
     #[test]

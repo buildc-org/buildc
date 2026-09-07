@@ -2012,13 +2012,12 @@ fn install_screens() {
         &[
             b"\r",
             b"\x1b[B\r",
-            b"\x1b[B\x1b[B\r",
+            b"\r",
             b"buildc\r",
-            b"\x1b[B\r",
             b"hunter2\r",
-            b"\x1b[B\r",
             b"hunter2\r",
-            b"\x1b[B\x1b[B\x1b[B\r",
+            b"\r",
+            b"\r",
             b"\x1b[B\r",
             b"\x1b",
             b"\x1b[B\x1b[B\r",
@@ -2030,7 +2029,7 @@ fn install_screens() {
     assert!(!transcript.contains("hunter2"), "{transcript}");
     assert!(transcript.contains("Are you sure"), "{transcript}");
     assert!(transcript.contains(buildc::copy::CONTINUE), "{transcript}");
-    assert!(transcript.contains("Cruzer"), "{transcript}");
+    assert!(transcript.contains("/dev/sdb"), "{transcript}");
     assert!(transcript.contains("/dev/vda"), "{transcript}");
 }
 

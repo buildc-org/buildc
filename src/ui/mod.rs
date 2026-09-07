@@ -6,12 +6,13 @@ use crate::copy::{EITHER, LINE_KEYS, NEST, PICK, SECRET_KEYS, TOGGLE};
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::crossterm::terminal;
-use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Style, Stylize};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Padding, Paragraph};
 use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
 use std::io::IsTerminal;
+use std::sync::OnceLock;
 
 const NARROWEST: usize = 80;
 
@@ -146,20 +147,320 @@ pub fn multi(question: &str, options: &[Choice], on: &[usize]) -> Result<Answer,
     })
 }
 
+pub enum Field {
+    Text { label: String, value: String },
+    Secret { label: String, value: String },
+    Pick {
+        label: String,
+        options: Vec<Choice>,
+        at: Option<usize>,
+    },
+}
+
+impl Field {
+    pub fn text(label: &str, value: &str) -> Self {
+        Self::Text {
+            label: label.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    pub fn secret(label: &str, value: &str) -> Self {
+        Self::Secret {
+            label: label.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    pub fn pick(label: &str, options: Vec<Choice>, at: Option<usize>) -> Self {
+        Self::Pick {
+            label: label.to_string(),
+            options,
+            at,
+        }
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            Self::Text { label, .. } | Self::Secret { label, .. } | Self::Pick { label, .. } => {
+                label
+            }
+        }
+    }
+
+    pub fn value(&self) -> String {
+        match self {
+            Self::Text { value, .. } | Self::Secret { value, .. } => value.clone(),
+            Self::Pick { options, at, .. } => at
+                .and_then(|at| options.get(at))
+                .map(|choice| choice.label.clone())
+                .unwrap_or_default(),
+        }
+    }
+
+    fn shown(&self) -> String {
+        match self {
+            Self::Secret { value, .. } if !value.is_empty() => "*".repeat(value.chars().count()),
+            _ => match self.value() {
+                answer if answer.is_empty() => crate::copy::NOT_SET.to_string(),
+                answer => answer,
+            },
+        }
+    }
+
+    fn typing(&self) -> String {
+        match self {
+            Self::Secret { value, .. } => "*".repeat(value.chars().count()),
+            _ => self.value(),
+        }
+    }
+
+    fn push(&mut self, letter: char) {
+        match self {
+            Self::Text { value, .. } | Self::Secret { value, .. } => value.push(letter),
+            Self::Pick { .. } => {}
+        }
+    }
+
+    fn pop(&mut self) {
+        match self {
+            Self::Text { value, .. } | Self::Secret { value, .. } => {
+                value.pop();
+            }
+            Self::Pick { .. } => {}
+        }
+    }
+}
+
+pub enum Filled {
+    Took(usize),
+    Left,
+}
+
+enum Mode {
+    Rows,
+    Typing,
+    Open(usize),
+}
+
+pub fn form(
+    fields: &mut [Field],
+    actions: &[&str],
+    blocked: impl Fn(&[Field]) -> Option<String>,
+    keys: &str,
+) -> Result<Filled, String> {
+    let rows = fields.len() + 3;
+    inline(rows as u16, |terminal| {
+        let mut cursor = 0usize;
+        let mut button = 0usize;
+        let mut mode = Mode::Rows;
+        loop {
+            let blocked = blocked(fields);
+            let open = match mode {
+                Mode::Open(at) => Some(at),
+                _ => None,
+            };
+            let typing = matches!(mode, Mode::Typing);
+            let shown = laid_out(
+                fields,
+                cursor,
+                button,
+                open,
+                typing,
+                actions,
+                blocked.as_deref(),
+            );
+            render(terminal, shown.len() as u16 + 1, |frame, area| {
+                sheet_of(frame, area, &shown, keys)
+            })?;
+            let Some(key) = read()? else { continue };
+            match &mut mode {
+                Mode::Typing => match key {
+                    KeyCode::Enter | KeyCode::Esc => mode = Mode::Rows,
+                    KeyCode::Backspace => fields[cursor].pop(),
+                    KeyCode::Char(letter) => fields[cursor].push(letter),
+                    _ => {}
+                },
+                Mode::Open(at) => {
+                    let Field::Pick { options, .. } = &fields[cursor] else {
+                        mode = Mode::Rows;
+                        continue;
+                    };
+                    match key {
+                        KeyCode::Enter => {
+                            let taken = *at;
+                            if available(options, taken) {
+                                if let Field::Pick { at: held, .. } = &mut fields[cursor] {
+                                    *held = Some(taken);
+                                }
+                                mode = Mode::Rows;
+                            }
+                        }
+                        KeyCode::Esc | KeyCode::Char('q') => mode = Mode::Rows,
+                        KeyCode::Up | KeyCode::Char('k') => *at = at.saturating_sub(1),
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            *at = (*at + 1).min(options.len().saturating_sub(1))
+                        }
+                        _ => {}
+                    }
+                }
+                Mode::Rows => match key {
+                    KeyCode::Esc | KeyCode::Char('q') => return Ok(Filled::Left),
+                    KeyCode::Up | KeyCode::Char('k') => cursor = cursor.saturating_sub(1),
+                    KeyCode::Down | KeyCode::Char('j') => cursor = (cursor + 1).min(fields.len()),
+                    KeyCode::Left => button = button.saturating_sub(1),
+                    KeyCode::Right => button = (button + 1).min(actions.len() - 1),
+                    KeyCode::Enter if cursor == fields.len() => {
+                        if button > 0 || blocked.is_none() {
+                            return Ok(Filled::Took(button));
+                        }
+                    }
+                    KeyCode::Enter => match &fields[cursor] {
+                        Field::Pick { at, .. } => mode = Mode::Open(at.unwrap_or(0)),
+                        _ => mode = Mode::Typing,
+                    },
+                    _ => {}
+                },
+            }
+        }
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn laid_out(
+    fields: &[Field],
+    cursor: usize,
+    button: usize,
+    open: Option<usize>,
+    typing: bool,
+    actions: &[&str],
+    blocked: Option<&str>,
+) -> Vec<Line<'static>> {
+    let width = fields
+        .iter()
+        .map(|field| field.label().chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for (at, field) in fields.iter().enumerate() {
+        let here = at == cursor;
+        let unanswered = field.value().is_empty();
+        let value = match here && typing {
+            true => format!("{}\u{2588}", field.typing()),
+            false => field.shown(),
+        };
+        lines.push(Line::from(vec![
+            Span::raw(match here {
+                true => "> ",
+                false => "  ",
+            }),
+            Span::raw(format!("{:<width$}  ", field.label())),
+            match unanswered && !typing {
+                true => Span::styled(value, Style::new().dim()),
+                false => Span::raw(value),
+            },
+        ]));
+        let (Some(open), Field::Pick { options, .. }) = (open.filter(|_| here), field) else {
+            continue;
+        };
+        for (n, choice) in options.iter().enumerate() {
+            let row = match choice.available {
+                true => Style::new(),
+                false => Style::new().dim(),
+            };
+            lines.push(Line::from(vec![
+                Span::raw(match n == open {
+                    true => "    > ",
+                    false => "      ",
+                }),
+                Span::styled(choice.label.clone(), row),
+                Span::raw("  "),
+                Span::styled(choice.detail.clone(), Style::new().dim()),
+            ]));
+        }
+    }
+
+    lines.push(Line::default());
+    let on_actions = cursor == fields.len();
+    let mut buttons: Vec<Span<'static>> = vec![Span::raw("  ")];
+    for (n, action) in actions.iter().enumerate() {
+        let style = match (n == 0 && blocked.is_some(), on_actions && n == button) {
+            (true, true) => Style::new().dim().reversed(),
+            (true, false) => Style::new().dim(),
+            (false, true) => Style::new().bold().reversed(),
+            (false, false) => Style::new(),
+        };
+        buttons.push(Span::styled(format!("  {action}  "), style));
+        buttons.push(Span::raw(" "));
+    }
+    lines.push(Line::from(buttons));
+    if let Some(why) = blocked {
+        lines.push(Line::from(Span::styled(
+            format!("  {why}"),
+            Style::new().dim(),
+        )));
+    }
+    lines
+}
+
+fn sheet_of(frame: &mut Frame, area: Rect, lines: &[Line<'static>], keys: &str) {
+    let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(area);
+    frame.render_widget(Paragraph::new(lines.to_vec()), body);
+    frame.render_widget(Line::from(keys.dim()), foot);
+}
+
 pub fn review(
     question: &str,
     rows: &[(String, String)],
     action: &str,
     keys: &str,
+    blocked: Option<&str>,
+    at: usize,
 ) -> Result<Option<usize>, String> {
-    let options = sheet(rows, action);
+    let options = sheet(rows, action, blocked);
     let chosen = inline((options.len() + 2) as u16, |terminal| {
-        pick(terminal, question, &options, keys, 0)
+        pick(
+            terminal,
+            question,
+            &options,
+            keys,
+            at.min(options.len() - 1),
+        )
     })?;
     Ok(chosen.map(|at| at.min(rows.len())))
 }
 
-fn sheet(rows: &[(String, String)], action: &str) -> Vec<Choice> {
+pub fn confirm_over(
+    question: &str,
+    rows: &[(String, String)],
+    yes: &str,
+    no: &str,
+) -> Result<bool, String> {
+    let options = summary_sheet(rows, yes, no);
+    let at = options.len() - 2;
+    let chosen = inline((options.len() + 2) as u16, |terminal| {
+        pick(terminal, question, &options, EITHER, at)
+    })?;
+    Ok(chosen == Some(at))
+}
+
+fn summary_sheet(rows: &[(String, String)], yes: &str, no: &str) -> Vec<Choice> {
+    let width = rows
+        .iter()
+        .map(|(label, _)| label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut options: Vec<Choice> = rows
+        .iter()
+        .map(|(label, value)| Choice::new(format!("{label:<width$}"), value).unavailable())
+        .collect();
+    options.push(Choice::new("", ""));
+    options.push(Choice::new(yes, ""));
+    options.push(Choice::new(no, ""));
+    options
+}
+
+fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<Choice> {
     let width = rows
         .iter()
         .map(|(label, _)| label.chars().count())
@@ -170,7 +471,10 @@ fn sheet(rows: &[(String, String)], action: &str) -> Vec<Choice> {
         .map(|(label, value)| Choice::new(format!("{label:<width$}"), value))
         .collect();
     options.push(Choice::new("", ""));
-    options.push(Choice::new(action, ""));
+    options.push(match blocked {
+        None => Choice::new(action, ""),
+        Some(why) => Choice::new(action, why).unavailable(),
+    });
     options
 }
 
@@ -178,9 +482,9 @@ pub fn secret(question: &str) -> Result<String, String> {
     inline(3, |terminal| {
         let mut typed = String::new();
         loop {
-            terminal
-                .draw(|frame| masked(frame, question, typed.chars().count()))
-                .map_err(|err| err.to_string())?;
+            render(terminal, 3, |frame, area| {
+                masked(frame, area, question, typed.chars().count())
+            })?;
             let Some(key) = read()? else { continue };
             match key {
                 KeyCode::Enter => return Ok(typed),
@@ -199,9 +503,9 @@ pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Strin
     inline(3, |terminal| {
         let mut typed = String::new();
         loop {
-            terminal
-                .draw(|frame| written(frame, question, prefix, &typed, default))
-                .map_err(|err| err.to_string())?;
+            render(terminal, 3, |frame, area| {
+                written(frame, area, question, prefix, &typed, default)
+            })?;
             let Some(key) = read()? else { continue };
             match key {
                 KeyCode::Enter => return Ok(typed),
@@ -216,13 +520,20 @@ pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Strin
     })
 }
 
-fn written(frame: &mut Frame, question: &str, prefix: &str, typed: &str, default: Option<&str>) {
+fn written(
+    frame: &mut Frame,
+    area: Rect,
+    question: &str,
+    prefix: &str,
+    typed: &str,
+    default: Option<&str>,
+) {
     let [head, body, foot] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
     ])
-    .areas(frame.area());
+    .areas(area);
     frame.render_widget(Line::from(question.bold().cyan()), head);
     let answer = match (typed.is_empty(), default) {
         (true, Some(default)) => Span::styled(default, Style::new().dim()),
@@ -232,16 +543,137 @@ fn written(frame: &mut Frame, question: &str, prefix: &str, typed: &str, default
     frame.render_widget(Line::from(LINE_KEYS.dim()), foot);
 }
 
-fn masked(frame: &mut Frame, question: &str, typed: usize) {
+fn masked(frame: &mut Frame, area: Rect, question: &str, typed: usize) {
     let [head, body, foot] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
     ])
-    .areas(frame.area());
+    .areas(area);
     frame.render_widget(Line::from(question.bold().cyan()), head);
     frame.render_widget(Line::from("*".repeat(typed)), body);
     frame.render_widget(Line::from(SECRET_KEYS.dim()), foot);
+}
+
+const NOTED: usize = 5;
+
+const ROWS: u16 = NOTED as u16 + 4;
+
+pub struct Progress {
+    terminal: DefaultTerminal,
+    pct: u16,
+    flight: u16,
+    step: String,
+    notes: Vec<String>,
+    foot: String,
+}
+
+impl Progress {
+    pub fn open(foot: &str) -> Result<Self, String> {
+        let terminal = open(ROWS)?;
+        let _ = terminal::disable_raw_mode();
+        Ok(Self {
+            terminal,
+            pct: 0,
+            flight: 0,
+            step: String::new(),
+            notes: Vec::new(),
+            foot: foot.to_string(),
+        })
+    }
+
+    pub fn step(&mut self, pct: u16, flight: u16, name: &str) -> Result<(), String> {
+        self.pct = pct.min(100);
+        self.flight = flight.min(100);
+        self.step = name.to_string();
+        self.notes.clear();
+        self.show()
+    }
+
+    pub fn note(&mut self, text: &str) -> Result<(), String> {
+        if self.notes.len() == NOTED {
+            self.notes.remove(0);
+        }
+        self.notes.push(text.to_string());
+        self.show()
+    }
+
+    fn show(&mut self) -> Result<(), String> {
+        let (pct, flight, step, notes, foot) = (
+            self.pct,
+            self.flight,
+            self.step.as_str(),
+            self.notes.as_slice(),
+            self.foot.as_str(),
+        );
+        render(&mut self.terminal, ROWS, |frame, area| {
+            working(frame, area, pct, flight, step, notes, foot)
+        })
+    }
+
+    pub fn close(self) {
+        close(self.terminal);
+    }
+}
+
+fn working(
+    frame: &mut Frame,
+    area: Rect,
+    pct: u16,
+    flight: u16,
+    step: &str,
+    notes: &[String],
+    foot: &str,
+) {
+    let [meter, name, body, tail] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+    frame.render_widget(bar(pct, flight, meter.width), meter);
+    frame.render_widget(Line::from(step.bold().cyan()), name);
+    let pane = Block::new()
+        .borders(Borders::TOP)
+        .border_style(Style::new().dim())
+        .title(Line::from(" output ".dim()));
+    let inside = pane.inner(body);
+    frame.render_widget(pane, body);
+    frame.render_widget(Paragraph::new(notes.join("\n")).dim(), inside);
+    frame.render_widget(Line::from(foot.dim()), tail);
+}
+
+const COLD: (u8, u8, u8) = (0x5a, 0x56, 0xe0);
+const HOT: (u8, u8, u8) = (0xee, 0x6f, 0xf8);
+
+fn bar<'a>(pct: u16, flight: u16, width: u16) -> Line<'a> {
+    let label = format!(" {pct:>3}%");
+    let room = usize::from(width).saturating_sub(label.chars().count());
+    let cell = |share: u16| room * usize::from(share.min(100)) / 100;
+    let done = cell(pct);
+    let running = cell(pct.saturating_add(flight));
+    let mut spans: Vec<Span> = (0..room)
+        .map(|at| match (at < done, at < running) {
+            (true, _) => Span::styled("\u{2588}", Style::new().fg(blend(at, room))),
+            (false, true) => Span::styled("\u{2592}", Style::new().fg(blend(at, room)).dim()),
+            _ => Span::styled("\u{2591}", Style::new().dim()),
+        })
+        .collect();
+    spans.push(Span::styled(label, Style::new().bold()));
+    Line::from(spans)
+}
+
+fn blend(at: usize, room: usize) -> Color {
+    let step = |cold: u8, hot: u8| {
+        let (cold, hot) = (i32::from(cold), i32::from(hot));
+        (cold + (hot - cold) * at as i32 / room.max(1) as i32) as u8
+    };
+    Color::Rgb(
+        step(COLD.0, HOT.0),
+        step(COLD.1, HOT.1),
+        step(COLD.2, HOT.2),
+    )
 }
 
 fn height(rows: usize) -> u16 {
@@ -265,24 +697,90 @@ fn unsized_tty(size: Option<(u16, u16)>) -> bool {
     !matches!(size, Some((cols, rows)) if cols > 0 && rows > 0)
 }
 
-fn inline<T>(
-    height: u16,
-    body: impl FnOnce(&mut DefaultTerminal) -> Result<T, String>,
-) -> Result<T, String> {
+static CHROME: OnceLock<String> = OnceLock::new();
+
+pub fn own_screen(title: impl Into<String>) {
+    let _ = CHROME.set(title.into());
+}
+
+fn open(height: u16) -> Result<DefaultTerminal, String> {
     give_size();
-    let mut terminal = ratatui::try_init_with_options(TerminalOptions {
-        viewport: Viewport::Inline(height),
-    })
-    .map_err(|err| err.to_string())?;
+    let viewport = match CHROME.get() {
+        Some(_) => Viewport::Fullscreen,
+        None => Viewport::Inline(height),
+    };
+    ratatui::try_init_with_options(TerminalOptions { viewport }).map_err(|err| err.to_string())
+}
 
-    let out = body(&mut terminal);
-
+fn close(mut terminal: DefaultTerminal) {
     let origin = terminal.get_frame().area().as_position();
     let _ = terminal.clear();
     let _ = terminal.set_cursor_position(origin);
     let _ = terminal.show_cursor();
     let _ = terminal::disable_raw_mode();
+}
+
+fn inline<T>(
+    height: u16,
+    body: impl FnOnce(&mut DefaultTerminal) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut terminal = open(height)?;
+    let out = body(&mut terminal);
+    close(terminal);
     out
+}
+
+fn render<B: Backend>(
+    terminal: &mut ratatui::Terminal<B>,
+    rows: u16,
+    body: impl FnOnce(&mut Frame, Rect),
+) -> Result<(), String> {
+    terminal
+        .draw(|frame| {
+            let area = chrome(frame, CHROME.get().map(String::as_str), rows);
+            body(frame, area);
+        })
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
+const WIDEST: u16 = 76;
+
+const ACCENT: Color = Color::Cyan;
+
+const PAD_X: u16 = 3;
+const PAD_Y: u16 = 1;
+
+fn chrome(frame: &mut Frame, title: Option<&str>, rows: u16) -> Rect {
+    let Some(title) = title else {
+        return frame.area();
+    };
+    let full = frame.area();
+    let box_area = centred(
+        full,
+        WIDEST.min(full.width),
+        rows.saturating_add(2 + 2 * PAD_Y),
+    );
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(ACCENT))
+        .padding(Padding::symmetric(PAD_X, PAD_Y))
+        .title(Line::from(format!(" {} ", title.trim())).bold());
+    let inside = block.inner(box_area);
+    frame.render_widget(block, box_area);
+    inside
+}
+
+fn centred(area: Rect, width: u16, height: u16) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    }
 }
 
 fn pick<B: Backend>(
@@ -294,9 +792,9 @@ fn pick<B: Backend>(
 ) -> Result<Option<usize>, String> {
     let mut state = ListState::default().with_selected(Some(selected));
     loop {
-        terminal
-            .draw(|frame| draw(frame, question, options, None, hint, &mut state))
-            .map_err(|err| err.to_string())?;
+        render(terminal, height(options.len()), |frame, area| {
+            draw(frame, area, question, options, None, hint, &mut state)
+        })?;
         let Some(key) = read()? else { continue };
         match key {
             KeyCode::Enter => match state.selected() {
@@ -332,9 +830,17 @@ fn toggle<B: Backend>(
     let mut state = ListState::default().with_selected(Some(0));
     let mut on: Vec<usize> = held.to_vec();
     loop {
-        terminal
-            .draw(|frame| draw(frame, question, options, Some(&on), TOGGLE, &mut state))
-            .map_err(|err| err.to_string())?;
+        render(terminal, height(options.len()), |frame, area| {
+            draw(
+                frame,
+                area,
+                question,
+                options,
+                Some(&on),
+                TOGGLE,
+                &mut state,
+            )
+        })?;
         let Some(key) = read()? else { continue };
         match key {
             KeyCode::Enter => return Ok(Answer::Chosen(on)),
@@ -375,6 +881,8 @@ fn branch(options: &[Choice], at: usize) -> &'static str {
     }
 }
 
+pub const INTERRUPTED: &str = "interrupted";
+
 fn read() -> Result<Option<KeyCode>, String> {
     let Event::Key(key) = event::read().map_err(|err| err.to_string())? else {
         return Ok(None);
@@ -384,7 +892,7 @@ fn read() -> Result<Option<KeyCode>, String> {
     }
     match key.code {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Err("interrupted".to_string())
+            Err(INTERRUPTED.to_string())
         }
         code => Ok(Some(code)),
     }
@@ -402,6 +910,7 @@ fn move_by(code: KeyCode, state: &mut ListState) {
 
 fn draw(
     frame: &mut Frame,
+    area: Rect,
     question: &str,
     options: &[Choice],
     on: Option<&[usize]>,
@@ -413,7 +922,7 @@ fn draw(
         Constraint::Min(1),
         Constraint::Length(1),
     ])
-    .areas(frame.area());
+    .areas(area);
 
     frame.render_widget(Line::from(question.bold().cyan()), head);
 
@@ -569,13 +1078,11 @@ fn nest<B: Backend>(
     let mut state = ListState::default().with_selected(Some(0));
     loop {
         let rows = shown(&tree, options, &open, &filter);
-        terminal
-            .draw(|frame| {
-                nested(
-                    frame, question, options, &tree, &rows, &open, &on, &filter, &mut state,
-                )
-            })
-            .map_err(|err| err.to_string())?;
+        render(terminal, height(tree.len()) + 2, |frame, area| {
+            nested(
+                frame, area, question, options, &tree, &rows, &open, &on, &filter, &mut state,
+            )
+        })?;
         let Some(key) = read()? else { continue };
         let row = state.selected().and_then(|at| rows.get(at)).copied();
         match key {
@@ -608,6 +1115,7 @@ fn nest<B: Backend>(
 #[allow(clippy::too_many_arguments)]
 fn nested(
     frame: &mut Frame,
+    area: Rect,
     question: &str,
     options: &[Choice],
     nodes: &[Node],
@@ -623,7 +1131,7 @@ fn nested(
         Constraint::Length(2),
         Constraint::Length(1),
     ])
-    .areas(frame.area());
+    .areas(area);
 
     frame.render_widget(Line::from(question.bold().cyan()), head);
     let under = state
@@ -670,7 +1178,6 @@ fn nested(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::copy::CREATE;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 
@@ -683,55 +1190,60 @@ mod tests {
     }
 
     #[test]
-    fn the_install_review_says_what_is_erased_before_it_offers_to_erase_it() {
+    fn the_confirmation_shows_the_answers_and_lands_only_on_a_choice() {
         let rows = [
-            (crate::copy::ROW_DISK.to_string(), "/dev/vda".to_string()),
-            (crate::copy::ROW_HOSTNAME.to_string(), "deb2".to_string()),
-            (crate::copy::ROW_ACCOUNT.to_string(), "buildc".to_string()),
+            ("disk".to_string(), "/dev/vda".to_string()),
+            ("computer name".to_string(), "deb2".to_string()),
             (
-                crate::copy::ROW_PASSWORD.to_string(),
+                "password".to_string(),
                 crate::copy::PASSWORD_SET.to_string(),
             ),
-            (
-                crate::copy::ROW_ENCRYPTION.to_string(),
-                "tpm2-luks".to_string(),
-            ),
         ];
-        let options = sheet(&rows, crate::copy::INSTALL);
-        let mut state = ListState::default().with_selected(Some(0));
-        let mut terminal = Terminal::new(TestBackend::new(60, 10)).unwrap();
+        let options = summary_sheet(&rows, crate::copy::CONTINUE, crate::copy::GO_BACK);
+        for at in 0..rows.len() {
+            assert!(!available(&options, at), "row {at} is landable");
+        }
+        assert!(available(&options, options.len() - 2));
+        assert!(available(&options, options.len() - 1));
+
+        let mut state = ListState::default().with_selected(Some(options.len() - 2));
+        let mut terminal = Terminal::new(TestBackend::new(60, options.len() as u16 + 2)).unwrap();
         let question = crate::copy::erasing("/dev/vda");
         terminal
             .draw(|frame| {
                 draw(
                     frame,
+                    frame.area(),
                     &question,
                     &options,
                     None,
-                    crate::copy::INSTALL_KEYS,
+                    EITHER,
                     &mut state,
                 )
             })
             .unwrap();
         let drawn = terminal.backend().to_string();
+        assert!(drawn.contains("will be erased. Are you sure?"), "{drawn}");
         assert!(
-            drawn.contains("Everything on /dev/vda is erased. Nothing survives."),
+            drawn.contains("/dev/vda") && drawn.contains("deb2"),
             "{drawn}"
         );
-        assert!(drawn.contains("> disk          /dev/vda"), "{drawn}");
-        assert!(drawn.contains("  machine name  deb2"), "{drawn}");
-        assert!(drawn.contains("  user name     buildc"), "{drawn}");
-        assert!(drawn.contains("  password      set"), "{drawn}");
-        assert!(drawn.contains("  encryption    tpm2-luks"), "{drawn}");
-        assert!(drawn.contains("Erase and install"), "{drawn}");
-        assert!(!drawn.contains(CREATE), "{drawn}");
+        assert!(drawn.contains(crate::copy::CONTINUE), "{drawn}");
+        assert!(drawn.contains(crate::copy::GO_BACK), "{drawn}");
     }
 
     #[test]
     fn a_secret_is_drawn_as_its_length_and_never_as_itself() {
         let mut terminal = Terminal::new(TestBackend::new(60, 3)).unwrap();
         terminal
-            .draw(|frame| masked(frame, crate::copy::LUKS_PASSPHRASE, "hunter2".len()))
+            .draw(|frame| {
+                masked(
+                    frame,
+                    frame.area(),
+                    crate::copy::LUKS_PASSPHRASE,
+                    "hunter2".len(),
+                )
+            })
             .unwrap();
         let drawn = terminal.backend().to_string();
         assert!(drawn.contains(crate::copy::LUKS_PASSPHRASE), "{drawn}");
@@ -743,7 +1255,7 @@ mod tests {
     fn typed_line(prefix: &str, typed: &str, default: Option<&str>) -> String {
         let mut terminal = Terminal::new(TestBackend::new(60, 3)).unwrap();
         terminal
-            .draw(|frame| written(frame, "who owns it", prefix, typed, default))
+            .draw(|frame| written(frame, frame.area(), "who owns it", prefix, typed, default))
             .unwrap();
         terminal.backend().to_string()
     }
@@ -765,6 +1277,124 @@ mod tests {
     }
 
     #[test]
+    fn a_command_that_owns_the_screen_draws_one_box_around_the_form() {
+        let fields = [
+            Field::pick(
+                "disk",
+                vec![Choice::new("/dev/vda", "64G  QEMU HARDDISK")],
+                None,
+            ),
+            Field::text("computer name", "deb2"),
+            Field::secret("password", ""),
+        ];
+        let shown = laid_out(
+            &fields,
+            0,
+            0,
+            None,
+            false,
+            &[crate::copy::INSTALL, crate::copy::SHUT_DOWN],
+            Some("still needs a disk, a password"),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(64, 16)).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = chrome(frame, Some("Buildc installer"), shown.len() as u16 + 1);
+                sheet_of(frame, area, &shown, crate::copy::INSTALL_KEYS)
+            })
+            .unwrap();
+        let drawn = terminal.backend().to_string();
+        let rows: Vec<&str> = drawn.lines().collect();
+        assert!(rows[0].replace('"', "").trim().is_empty(), "{drawn}");
+        let top = rows
+            .iter()
+            .position(|row| row.contains("Buildc installer"))
+            .unwrap_or_else(|| panic!("{drawn}"));
+        assert!(rows[top].contains('\u{256d}'), "{drawn}");
+        assert!(rows[top + 2].contains("disk"), "{drawn}");
+        assert!(drawn.contains(crate::copy::INSTALL), "{drawn}");
+        assert!(drawn.contains(crate::copy::SHUT_DOWN), "{drawn}");
+        assert!(drawn.contains("still needs a disk, a password"), "{drawn}");
+    }
+
+    #[test]
+    fn the_progress_region_draws_the_step_the_messages_and_the_line_beneath() {
+        let mut terminal = Terminal::new(TestBackend::new(40, 8)).unwrap();
+        let notes = ["first".to_string(), "second".to_string()];
+        terminal
+            .draw(|frame| {
+                working(
+                    frame,
+                    frame.area(),
+                    50,
+                    20,
+                    "7/12 install OS",
+                    &notes,
+                    "log: /run/bootc-anywhere.log",
+                )
+            })
+            .unwrap();
+        let drawn = terminal.backend().to_string();
+        assert!(drawn.contains("50%"), "{drawn}");
+        assert!(drawn.contains("7/12 install OS"), "{drawn}");
+        assert!(
+            drawn.contains("first") && drawn.contains("second"),
+            "{drawn}"
+        );
+        assert!(drawn.contains("log: /run/bootc-anywhere.log"), "{drawn}");
+    }
+
+    #[test]
+    fn a_form_shows_every_field_and_opens_a_list_where_it_stands() {
+        let disks = vec![
+            Choice::new("/dev/sda", "512G  Samsung SSD"),
+            Choice::new("/dev/sdb", "1T  WD  removable"),
+        ];
+        let fields = [
+            Field::pick("disk", disks, None),
+            Field::text("computer name", "debian-bootc"),
+            Field::text("username", ""),
+            Field::secret("password", "hunter2"),
+            Field::secret("confirm", "hunter2"),
+            Field::pick(
+                "encryption",
+                vec![Choice::new("none", "not encrypted")],
+                Some(0),
+            ),
+        ];
+        let shown = laid_out(
+            &fields,
+            0,
+            0,
+            Some(1),
+            false,
+            &["Install", "Shut down"],
+            Some("still needs a disk, a username"),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(64, shown.len() as u16 + 1)).unwrap();
+        terminal
+            .draw(|frame| sheet_of(frame, frame.area(), &shown, crate::copy::INSTALL_KEYS))
+            .unwrap();
+        let drawn = terminal.backend().to_string();
+        eprintln!("SHOT\n{drawn}SHOT");
+        let rows: Vec<&str> = drawn.lines().collect();
+        assert!(rows[0].contains("> disk"), "{drawn}");
+        assert!(rows[1].contains("/dev/sda"), "{drawn}");
+        assert!(rows[2].contains("> /dev/sdb"), "{drawn}");
+        assert!(rows[3].contains("computer name"), "{drawn}");
+        assert!(
+            drawn.contains("*******") && !drawn.contains("hunter2"),
+            "{drawn}"
+        );
+        assert!(drawn.contains("not set"), "{drawn}");
+        assert!(
+            drawn.contains("Install") && drawn.contains("Shut down"),
+            "{drawn}"
+        );
+        assert!(drawn.contains("still needs a disk, a username"), "{drawn}");
+    }
+
+    #[test]
     fn columns_width_must_be_nonzero_and_fit_the_renderer() {
         assert_eq!(parse_width("0"), None);
         assert_eq!(parse_width("65535"), Some(u16::MAX));
@@ -776,7 +1406,17 @@ mod tests {
         let height = options.len() as u16 + 3;
         let mut terminal = Terminal::new(TestBackend::new(60, height)).unwrap();
         terminal
-            .draw(|frame| draw(frame, "which module", options, on, hint, &mut state))
+            .draw(|frame| {
+                draw(
+                    frame,
+                    frame.area(),
+                    "which module",
+                    options,
+                    on,
+                    hint,
+                    &mut state,
+                )
+            })
             .unwrap();
         terminal.backend().to_string()
     }
@@ -831,6 +1471,7 @@ mod tests {
                 .draw(|frame| {
                     draw(
                         frame,
+                        frame.area(),
                         "which module",
                         &[Choice::new("gaming", "")],
                         None,
@@ -935,6 +1576,7 @@ mod tests {
             .draw(|frame| {
                 nested(
                     frame,
+                    frame.area(),
                     "which rules",
                     options,
                     &nodes,

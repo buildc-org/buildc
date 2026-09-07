@@ -1989,20 +1989,49 @@ fn install_screens() {
 "#,
     )
     .unwrap();
+    let sys = dir.join("sys-block");
+    for (name, size, removable, model) in [
+        ("vda", "134217728", "0", "QEMU HARDDISK"),
+        ("sdb", "31457280", "1", "Cruzer Blade"),
+    ] {
+        let disk = sys.join(name);
+        std::fs::create_dir_all(disk.join("device")).unwrap();
+        std::fs::write(disk.join("size"), size).unwrap();
+        std::fs::write(disk.join("removable"), removable).unwrap();
+        std::fs::write(disk.join("device/model"), model).unwrap();
+    }
     drawn_flow(
         "flow-install-drawn",
         &dir,
         &format!(
-            "'{}' installer --from . --disk /dev/null",
+            "BUILDC_SYS_BLOCK='{}' '{}' installer --from .",
+            sys.display(),
             env!("CARGO_BIN_EXE_tect")
         ),
         "buildc: ghcr.io/buildc-org/deb2:latest, from .\r\n",
-        &[b"\r", b"buildc\r", b"hunter2\r", b"hunter2\r", b"\r", b"\x1b"],
+        &[
+            b"\r",
+            b"\x1b[B\r",
+            b"\x1b[B\x1b[B\r",
+            b"buildc\r",
+            b"\x1b[B\r",
+            b"hunter2\r",
+            b"\x1b[B\r",
+            b"hunter2\r",
+            b"\x1b[B\x1b[B\x1b[B\r",
+            b"\x1b[B\r",
+            b"\x1b",
+            b"\x1b[B\x1b[B\r",
+        ],
     );
     let transcript =
         std::fs::read_to_string(crate_dir().join("tests/golden/flow-install-drawn/transcript.txt"))
             .unwrap();
     assert!(!transcript.contains("hunter2"), "{transcript}");
+    assert!(transcript.contains("Are you sure"), "{transcript}");
+    assert!(transcript.contains(buildc::copy::CONTINUE), "{transcript}");
+    assert!(transcript.contains("Cruzer"), "{transcript}");
+    assert!(transcript.contains("/dev/vda"), "{transcript}");
 }
 
 #[test]

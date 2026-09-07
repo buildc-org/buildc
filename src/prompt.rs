@@ -156,6 +156,20 @@ impl Prompt {
         }
     }
 
+    pub fn secret_current(&self, question: &str, current: &str) -> Result<String, String> {
+        loop {
+            let typed = crate::ui::secret(question)?;
+            if typed.is_empty() {
+                return Ok(current.to_string());
+            }
+            if typed == crate::ui::secret(crate::copy::PASSWORD_AGAIN)? {
+                println!("{}: {}\n", stem(question), crate::copy::PASSWORD_SET);
+                return Ok(typed);
+            }
+            println!("{}", crate::copy::NO_MATCH);
+        }
+    }
+
     pub fn line(
         &self,
         given: Option<String>,

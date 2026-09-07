@@ -121,6 +121,14 @@ fn tpm() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(TPM))
 }
 
+const SYS_BLOCK: &str = "/sys/block";
+
+fn sys_block() -> PathBuf {
+    std::env::var_os("BUILDC_SYS_BLOCK")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(SYS_BLOCK))
+}
+
 pub struct Encryption {
     pub kind: String,
     pub passphrase: String,
@@ -147,7 +155,7 @@ pub struct Answers {
     pub encryption: Encryption,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Given {
     pub disk: Option<String>,
     pub hostname: Option<String>,
@@ -157,46 +165,168 @@ pub struct Given {
     pub passphrase: Option<String>,
 }
 
+enum Leave {
+    Back,
+    Over,
+    Shell,
+}
+
+fn leaving(err: &str) -> bool {
+    err == crate::ui::INTERRUPTED
+}
+
+fn leave(prompt: &Prompt) -> Result<Leave, String> {
+    if !prompt.draws() {
+        return Ok(Leave::Shell);
+    }
+    let options = [
+        Choice::new(copy::LEAVE_BACK, ""),
+        Choice::new(copy::LEAVE_OVER, ""),
+        Choice::new(copy::LEAVE_SHELL, ""),
+    ];
+    match prompt.choose(copy::LEAVING, &options) {
+        Ok(Some(1)) => Ok(Leave::Over),
+        Ok(Some(2)) => Ok(Leave::Shell),
+        Ok(_) => Ok(Leave::Back),
+        Err(err) if leaving(&err) => Ok(Leave::Back),
+        Err(err) => Err(err),
+    }
+}
+
 impl Answers {
     pub fn collect(
         payload: &Payload,
         given: Given,
         prompt: &Prompt,
     ) -> Result<Option<Self>, String> {
-        let mut answers = Self {
-            disk: ask_disk(given.disk, None, prompt)?,
-            hostname: prompt.text(
-                given.hostname,
-                copy::INSTALL_NAME,
-                "--hostname",
-                Some(&payload.hostname),
-            )?,
-            user: prompt.text(given.user, copy::INSTALL_USER, "--user", None)?,
-            password: prompt.secret(given.password, copy::INSTALL_PASSWORD, "--password")?,
-            encryption: ask_encryption(
-                given.encryption,
-                given.passphrase,
-                &Encryption::none(),
-                prompt,
-            )?,
-        };
-        while prompt.draws() {
-            let rows = answers.rows();
-            match crate::ui::review(
-                &copy::erasing(&answers.disk),
-                &rows,
-                copy::INSTALL,
-                copy::INSTALL_KEYS,
-            )? {
-                None => return Ok(None),
-                Some(at) if at == rows.len() => break,
-                Some(at) => answers.ask(at, prompt)?,
+        let seeded = Self::seeded(payload, given, prompt)?;
+        if !prompt.draws() {
+            return Ok(Some(seeded));
+        }
+        let mut fields = seeded.fields();
+        loop {
+            let actions = [copy::INSTALL, copy::SHUT_DOWN];
+            let filled = crate::ui::form(&mut fields, &actions, short_of, copy::INSTALL_KEYS);
+            match filled {
+                Ok(crate::ui::Filled::Took(0)) => {
+                    let answers = Self::of(&fields);
+                    if crate::ui::confirm_over(
+                        &copy::erasing(&answers.disk),
+                        &answers.summary(),
+                        copy::CONTINUE,
+                        copy::GO_BACK,
+                    )? {
+                        return Ok(Some(answers));
+                    }
+                }
+                Ok(crate::ui::Filled::Took(_)) => {
+                    power_off()?;
+                    return Ok(None);
+                }
+                Ok(crate::ui::Filled::Left) => match leave(prompt)? {
+                    Leave::Shell => return Ok(None),
+                    Leave::Over => {
+                        fields = Self::seeded(payload, Given::default(), prompt)?.fields()
+                    }
+                    Leave::Back => {}
+                },
+                Err(err) if leaving(&err) => match leave(prompt)? {
+                    Leave::Shell => return Ok(None),
+                    Leave::Over => {
+                        fields = Self::seeded(payload, Given::default(), prompt)?.fields()
+                    }
+                    Leave::Back => {}
+                },
+                Err(err) => return Err(err),
             }
         }
-        Ok(Some(answers))
     }
 
-    fn rows(&self) -> Vec<(String, String)> {
+    fn seeded(payload: &Payload, given: Given, prompt: &Prompt) -> Result<Self, String> {
+        if !prompt.draws() {
+            return Ok(Self {
+                disk: ask_disk(given.disk, None, prompt)?,
+                hostname: prompt.text(
+                    given.hostname,
+                    copy::INSTALL_NAME,
+                    "--hostname",
+                    Some(&payload.hostname),
+                )?,
+                user: prompt.text(given.user, copy::INSTALL_USER, "--user", None)?,
+                password: prompt.secret(given.password, copy::INSTALL_PASSWORD, "--password")?,
+                encryption: ask_encryption(
+                    given.encryption,
+                    given.passphrase,
+                    &Encryption::none(),
+                    prompt,
+                )?,
+            });
+        }
+        Ok(Self {
+            disk: given.disk.unwrap_or_default(),
+            hostname: given
+                .hostname
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| payload.hostname.clone()),
+            user: given.user.unwrap_or_default(),
+            password: given.password.unwrap_or_default(),
+            encryption: Encryption {
+                kind: match given.encryption {
+                    Some(kind) => named(kind)?,
+                    None => NONE.to_string(),
+                },
+                passphrase: given.passphrase.unwrap_or_default(),
+            },
+        })
+    }
+
+    fn fields(&self) -> Vec<crate::ui::Field> {
+        use crate::ui::Field;
+        let found = disks(&sys_block());
+        let at = found.iter().position(|(disk, _)| *disk == self.disk);
+        let disk = match found.is_empty() {
+            true => Field::text(copy::ROW_DISK, &self.disk),
+            false => Field::pick(
+                copy::ROW_DISK,
+                found
+                    .iter()
+                    .map(|(disk, detail)| Choice::new(disk, detail))
+                    .collect(),
+                at,
+            ),
+        };
+        vec![
+            disk,
+            Field::text(copy::ROW_HOSTNAME, &self.hostname),
+            Field::text(copy::ROW_ACCOUNT, &self.user),
+            Field::secret(copy::ROW_PASSWORD, &self.password),
+            Field::secret(copy::ROW_CONFIRM, &self.password),
+            Field::pick(
+                copy::ROW_ENCRYPTION,
+                kinds(tpm().exists()),
+                KINDS
+                    .iter()
+                    .position(|(name, _)| *name == self.encryption.kind),
+            ),
+            Field::secret(copy::ROW_PASSPHRASE, &self.encryption.passphrase),
+        ]
+    }
+
+    fn of(fields: &[crate::ui::Field]) -> Self {
+        let at = |row: usize| fields[row].value();
+        Self {
+            disk: at(ROW_DISK),
+            hostname: at(ROW_HOSTNAME),
+            user: at(ROW_ACCOUNT),
+            password: at(ROW_PASSWORD),
+            encryption: Encryption {
+                kind: at(ROW_ENCRYPTION),
+                passphrase: at(ROW_PASSPHRASE),
+            },
+        }
+    }
+
+    fn summary(&self) -> Vec<(String, String)> {
         vec![
             (copy::ROW_DISK.to_string(), self.disk.clone()),
             (copy::ROW_HOSTNAME.to_string(), self.hostname.clone()),
@@ -211,19 +341,49 @@ impl Answers {
             ),
         ]
     }
+}
 
-    fn ask(&mut self, row: usize, prompt: &Prompt) -> Result<(), String> {
-        match row {
-            0 => self.disk = ask_disk(None, Some(&self.disk), prompt)?,
-            1 => {
-                self.hostname =
-                    prompt.text(None, copy::INSTALL_NAME, "--hostname", Some(&self.hostname))?
-            }
-            2 => self.user = prompt.text(None, copy::INSTALL_USER, "--user", Some(&self.user))?,
-            3 => self.password = prompt.secret(None, copy::INSTALL_PASSWORD, "--password")?,
-            _ => self.encryption = ask_encryption(None, None, &self.encryption, prompt)?,
-        }
-        Ok(())
+const ROW_DISK: usize = 0;
+const ROW_HOSTNAME: usize = 1;
+const ROW_ACCOUNT: usize = 2;
+const ROW_PASSWORD: usize = 3;
+const ROW_CONFIRM: usize = 4;
+const ROW_ENCRYPTION: usize = 5;
+const ROW_PASSPHRASE: usize = 6;
+
+fn short_of(fields: &[crate::ui::Field]) -> Option<String> {
+    let at = |row: usize| fields[row].value();
+    if !at(ROW_PASSWORD).is_empty() && at(ROW_PASSWORD) != at(ROW_CONFIRM) {
+        return Some(copy::NO_MATCH_ROW.to_string());
+    }
+    let wants = Encryption::wants_passphrase(&at(ROW_ENCRYPTION));
+    let missing: Vec<&str> = [
+        (at(ROW_DISK).is_empty(), copy::ROW_DISK),
+        (at(ROW_ACCOUNT).is_empty(), copy::ROW_ACCOUNT),
+        (at(ROW_PASSWORD).is_empty(), copy::ROW_PASSWORD),
+        (wants && at(ROW_PASSPHRASE).is_empty(), copy::ROW_PASSPHRASE),
+    ]
+    .into_iter()
+    .filter(|(missing, _)| *missing)
+    .map(|(_, name)| name)
+    .collect();
+    match missing.is_empty() {
+        true => None,
+        false => Some(copy::still_needs(&missing)),
+    }
+}
+
+fn power_off() -> Result<(), String> {
+    let out = Command::new("systemctl")
+        .arg("poweroff")
+        .output()
+        .map_err(|err| format!("systemctl: {err}, and it is what stops a machine"))?;
+    match out.status.success() {
+        true => Ok(()),
+        false => Err(format!(
+            "systemctl poweroff: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
     }
 }
 
@@ -281,7 +441,7 @@ fn ask_disk(
     if let Some(disk) = given.filter(|disk| !disk.is_empty()) {
         return Ok(disk);
     }
-    let found = disks(Path::new("/sys/block"));
+    let found = disks(&sys_block());
     if !prompt.asks() || found.is_empty() {
         return prompt.text(None, copy::INSTALL_DISK, "--disk", current);
     }
@@ -294,11 +454,22 @@ fn ask_disk(
         .unwrap_or(0);
     match prompt.choose_current(copy::INSTALL_DISK, &options, at)? {
         Some(at) => Ok(found[at].0.clone()),
-        None => Err(format!(
-            "give --disk, since nothing was chosen: {}",
-            copy::INSTALL_DISK.trim_end_matches(':')
-        )),
+        None => Ok(current.unwrap_or_default().to_string()),
     }
+}
+
+fn named(kind: String) -> Result<String, String> {
+    if KINDS.iter().any(|(name, _)| *name == kind) {
+        return Ok(kind);
+    }
+    Err(format!(
+        "`{kind}` is not one of {}",
+        KINDS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 fn kinds(tpm: bool) -> Vec<Choice> {
@@ -317,18 +488,8 @@ fn ask_encryption(
     current: &Encryption,
     prompt: &Prompt,
 ) -> Result<Encryption, String> {
-    let names = || {
-        KINDS
-            .iter()
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
     let kind = match given {
-        Some(kind) if !KINDS.iter().any(|(name, _)| *name == kind) => {
-            return Err(format!("`{kind}` is not one of {}", names()))
-        }
-        Some(kind) => kind,
+        Some(kind) => named(kind)?,
         None if !prompt.asks() => current.kind.clone(),
         None => {
             let options = kinds(tpm().exists());
@@ -343,9 +504,10 @@ fn ask_encryption(
         }
     };
     Ok(Encryption {
-        passphrase: match Encryption::wants_passphrase(&kind) {
-            false => String::new(),
-            true => prompt.secret(passphrase, copy::LUKS_PASSPHRASE, "--passphrase")?,
+        passphrase: match (Encryption::wants_passphrase(&kind), prompt.draws()) {
+            (false, _) => String::new(),
+            (true, true) => prompt.secret_current(copy::LUKS_PASSPHRASE, &current.passphrase)?,
+            (true, false) => prompt.secret(passphrase, copy::LUKS_PASSPHRASE, "--passphrase")?,
         },
         kind,
     })
@@ -452,27 +614,54 @@ impl Found {
     }
 }
 
-fn say(line: &str) -> String {
-    let Ok(event) = Json::parse(line) else {
-        return line.to_string();
-    };
-    let text = |key: &str| json::text(&event, key).unwrap_or_default();
-    let count = |key: &str| json::number(&event, key).unwrap_or(0);
-    match json::text(&event, "type").as_deref() {
-        Some("step") => format!(
-            "[{:>3}%] {}/{} {}",
-            count("cumulative_pct"),
-            count("step"),
-            count("total_steps"),
-            text("step_name")
-        ),
-        Some("info" | "substep") => format!("       {}", text("message")),
-        Some("complete") => format!("[100%] {}", text("message")),
-        Some("recovery_key") => format!(
-            "\nwrite this down, it is the recovery key: {}\n",
-            text("key")
-        ),
-        _ => line.to_string(),
+enum Event {
+    Step(u16, u16, String),
+    Note(String),
+    Done(String),
+    Recovery(String),
+    Other(String),
+}
+
+impl Event {
+    fn of(line: &str) -> Self {
+        let Ok(event) = Json::parse(line) else {
+            return Self::Other(line.to_string());
+        };
+        let text = |key: &str| json::text(&event, key).unwrap_or_default();
+        let count = |key: &str| json::number(&event, key).unwrap_or(0);
+        match json::text(&event, "type").as_deref() {
+            Some("step") => Self::Step(
+                count("cumulative_pct") as u16,
+                count("weight_pct") as u16,
+                format!(
+                    "{}/{} {}",
+                    count("step"),
+                    count("total_steps"),
+                    text("step_name")
+                ),
+            ),
+            Some("info" | "substep") => Self::Note(text("message")),
+            Some("complete") => Self::Done(text("message")),
+            Some("recovery_key") => Self::Recovery(text("key")),
+            _ => Self::Other(line.to_string()),
+        }
+    }
+
+    fn logged(&self) -> Option<String> {
+        match self {
+            Self::Recovery(_) => None,
+            said => Some(said.say()),
+        }
+    }
+
+    fn say(&self) -> String {
+        match self {
+            Self::Step(pct, _, what) => format!("[{pct:>3}%] {what}"),
+            Self::Note(message) => format!("       {message}"),
+            Self::Done(message) => format!("[100%] {message}"),
+            Self::Recovery(key) => format!("\n{}\n", copy::recovery(key)),
+            Self::Other(line) => line.clone(),
+        }
     }
 }
 
@@ -555,31 +744,133 @@ fn run_renderer(image: &str, root: &str) -> Result<bool, String> {
     }
 }
 
-pub fn run(payload: &Payload, answers: &Answers) -> Result<(), String> {
+const LOG: &str = "bootc-anywhere.log";
+
+const IN_RAM: &str = "/run";
+
+fn open_log(payload: &Payload) -> (Option<std::fs::File>, Option<PathBuf>) {
+    if payload.recipe.parent() == Some(Path::new(MOUNTPOINT)) && remounted_rw(MOUNTPOINT) {
+        let path = Path::new(MOUNTPOINT).join(LOG);
+        if let Ok(file) = std::fs::File::create(&path) {
+            return (Some(file), Some(path));
+        }
+    }
+    let path = Path::new(IN_RAM).join(LOG);
+    match std::fs::File::create(&path) {
+        Ok(file) => (Some(file), Some(path)),
+        Err(_) => (None, None),
+    }
+}
+
+fn remounted_rw(at: &str) -> bool {
+    Command::new("mount")
+        .args(["-o", "remount,rw", at])
+        .output()
+        .is_ok_and(|out| out.status.success())
+}
+
+pub fn run(payload: &Payload, answers: &Answers, prompt: &Prompt) -> Result<(), String> {
     let path = stage(&complete(&payload.recipe, answers)?)?;
-    eprintln!(
-        "buildc: installing {} as {} onto {}",
-        payload.image, answers.hostname, answers.disk
-    );
+    let (mut log, at) = open_log(payload);
+    if !prompt.draws() {
+        eprintln!(
+            "buildc: installing {} as {} onto {}, {}",
+            payload.image,
+            answers.hostname,
+            answers.disk,
+            copy::logging(at.as_deref())
+        );
+    }
+    let (events, writer) = std::io::pipe().map_err(|err| format!("{BACKEND}: {err}"))?;
+    let errors = writer
+        .try_clone()
+        .map_err(|err| format!("{BACKEND}: {err}"))?;
     let mut child = Command::new(BACKEND)
         .arg(&path)
-        .stdout(Stdio::piped())
+        .stdout(Stdio::from(writer))
+        .stderr(Stdio::from(errors))
         .spawn()
         .map_err(|err| format!("{BACKEND}: {err}"))?;
-    if let Some(events) = child.stdout.take() {
+    let mut region = match prompt.draws() {
+        true => crate::ui::Progress::open(&copy::writing(at.as_deref())).ok(),
+        false => None,
+    };
+    let mut recovery = None;
+    {
         for line in std::io::BufReader::new(events)
             .lines()
             .map_while(Result::ok)
         {
-            println!("{}", say(&line));
+            let event = Event::of(&line);
+            if let Event::Recovery(key) = &event {
+                recovery = Some(key.clone());
+            }
+            if let (Some(said), Some(log)) = (event.logged(), &mut log) {
+                let _ = writeln!(log, "{said}");
+            }
+            match &mut region {
+                None => println!("{}", event.say()),
+                Some(region) => {
+                    let _ = match &event {
+                        Event::Step(pct, flight, what) => region.step(*pct, *flight, what),
+                        Event::Done(message) => region.step(100, 0, message),
+                        Event::Recovery(_) => Ok(()),
+                        Event::Note(message) => region.note(message),
+                        Event::Other(line) => region.note(line),
+                    };
+                }
+            }
         }
     }
-    let status = child.wait().map_err(|err| format!("{BACKEND}: {err}"))?;
-    let _ = std::fs::remove_file(&path);
-    if !status.success() {
-        return Err(format!("{BACKEND} did not finish: {status}"));
+    let finished = child.wait().map_err(|err| format!("{BACKEND}: {err}"));
+    if let Some(region) = region {
+        region.close();
     }
-    render_menu(&payload.image, &answers.disk)
+    let _ = std::fs::remove_file(&path);
+    let status = finished?;
+    if !status.success() {
+        return Err(format!(
+            "{BACKEND} did not finish: {status}, and {}",
+            copy::logging(at.as_deref())
+        ));
+    }
+    render_menu(&payload.image, &answers.disk)?;
+    finish(recovery.as_deref(), at.as_deref(), prompt)
+}
+
+fn finish(recovery: Option<&str>, log: Option<&Path>, prompt: &Prompt) -> Result<(), String> {
+    if let Some(key) = recovery {
+        println!("\n{}", copy::recovery(key));
+        println!("{}\n", copy::KEY_NOT_LOGGED);
+    }
+    eprintln!("buildc: {}", copy::logging(log));
+    match prompt.confirm(copy::INSTALL_DONE, copy::RESTART, copy::LEAVE_SHELL)? {
+        false => Ok(()),
+        true => restart(),
+    }
+}
+
+fn restart() -> Result<(), String> {
+    let out = Command::new("systemctl")
+        .arg("reboot")
+        .output()
+        .map_err(|err| format!("systemctl: {err}, and it is what restarts a machine"))?;
+    match out.status.success() {
+        true => Ok(()),
+        false => Err(format!(
+            "systemctl reboot: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+    }
+}
+
+pub fn own_screen(payload: &Payload, prompt: &Prompt) {
+    if !prompt.draws() {
+        return;
+    }
+    print!("\u{1b}[2J\u{1b}[H");
+    let _ = std::io::stdout().flush();
+    crate::ui::own_screen(copy::installing(&payload.image));
 }
 
 #[cfg(test)]
@@ -773,7 +1064,7 @@ mod tests {
 
     #[test]
     fn every_event_reads_as_a_line_and_anything_else_passes_through() {
-        let said = |line: &str| say(line);
+        let said = |line: &str| Event::of(line).say();
         assert_eq!(
             said(
                 r#"{"type":"step","step":7,"total_steps":12,"step_name":"install OS","cumulative_pct":9,"weight_pct":87,"elapsed_ms":4210}"#
@@ -797,6 +1088,14 @@ mod tests {
     }
 
     #[test]
+    fn the_log_holds_every_event_but_the_key() {
+        let logged = |line: &str| Event::of(line).logged();
+        assert!(logged(r#"{"type":"recovery_key","key":"abcd-efgh"}"#).is_none());
+        assert!(logged(r#"{"type":"info","message":"Live environment"}"#).is_some());
+        assert!(logged("bootc: pulling layer 3/9").is_some());
+    }
+
+    #[test]
     fn the_confirm_screen_shows_what_is_about_to_be_erased() {
         let answers = Answers {
             disk: "/dev/vda".to_string(),
@@ -806,7 +1105,7 @@ mod tests {
             encryption: Encryption::none(),
         };
         assert_eq!(
-            answers.rows(),
+            answers.summary(),
             vec![
                 (copy::ROW_DISK.to_string(), "/dev/vda".to_string()),
                 (copy::ROW_HOSTNAME.to_string(), "deb2".to_string()),
@@ -824,6 +1123,34 @@ mod tests {
             "{question}"
         );
         assert!(!question.contains("hunter2"));
+    }
+
+    #[test]
+    fn the_action_says_what_the_form_is_short_of() {
+        use crate::ui::{Choice, Field};
+        let form = |password: &str, confirm: &str, kind: &str, passphrase: &str| {
+            vec![
+                Field::text(copy::ROW_DISK, "/dev/vda"),
+                Field::text(copy::ROW_HOSTNAME, "deb2"),
+                Field::text(copy::ROW_ACCOUNT, "buildc"),
+                Field::secret(copy::ROW_PASSWORD, password),
+                Field::secret(copy::ROW_CONFIRM, confirm),
+                Field::pick(copy::ROW_ENCRYPTION, vec![Choice::new(kind, "")], Some(0)),
+                Field::secret(copy::ROW_PASSPHRASE, passphrase),
+            ]
+        };
+        assert!(short_of(&form("hunter2", "hunter2", NONE, "")).is_none());
+        let differ = short_of(&form("hunter2", "hunter3", NONE, "")).unwrap();
+        assert_eq!(differ, copy::NO_MATCH_ROW);
+        assert!(short_of(&form("hunter2", "hunter2", "luks-passphrase", "")).is_some());
+        assert!(short_of(&form("hunter2", "hunter2", "luks-passphrase", "x")).is_none());
+        let mut bare = form("", "", NONE, "");
+        bare[ROW_ACCOUNT] = Field::text(copy::ROW_ACCOUNT, "");
+        let short = short_of(&bare).unwrap();
+        assert!(
+            short.contains(copy::ROW_ACCOUNT) && short.contains(copy::ROW_PASSWORD),
+            "{short}"
+        );
     }
 
     #[test]

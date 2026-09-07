@@ -1,3 +1,5 @@
+pub const PRODUCT: &str = "Buildc";
+
 pub const REPO_NAME: &str = "What will the repo be called?";
 pub const SCHEDULED: &str = "Sync this repo to a provider?";
 pub const REPO_HOST: &str = "Where will the repo be hosted?";
@@ -68,9 +70,9 @@ pub const DISK_RAW: &str = "a raw disk, under out/raw/";
 pub const DISK_ISO: &str = "an installer iso, under out/bootiso/";
 pub const NO_ISO_SPAWN: &str = "systemd-vmspawn cannot boot an iso";
 
-pub const INSTALL_DISK: &str = "Installation Disk:";
-pub const INSTALL_NAME: &str = "Computer Name:";
-pub const INSTALL_USER: &str = "Username:";
+pub const INSTALL_DISK: &str = "Installation disk";
+pub const INSTALL_NAME: &str = "Computer name";
+pub const INSTALL_USER: &str = "Username";
 pub const INSTALL_PASSWORD: &str = "Password";
 pub const PASSWORD_AGAIN: &str = "Retype password";
 pub const NO_MATCH: &str = "Passwords did not match.";
@@ -84,7 +86,7 @@ pub const NO_TPM: &str = "No TPM available";
 pub const REMOVABLE: &str = "removable";
 
 pub fn erasing(disk: &str) -> String {
-    format!("Everything on {disk} is erased. Nothing survives.")
+    format!("Everything on {disk} will be erased. Are you sure?")
 }
 
 pub const WHICH_COMMAND: &str = "Which command?";
@@ -102,7 +104,8 @@ pub const TOGGLE: &str = "space toggles, enter confirms, esc cancels";
 pub const EITHER: &str = "up and down to move, enter to answer";
 pub const NEST: &str = "filter, space toggles, ←/→ opens, enter confirms";
 pub const REVIEW_KEYS: &str = "enter to change a field, Create to write, esc cancels";
-pub const INSTALL_KEYS: &str = "enter to change a field, esc cancels";
+pub const INSTALL_KEYS: &str = "enter to change a field, esc to leave";
+pub const FORM_KEYS: &str = "up and down to move, enter to change a field";
 pub const SECRET_KEYS: &str = "typed and not shown, enter confirms";
 pub const LINE_KEYS: &str = "enter confirms";
 
@@ -124,16 +127,64 @@ pub const ON_EVERY_PUSH: &str = "on every push";
 pub const ON_EVERY_BUILD: &str = "on every build";
 pub const ON_SCHEDULED: &str = "on scheduled builds only";
 
-pub const INSTALL: &str = "Erase and install";
+pub const INSTALL: &str = "Install";
+pub const SHUT_DOWN: &str = "Shut down";
+pub const CONTINUE: &str = "Continue";
+pub const GO_BACK: &str = "Go back";
+pub const ROW_CONFIRM: &str = "confirm";
+pub const NO_MATCH_ROW: &str = "the passwords do not match";
 pub const ROW_DISK: &str = "disk";
-pub const ROW_HOSTNAME: &str = "machine name";
-pub const ROW_ACCOUNT: &str = "user name";
+pub const ROW_HOSTNAME: &str = "computer name";
+pub const ROW_ACCOUNT: &str = "username";
 pub const ROW_PASSWORD: &str = "password";
 pub const ROW_ENCRYPTION: &str = "encryption";
+pub const ROW_PASSPHRASE: &str = "passphrase";
 pub const PASSWORD_SET: &str = "set";
+pub const NOT_SET: &str = "not set";
+
+pub fn still_needs(fields: &[&str]) -> String {
+    format!("still needs a {}", fields.join(", a "))
+}
+
+pub fn installing(image: &str) -> String {
+    format!("{PRODUCT} installer \u{2014} {image}")
+}
+
+pub fn logging(log: Option<&std::path::Path>) -> String {
+    match log {
+        Some(at) => format!("the install log is at {}", at.display()),
+        None => "nothing here is writable, so this screen is the only copy".to_string(),
+    }
+}
+
+pub fn writing(log: Option<&std::path::Path>) -> String {
+    match log {
+        Some(at) => format!("no going back from here \u{2014} log: {}", at.display()),
+        None => "no going back from here \u{2014} and this screen is the log".to_string(),
+    }
+}
+
+pub fn recovery(key: &str) -> String {
+    format!("write this down, it is the recovery key: {key}")
+}
+
+pub const LEAVING: &str = "Leave the installer?";
+pub const LEAVE_BACK: &str = "Keep going";
+pub const LEAVE_OVER: &str = "Start the form again";
+pub const LEAVE_SHELL: &str = "Leave to a shell";
+pub const INSTALL_DONE: &str = "The installation finished.";
+pub const RESTART: &str = "Restart now";
+pub const KEY_NOT_LOGGED: &str = "It is not in the install log.";
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_cost_names_the_disk_and_asks() {
+        let said = super::erasing("/dev/vda");
+        assert!(said.contains("/dev/vda"), "{said}");
+        assert!(said.ends_with('?'), "{said}");
+    }
+
     #[test]
     fn every_string_here_is_one_short_line() {
         for line in include_str!("copy.rs").lines() {

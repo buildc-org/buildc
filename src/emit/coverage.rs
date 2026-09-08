@@ -34,6 +34,15 @@ pub fn of<'a>(image: &'a Image, content: &'a Content, index: &Index) -> Option<C
             claimed.entry(rule).or_default().insert(module.path.clone());
         }
     }
+    if let Some(base) = &image.base {
+        let numbers = base
+            .satisfies
+            .iter()
+            .flat_map(|coverage| coverage.rules.iter());
+        for rule in reached(content, numbers) {
+            claimed.entry(rule).or_default().insert(base.image.clone());
+        }
+    }
     let open: BTreeSet<String> = selected
         .iter()
         .filter(|rule| !claimed.contains_key(*rule))
@@ -117,7 +126,8 @@ impl Coverage<'_> {
         };
         let mut out = format!(
             "# {} coverage of `{}`\n\n\
-             {named} selects {} rules, and what `{}` lists claims {} of them.{unnamed}\n\n\
+             {named} selects {} rules, and what `{}` installs or builds on claims {} of \
+             them.{unnamed}\n\n\
              | Number | Rule | Claimed by | Would claim |\n|---|---|---|---|\n",
             self.image.name,
             self.profile.name(),
@@ -196,6 +206,26 @@ mod tests {
 
     fn fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join(name)
+    }
+
+    #[test]
+    fn a_rule_the_base_claims_is_claimed_here_and_offered_to_nobody() {
+        let root = fixture("tests/scap/claiming-base");
+        let loaded = crate::load(&root);
+        let content = crate::scap::content_of(&fixture("tests/scap/datastream.xml"))
+            .expect("the fixture datastream reads");
+        let image = loaded.list.images.first().expect("one image");
+        let read = of(image, &content, &loaded.index).expect("the datastream carries `standard`");
+        assert_eq!(read.claimed(), 2);
+        let out = read.markdown();
+        assert!(
+            out.contains("installs or builds on claims 2 of them"),
+            "{out}"
+        );
+        assert!(
+            out.contains("| `1.1.1.1` | Install AIDE | `quay.io/fedora/fedora-bootc:44` |  |"),
+            "{out}"
+        );
     }
 
     #[test]

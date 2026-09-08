@@ -710,9 +710,19 @@ mod tests {
 
     #[test]
     fn an_unnamed_benchmark_comes_back_named_after_the_profile() {
+        let manifest = "description \"one\"\n\nsatisfies {\n    \"\" \"1.1.1.1\"\n}\n";
+        let dir = std::env::temp_dir().join(format!("buildc-claims-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(layout::MODULE_FILE);
+        std::fs::write(&file, manifest).unwrap();
+
+        let held = parse::module::summary(&file).satisfies;
+        assert_eq!(held, ["1.1.1.1"]);
+        std::fs::remove_dir_all(dir).unwrap();
+
+        let carried: Vec<&str> = held.iter().map(String::as_str).collect();
         assert_eq!(
-            claims("ospp", &["1.1.1.1"])
-                .spliced("description \"one\"\n\nsatisfies {\n    \"\" \"1.1.1.1\"\n}\n"),
+            claims("ospp", &carried).spliced(manifest),
             "description \"one\"\n\nsatisfies {\n    ospp \"1.1.1.1\"\n}\n"
         );
     }

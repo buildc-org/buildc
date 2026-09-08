@@ -68,7 +68,7 @@ pub fn conformance(
             None if image.modules().any(|m| !m.satisfies.is_empty())
                 || image.base.iter().any(|base| !base.satisfies.is_empty()) => {}
             None => out.push(format!(
-                "`{}` conforms to `{}` and nothing it lists or builds on declares `satisfies`, \
+                "`{}` conforms to `{}` and nothing it installs or builds on declares `satisfies`, \
                  so nothing here claims a rule of it. Nothing read a datastream, so that is a \
                  count of declarations: `buildc check --datastream <file>` says which of the \
                  profile's rules are unclaimed",
@@ -166,7 +166,7 @@ fn unclaimed(image: &Image, content: &Content, index: &Index) -> Option<String> 
         false => "the repository",
     };
     let found = match named.is_empty() {
-        true => format!("nothing in {searched} claims them"),
+        true => format!("nothing else in {searched} claims them"),
         false => format!(
             "{} would claim {} of them",
             named.join(", "),
@@ -178,7 +178,7 @@ fn unclaimed(image: &Image, content: &Content, index: &Index) -> Option<String> 
         clause => format!(". {clause}"),
     };
     Some(format!(
-        "`{}` conforms to `{}`, and nothing it lists or builds on claims {} of the {} rules it \
+        "`{}` conforms to `{}`, and nothing it installs or builds on claims {} of the {} rules it \
          selects; {found}{unsearched}",
         image.id,
         image.conforms,
@@ -999,7 +999,7 @@ mod tests {
         assert_eq!(
             said,
             [
-                "`enforced` conforms to `standard`, and nothing it lists or builds on claims 2 \
+                "`enforced` conforms to `standard`, and nothing it installs or builds on claims 2 \
               of the 4 rules it selects; `one/auditing` would claim 1 of them"
             ]
         );
@@ -1013,8 +1013,8 @@ mod tests {
             )
             .expect("the fixture datastream reads"),
             [
-                "`enforced` conforms to `standard`, and nothing it lists or builds on claims 2 \
-              of the 4 rules it selects; nothing in the repository claims them"
+                "`enforced` conforms to `standard`, and nothing it installs or builds on claims 2 \
+              of the 4 rules it selects; nothing else in the repository claims them"
             ]
         );
         assert!(conformance(&loaded.list, &loaded.index, None)
@@ -1040,8 +1040,8 @@ mod tests {
             )
             .expect("the fixture datastream reads"),
             [
-                "`suppressed` conforms to `standard`, and nothing it lists or builds on claims \
-              4 of the 4 rules it selects; nothing in the repository claims them"
+                "`suppressed` conforms to `standard`, and nothing it installs or builds on claims \
+              4 of the 4 rules it selects; nothing else in the repository claims them"
             ]
         );
     }
@@ -1076,8 +1076,8 @@ mod tests {
             )
             .expect("the fixture datastream reads"),
             [
-                "`claiming` conforms to `standard`, and nothing it lists or builds on claims 2 of \
-              the 4 rules it selects; nothing in the repository claims them"
+                "`claiming` conforms to `standard`, and nothing it installs or builds on claims 2 of \
+              the 4 rules it selects; nothing else in the repository claims them"
             ]
         );
         assert!(conformance(&loaded.list, &loaded.index, None)
@@ -1107,8 +1107,8 @@ mod tests {
             )
             .expect("the fixture datastream reads"),
             [
-                "`sourced` conforms to `standard`, and nothing it lists or builds on claims 4 \
-              of the 4 rules it selects; nothing in the repository or its collections claims them"
+                "`sourced` conforms to `standard`, and nothing it installs or builds on claims 4 \
+              of the 4 rules it selects; nothing else in the repository or its collections claims them"
             ]
         );
     }
@@ -1135,8 +1135,8 @@ mod tests {
             )
             .expect("the fixture datastream reads"),
             [
-                "`listed` conforms to `standard`, and nothing it lists or builds on claims 3 \
-              of the 4 rules it selects; nothing in the repository claims them"
+                "`listed` conforms to `standard`, and nothing it installs or builds on claims 3 \
+              of the 4 rules it selects; nothing else in the repository claims them"
             ]
         );
     }

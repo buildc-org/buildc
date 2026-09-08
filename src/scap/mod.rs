@@ -996,6 +996,20 @@ mod tests {
               selects; `one/auditing` would claim 1 of them"
             ]
         );
+        let bare = fixture("tests/scap");
+        let nothing = Index::scan(&bare, &[], &Disk::scan(&bare), false);
+        assert_eq!(
+            conformance(
+                &loaded.list,
+                &nothing,
+                Some(&fixture("tests/scap/datastream.xml"))
+            )
+            .expect("the fixture datastream reads"),
+            [
+                "`enforced` conforms to `standard`, and nothing it lists claims 2 of the 4 rules it \
+              selects; nothing in the repository claims them"
+            ]
+        );
         assert!(conformance(&loaded.list, &loaded.index, None)
             .unwrap()
             .is_empty());

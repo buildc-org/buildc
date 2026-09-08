@@ -355,7 +355,6 @@ impl Answers {
 }
 
 const ROW_DISK: usize = 0;
-const ROW_LAYOUT: usize = 1;
 const ROW_HOSTNAME: usize = 2;
 const ROW_ACCOUNT: usize = 3;
 const ROW_PASSWORD: usize = 4;
@@ -772,6 +771,8 @@ fn run_renderer(image: &str, root: &str) -> Result<bool, String> {
             "--net=none",
             "--security-opt",
             "label=disable",
+            "--entrypoint",
+            "",
             "-v",
             &format!("{TARGET}:/target"),
             image,

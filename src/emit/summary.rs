@@ -61,11 +61,13 @@ pub fn on_host(target: &Json) -> String {
                         let written = match value {
                             Json::String(value) => format!("\"{}\"", cell(value)),
                             other => cell(
-                                &other
+                                other
                                     .render()
-                                    .split_whitespace()
+                                    .lines()
+                                    .map(str::trim_start)
                                     .collect::<Vec<_>>()
-                                    .join(" "),
+                                    .join(" ")
+                                    .trim(),
                             ),
                         };
                         (name.clone(), written)
@@ -156,7 +158,7 @@ mod tests {
                     ("count".to_string(), Json::Number(3)),
                     ("on".to_string(), Json::Bool(true)),
                     ("missing".to_string(), Json::Null),
-                    ("names".to_string(), Json::strings(["a|b", "c"])),
+                    ("names".to_string(), Json::strings(["a|b", "two  spaces"])),
                 ]),
             ),
         ]);
@@ -168,7 +170,7 @@ mod tests {
             out.lines().last(),
             Some(
                 "| `one/hello` |  | `count=3` `on=true` `missing=null` \
-                 `names=[ \"a\\|b\", \"c\" ]` |  |"
+                 `names=[ \"a\\|b\", \"two  spaces\" ]` |  |"
             ),
             "{out}"
         );

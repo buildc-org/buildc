@@ -39,7 +39,12 @@ pub fn of<'a>(image: &'a Image, content: &'a Content, index: &Index) -> Option<C
         .filter(|rule| !claimed.contains_key(*rule))
         .cloned()
         .collect();
-    let listed: BTreeSet<String> = image.entries.iter().map(Entry::dir).collect();
+    let listed: BTreeSet<String> = image
+        .entries
+        .iter()
+        .chain(&image.suppressed)
+        .map(Entry::dir)
+        .collect();
     let mut would: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for provider in index.claiming(&content.numbering(&open)) {
         if listed.contains(&provider.dir()) {
@@ -207,5 +212,6 @@ mod tests {
             out.contains("| `4.1.3.1` | Record Attempts to Alter Logon and Logout Events |  |  |"),
             "{out}"
         );
+        assert!(!out.contains("one/broken"), "{out}");
     }
 }

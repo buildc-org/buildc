@@ -95,7 +95,12 @@ pub fn owed<'a>(image: &Image, content: &Content, profile: &Profile, index: &'a 
             .flat_map(|coverage| coverage.rules.iter()),
     );
     let open: BTreeSet<String> = selected.difference(&claimed).cloned().collect();
-    let listed: BTreeSet<String> = image.entries.iter().map(Entry::dir).collect();
+    let listed: BTreeSet<String> = image
+        .entries
+        .iter()
+        .chain(&image.suppressed)
+        .map(Entry::dir)
+        .collect();
     let helping: Vec<&crate::provider::Provider> = match open.is_empty() {
         true => Vec::new(),
         false => index
@@ -1013,6 +1018,30 @@ mod tests {
         assert!(conformance(&loaded.list, &loaded.index, None)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn a_module_the_base_suppressed_is_not_offered_back() {
+        let root = fixture("tests/scap/suppressed-claimant");
+        let loaded = crate::load(&root);
+        let image = loaded.list.images.first().expect("one image");
+        assert!(image.entries.is_empty(), "the base covers the only module");
+        assert_eq!(
+            image.suppressed.iter().map(Entry::dir).collect::<Vec<_>>(),
+            ["one/aide"]
+        );
+        assert_eq!(
+            conformance(
+                &loaded.list,
+                &loaded.index,
+                Some(&fixture("tests/scap/datastream.xml"))
+            )
+            .expect("the fixture datastream reads"),
+            [
+                "`suppressed` conforms to `standard`, and nothing it lists claims 4 of the 4 rules \
+              it selects; nothing in the repository claims them"
+            ]
+        );
     }
 
     #[test]

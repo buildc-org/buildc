@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Source, Span};
-use crate::model::module::Module;
+use crate::model::module::{Coverage, Module};
 use crate::model::options::Value;
 use crate::model::remote::{Collection, REMOTE_DIR};
 use crate::provenance::Evidence;
@@ -67,6 +67,7 @@ pub struct Base {
     pub provides: Vec<Decl>,
     pub provides_files: Vec<Decl>,
     pub requires: Vec<Decl>,
+    pub satisfies: Vec<Coverage>,
     pub signed: bool,
     pub span: Span,
 }

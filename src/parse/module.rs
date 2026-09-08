@@ -151,11 +151,14 @@ const SATISFIES: Node = Node::new("satisfies",
     "The benchmarks and rules this module claims to harden, as an audit declaration. The tool \
      records it and certifies nothing.")
     .once("a module makes one claim set per gate; two blocks in one place split it")
-    .children(&[
-        Node::new("", "One benchmark, and the rule IDs it covers.")
-            .arg(Arg::Strs, Say::new("`{}` has no rules listed", "nothing to cover", ""))
-            .unique(Say::new("benchmark `{}` is declared twice", "already declared above", "")),
-    ], Say::NONE);
+    .children(BENCHMARKS, Say::NONE);
+
+#[rustfmt::skip]
+pub(crate) const BENCHMARKS: &[Node] = &[
+    Node::new("", "One benchmark, and the rule IDs it covers.")
+        .arg(Arg::Strs, Say::new("`{}` has no rules listed", "nothing to cover", ""))
+        .unique(Say::new("benchmark `{}` is declared twice", "already declared above", "")),
+];
 
 #[rustfmt::skip]
 const FAMILY: Node = Node::new("family",
@@ -724,7 +727,7 @@ impl Module {
                 "packages" => module.parse_packages(node, gate, src, issues),
                 "package-groups" => module.parse_package_groups(node, gate, src, issues),
                 "copr" => module.parse_copr(node, src, issues),
-                "satisfies" => module.parse_satisfies(node, src, issues),
+                "satisfies" => module.satisfies.extend(coverages(node, src, issues)),
                 _ => {}
             }
         }
@@ -1267,34 +1270,35 @@ impl Module {
             "kde-desktop",
         ));
     }
+}
 
-    fn parse_satisfies(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
-        let Some(children) = node.children() else {
-            return;
-        };
-        for child in children.nodes() {
-            let benchmark = child.name().value().to_string();
-            if benchmark.is_empty() {
-                issues.push(
-                    Issue::new("a benchmark name is required inside `satisfies`", src)
-                        .at(child.name().span(), "empty name")
-                        .help("`satisfies { cis-fedora \"1.1.1.1\" }`"),
-                );
-                continue;
-            }
-            let rules = child
+pub(crate) fn coverages(node: &KdlNode, src: &Source, issues: &mut Issues) -> Vec<Coverage> {
+    let Some(children) = node.children() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for child in children.nodes() {
+        let benchmark = child.name().value().to_string();
+        if benchmark.is_empty() {
+            issues.push(
+                Issue::new("a benchmark name is required inside `satisfies`", src)
+                    .at(child.name().span(), "empty name")
+                    .help("`satisfies { cis-fedora \"1.1.1.1\" }`"),
+            );
+            continue;
+        }
+        out.push(Coverage {
+            benchmark,
+            rules: child
                 .entries()
                 .iter()
                 .filter(|entry| entry.name().is_none())
                 .filter_map(|entry| entry.value().as_string().map(str::to_string))
-                .collect();
-            self.satisfies.push(Coverage {
-                benchmark,
-                rules,
-                span: child.name().span().into(),
-            });
-        }
+                .collect(),
+            span: child.name().span().into(),
+        });
     }
+    out
 }
 
 pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Key> {

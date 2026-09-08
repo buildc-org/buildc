@@ -73,6 +73,8 @@ pub struct Choice {
     pub parent: Option<usize>,
     pub group: String,
     pub available: bool,
+    pub dim: bool,
+    pub tint: bool,
 }
 
 impl Choice {
@@ -83,11 +85,24 @@ impl Choice {
             parent: None,
             group: String::new(),
             available: true,
+            dim: false,
+            tint: false,
         }
     }
 
     pub fn unavailable(mut self) -> Self {
         self.available = false;
+        self.dim = true;
+        self
+    }
+
+    pub fn content(mut self) -> Self {
+        self.available = false;
+        self
+    }
+
+    pub fn tinted(mut self) -> Self {
+        self.tint = true;
         self
     }
 
@@ -121,14 +136,6 @@ pub fn select_current(
     inline(height(options.len()), |terminal| {
         pick(terminal, question, options, PICK, at)
     })
-}
-
-pub fn offer(question: &str, action: &str, keys: &str) -> Result<bool, String> {
-    let options = [Choice::new(action, "")];
-    let chosen = inline(height(options.len()), |terminal| {
-        pick(terminal, question, &options, keys, 0)
-    })?;
-    Ok(chosen == Some(0))
 }
 
 pub fn confirm(question: &str, yes: &str, no: &str) -> Result<bool, String> {
@@ -530,6 +537,22 @@ pub fn confirm_over(
     Ok(chosen == Some(at))
 }
 
+pub fn offer_over(
+    question: &str,
+    rows: Vec<Choice>,
+    action: &str,
+    keys: &str,
+) -> Result<bool, String> {
+    let mut options = rows;
+    options.push(Choice::new("", ""));
+    options.push(Choice::new(action, ""));
+    let at = options.len() - 1;
+    let chosen = inline((options.len() + 2) as u16, |terminal| {
+        pick(terminal, question, &options, keys, at)
+    })?;
+    Ok(chosen == Some(at))
+}
+
 fn summary_sheet(rows: &[(String, String)], yes: &str, no: &str) -> Vec<Choice> {
     let width = rows
         .iter()
@@ -793,6 +816,25 @@ fn blend(at: usize, room: usize) -> Color {
         step(COLD.1, HOT.1),
         step(COLD.2, HOT.2),
     )
+}
+
+fn lifted(base: (u8, u8, u8)) -> Color {
+    let lift = |channel: u8| (u16::from(channel) + (0xff - u16::from(channel)) * 2 / 3) as u8;
+    Color::Rgb(lift(base.0), lift(base.1), lift(base.2))
+}
+
+fn tinted(label: &str) -> Vec<Span<'static>> {
+    label
+        .chars()
+        .map(|letter| {
+            let colour = match letter {
+                _ if letter.is_ascii_digit() => lifted(HOT),
+                _ if letter.is_alphabetic() => lifted(COLD),
+                _ => Color::White,
+            };
+            Span::styled(letter.to_string(), Style::new().fg(colour))
+        })
+        .collect()
 }
 
 fn height(rows: usize) -> u16 {
@@ -1075,17 +1117,21 @@ fn draw(
                 Some(on) if on.contains(&at) => "[x] ",
                 Some(_) => "[ ] ",
             };
-            let row = match choice.available {
-                true => Style::new(),
-                false => Style::new().dim(),
+            let row = match choice.dim {
+                false => Style::new(),
+                true => Style::new().dim(),
             };
-            ListItem::new(Line::from(vec![
+            let mut spans = vec![
                 Span::styled(mark, row),
                 Span::styled(branch(options, at), row),
-                Span::styled(&choice.label, row),
-                Span::raw("  "),
-                Span::styled(&choice.detail, Style::new().dim()),
-            ]))
+            ];
+            match choice.tint {
+                true => spans.extend(tinted(&choice.label)),
+                false => spans.push(Span::styled(choice.label.clone(), row)),
+            }
+            spans.push(Span::raw("  "));
+            spans.push(Span::styled(choice.detail.clone(), Style::new().dim()));
+            ListItem::new(Line::from(spans))
         })
         .collect();
     let rows = items.len();
@@ -1319,6 +1365,7 @@ fn nested(
 mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
+    use ratatui::style::Modifier;
     use ratatui::Terminal;
 
     #[test]
@@ -1328,6 +1375,87 @@ mod tests {
         assert!(unsized_tty(Some((80, 0))));
         assert!(!unsized_tty(Some((80, 24))));
     }
+
+    #[test]
+    fn the_completion_screen_draws_the_recovery_key() {
+        const KEY: &str = "6f1b4c0d2a9e83f57b6c1d40e2578a93bb0e4f21c7d68a5039e1b74c2f8d605a";
+        let options: Vec<Choice> = vec![
+            Choice::new(crate::copy::WRITE_DOWN, "").content(),
+            Choice::new(KEY, "").content().tinted(),
+            Choice::new(crate::copy::KEY_NOT_LOGGED, "").content(),
+            Choice::new(
+                crate::copy::logging(Some(std::path::Path::new("/var/log/bootc-anywhere.log"))),
+                "",
+            )
+            .content(),
+            Choice::new("", ""),
+            Choice::new(crate::copy::RESTART, ""),
+        ];
+        let rows = 4;
+        for at in 0..rows {
+            assert!(!available(&options, at), "row {at} is landable");
+            assert!(!options[at].dim, "row {at} is dim");
+        }
+        assert!(available(&options, options.len() - 1));
+
+        let at = options.len() - 1;
+        let mut state = ListState::default().with_selected(Some(at));
+        let mut terminal = Terminal::new(TestBackend::new(72, options.len() as u16 + 2)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(
+                    frame,
+                    frame.area(),
+                    crate::copy::INSTALL_DONE,
+                    &options,
+                    None,
+                    crate::copy::DONE_KEYS,
+                    &mut state,
+                )
+            })
+            .unwrap();
+        let drawn = terminal.backend().to_string();
+        assert!(drawn.contains(KEY), "the key is not on the screen: {drawn}");
+        assert!(drawn.contains(crate::copy::KEY_NOT_LOGGED), "{drawn}");
+        assert!(drawn.contains("/var/log/bootc-anywhere.log"), "{drawn}");
+        assert!(drawn.contains(crate::copy::RESTART), "{drawn}");
+
+        let buffer = terminal.backend().buffer();
+        let row = KEY_ROW;
+        let lit = (0..buffer.area.width)
+            .map(|column| &buffer[(column, row)])
+            .filter(|cell| !cell.symbol().trim().is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lit.len(),
+            KEY.len(),
+            "the key's row is not the key: {drawn}"
+        );
+        for cell in &lit {
+            assert!(
+                !cell.modifier.contains(Modifier::DIM),
+                "the recovery key is drawn dim: {drawn}"
+            );
+        }
+
+        let tint = |class: fn(&char) -> bool| {
+            KEY.chars()
+                .zip(&lit)
+                .filter(|(letter, _)| class(letter))
+                .map(|(_, cell)| cell.fg)
+                .collect::<std::collections::HashSet<_>>()
+        };
+        let digits = tint(|letter| letter.is_ascii_digit());
+        let letters = tint(|letter| letter.is_alphabetic());
+        assert_eq!(digits.len(), 1, "digits take one tint: {digits:?}");
+        assert_eq!(letters.len(), 1, "letters take one tint: {letters:?}");
+        assert!(
+            digits.is_disjoint(&letters),
+            "letters and digits share a tint: {digits:?} {letters:?}"
+        );
+    }
+
+    const KEY_ROW: u16 = 2;
 
     #[test]
     fn the_confirmation_shows_the_answers_and_lands_only_on_a_choice() {

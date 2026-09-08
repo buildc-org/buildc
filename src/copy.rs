@@ -182,8 +182,10 @@ pub fn writing(log: Option<&std::path::Path>) -> String {
 }
 
 pub fn recovery(key: &str) -> String {
-    format!("write this down, it is the recovery key: {key}")
+    format!("{WRITE_DOWN} {key}")
 }
+
+pub const WRITE_DOWN: &str = "write this down, it is the recovery key:";
 
 pub const LEAVING: &str = "Leave the installer?";
 pub const LEAVE_BACK: &str = "Keep going";

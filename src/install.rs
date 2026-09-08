@@ -904,15 +904,22 @@ pub fn run(payload: &Payload, answers: &Answers, prompt: &Prompt) -> Result<(), 
 }
 
 fn finish(recovery: Option<&str>, log: Option<&Path>, prompt: &Prompt) -> Result<(), String> {
-    if let Some(key) = recovery {
-        println!("\n{}", copy::recovery(key));
-        println!("{}\n", copy::KEY_NOT_LOGGED);
-    }
-    eprintln!("buildc: {}", copy::logging(log));
     if !prompt.draws() {
+        if let Some(key) = recovery {
+            println!("\n{}", copy::recovery(key));
+            println!("{}\n", copy::KEY_NOT_LOGGED);
+        }
+        eprintln!("buildc: {}", copy::logging(log));
         return Ok(());
     }
-    match crate::ui::offer(copy::INSTALL_DONE, copy::RESTART, copy::DONE_KEYS)? {
+    let mut rows = Vec::new();
+    if let Some(key) = recovery {
+        rows.push(Choice::new(copy::WRITE_DOWN, "").content());
+        rows.push(Choice::new(key, "").content().tinted());
+        rows.push(Choice::new(copy::KEY_NOT_LOGGED, "").content());
+    }
+    rows.push(Choice::new(copy::logging(log), "").content());
+    match crate::ui::offer_over(copy::INSTALL_DONE, rows, copy::RESTART, copy::DONE_KEYS)? {
         false => Ok(()),
         true => restart(),
     }

@@ -12,7 +12,7 @@ use std::path::Path;
 
 #[rustfmt::skip]
 pub const REPO: Node = Node::new("repo",
-    "What is true of the repository rather than of any image in it.")
+    "What is true of the repository, leaving each image to say what is true of itself.")
     .children(&[
         Node::new("schema-version",
             "The schema release this repository is written against, which picks the reader.")
@@ -133,8 +133,8 @@ pub const REPO: Node = Node::new("repo",
                  provenance fact and fails on none of them"))
             .children(&[
                 Node::new("enforce",
-                    "Whether a provenance fact that is missing or does not match stops the run \
-                     rather than being reported.")
+                    "Whether a provenance fact that is missing or does not match stops the run. \
+                     Off, it is reported and the run carries on.")
                     .arg(Arg::Bool, Say::new("`enforce` needs #true or #false", "not a boolean",
                         "`enforce #true` makes an unverified import, a module edited since \
                          import, a base that will not resolve and an unstamped build into \
@@ -147,7 +147,7 @@ pub const REPO: Node = Node::new("repo",
          `seed`, a \
          `workflows` block, a `sources` block, a `manifest` block and an `audit` block: what is \
          true of the \
-         repository rather than of any image in it. An image goes in a file of its own"));
+         repository. An image goes in a file of its own"));
 
 #[rustfmt::skip]
 const IMAGE_FILE: Node = Node::new("image file",
@@ -155,8 +155,7 @@ const IMAGE_FILE: Node = Node::new("image file",
      an image is called what it declares, so one file may hold as many as suit the repository.")
     .children(&[IMAGE], Say::new("unknown top-level node `{}`", "not part of the schema",
         "an image file holds `image` nodes and nothing else; `base`, `flavours` and `modules` are \
-         declared inside one, because they are what the image is rather than what the repository \
-         is"));
+         declared inside one, because they are what the image is"));
 
 struct Pins {
     schema: Option<(i128, Span)>,
@@ -492,7 +491,7 @@ impl List {
                 )
                 .help(format!(
                     "`schema-version {SCHEMA_VERSION}`, so a tool from a different release \
-                     says so plainly instead of reporting every node it does not recognise"
+                     says so plainly. Without it, it reports every node it does not recognise"
                 )),
             );
         }

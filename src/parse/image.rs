@@ -60,7 +60,7 @@ pub const IMAGE: Node = Node::new("image",
             .arg(Arg::Strs, Say::NONE),
         Node::new("logo-url", "A URL to the image's logo, in its OCI labels.")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
-        Node::new("conforms", "The benchmark profile a scan measures the ungated target against, reported rather than enforced.")
+        Node::new("conforms", "The benchmark profile a scan measures the ungated target against. A scan reports it and enforces nothing.")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
 
         Node::new("base", "The image every layer builds on, and what building on it may assume.")
@@ -111,7 +111,7 @@ pub const IMAGE: Node = Node::new("image",
                             say: Say::new("`{}` must be #true or #false", "not a boolean", ""),
                             missing: Say::NONE },
                         Prop { name: "pr-build", kind: Kind::Bool,
-                            desc: "Whether a pull request builds this flavour rather than the \
+                            desc: "Whether a pull request builds this flavour in place of the \
                                    default.",
                             say: Say::new("`{}` must be #true or #false", "not a boolean", ""),
                             missing: Say::NONE },

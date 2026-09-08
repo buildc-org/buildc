@@ -141,7 +141,7 @@ pub(crate) fn check_values(
             if s.contains(['"', '\\', '$', '`', '\n']) {
                 bad(
                     format!("value {s:?} on option `{name}` contains a shell metacharacter"),
-                    "option values are written into a RUN env prefix, so \" \\ $ ` and newlines are rejected rather than escaped",
+                    "option values are written into a RUN env prefix, so \" \\ $ ` and newlines are rejected",
                 );
                 ok = false;
             }

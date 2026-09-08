@@ -283,7 +283,7 @@ pub(crate) fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, Stri
         .join(format!("{}.pin", collection.name));
     let url = remote.url_resolved().unwrap_or_default();
     let sha256 = (!remote.unpinned())
-        .then(|| remote.sha256.as_deref())
+        .then_some(remote.sha256.as_deref())
         .flatten();
     let work = root.join(layout::SOURCES_CACHE).join(format!(
         ".{}.fetching.{}",

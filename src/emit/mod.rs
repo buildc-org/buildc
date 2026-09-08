@@ -56,6 +56,18 @@ pub(crate) const SCRIPTS: &[(&str, &str)] = &[
     ("scripts/vm.sh", include_str!("../../assets/scripts/vm.sh")),
 ];
 
+pub enum Part {
+    Heading(String),
+    Text(String),
+    Table(Table),
+}
+
+pub struct Table {
+    pub title: String,
+    pub header: &'static [&'static str],
+    pub rows: Vec<(Vec<String>, bool)>,
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -67,16 +79,4 @@ mod tests {
             .1;
         assert!(lint.contains("find scripts generated/lib modules"));
     }
-}
-
-pub enum Part {
-    Heading(String),
-    Text(String),
-    Table(Table),
-}
-
-pub struct Table {
-    pub title: String,
-    pub header: &'static [&'static str],
-    pub rows: Vec<(Vec<String>, bool)>,
 }

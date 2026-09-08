@@ -383,7 +383,7 @@ fn check_locator(pin: &Evidence, role: Role, src: &Source, issues: &mut Issues) 
             issues.push(
                 Issue::new(format!("the {what} contains a shell metacharacter"), src)
                     .at(span, "not usable in the fetch")
-                    .help("a pin reaches the fetch as pipe-separated fields and a layer's env, so quotes, spaces, pipes and expansions are rejected rather than escaped"),
+                    .help("a pin reaches the fetch as pipe-separated fields and a layer's env, so quotes, spaces, pipes and expansions are rejected"),
             );
         }
     }

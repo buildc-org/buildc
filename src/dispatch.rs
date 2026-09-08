@@ -79,8 +79,8 @@ fn repo_root(here: &Context) -> Result<PathBuf, Error> {
         Context::Repo(root) => root.clone(),
         Context::Host => {
             return Err(Error::Invocation(format!(
-                "this is a buildc image and not a repository, so there is no source tree to \
-                 read\n\nhelp: {} off the documents the build baked",
+                "this is a buildc image, so there is no source tree to read\n\nhelp: {} \
+                 off the documents the build baked",
                 answers()
             )))
         }
@@ -135,10 +135,11 @@ fn this_target(named: Option<&str>, scope: &crate::emit::why::Scope) -> Result<(
         Scope::Built(name) => Err(Error::Invocation(format!(
             "this image was built as `{name}`, so it cannot answer for `{named}`"
         ))),
-        _ => Err(Error::Invocation(format!(
-            "the build record does not name a target, so this image cannot answer for `{named}` \
-             rather than for itself"
-        ))),
+        _ => Err(Error::Invocation(
+            "the build record does not name a target, so this image can answer only for \
+             itself"
+                .to_string(),
+        )),
     }
 }
 

@@ -787,11 +787,9 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
         return None;
     }
 
-    // Where this machine came from. **This is not the seeding refusal**: that
-    // forbids deriving *declarations* back out of *resolved output*, and this
-    // fetches the real declarations rather than reconstructing them. It is
-    // also why there is no verb — the line below is copy-pasteable exactly
-    // where it is wanted.
+    // Where this machine came from. The seeding refusal forbids deriving
+    // declarations back out of resolved output; this fetches the real ones.
+    // No verb, so the line below is copy-pasteable where it is wanted.
     if let ([target], Some(record)) = (targets.as_slice(), record) {
         why.source = image_of(manifest, target)
             .and_then(|image| text(image, "url"))
@@ -825,9 +823,8 @@ pub fn known_on_host(manifest: &Json, record: Option<&Json>) -> Vec<String> {
 
 /// Whether this binary knows the shape of a baked document. The binary in an
 /// image is pinned independently of the one that built it, so the two can be a
-/// schema apart, and a host is the one place with no repository to check an
-/// answer against: a read-out off fields that moved looks exactly like a right
-/// one. So it refuses, and names both numbers.
+/// schema apart, and a host has no repository to check an answer against. It
+/// refuses, naming both numbers.
 fn readable(document: &Json, at: &std::path::Path, reads: u32) -> Result<(), String> {
     let tool = env!("CARGO_PKG_VERSION");
     match crate::emit::json::field(document, "schema_version") {
@@ -887,10 +884,8 @@ mod tests {
     use crate::emit::Part;
     use crate::resolve::name::matching;
 
-    /// A booted image is one target, and the manifest baked into it holds
-    /// every target the repository declares. The record says which one is
-    /// running; without it the whole manifest is the only honest answer, and
-    /// the read-out has to say so rather than sound certain.
+    /// A booted image is one target, and the manifest baked into it holds every
+    /// target the repository declares. The record says which one is running.
     #[test]
     fn a_host_answer_is_scoped_to_the_target_the_record_names() {
         let manifest = crate::emit::json::Json::parse(
@@ -930,8 +925,7 @@ mod tests {
         );
 
         // The module tree is not in a finished image, so the read-out prints
-        // the clone that fetches the real declarations rather than a verb
-        // that would reconstruct them.
+        // the clone that fetches the real declarations.
         let record = crate::emit::json::Json::parse(
             r#"{"target": "desktop", "source_commit": "1f2bb19aa"}"#,
         )

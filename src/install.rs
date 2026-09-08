@@ -648,8 +648,8 @@ impl Found {
         match self {
             Self::Image(payload) => Ok(payload),
             Self::Repo(root) => Err(format!(
-                "{} is a repository and not a built image, so there is nothing here to install \
-                 yet\n\nhelp: `buildc build` in it, then `buildc installer --from <the built payload>`",
+                "{} is a repository, so there is nothing here to install yet\n\nhelp: \
+                 `buildc build` in it, then `buildc installer --from <the built payload>`",
                 root.display()
             )),
             Self::Nothing(root) => Err(format!(

@@ -62,7 +62,7 @@ const KEY: Node = Node::new("key",
             .arg(Arg::One(&GENERATORS), Say::new("`{}` is not a generator the tool has",
                 "not a generator",
                 "the generators are `cosign`, `openssl` and `ssh-keygen`; a manifest picks one \
-                 of them rather than naming a command of its own"))
+                 of them by name"))
             .once("")
             .missing(NEEDED)
             .props(&[
@@ -148,8 +148,8 @@ const COPR: Node = Node::new("copr",
 
 #[rustfmt::skip]
 const SATISFIES: Node = Node::new("satisfies",
-    "The benchmarks and rules this module claims to harden, as an audit declaration the tool \
-     records rather than certifies.")
+    "The benchmarks and rules this module claims to harden, as an audit declaration. The tool \
+     records it and certifies nothing.")
     .once("a module makes one claim set per gate; two blocks in one place split it")
     .children(&[
         Node::new("", "One benchmark, and the rule IDs it covers.")
@@ -163,7 +163,7 @@ const FAMILY: Node = Node::new("family",
      being taken on every family the module supports.")
     .arg(Arg::Strs, Say::new("`family` needs at least one family name", "nothing named",
         "`family \"debian\" \"ubuntu\" { packages \"vim\" }`; one gate takes as many families as \
-         share the declaration, rather than one gate each"))
+         share the declaration"))
     .empty(Say::new("`{}` gates nothing", "an empty block",
         "a gate with nothing in it says the module does something on that family and then does \
          not; drop it, or move the declaration inside"))
@@ -224,7 +224,7 @@ pub const MODULE: Node = Node::new("module",
             .arg(Arg::Strs, Say::new("`helpers` needs a path", "nothing named", "")),
 
         Node::new("allow-verify",
-            "One `buildc validate-image` diagnostic accepted on one unit rather than image-wide.")
+            "One `buildc validate-image` diagnostic accepted on one unit, leaving the rest of the image checked.")
             .arg(Arg::Str, Say::NONE)
             .props(&[
                 Prop { name: "unit", kind: Kind::Str,
@@ -630,7 +630,7 @@ impl Module {
             issues,
         );
 
-        return Self::rest(module, path, root, &dir, &gated, src, issues);
+        Self::rest(module, path, root, &dir, &gated, src, issues)
     }
 
     fn take(
@@ -892,7 +892,7 @@ impl Module {
         if module.supports.is_empty() {
             issues.push(
                 Issue::new(format!("`{}` declares no `supports`", path), src)
-                    .help("a module has to say which base families it can build on, so a portability gap surfaces at lint rather than mid-build"),
+                    .help("a module has to say which base families it can build on, so a portability gap surfaces at lint, while the build is still cheap"),
             );
         }
 
@@ -1056,7 +1056,8 @@ impl Module {
                     .at(span, "incomplete")
                     .help(
                         "`allow-verify \"man-page-missing\" unit=\"plasmalogin.service\"`, \
-                         which accepts one diagnostic on one unit rather than image-wide",
+                         which accepts one diagnostic on one unit and leaves the rest of the \
+                         image checked",
                     ),
             );
             return;
@@ -1067,7 +1068,7 @@ impl Module {
                 Issue::new(format!("`{class}` is not a verify diagnostic class"), src)
                     .at(span, "not one of the known classes")
                     .help(format!(
-                        "known classes: {}. They are named rather than written as patterns, and `buildc validate-image` holds what each one stands for",
+                        "known classes: {}. Each is named in full, and `buildc validate-image` holds what it stands for",
                         class_names()
                     )),
             );
@@ -1317,7 +1318,7 @@ pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Ke
         issues.push(
             Issue::new(format!("`{name}` is not a filename"), src)
                 .at(private.name().span(), "the private half is written here")
-                .help("the private half is written under keys/private/ and never committed, so it is a plain name rather than a path"),
+                .help("the private half is written under keys/private/ and never committed, so it is a plain name"),
         );
         return None;
     }

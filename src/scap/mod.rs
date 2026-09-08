@@ -68,9 +68,9 @@ pub fn conformance(
             None if image.modules().any(|m| !m.satisfies.is_empty()) => {}
             None => out.push(format!(
                 "`{}` conforms to `{}` and no module it lists declares `satisfies`, so nothing \
-                 here claims a rule of it. Nothing read a datastream, so that counts \
-                 declarations rather than rules: `buildc check --datastream <file>` says which of \
-                 the profile's rules are unclaimed",
+                 here claims a rule of it. Nothing read a datastream, so that is a count of \
+                 declarations: `buildc check --datastream <file>` says which of the profile's \
+                 rules are unclaimed",
                 image.id, image.conforms
             )),
         }
@@ -408,8 +408,8 @@ fn claims(out: &mut String, found: &mut Vec<Finding>, m: Measured) {
                         ),
                         at,
                         help: Some(
-                            "the declaration is wrong rather than the image: a number is only \
-                             usable where the scanned family's content carries it"
+                            "a number is only usable where the scanned family's content \
+                             carries it, so the declaration is what has to change"
                                 .into(),
                         ),
                     });

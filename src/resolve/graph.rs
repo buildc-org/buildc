@@ -77,7 +77,7 @@ fn satisfied_by(index: &Index, image: &Image, name: &str) -> String {
                 named.join(" or "),
                 first.qualified()
             ),
-            None => nowhere(index, name, &image.src.name()),
+            None => nowhere(index, name, image.src.name()),
         },
     }
 }
@@ -323,7 +323,7 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                     &module.src,
                 )
                 .at(decl.span, "nothing to order after")
-                .help("an `after` orders the build without requiring anything; name a capability the base or an enabled module provides, or make it a `requires` so the missing edge is a requirement rather than an ordering"),
+                .help("an `after` orders the build without requiring anything; name a capability the base or an enabled module provides, or make it a `requires` so the missing edge is a requirement"),
             );
         }
     }

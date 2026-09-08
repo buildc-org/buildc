@@ -154,6 +154,13 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         ),
         format!("CONFORMS={conforms}"),
         format!(
+            "SCAP_CONTENT={}",
+            match conforms.is_empty() {
+                true => String::new(),
+                false => crate::scap::content_for(root, &list, Some(&target)),
+            }
+        ),
+        format!(
             "SCAP_CLAIMED={}",
             unique(
                 modules

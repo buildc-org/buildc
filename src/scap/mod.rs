@@ -1045,6 +1045,34 @@ mod tests {
     }
 
     #[test]
+    fn a_search_that_reached_the_collections_says_so() {
+        let root = fixture("tests/scap/sourced-claimant");
+        let loaded = crate::load(&root);
+        assert!(
+            loaded.issues.plain().is_empty(),
+            "{}",
+            loaded.issues.plain()
+        );
+        assert!(loaded.index.sourced() && loaded.index.unread().is_empty());
+        assert!(
+            loaded.index.at(".remote/held/one/plain").is_some(),
+            "the collection was walked"
+        );
+        assert_eq!(
+            conformance(
+                &loaded.list,
+                &loaded.index,
+                Some(&fixture("tests/scap/datastream.xml"))
+            )
+            .expect("the fixture datastream reads"),
+            [
+                "`sourced` conforms to `standard`, and nothing it lists claims 4 of the 4 rules it \
+              selects; nothing in the repository or its collections claims them"
+            ]
+        );
+    }
+
+    #[test]
     fn a_module_the_image_lists_is_not_offered_as_one_that_would_help() {
         let root = fixture("tests/scap/listed-claimant");
         let loaded = crate::load(&root);

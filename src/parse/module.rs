@@ -1364,11 +1364,21 @@ pub fn summary(file: &Path) -> Summary {
     else {
         return Summary::default();
     };
+    let nodes: Vec<&KdlNode> = doc
+        .nodes()
+        .iter()
+        .flat_map(|node| match node.name().value() {
+            "family" => node
+                .children()
+                .map_or(Vec::new(), |kids| kids.nodes().iter().collect()),
+            _ => vec![node],
+        })
+        .collect();
     let strings = |name: &str| -> Vec<String> {
-        doc.nodes()
+        nodes
             .iter()
             .filter(|node| node.name().value() == name)
-            .flat_map(KdlNode::entries)
+            .flat_map(|node| node.entries())
             .filter_map(|entry| entry.value().as_string().map(str::to_string))
             .collect()
     };
@@ -1395,11 +1405,10 @@ pub fn summary(file: &Path) -> Summary {
         requires: strings("requires"),
         keys: strings("key"),
         args: strings("arg"),
-        satisfies: doc
-            .nodes()
+        satisfies: nodes
             .iter()
             .filter(|node| node.name().value() == "satisfies")
-            .filter_map(KdlNode::children)
+            .filter_map(|node| node.children())
             .flat_map(KdlDocument::nodes)
             .flat_map(KdlNode::entries)
             .filter(|entry| entry.name().is_none())
@@ -1450,6 +1459,31 @@ mod tests {
             &mut issues,
         );
         issues.findings()
+    }
+
+    #[test]
+    fn a_summary_reads_a_gated_requirement_and_a_gated_claim() {
+        let dir = std::env::temp_dir().join(format!("buildc-gated-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(layout::MODULE_FILE);
+        std::fs::write(
+            &file,
+            r#"
+description "gated"
+supports "fedora" "debian"
+requires "everywhere"
+satisfies { cis-fedora "1.1.1.1" }
+family "fedora" {
+    requires "on-fedora"
+    satisfies { stig "CCI-000199" }
+}
+"#,
+        )
+        .unwrap();
+        let read = summary(&file);
+        assert_eq!(read.requires, ["everywhere", "on-fedora"]);
+        assert_eq!(read.satisfies, ["1.1.1.1", "CCI-000199"]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

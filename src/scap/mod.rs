@@ -914,7 +914,7 @@ mod tests {
             .iter()
             .map(|held| held.qualified())
             .collect();
-        assert_eq!(claiming, ["one/hello"]);
+        assert_eq!(claiming, ["one/auditing", "one/hello"]);
         assert!(index.claiming(&BTreeSet::new()).is_empty());
     }
 
@@ -993,7 +993,7 @@ mod tests {
             said,
             [
                 "`enforced` conforms to `standard`, and nothing it lists claims 2 of the 4 rules it \
-              selects; nothing in the repository claims them"
+              selects; `one/auditing` would claim 1 of them"
             ]
         );
         assert!(conformance(&loaded.list, &loaded.index, None)

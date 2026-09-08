@@ -60,7 +60,13 @@ pub fn on_host(target: &Json) -> String {
                     .map(|(name, value)| {
                         let written = match value {
                             Json::String(value) => format!("\"{}\"", cell(value)),
-                            other => other.render(),
+                            other => cell(
+                                &other
+                                    .render()
+                                    .split_whitespace()
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
+                            ),
                         };
                         (name.clone(), written)
                     })
@@ -134,4 +140,38 @@ fn table(flavour: Option<&str>, rows: &[Row]) -> String {
 
 fn cell(text: &str) -> String {
     text.replace('|', "\\|")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_option_that_is_not_a_string_stays_on_its_row() {
+        let module = Json::object([
+            ("path", Json::string("one/hello")),
+            (
+                "options",
+                Json::map([
+                    ("count".to_string(), Json::Number(3)),
+                    ("on".to_string(), Json::Bool(true)),
+                    ("missing".to_string(), Json::Null),
+                    ("names".to_string(), Json::strings(["a|b", "c"])),
+                ]),
+            ),
+        ]);
+        let out = on_host(&Json::object([
+            ("flavour", Json::Null),
+            ("modules", Json::array([module])),
+        ]));
+        assert_eq!(
+            out.lines().last(),
+            Some(
+                "| `one/hello` |  | `count=3` `on=true` `missing=null` \
+                 `names=[ \"a\\|b\", \"c\" ]` |  |"
+            ),
+            "{out}"
+        );
+        assert_eq!(out.lines().count(), 5, "{out}");
+    }
 }

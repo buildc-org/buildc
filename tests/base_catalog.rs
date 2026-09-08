@@ -80,6 +80,7 @@ fn public_catalog_lists_every_shipped_base_in_order() {
         [
             "quay.io/fedora/fedora-bootc:44",
             "quay.io/centos-bootc/centos-bootc:stream10",
+            "registry.redhat.io/rhel10/rhel-bootc:latest",
             "ghcr.io/ublue-os/bazzite:stable",
             "ghcr.io/ublue-os/aurora:stable",
             "ghcr.io/ublue-os/bluefin:stable",
@@ -119,7 +120,7 @@ fn missing_runtime_file_falls_back_to_embedded_catalog() {
 
     assert!(issues.is_empty(), "{}", issues.plain());
     assert!(shadows.is_empty());
-    assert_eq!(bases.len(), 8);
+    assert_eq!(bases.len(), 9);
     for (image, family) in [
         ("docker.io/library/debian:forky", "debian"),
         ("docker.io/library/ubuntu:26.04", "ubuntu"),
@@ -253,7 +254,7 @@ fn collection_still_overrides_and_shadows_selected_catalog() {
     let (bases, shadows) = buildc::base::catalog(&root, &sources, &mut issues);
 
     assert!(issues.is_empty(), "{}", issues.plain());
-    assert_eq!(bases.len(), 8);
+    assert_eq!(bases.len(), 9);
     assert_eq!(bases[0].about, "collection replacement");
     assert!(bases[0].signed);
     assert_eq!(shadows.len(), 1);

@@ -587,13 +587,11 @@ fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<
     options
 }
 
-pub fn secret(question: &str) -> Result<String, String> {
+fn typing(keys: &str, draw: impl Fn(&mut Frame, Rect, &str)) -> Result<String, String> {
     inline(3, |terminal| {
         let mut typed = String::new();
         loop {
-            render(terminal, 3, SECRET_KEYS, |frame, area| {
-                masked(frame, area, question, typed.chars().count())
-            })?;
+            render(terminal, 3, keys, |frame, area| draw(frame, area, &typed))?;
             let Some(key) = read()? else { continue };
             match key {
                 KeyCode::Enter => return Ok(typed),
@@ -608,24 +606,15 @@ pub fn secret(question: &str) -> Result<String, String> {
     })
 }
 
+pub fn secret(question: &str) -> Result<String, String> {
+    typing(SECRET_KEYS, |frame, area, typed| {
+        masked(frame, area, question, typed.chars().count())
+    })
+}
+
 pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<String, String> {
-    inline(3, |terminal| {
-        let mut typed = String::new();
-        loop {
-            render(terminal, 3, LINE_KEYS, |frame, area| {
-                written(frame, area, question, prefix, &typed, default)
-            })?;
-            let Some(key) = read()? else { continue };
-            match key {
-                KeyCode::Enter => return Ok(typed),
-                KeyCode::Esc => return Ok(String::new()),
-                KeyCode::Backspace => {
-                    typed.pop();
-                }
-                KeyCode::Char(letter) => typed.push(letter),
-                _ => {}
-            }
-        }
+    typing(LINE_KEYS, |frame, area, typed| {
+        written(frame, area, question, prefix, typed, default)
     })
 }
 

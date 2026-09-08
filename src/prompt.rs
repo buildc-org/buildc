@@ -6,6 +6,20 @@ fn stem(question: &str) -> &str {
     question.trim_end_matches(':')
 }
 
+fn retyped(question: &str, empty: impl Fn() -> Result<String, String>) -> Result<String, String> {
+    loop {
+        let typed = crate::ui::secret(question)?;
+        if typed.is_empty() {
+            return empty();
+        }
+        if typed == crate::ui::secret(crate::copy::PASSWORD_AGAIN)? {
+            println!("{}: {}\n", stem(question), crate::copy::PASSWORD_SET);
+            return Ok(typed);
+        }
+        println!("{}", crate::copy::NO_MATCH);
+    }
+}
+
 const SCRIPT: &str = "BUILDC_ANSWERS";
 
 pub struct Prompt {
@@ -83,6 +97,17 @@ impl Prompt {
         flag: &str,
         default: Option<&str>,
     ) -> Result<String, String> {
+        self.asked(given, question, flag, None, default)
+    }
+
+    fn asked(
+        &self,
+        given: Option<String>,
+        question: &str,
+        flag: &str,
+        prefix: Option<&str>,
+        default: Option<&str>,
+    ) -> Result<String, String> {
         if let Some(value) = given.filter(|value| !value.is_empty()) {
             return Ok(value);
         }
@@ -97,18 +122,19 @@ impl Prompt {
             return missing();
         }
         if self.draw {
-            return self.written(question, "", default, missing);
+            return self.written(question, prefix.unwrap_or(""), default, missing);
         }
-        let answer = match default {
-            Some(default) => {
-                let question = format!("{} [{default}]", stem(question));
-                self.read(&question, &format!("{question}: "))?
-            }
-            None => self.read(question, &format!("{}: ", stem(question)))?,
+        let labelled = match default {
+            Some(default) => format!("{} [{default}]", stem(question)),
+            None => question.to_string(),
         };
-        match answer.is_empty() {
-            true => missing(),
-            false => Ok(answer),
+        let shown = match prefix {
+            None => format!("{}: ", stem(&labelled)),
+            Some(prefix) => format!("{labelled}\n{prefix}"),
+        };
+        match self.read(&labelled, &shown)? {
+            answer if answer.is_empty() => missing(),
+            answer => Ok(answer),
         }
     }
 
@@ -140,34 +166,16 @@ impl Prompt {
         if !self.draw {
             return self.text(None, question, flag, None);
         }
-        loop {
-            let typed = crate::ui::secret(question)?;
-            if typed.is_empty() {
-                return Err(format!(
-                    "give {flag}, since nothing was typed: {}",
-                    stem(question)
-                ));
-            }
-            if typed == crate::ui::secret(crate::copy::PASSWORD_AGAIN)? {
-                println!("{}: {}\n", stem(question), crate::copy::PASSWORD_SET);
-                return Ok(typed);
-            }
-            println!("{}", crate::copy::NO_MATCH);
-        }
+        retyped(question, || {
+            Err(format!(
+                "give {flag}, since nothing was typed: {}",
+                stem(question)
+            ))
+        })
     }
 
     pub fn secret_current(&self, question: &str, current: &str) -> Result<String, String> {
-        loop {
-            let typed = crate::ui::secret(question)?;
-            if typed.is_empty() {
-                return Ok(current.to_string());
-            }
-            if typed == crate::ui::secret(crate::copy::PASSWORD_AGAIN)? {
-                println!("{}: {}\n", stem(question), crate::copy::PASSWORD_SET);
-                return Ok(typed);
-            }
-            println!("{}", crate::copy::NO_MATCH);
-        }
+        retyped(question, || Ok(current.to_string()))
     }
 
     pub fn line(
@@ -178,30 +186,7 @@ impl Prompt {
         prefix: &str,
         default: Option<&str>,
     ) -> Result<String, String> {
-        if let Some(value) = given.filter(|value| !value.is_empty()) {
-            return Ok(value);
-        }
-        let missing = || match default {
-            Some(default) => Ok(default.to_string()),
-            None => Err(format!(
-                "give {flag}, since nothing can be asked here: {}",
-                stem(question)
-            )),
-        };
-        if !self.ask {
-            return missing();
-        }
-        if self.draw {
-            return self.written(question, prefix, default, missing);
-        }
-        let question = match default {
-            Some(default) => format!("{} [{default}]", stem(question)),
-            None => question.to_string(),
-        };
-        match self.read(&question, &format!("{question}\n{prefix}"))? {
-            answer if answer.is_empty() => missing(),
-            answer => Ok(answer),
-        }
+        self.asked(given, question, flag, Some(prefix), default)
     }
 
     pub fn confirm(&self, question: &str, yes: &str, no: &str) -> Result<bool, String> {

@@ -92,6 +92,14 @@ pub struct VerifyException {
     pub span: Span,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum Position {
+    #[default]
+    Before,
+    After,
+    Tail,
+}
+
 pub struct Module {
     pub path: String,
     pub dir: String,
@@ -124,7 +132,7 @@ pub struct Module {
     pub satisfies: Vec<Coverage>,
     pub resolved: Vec<(String, String)>,
     pub fragment: Option<String>,
-    pub fragment_after: bool,
+    pub fragment_position: Position,
     pub standard_layer: bool,
     pub content: Option<String>,
     pub imported: Option<Record>,

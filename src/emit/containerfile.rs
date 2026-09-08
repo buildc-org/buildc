@@ -1,7 +1,7 @@
 use crate::emit::{finalize, module_build};
 use crate::layout;
 use crate::model::image::{Entry, Image};
-use crate::model::module::Module;
+use crate::model::module::{Module, Position};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -52,6 +52,8 @@ ARG FAMILY";
 
 const MODULE_DIR: &str = "@MODULE@";
 
+const LINEAGE: &str = "rootfs";
+
 const BUILDC_MOUNT: &str = "--mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    ";
 
 const IMAGE_VERSION_ARG: &str = "\
@@ -77,6 +79,7 @@ fn identity(image: &Image) -> Vec<(&'static str, String)> {
 
 pub fn section(image: &Image, root: &Path) -> String {
     let mut out = String::new();
+    let mut tails: Vec<String> = Vec::new();
     let mut flavour_arg_emitted = false;
 
     if image
@@ -92,7 +95,7 @@ pub fn section(image: &Image, root: &Path) -> String {
     }
 
     if image.base.is_some() {
-        let _ = write!(out, "### Base Image\nFROM ${{BASE}}\n\n");
+        let _ = write!(out, "### Base Image\nFROM ${{BASE}} AS {LINEAGE}\n\n");
     }
 
     let _ = write!(out, "## Module layers\n\n");
@@ -111,8 +114,15 @@ pub fn section(image: &Image, root: &Path) -> String {
             flavour_arg_emitted = true;
         }
 
+        let at = |want| {
+            module
+                .fragment
+                .as_ref()
+                .filter(|_| module.fragment_position == want)
+        };
+
         let mut blocks: Vec<String> = Vec::new();
-        if let Some(body) = module.fragment.as_ref().filter(|_| !module.fragment_after) {
+        if let Some(body) = at(Position::Before) {
             blocks.push(fragment(entry, body));
         }
         if module.standard_layer {
@@ -123,8 +133,11 @@ pub fn section(image: &Image, root: &Path) -> String {
                 &module_build::path(image, entry),
             ));
         }
-        if let Some(body) = module.fragment.as_ref().filter(|_| module.fragment_after) {
+        if let Some(body) = at(Position::After) {
             blocks.push(fragment(entry, body));
+        }
+        if let Some(body) = at(Position::Tail) {
+            tails.push(fragment(entry, body));
         }
 
         if let Some(flavour) = &entry.flavour {
@@ -160,6 +173,10 @@ pub fn section(image: &Image, root: &Path) -> String {
     );
 
     let _ = write!(out, "{}\n\n", finalize_layer(image, &identity_env, root));
+
+    for tail in &tails {
+        let _ = write!(out, "{tail}\n\n");
+    }
 
     out
 }

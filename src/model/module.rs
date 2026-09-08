@@ -92,6 +92,12 @@ pub struct VerifyException {
     pub span: Span,
 }
 
+pub struct Refusal {
+    pub rule: String,
+    pub because: String,
+    pub span: Span,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum Position {
     #[default]
@@ -115,6 +121,7 @@ pub struct Module {
     pub requires_files: Vec<Decl>,
     pub overrides: Vec<Decl>,
     pub verify_exceptions: Vec<VerifyException>,
+    pub refuses: Vec<Refusal>,
     pub flavour: Option<String>,
     pub collects: Vec<Collect>,
     pub contributes: Vec<Contribution>,

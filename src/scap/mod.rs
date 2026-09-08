@@ -29,7 +29,7 @@ pub fn content(root: &Path, named: Option<&str>) -> Result<Verdict, String> {
     let Some((list, _)) = open(root, named) else {
         return Ok(Verdict::Wrong);
     };
-    println!("{}", datastream(&list, named)?);
+    println!("{}", datastream(root, &list, named)?);
     Ok(Verdict::Clean)
 }
 
@@ -206,7 +206,7 @@ fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::R
     }
 }
 
-fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
+fn datastream(root: &Path, list: &List, named: Option<&str>) -> Result<String, String> {
     let name = target(list, named)?;
     let (image, flavour, _) = of_target(list, &name).ok_or(unknown(&name))?;
     if image
@@ -215,12 +215,29 @@ fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
     {
         return Ok(String::new());
     }
-    Ok(installed(
+    let base = image.base.as_ref();
+    let mut issues = crate::diag::Issues::default();
+    let (bases, _) = crate::base::catalog(root, &list.sources, &mut issues);
+    Ok(measured_by(
         CONTENT,
-        image.base.as_ref().map_or("", |base| base.family.as_str()),
+        &bases,
+        base.map_or("", |base| base.image.as_str()),
+        base.map_or("", |base| base.family.as_str()),
     )?
     .display()
     .to_string())
+}
+
+fn measured_by(
+    dir: &str,
+    bases: &[crate::base::Base],
+    image: &str,
+    family: &str,
+) -> Result<PathBuf, String> {
+    match crate::base::find(bases, image) {
+        Some(base) if !base.scap_content.is_empty() => Ok(Path::new(dir).join(&base.scap_content)),
+        _ => installed(dir, family),
+    }
 }
 
 fn installed(dir: &str, family: &str) -> Result<PathBuf, String> {
@@ -283,7 +300,7 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
 
     let datastream = match &opts.datastream {
         Some(path) => path.clone(),
-        None => match datastream(&list, Some(&name))? {
+        None => match datastream(root, &list, Some(&name))? {
             empty if empty.is_empty() => {
                 return Err(format!(
                     "`{name}` declares no `conforms`, so there is nothing to measure it against; \
@@ -969,6 +986,54 @@ mod tests {
             content_at("/nowhere", "debian", Some(&given)).unwrap(),
             given
         );
+    }
+
+    #[test]
+    fn a_base_row_names_content_the_family_default_would_get_wrong() {
+        let row = |image: &str, content: &str| crate::base::Base {
+            image: image.to_string(),
+            family: "fedora".to_string(),
+            provides: Vec::new(),
+            provides_files: Vec::new(),
+            requires: Vec::new(),
+            about: String::new(),
+            signed: false,
+            scap_content: content.to_string(),
+            span: crate::diag::Span::default(),
+        };
+        let bases = [
+            row(
+                "quay.io/centos-bootc/centos-bootc:stream10",
+                "ssg-cs10-ds.xml",
+            ),
+            row("quay.io/fedora/fedora-bootc:44", "ssg-fedora-ds.xml"),
+            row("example.invalid/silent:1", ""),
+        ];
+        let of = |image, family| measured_by("/nowhere", &bases, image, family);
+
+        let el = of("quay.io/centos-bootc/centos-bootc:stream10", "fedora").unwrap();
+        assert!(el.ends_with("ssg-cs10-ds.xml"), "{}", el.display());
+
+        let fedora = of("quay.io/fedora/fedora-bootc:44", "fedora").unwrap();
+        assert!(
+            fedora.ends_with("ssg-fedora-ds.xml"),
+            "{}",
+            fedora.display()
+        );
+
+        let pinned = of(
+            "quay.io/centos-bootc/centos-bootc:stream10@sha256:0000",
+            "fedora",
+        )
+        .unwrap();
+        assert!(pinned.ends_with("ssg-cs10-ds.xml"), "{}", pinned.display());
+
+        for image in ["example.invalid/silent:1", "example.invalid/unknown:1"] {
+            let fell = of(image, "fedora").unwrap();
+            assert!(fell.ends_with("ssg-fedora-ds.xml"), "{image}");
+        }
+        let err = of("example.invalid/silent:1", "debian").unwrap_err();
+        assert!(err.contains("no content a `debian` image"), "{err}");
     }
 
     #[test]

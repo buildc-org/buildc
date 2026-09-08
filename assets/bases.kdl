@@ -4,6 +4,16 @@ base "quay.io/fedora/fedora-bootc:44" {
     provides "rechunking" "initramfs-generation" "selinux-policy"
     provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
         "/usr/bin/podman" "/usr/bin/crun"
+    scap-content "ssg-fedora-ds.xml"
+}
+
+base "quay.io/centos-bootc/centos-bootc:stream10" {
+    about "CentOS Stream 10, the EL base a stated claim can be measured against"
+    family "fedora"
+    provides "rechunking" "initramfs-generation" "selinux-policy"
+    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
+        "/usr/bin/podman" "/usr/bin/crun"
+    scap-content "ssg-cs10-ds.xml"
 }
 
 base "ghcr.io/ublue-os/bazzite:stable" {
@@ -12,6 +22,7 @@ base "ghcr.io/ublue-os/bazzite:stable" {
     provides "rechunking" "flatpak"
     provides-file "/usr/bin/flatpak"
     signed #true
+    scap-content "ssg-fedora-ds.xml"
 }
 
 base "ghcr.io/ublue-os/aurora:stable" {
@@ -20,6 +31,7 @@ base "ghcr.io/ublue-os/aurora:stable" {
     provides "rechunking" "flatpak"
     provides-file "/usr/bin/flatpak"
     signed #true
+    scap-content "ssg-fedora-ds.xml"
 }
 
 base "ghcr.io/ublue-os/bluefin:stable" {
@@ -28,6 +40,7 @@ base "ghcr.io/ublue-os/bluefin:stable" {
     provides "rechunking" "flatpak"
     provides-file "/usr/bin/flatpak"
     signed #true
+    scap-content "ssg-fedora-ds.xml"
 }
 
 base "ghcr.io/ublue-os/kinoite-main:44" {
@@ -36,6 +49,7 @@ base "ghcr.io/ublue-os/kinoite-main:44" {
     provides "rechunking" "flatpak"
     provides-file "/usr/bin/flatpak"
     signed #true
+    scap-content "ssg-fedora-ds.xml"
 }
 
 base "docker.io/library/debian:forky" {

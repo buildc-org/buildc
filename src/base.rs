@@ -14,6 +14,7 @@ pub struct Base {
     pub requires: Vec<String>,
     pub about: String,
     pub signed: bool,
+    pub scap_content: String,
     pub span: Span,
 }
 
@@ -25,6 +26,7 @@ impl Base {
             || self.requires != other.requires
             || self.about != other.about
             || self.signed != other.signed
+            || self.scap_content != other.scap_content
     }
 }
 

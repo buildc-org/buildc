@@ -79,6 +79,7 @@ fn public_catalog_lists_every_shipped_base_in_order() {
             .collect::<Vec<_>>(),
         [
             "quay.io/fedora/fedora-bootc:44",
+            "quay.io/centos-bootc/centos-bootc:stream10",
             "ghcr.io/ublue-os/bazzite:stable",
             "ghcr.io/ublue-os/aurora:stable",
             "ghcr.io/ublue-os/bluefin:stable",
@@ -118,16 +119,29 @@ fn missing_runtime_file_falls_back_to_embedded_catalog() {
 
     assert!(issues.is_empty(), "{}", issues.plain());
     assert!(shadows.is_empty());
-    assert_eq!(bases.len(), 7);
-    for (at, image, family) in [
-        (5, "docker.io/library/debian:forky", "debian"),
-        (6, "docker.io/library/ubuntu:26.04", "ubuntu"),
+    assert_eq!(bases.len(), 8);
+    for (image, family) in [
+        ("docker.io/library/debian:forky", "debian"),
+        ("docker.io/library/ubuntu:26.04", "ubuntu"),
     ] {
-        assert_eq!(bases[at].image, image);
-        assert_eq!(bases[at].family, family);
-        assert!(bases[at].provides.is_empty(), "{image}");
-        assert_eq!(bases[at].requires, ["bootc-base"], "{image}");
-        assert!(!bases[at].signed, "{image}");
+        let base = buildc::base::find(&bases, image).expect(image);
+        assert_eq!(base.family, family);
+        assert!(base.provides.is_empty(), "{image}");
+        assert_eq!(base.requires, ["bootc-base"], "{image}");
+        assert!(!base.signed, "{image}");
+        assert!(base.scap_content.is_empty(), "{image}");
+    }
+    for (image, content) in [
+        ("quay.io/fedora/fedora-bootc:44", "ssg-fedora-ds.xml"),
+        (
+            "quay.io/centos-bootc/centos-bootc:stream10",
+            "ssg-cs10-ds.xml",
+        ),
+        ("ghcr.io/ublue-os/bazzite:stable", "ssg-fedora-ds.xml"),
+    ] {
+        let base = buildc::base::find(&bases, image).expect(image);
+        assert_eq!(base.family, "fedora", "{image}");
+        assert_eq!(base.scap_content, content, "{image}");
     }
 }
 
@@ -239,7 +253,7 @@ fn collection_still_overrides_and_shadows_selected_catalog() {
     let (bases, shadows) = buildc::base::catalog(&root, &sources, &mut issues);
 
     assert!(issues.is_empty(), "{}", issues.plain());
-    assert_eq!(bases.len(), 7);
+    assert_eq!(bases.len(), 8);
     assert_eq!(bases[0].about, "collection replacement");
     assert!(bases[0].signed);
     assert_eq!(shadows.len(), 1);

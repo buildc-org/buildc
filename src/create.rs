@@ -1447,6 +1447,7 @@ mod tests {
             requires: Vec::new(),
             about: "what a collection describes".to_string(),
             signed: true,
+            scap_content: String::new(),
             span: crate::diag::Span::default(),
         };
         let extended = image_kdl(

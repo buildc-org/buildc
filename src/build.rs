@@ -109,6 +109,9 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         .collect();
 
     let namespace = crate::registry::namespace(root);
+    let conforms = image
+        .conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR))
+        .to_string();
     let mut build_args = vec![
         format!("FLAVOUR={}", flavour.unwrap_or_default()),
         format!("IMAGE_VERSION={version}"),
@@ -138,6 +141,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
                 .map(|b| b.family.as_str())
                 .unwrap_or_default()
         ),
+        format!("CONFORMS={conforms}"),
         format!("TARGET={target}"),
         format!(
             "MODULE_HASHES={}",

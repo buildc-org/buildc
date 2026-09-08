@@ -25,16 +25,6 @@ pub enum Stopped {
     Repository,
 }
 
-fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for value in values {
-        if !out.contains(&value) {
-            out.push(value);
-        }
-    }
-    out
-}
-
 pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     let backend = match opts.backend.clone().or_else(|| env("BUILD_BACKEND")) {
         None => "buildah".to_string(),
@@ -120,9 +110,14 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
 
     let namespace = crate::registry::namespace(root);
 
-    let conforms = image
-        .conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR))
-        .to_string();
+    let conforms =
+        crate::scap::profile_name(image.conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR)))
+            .to_string();
+    let scap_content = match conforms.is_empty() {
+        true => String::new(),
+        false => crate::scap::content_for(root, &list, Some(&target))?,
+    };
+    let (scap_claimed, scap_refused) = crate::scap::exclusions(image);
     let mut build_args = vec![
         format!("FLAVOUR={}", flavour.unwrap_or_default()),
         format!("IMAGE_VERSION={version}"),
@@ -153,31 +148,9 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
                 .unwrap_or_default()
         ),
         format!("CONFORMS={conforms}"),
-        format!(
-            "SCAP_CONTENT={}",
-            match conforms.is_empty() {
-                true => String::new(),
-                false => crate::scap::content_for(root, &list, Some(&target)),
-            }
-        ),
-        format!(
-            "SCAP_CLAIMED={}",
-            unique(
-                modules
-                    .iter()
-                    .flat_map(|m| m.satisfies.iter().flat_map(|c| c.rules.iter().cloned()))
-            )
-            .join(" ")
-        ),
-        format!(
-            "SCAP_REFUSED={}",
-            unique(
-                modules
-                    .iter()
-                    .flat_map(|m| m.refuses.iter().map(|r| r.rule.clone()))
-            )
-            .join(" ")
-        ),
+        format!("SCAP_CONTENT={scap_content}"),
+        format!("SCAP_CLAIMED={}", scap_claimed.join(" ")),
+        format!("SCAP_REFUSED={}", scap_refused.join(" ")),
         format!("TARGET={target}"),
         format!(
             "MODULE_HASHES={}",
@@ -407,26 +380,5 @@ fn today() -> Result<String, String> {
     match out.status.success() && stamp.len() == 8 {
         true => Ok(stamp),
         false => Err(format!("date -u +%Y%m%d said `{stamp}`")),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::unique;
-
-    #[test]
-    fn claims_and_refusals_are_named_once_each_in_order() {
-        let of = |v: &[&str]| unique(v.iter().map(|s| s.to_string()));
-
-        assert_eq!(
-            of(&["CCI-000199", "Req-10.2.5"]),
-            ["CCI-000199", "Req-10.2.5"]
-        );
-        assert_eq!(
-            of(&["CCI-000199", "Req-10.2.5", "CCI-000199"]),
-            ["CCI-000199", "Req-10.2.5"]
-        );
-        assert!(of(&[]).is_empty());
-        assert_eq!(of(&[]).join(" "), "");
     }
 }

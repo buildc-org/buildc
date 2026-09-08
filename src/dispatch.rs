@@ -649,10 +649,25 @@ pub fn dispatch(
                 ));
             };
             let content = crate::scap::content_of(path)?;
+            let mut lost: Vec<&str> = Vec::new();
             for number in rest {
-                if let Some(rule) = content.rules.get(*number) {
-                    println!("{}", crate::scap::rule_name(rule));
+                match content.rules.get(*number) {
+                    Some(rule) => println!("{}", crate::scap::rule_name(rule)),
+                    None => lost.push(number),
                 }
+            }
+            if !lost.is_empty() {
+                return Err(Error::Invocation(format!(
+                    "{} reaches no rule in {}: {}\n\nhelp: a number resolves against the content \
+                     the base is measured with, so a claim written for one family does not \
+                     resolve against another's",
+                    match lost.len() {
+                        1 => "one number".to_string(),
+                        n => format!("{n} numbers"),
+                    },
+                    path.display(),
+                    lost.join(", ")
+                )));
             }
             Ok(ExitCode::SUCCESS)
         }

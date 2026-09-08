@@ -62,10 +62,15 @@ pub fn conformance(
         None => None,
     };
     let mut out = Vec::new();
-    for image in list.images.iter().filter(|i| !i.conforms.is_empty()) {
+    let measured = list
+        .images
+        .iter()
+        .filter(|i| !i.conforms.is_empty() || i.flavours.iter().any(|f| !f.conforms.is_empty()));
+    for image in measured {
         out.extend(unremediated(image, index));
         if let Some(content) = &content {
             out.extend(claimed_and_refused(image, content));
+            out.extend(refuses_nothing(image, content));
         }
         match &content {
             Some(content) => out.extend(unclaimed(image, content, index)),
@@ -81,6 +86,24 @@ pub fn conformance(
         }
     }
     Ok(out)
+}
+
+pub fn exclusions(image: &Image) -> (Vec<String>, Vec<String>) {
+    let claimed = crate::emit::plan::distinct(
+        image
+            .base
+            .iter()
+            .flat_map(|base| base.satisfies.iter())
+            .chain(image.modules().flat_map(|module| module.satisfies.iter()))
+            .flat_map(|coverage| coverage.rules.iter().cloned()),
+    );
+    let refused = crate::emit::plan::distinct(image.modules().flat_map(|module| {
+        module
+            .refuses
+            .iter()
+            .map(|r| rule_name(&r.rule).to_string())
+    }));
+    (claimed, refused)
 }
 
 const REMEDIATION: &str = "scap-remediation";
@@ -106,31 +129,45 @@ fn unremediated(image: &Image, index: &Index) -> Option<String> {
     })
 }
 
-fn claimed_and_refused(image: &Image, content: &Content) -> Vec<String> {
-    let refused: BTreeSet<&str> = image
+fn refuses_nothing(image: &Image, content: &Content) -> Vec<String> {
+    let known: BTreeSet<&str> = content.ids.iter().map(|id| rule_name(id)).collect();
+    image
         .modules()
-        .flat_map(|m| m.refuses.iter().map(|r| rule_name(&r.rule)))
-        .collect();
-    let mut out = Vec::new();
-    for module in image.modules() {
-        for coverage in &module.satisfies {
-            for number in &coverage.rules {
-                let Some(rule) = content.rules.get(number) else {
-                    continue;
-                };
-                if refused.contains(rule_name(rule)) {
-                    out.push(format!(
-                        "`{}` claims `{number}` and something it installs refuses `{}`, which \
-                         is the same rule. A claim says the image passes it and a refusal says \
-                         nothing may set it, so one of the two is wrong",
-                        module.path,
-                        rule_name(rule)
-                    ));
-                }
-            }
-        }
-    }
-    out
+        .flat_map(|module| {
+            module
+                .refuses
+                .iter()
+                .map(move |refusal| (module.path.as_str(), refusal))
+        })
+        .filter(|(_, refusal)| !known.contains(rule_name(&refusal.rule)))
+        .map(|(path, refusal)| {
+            format!(
+                "`{path}` refuses `{}`, which the content it is measured against carries no rule \
+                 by. A refusal that reaches no rule keeps nothing out of remediation and reads \
+                 exactly like one that does",
+                refusal.rule
+            )
+        })
+        .collect()
+}
+
+fn claimed_and_refused(image: &Image, content: &Content) -> Vec<String> {
+    let (claimed, refused) = exclusions(image);
+    let refused: BTreeSet<&str> = refused.iter().map(String::as_str).collect();
+    claimed
+        .iter()
+        .filter_map(|number| Some((number, content.rules.get(number)?)))
+        .filter(|(_, rule)| refused.contains(rule_name(rule)))
+        .map(|(number, rule)| {
+            format!(
+                "`{}` claims `{number}` and something it installs refuses `{}`, which is the \
+                 same rule. A claim says the image passes it and a refusal says nothing may set \
+                 it, so one of the two is wrong",
+                image.id,
+                rule_name(rule)
+            )
+        })
+        .collect()
 }
 
 pub struct Owed<'a> {
@@ -260,8 +297,8 @@ fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::R
     }
 }
 
-pub fn content_for(root: &Path, list: &List, named: Option<&str>) -> String {
-    datastream(root, list, named).unwrap_or_default()
+pub fn content_for(root: &Path, list: &List, named: Option<&str>) -> Result<String, String> {
+    datastream(root, list, named)
 }
 
 fn datastream(root: &Path, list: &List, named: Option<&str>) -> Result<String, String> {
@@ -294,7 +331,17 @@ fn measured_by(
 ) -> Result<PathBuf, String> {
     match crate::base::find(bases, image) {
         Some(base) if !base.scap_content.is_empty() => Ok(Path::new(dir).join(&base.scap_content)),
-        _ => installed(dir, family),
+        Some(base) => match installed(dir, family) {
+            Err(refusal) => Err(refusal),
+            Ok(_) => Err(format!(
+                "`{}` names no `scap-content`, so nothing says which benchmark it is measured \
+                 against\n\nhelp: add `scap-content \"ssg-<os>-ds.xml\"` to its row. A row that \
+                 carries one in the source tree and not here is a stale installed catalog, which \
+                 `BUILDC_ASSETS=<tree>/assets` points past",
+                base.image
+            )),
+        },
+        None => installed(dir, family),
     }
 }
 
@@ -802,6 +849,10 @@ impl Profile {
     }
 }
 
+pub fn profile_name(id: &str) -> &str {
+    id.rsplit_once("_profile_").map_or(id, |(_, tail)| tail)
+}
+
 pub fn rule_name(id: &str) -> &str {
     id.rsplit_once("_rule_").map_or(id, |(_, tail)| tail)
 }
@@ -1086,10 +1137,13 @@ mod tests {
         .unwrap();
         assert!(pinned.ends_with("ssg-cs10-ds.xml"), "{}", pinned.display());
 
-        for image in ["example.invalid/silent:1", "example.invalid/unknown:1"] {
-            let fell = of(image, "fedora").unwrap();
-            assert!(fell.ends_with("ssg-fedora-ds.xml"), "{image}");
-        }
+        let fell = of("example.invalid/unknown:1", "fedora").unwrap();
+        assert!(fell.ends_with("ssg-fedora-ds.xml"), "{}", fell.display());
+
+        let err = of("example.invalid/silent:1", "fedora").unwrap_err();
+        assert!(err.contains("names no `scap-content`"), "{err}");
+        assert!(err.contains("stale installed catalog"), "{err}");
+
         let err = of("example.invalid/silent:1", "debian").unwrap_err();
         assert!(err.contains("no content a `debian` image"), "{err}");
     }
@@ -1106,6 +1160,28 @@ mod tests {
                  an `ssg-<os>-ds.xml` file; `buildc scap content` prints the path a scan uses",
                 path.display()
             )
+        );
+    }
+
+    #[test]
+    fn the_exclusions_carry_every_claim_including_the_bases_and_every_refusal() {
+        let root = fixture("tests/repos/refused");
+        let loaded = crate::load(&root);
+        let image = loaded
+            .list
+            .images
+            .first()
+            .expect("the fixture declares one image");
+        let (claimed, refused) = exclusions(image);
+
+        assert!(claimed.contains(&"1.1.1.1".to_string()), "{claimed:?}");
+        assert!(
+            claimed.contains(&"RHEL-09-232010".to_string()),
+            "a base claims the way a module does: {claimed:?}"
+        );
+        assert!(
+            refused.contains(&"package_aide_installed".to_string()),
+            "{refused:?}"
         );
     }
 
@@ -1129,6 +1205,12 @@ mod tests {
         assert!(
             said.iter()
                 .any(|m| m.contains("nothing it installs provides `scap-remediation`")),
+            "{said:#?}"
+        );
+        assert!(
+            said.iter().any(|m| m.contains("one/typo")
+                && m.contains("refuses `not_a_rule_this_content_has`")
+                && m.contains("keeps nothing out of remediation")),
             "{said:#?}"
         );
 

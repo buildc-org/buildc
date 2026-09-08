@@ -60,6 +60,11 @@ const CONFORMS_ARG: &str = "\
 # ---- declared conformance ----
 ARG CONFORMS=";
 
+const SCAP_ARGS: &str = "\
+# ---- claimed and refused rules ----
+ARG SCAP_CLAIMED=
+ARG SCAP_REFUSED=";
+
 const IMAGE_VERSION_ARG: &str = "\
 # ---- image version ----
 ARG IMAGE_VERSION=dev";
@@ -158,6 +163,7 @@ pub fn section(image: &Image, root: &Path) -> String {
     let _ = write!(out, "{IMAGE_VERSION_ARG}\n\n");
     let _ = write!(out, "{FAMILY_ARG}\n\n");
     let _ = write!(out, "{CONFORMS_ARG}\n\n");
+    let _ = write!(out, "{SCAP_ARGS}\n\n");
 
     let identity = identity(image);
     let _ = writeln!(out, "# ---- image identity ----");
@@ -214,7 +220,8 @@ fn finalize_layer(image: &Image, identity_env: &str, root: &Path) -> String {
          --mount=type=cache,target=/var/log \\\n    \
          --mount=type=tmpfs,target=/tmp \\\n    \
          FLAVOUR=${FLAVOUR} IMAGE_VERSION=\"${IMAGE_VERSION}\" \\\n    \
-         CONFORMS=\"${CONFORMS}\" FAMILY=\"${FAMILY}\" \\\n    ",
+         CONFORMS=\"${CONFORMS}\" FAMILY=\"${FAMILY}\" \\\n    \
+         SCAP_CLAIMED=\"${SCAP_CLAIMED}\" SCAP_REFUSED=\"${SCAP_REFUSED}\" \\\n    ",
     );
     out.push_str(identity_env);
     out.push_str("bash /ctx/finalize.sh");

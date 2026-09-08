@@ -159,6 +159,13 @@ impl Index {
             .collect()
     }
 
+    pub fn providing(&self, capability: &str) -> Vec<&Provider> {
+        self.held
+            .iter()
+            .filter(|held| held.declares.provides.iter().any(|p| p == capability))
+            .collect()
+    }
+
     pub fn at(&self, dir: &str) -> Option<&Provider> {
         self.held.iter().find(|held| held.dir() == dir)
     }

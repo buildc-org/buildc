@@ -63,6 +63,10 @@ pub fn conformance(
     };
     let mut out = Vec::new();
     for image in list.images.iter().filter(|i| !i.conforms.is_empty()) {
+        out.extend(unremediated(image, index));
+        if let Some(content) = &content {
+            out.extend(claimed_and_refused(image, content));
+        }
         match &content {
             Some(content) => out.extend(unclaimed(image, content, index)),
             None if image.modules().any(|m| !m.satisfies.is_empty())
@@ -77,6 +81,56 @@ pub fn conformance(
         }
     }
     Ok(out)
+}
+
+const REMEDIATION: &str = "scap-remediation";
+
+fn unremediated(image: &Image, index: &Index) -> Option<String> {
+    if index.providing(REMEDIATION).is_empty() {
+        return None;
+    }
+    let has = image
+        .modules()
+        .any(|m| m.provides.iter().any(|p| p.name == REMEDIATION))
+        || image
+            .base
+            .iter()
+            .any(|base| base.provides.iter().any(|p| p.name == REMEDIATION));
+    (!has).then(|| {
+        format!(
+            "`{}` conforms to `{}` and nothing it installs provides `{REMEDIATION}`, so the \
+             profile is measured and nothing acts on it. That is a scan report rather than a \
+             hardened image; add a module providing `{REMEDIATION}`, or drop `conforms`",
+            image.id, image.conforms
+        )
+    })
+}
+
+fn claimed_and_refused(image: &Image, content: &Content) -> Vec<String> {
+    let refused: BTreeSet<&str> = image
+        .modules()
+        .flat_map(|m| m.refuses.iter().map(|r| rule_name(&r.rule)))
+        .collect();
+    let mut out = Vec::new();
+    for module in image.modules() {
+        for coverage in &module.satisfies {
+            for number in &coverage.rules {
+                let Some(rule) = content.rules.get(number) else {
+                    continue;
+                };
+                if refused.contains(rule_name(rule)) {
+                    out.push(format!(
+                        "`{}` claims `{number}` and something it installs refuses `{}`, which \
+                         is the same rule. A claim says the image passes it and a refusal says \
+                         nothing may set it, so one of the two is wrong",
+                        module.path,
+                        rule_name(rule)
+                    ));
+                }
+            }
+        }
+    }
+    out
 }
 
 pub struct Owed<'a> {
@@ -1048,6 +1102,40 @@ mod tests {
                  an `ssg-<os>-ds.xml` file; `buildc scap content` prints the path a scan uses",
                 path.display()
             )
+        );
+    }
+
+    #[test]
+    fn check_catches_a_rule_both_claimed_and_refused_and_an_image_nothing_remediates() {
+        let root = fixture("tests/repos/refused");
+        let loaded = crate::load(&root);
+        let said = conformance(
+            &loaded.list,
+            &loaded.index,
+            Some(&fixture("tests/scap/datastream.xml")),
+        )
+        .expect("the fixture datastream reads");
+
+        assert!(
+            said.iter().any(|m| m.contains("claims `1.1.1.1`")
+                && m.contains("refuses `package_aide_installed`")
+                && m.contains("one of the two is wrong")),
+            "{said:#?}"
+        );
+        assert!(
+            said.iter()
+                .any(|m| m.contains("nothing it installs provides `scap-remediation`")),
+            "{said:#?}"
+        );
+
+        let bare = fixture("tests/scap");
+        let nothing = Index::scan(&bare, &[], &Disk::scan(&bare), false);
+        assert!(
+            !conformance(&loaded.list, &nothing, None)
+                .expect("no datastream is the first tier")
+                .iter()
+                .any(|m| m.contains("scap-remediation")),
+            "an unavailable capability is not offered"
         );
     }
 

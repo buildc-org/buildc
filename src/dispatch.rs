@@ -640,6 +640,22 @@ pub fn dispatch(
                 crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
             },
         ),
+        Verb::ScapRules => {
+            let Some(path) = datastream.as_deref() else {
+                return Err(Error::Invocation(
+                    "`scap rules` needs the content to resolve against: \
+                     `buildc scap rules --datastream <file> <number>...`"
+                        .into(),
+                ));
+            };
+            let content = crate::scap::content_of(path)?;
+            for number in rest {
+                if let Some(rule) = content.rules.get(*number) {
+                    println!("{}", crate::scap::rule_name(rule));
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
         Verb::Scap => {
             let [arf] = rest else {
                 return Err(Error::Invocation(

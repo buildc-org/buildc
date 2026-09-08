@@ -773,12 +773,7 @@ mod tests {
         let src = Source::new(layout::REPO_FILE, text);
         let mut issues = Issues::default();
         check_doc(&doc, &REPO, &src, &mut issues);
-        issues
-            .plain()
-            .lines()
-            .filter_map(|line| line.strip_prefix("  x "))
-            .map(str::to_string)
-            .collect()
+        issues.findings()
     }
 
     #[test]

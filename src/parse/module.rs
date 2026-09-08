@@ -1436,12 +1436,20 @@ mod tests {
         let src = Source::new("module.kdl", text);
         let mut issues = Issues::default();
         check_doc(&doc, &MODULE, &src, &mut issues);
-        issues
-            .plain()
-            .lines()
-            .filter_map(|line| line.strip_prefix("  x "))
-            .map(str::to_string)
-            .collect()
+        issues.findings()
+    }
+
+    fn parsed(name: &str, text: &str) -> Vec<String> {
+        let mut issues = Issues::default();
+        Module::parse(
+            name,
+            name,
+            Path::new("."),
+            text.to_string(),
+            None,
+            &mut issues,
+        );
+        issues.findings()
     }
 
     #[test]
@@ -1555,38 +1563,25 @@ fragment standard-layer=#false
 
     #[test]
     fn package_groups_are_fedora_only() {
-        let mut issues = Issues::default();
-        Module::parse(
-            "groups",
-            "groups",
-            Path::new("."),
-            r#"
+        assert_eq!(
+            parsed(
+                "groups",
+                r#"
 description "package groups"
 supports "fedora" "debian"
 package-groups "kde-desktop"
 "#
-            .to_string(),
-            None,
-            &mut issues,
-        );
-        assert_eq!(
-            issues
-                .plain()
-                .lines()
-                .filter_map(|line| line.strip_prefix("  x "))
-                .collect::<Vec<_>>(),
+            ),
             ["`package-groups` is Fedora-only, and this one covers `debian`"]
         );
     }
 
     #[test]
     fn a_copr_needs_two_usable_path_segments() {
-        let mut issues = Issues::default();
-        Module::parse(
-            "coprs",
-            "coprs",
-            Path::new("."),
-            r#"
+        assert_eq!(
+            parsed(
+                "coprs",
+                r#"
 description "coprs"
 supports "fedora"
 copr "noslash"
@@ -1595,16 +1590,7 @@ copr "owner/"
 copr "owner/project/extra"
 copr "owner/pro ject"
 "#
-            .to_string(),
-            None,
-            &mut issues,
-        );
-        assert_eq!(
-            issues
-                .plain()
-                .lines()
-                .filter_map(|line| line.strip_prefix("  x "))
-                .collect::<Vec<_>>(),
+            ),
             [
                 "`noslash` is not a COPR owner/project",
                 "`/project` is not a COPR owner/project",
@@ -1617,27 +1603,16 @@ copr "owner/pro ject"
 
     #[test]
     fn an_enablerepo_naming_a_copr_needs_the_declaration() {
-        let mut issues = Issues::default();
-        Module::parse(
-            "coprs",
-            "coprs",
-            Path::new("."),
-            r#"
+        assert_eq!(
+            parsed(
+                "coprs",
+                r#"
 description "coprs"
 supports "fedora"
 copr "owner/project"
 packages "thing" enablerepo="other/project"
 "#
-            .to_string(),
-            None,
-            &mut issues,
-        );
-        assert_eq!(
-            issues
-                .plain()
-                .lines()
-                .filter_map(|line| line.strip_prefix("  x "))
-                .collect::<Vec<_>>(),
+            ),
             ["`enablerepo` names COPR `other/project`, which is not declared here"]
         );
     }
@@ -1672,12 +1647,7 @@ family "debian" "ubuntu" { packages "vim" }
                 .iter()
                 .map(|batch| format!("{}:{}", batch.family, batch.packages.join(" ")))
                 .collect();
-            let said: Vec<String> = issues
-                .plain()
-                .lines()
-                .filter_map(|line| line.strip_prefix("  x "))
-                .map(str::to_string)
-                .collect();
+            let said: Vec<String> = issues.findings();
             (
                 module.after.len(),
                 module.coprs.len(),
@@ -1729,27 +1699,16 @@ family "debian" "ubuntu" { packages "vim" }
 
     #[test]
     fn a_gate_on_an_unsupported_family_is_refused() {
-        let mut issues = Issues::default();
-        Module::parse(
-            "narrow",
-            "narrow",
-            Path::new("."),
-            r#"
+        assert_eq!(
+            parsed(
+                "narrow",
+                r#"
 description "narrow"
 supports "fedora"
 family "debian" { packages "vim" }
 family "redhat" { packages "vim" }
 "#
-            .to_string(),
-            None,
-            &mut issues,
-        );
-        assert_eq!(
-            issues
-                .plain()
-                .lines()
-                .filter_map(|line| line.strip_prefix("  x "))
-                .collect::<Vec<_>>(),
+            ),
             [
                 "unknown base family `redhat`",
                 "`narrow` gates on `debian` and does not support it",
@@ -1759,27 +1718,16 @@ family "redhat" { packages "vim" }
 
     #[test]
     fn debian_and_ubuntu_are_known_families_and_enablerepo_stays_fedora_only() {
-        let mut issues = Issues::default();
-        Module::parse(
-            "known",
-            "known",
-            Path::new("."),
-            r#"
+        assert_eq!(
+            parsed(
+                "known",
+                r#"
 description "known families and packages"
 supports "fedora" "debian" "ubuntu"
 packages "curl" enablerepo="rpmfusion"
 family "debian" "ubuntu" { packages "curl" enablerepo="backports" }
 "#
-            .to_string(),
-            None,
-            &mut issues,
-        );
-        assert_eq!(
-            issues
-                .plain()
-                .lines()
-                .filter_map(|line| line.strip_prefix("  x "))
-                .collect::<Vec<_>>(),
+            ),
             [
                 "`enablerepo` is Fedora-only, and this batch covers `debian`",
                 "`enablerepo` is Fedora-only, and this batch covers `debian`",

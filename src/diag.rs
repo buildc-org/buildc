@@ -125,6 +125,15 @@ impl Issues {
         out
     }
 
+    #[cfg(test)]
+    pub fn findings(&self) -> Vec<String> {
+        self.plain()
+            .lines()
+            .filter_map(|line| line.strip_prefix("  x "))
+            .map(str::to_string)
+            .collect()
+    }
+
     pub fn report(self, context: &str) -> bool {
         let found = !self.0.is_empty();
         let count = self.0.len();

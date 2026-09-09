@@ -70,6 +70,7 @@ pub fn conformance(
         out.extend(unremediated(image, index));
         if let Some(content) = &content {
             out.extend(claimed_and_refused(image, content));
+            out.extend(claims_nothing(image, content));
             out.extend(refuses_nothing(image, content));
         }
         match &content {
@@ -147,6 +148,35 @@ fn refuses_nothing(image: &Image, content: &Content) -> Vec<String> {
                  exactly like one that does",
                 refusal.rule
             )
+        })
+        .collect()
+}
+
+fn claims_nothing(image: &Image, content: &Content) -> Vec<String> {
+    let claimants = image
+        .base
+        .iter()
+        .map(|base| ("its base", &base.satisfies))
+        .chain(image.modules().map(|m| (m.path.as_str(), &m.satisfies)));
+    claimants
+        .flat_map(|(who, satisfies)| satisfies.iter().map(move |coverage| (who, coverage)))
+        .filter_map(|(who, coverage)| {
+            let lost: Vec<&str> = coverage
+                .rules
+                .iter()
+                .filter(|number| !content.rules.contains_key(*number))
+                .map(String::as_str)
+                .collect();
+            (!lost.is_empty()).then(|| {
+                format!(
+                    "`{who}` claims {} under `{}`, which the content `{}` is measured against \
+                     carries no rule by. The remediation hook resolves a claim to the rule it \
+                     protects, so this stops the build in the finalize layer",
+                    lost.join(", "),
+                    coverage.benchmark,
+                    image.id
+                )
+            })
         })
         .collect()
 }
@@ -1209,6 +1239,13 @@ mod tests {
         );
         assert!(
             said.iter().any(|m| m.contains("one/typo")
+                && m.contains("claims CCI-000198 under `stig`")
+                && m.contains("stops the build in the finalize layer")),
+            "{said:#?}"
+        );
+
+        assert!(
+            said.iter().any(|m| m.contains("one/typo")
                 && m.contains("refuses `not_a_rule_this_content_has`")
                 && m.contains("keeps nothing out of remediation")),
             "{said:#?}"
@@ -1238,6 +1275,9 @@ mod tests {
         assert_eq!(
             said,
             [
+                "`one/hello` claims 9.9.9.9 under `cis-fedora`, which the content `enforced` is \
+              measured against carries no rule by. The remediation hook resolves a claim to the \
+              rule it protects, so this stops the build in the finalize layer",
                 "`enforced` conforms to `standard`, and nothing it installs or builds on claims 2 \
               of the 4 rules it selects; `one/auditing` would claim 1 of them"
             ]
@@ -1252,6 +1292,9 @@ mod tests {
             )
             .expect("the fixture datastream reads"),
             [
+                "`one/hello` claims 9.9.9.9 under `cis-fedora`, which the content `enforced` is \
+              measured against carries no rule by. The remediation hook resolves a claim to the \
+              rule it protects, so this stops the build in the finalize layer",
                 "`enforced` conforms to `standard`, and nothing it installs or builds on claims 2 \
               of the 4 rules it selects; nothing else in the repository claims them"
             ]

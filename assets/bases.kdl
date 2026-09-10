@@ -32,6 +32,7 @@ base "quay.io/almalinuxorg/almalinux-bootc:10" {
     provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-almalinux10-ds.xml"
+    signed #true
 }
 
 base "ghcr.io/ublue-os/bazzite:stable" {

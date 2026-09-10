@@ -71,6 +71,14 @@ base "ghcr.io/ublue-os/kinoite-main:44" {
     scap-content "ssg-fedora-ds.xml"
 }
 
+base "quay.io/rockylinux/rockylinux:10" {
+    about "Rocky Linux 10, which a module set has to turn into a bootc image"
+    family "rhel"
+    requires "bootc-base"
+    signed #false
+    scap-content "ssg-rl10-ds.xml"
+}
+
 base "docker.io/library/debian:forky" {
     about "Debian 14, which a module set has to turn into a bootc image"
     family "debian"

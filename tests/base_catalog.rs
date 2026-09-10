@@ -86,6 +86,7 @@ fn public_catalog_lists_every_shipped_base_in_order() {
             "ghcr.io/ublue-os/aurora:stable",
             "ghcr.io/ublue-os/bluefin:stable",
             "ghcr.io/ublue-os/kinoite-main:44",
+            "quay.io/rockylinux/rockylinux:10",
             "docker.io/library/debian:forky",
             "docker.io/library/ubuntu:26.04",
         ]
@@ -121,17 +122,23 @@ fn missing_runtime_file_falls_back_to_embedded_catalog() {
 
     assert!(issues.is_empty(), "{}", issues.plain());
     assert!(shadows.is_empty());
-    assert_eq!(bases.len(), 10);
+    assert_eq!(bases.len(), 11);
     for (image, family) in [
         ("docker.io/library/debian:forky", "debian"),
         ("docker.io/library/ubuntu:26.04", "ubuntu"),
+        ("quay.io/rockylinux/rockylinux:10", "rhel"),
     ] {
         let base = buildc::base::find(&bases, image).expect(image);
         assert_eq!(base.family, family);
         assert!(base.provides.is_empty(), "{image}");
         assert_eq!(base.requires, ["bootc-base"], "{image}");
         assert!(!base.signed, "{image}");
-        assert!(base.scap_content.is_empty(), "{image}");
+        match image {
+            "quay.io/rockylinux/rockylinux:10" => {
+                assert_eq!(base.scap_content, "ssg-rl10-ds.xml")
+            }
+            _ => assert!(base.scap_content.is_empty(), "{image}"),
+        }
     }
     for (image, family, content) in [
         (
@@ -269,7 +276,7 @@ fn collection_still_overrides_and_shadows_selected_catalog() {
     let (bases, shadows) = buildc::base::catalog(&root, &sources, &mut issues);
 
     assert!(issues.is_empty(), "{}", issues.plain());
-    assert_eq!(bases.len(), 10);
+    assert_eq!(bases.len(), 11);
     assert_eq!(bases[0].about, "collection replacement");
     assert!(bases[0].signed);
     assert_eq!(shadows.len(), 1);

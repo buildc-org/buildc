@@ -353,6 +353,14 @@ fn module(list: &List, entry: &Entry, family: &str) -> Json {
         ("provides", Json::strings(decls(module, |m| &m.provides))),
         ("requires", Json::strings(decls(module, |m| &m.requires))),
         (
+            "provides_files",
+            Json::strings(decls(module, |m| &m.provides_files)),
+        ),
+        (
+            "requires_files",
+            Json::strings(decls(module, |m| &m.requires_files)),
+        ),
+        (
             "packages",
             batches(module.map(|m| m.packages.as_slice()), family),
         ),

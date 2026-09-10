@@ -5,6 +5,7 @@ base "quay.io/fedora/fedora-bootc:44" {
     provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-fedora-ds.xml"
+    signed #false
 }
 
 base "quay.io/centos-bootc/centos-bootc:stream10" {
@@ -14,6 +15,7 @@ base "quay.io/centos-bootc/centos-bootc:stream10" {
     provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-cs10-ds.xml"
+    signed #true
 }
 
 base "registry.redhat.io/rhel10/rhel-bootc:latest" {
@@ -23,6 +25,7 @@ base "registry.redhat.io/rhel10/rhel-bootc:latest" {
     provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-rhel10-ds.xml"
+    signed #false
 }
 
 base "quay.io/almalinuxorg/almalinux-bootc:10" {

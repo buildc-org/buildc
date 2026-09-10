@@ -640,6 +640,16 @@ pub fn dispatch(
                 crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
             },
         ),
+        Verb::ScapTailoring => Ok(
+            match crate::scap::tailoring_for(
+                &repo_root(here)?,
+                target.as_deref(),
+                datastream.as_deref(),
+            )? {
+                crate::scap::Verdict::Clean => ExitCode::SUCCESS,
+                crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
+            },
+        ),
         Verb::ScapRules => {
             let Some(path) = datastream.as_deref() else {
                 return Err(Error::Invocation(

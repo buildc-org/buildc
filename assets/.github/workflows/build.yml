@@ -781,10 +781,13 @@ jobs:
       - name: Evaluate the rules
         if: steps.content.outputs.datastream != ''
         env:
+          TARGET: ${{ matrix.target }}
           DATASTREAM: ${{ steps.content.outputs.datastream }}
         run: |
           set -euo pipefail
           cp "$DATASTREAM" "${RUNNER_TEMP}/ds.xml"
+          ./scripts/buildc.sh scap tailoring --target "$TARGET" \
+            --datastream "$DATASTREAM" > "${RUNNER_TEMP}/tailoring.xml"
           sudo podman run --rm --entrypoint "" \
             -v "${RUNNER_TEMP}:/scan:z" "$IMAGE_REF" \
             sh -c "n=0
@@ -794,8 +797,9 @@ jobs:
                 $CLEANER > /dev/null 2>&1 || true
                 sleep 15
               done
-              oscap xccdf eval \
-                --profile '(all)' --results-arf /scan/arf.xml /scan/ds.xml" || true
+              oscap xccdf eval --tailoring-file /scan/tailoring.xml \
+                --profile xccdf_tect_profile_measured \
+                --results-arf /scan/arf.xml /scan/ds.xml" || true
           [ -s "${RUNNER_TEMP}/arf.xml" ] || { echo "::error::the scan wrote no report"; exit 1; }
           sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/arf.xml"
 
@@ -804,8 +808,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ runner.temp }}/baseline.json
-          key: scap-${{ matrix.target }}-${{ github.run_id }}
-          restore-keys: scap-${{ matrix.target }}-
+          key: scap-tailored-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: scap-tailored-${{ matrix.target }}-
 
       - name: Compare what was declared to what was measured
         if: steps.content.outputs.datastream != ''
@@ -825,7 +829,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ runner.temp }}/baseline.json
-          key: scap-${{ matrix.target }}-${{ github.run_id }}
+          key: scap-tailored-${{ matrix.target }}-${{ github.run_id }}
 
       - name: Install Cosign
         if: steps.content.outputs.datastream != ''

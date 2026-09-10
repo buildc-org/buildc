@@ -2268,6 +2268,21 @@ fn scap() {
         out.push_str(&format!("==== {heading}\n{report}{said}==== exit {code}\n"));
     }
 
+    let (tailoring, said, code) = scap_run(
+        &root,
+        &[
+            "--root",
+            ".",
+            "scap",
+            "tailoring",
+            "--datastream",
+            &datastream.display().to_string(),
+        ],
+    );
+    out.push_str(&format!(
+        "==== the tailoring\n{tailoring}{said}==== exit {code}\n"
+    ));
+
     let base = fixtures.join("base.json");
     let against_base = [
         "--root",

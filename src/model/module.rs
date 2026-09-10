@@ -14,6 +14,7 @@ pub struct PackageGroup {
 pub struct Copr {
     pub owner: String,
     pub project: String,
+    pub family: Vec<String>,
     pub span: Span,
 }
 

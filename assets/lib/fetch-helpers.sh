@@ -1,4 +1,5 @@
 #!/bin/bash
+
 fetch_verified() {
     local url="$1" sha256="$2" dest="$3"
     curl --retry 3 -fsSLo "$dest" "$url"
@@ -40,6 +41,6 @@ fetch_install_rpm() {
     local url="$1" sha256="$2" rpm
     rpm="/tmp/fetch.$$.${url##*/}"
     fetch_verified "$url" "$sha256" "$rpm"
-    dnf5 install -y "$rpm"
+    dnf install -y "$rpm"
     rm -f "$rpm"
 }

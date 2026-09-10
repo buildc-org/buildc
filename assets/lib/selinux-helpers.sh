@@ -1,6 +1,7 @@
 #!/bin/bash
+
 ensure_checkpolicy() {
-    command -v checkmodule > /dev/null 2>&1 || dnf5 install -y checkpolicy
+    command -v checkmodule > /dev/null 2>&1 || dnf install -y checkpolicy
 }
 
 install_selinux_module() {

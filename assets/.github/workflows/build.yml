@@ -785,21 +785,24 @@ jobs:
           DATASTREAM: ${{ steps.content.outputs.datastream }}
         run: |
           set -euo pipefail
-          cp "$DATASTREAM" "${RUNNER_TEMP}/ds.xml"
           ./scripts/buildc.sh scap tailoring --target "$TARGET" \
             --datastream "$DATASTREAM" > "${RUNNER_TEMP}/tailoring.xml"
-          sudo podman run --rm --entrypoint "" \
-            -v "${RUNNER_TEMP}:/scan:z" "$IMAGE_REF" \
-            sh -c "n=0
-              until $INSTALLER > /dev/null; do
-                n=\$((n+1))
-                [ \"\$n\" -ge 3 ] && exit 1
-                $CLEANER > /dev/null 2>&1 || true
-                sleep 15
-              done
-              oscap xccdf eval --tailoring-file /scan/tailoring.xml \
-                --profile xccdf_tect_profile_measured \
-                --results-arf /scan/arf.xml /scan/ds.xml" || true
+          sudo podman run -d --name scan --entrypoint "" "$IMAGE_REF" sleep infinity
+          sudo podman exec scan sh -c "n=0
+            until $INSTALLER > /dev/null; do
+              n=\$((n+1))
+              [ \"\$n\" -ge 3 ] && exit 1
+              $CLEANER > /dev/null 2>&1 || true
+              sleep 15
+            done"
+          sudo podman cp "$DATASTREAM" scan:/tmp/ds.xml
+          sudo podman cp "${RUNNER_TEMP}/tailoring.xml" scan:/tmp/tailoring.xml
+          # Oscap exits non-zero for a failed rule and still writes the report this step keeps.
+          sudo podman exec scan oscap xccdf eval \
+            --tailoring-file /tmp/tailoring.xml --profile xccdf_tect_profile_measured \
+            --results-arf /tmp/arf.xml /tmp/ds.xml || true
+          sudo podman cp scan:/tmp/arf.xml "${RUNNER_TEMP}/arf.xml" || true
+          sudo podman rm -f scan
           [ -s "${RUNNER_TEMP}/arf.xml" ] || { echo "::error::the scan wrote no report"; exit 1; }
           sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/arf.xml"
 

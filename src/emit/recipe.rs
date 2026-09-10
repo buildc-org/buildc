@@ -1,13 +1,13 @@
 use crate::emit::json::Json;
-use crate::model::image::List;
+use crate::model::image::{Layout, List};
 use crate::resolve::workflow::FEDORA;
 
 struct Family {
     composefs: bool,
     generic: bool,
-    bootloader: &'static str,
-    filesystem: &'static str,
-    admin: &'static str,
+    bootloader: String,
+    filesystem: String,
+    admin: String,
 }
 
 fn family(name: &str) -> Option<Family> {
@@ -15,19 +15,68 @@ fn family(name: &str) -> Option<Family> {
         FEDORA => Family {
             composefs: false,
             generic: false,
-            bootloader: "",
-            filesystem: "xfs",
-            admin: "wheel",
+            bootloader: String::new(),
+            filesystem: "xfs".into(),
+            admin: "wheel".into(),
         },
         "debian" | "ubuntu" => Family {
             composefs: true,
             generic: true,
-            bootloader: "grub2",
-            filesystem: "ext4",
-            admin: "sudo",
+            bootloader: "grub2".into(),
+            filesystem: "ext4".into(),
+            admin: "sudo".into(),
         },
         _ => return None,
     })
+}
+
+fn settle(family: Option<&str>, layout: Option<&Layout>) -> Option<Family> {
+    let known = family.and_then(self::family);
+    let told = |pick: fn(&Layout) -> &str| {
+        layout
+            .map(pick)
+            .filter(|declared| !declared.is_empty())
+            .map(str::to_string)
+    };
+    Some(Family {
+        composefs: layout
+            .and_then(|l| l.composefs)
+            .or(known.as_ref().map(|f| f.composefs))?,
+        generic: layout
+            .and_then(|l| l.generic)
+            .or(known.as_ref().map(|f| f.generic))?,
+        bootloader: told(|l| &l.bootloader)
+            .or_else(|| known.as_ref().map(|f| f.bootloader.clone()))?,
+        filesystem: told(|l| &l.filesystem)
+            .or_else(|| known.as_ref().map(|f| f.filesystem.clone()))?,
+        admin: told(|l| &l.admin_group).or_else(|| known.as_ref().map(|f| f.admin.clone()))?,
+    })
+}
+
+pub fn unanswered(family: &str, layout: Option<&Layout>) -> Vec<&'static str> {
+    if settle(Some(family), layout).is_some() {
+        return Vec::new();
+    }
+    let known = self::family(family);
+    let told = |pick: fn(&Layout) -> &str| layout.is_some_and(|l| !pick(l).is_empty());
+    [
+        ("filesystem", told(|l| &l.filesystem)),
+        ("composefs", layout.is_some_and(|l| l.composefs.is_some())),
+        ("generic-image", layout.is_some_and(|l| l.generic.is_some())),
+        ("admin-group", told(|l| &l.admin_group)),
+        ("bootloader", told(|l| &l.bootloader)),
+    ]
+    .into_iter()
+    .filter(|_| known.is_none())
+    .filter(|(_, declared)| !declared)
+    .map(|(name, _)| name)
+    .collect()
+}
+
+pub fn seals(family: &str, layout: Option<&Layout>) -> bool {
+    layout
+        .and_then(|l| l.composefs)
+        .unwrap_or_else(|| self::family(family).is_some_and(|f| f.composefs))
 }
 
 pub fn build(
@@ -39,21 +88,37 @@ pub fn build(
 ) -> Option<Json> {
     let target = list.targets().into_iter().find(|t| t.to_string() == name)?;
     let declared = list.images.iter().find(|i| i.id == target.image)?;
-    let family = self::family(&declared.base.as_ref()?.family)?;
+    let layout = declared.layout.as_ref();
+    let settled = settle(Some(&declared.base.as_ref()?.family), layout)?;
 
     let mut fields = vec![
         ("image", Json::string(image)),
         ("targetImgref", Json::string(imgref)),
-        ("composeFsBackend", Json::Bool(family.composefs)),
-        ("genericImage", Json::Bool(family.generic)),
-        ("bootloader", Json::string(family.bootloader)),
-        ("filesystem", Json::string(family.filesystem)),
+        ("composeFsBackend", Json::Bool(settled.composefs)),
+        ("genericImage", Json::Bool(settled.generic)),
+        ("bootloader", Json::string(&settled.bootloader)),
+        ("filesystem", Json::string(&settled.filesystem)),
         ("hostname", Json::string(target.published())),
         (
             "user",
-            Json::object([("groups", Json::strings([family.admin]))]),
+            Json::object([("groups", Json::strings([&settled.admin]))]),
         ),
     ];
+    if layout.is_some_and(|l| l.subvolumes) {
+        fields.push(("btrfsSubvolumes", Json::Bool(true)));
+    }
+    if let Some(pool) = layout.map(|l| l.pool.as_str()).filter(|p| !p.is_empty()) {
+        fields.push(("zfsPoolName", Json::string(pool)));
+    }
+    if let Some(var) = layout.and_then(|l| l.var_disk.as_ref()) {
+        fields.push((
+            "varDisk",
+            Json::object([
+                ("disk", Json::string(&var.disk)),
+                ("keepExisting", Json::Bool(var.keep_existing)),
+            ]),
+        ));
+    }
     if !stores.is_empty() {
         fields.push((
             "additionalImageStores",
@@ -78,7 +143,10 @@ pub fn live(published: &str) -> String {
 pub fn media(list: &List, name: &str, image: &str, imgref: &str) -> Option<Json> {
     let target = list.targets().into_iter().find(|t| t.to_string() == name)?;
     let declared = list.images.iter().find(|i| i.id == target.image)?;
-    self::family(&declared.base.as_ref()?.family)?;
+    settle(
+        Some(&declared.base.as_ref()?.family),
+        declared.layout.as_ref(),
+    )?;
     let published = target.published();
 
     Some(Json::object([
@@ -181,6 +249,115 @@ mod tests {
     }
 
     #[test]
+    fn a_declared_layout_replaces_the_family_filesystem_and_adds_the_var_disk() {
+        let deb = fixture("deb-families");
+        let recipe = build(&deb, "debian", "image", "imgref", &[]).expect("a debian target");
+        let field = |key: &str| match &recipe {
+            Json::Object(fields) => fields
+                .iter()
+                .find(|(had, _)| had == key)
+                .map(|(_, value)| value.render().trim().to_string()),
+            _ => None,
+        };
+        assert_eq!(field("filesystem").as_deref(), Some("\"btrfs\""));
+        assert_eq!(field("btrfsSubvolumes").as_deref(), Some("true"));
+        assert_eq!(field("bootloader").as_deref(), Some("\"systemd\""));
+        assert_eq!(
+            field("varDisk").as_deref(),
+            Some("{\n  \"disk\": \"/dev/sdb\",\n  \"keepExisting\": false\n}")
+        );
+        assert_eq!(field("composeFsBackend").as_deref(), Some("true"));
+
+        let plain = build(&deb, "forky", "image", "imgref", &[]).expect("a debian target");
+        let Json::Object(fields) = plain else {
+            panic!("a recipe is an object")
+        };
+        for absent in ["varDisk", "btrfsSubvolumes", "zfsPoolName"] {
+            assert!(fields.iter().all(|(had, _)| had != absent), "{absent}");
+        }
+        assert!(fields
+            .iter()
+            .any(|(had, value)| had == "bootloader" && value.render().trim() == "\"grub2\""));
+    }
+
+    #[test]
+    fn a_sealed_family_is_the_only_one_that_refuses_a_filesystem() {
+        assert!(seals("debian", None));
+        assert!(seals("ubuntu", None));
+        assert!(!seals(FEDORA, None));
+        assert!(!seals("plan9", None));
+
+        let sealing = layout(Some(true));
+        let plain = layout(Some(false));
+        assert!(seals("plan9", Some(&sealing)));
+        assert!(seals(FEDORA, Some(&sealing)), "the image overrides");
+        assert!(!seals("debian", Some(&plain)), "in both directions");
+    }
+
+    fn layout(composefs: Option<bool>) -> crate::model::image::Layout {
+        crate::model::image::Layout {
+            filesystem: String::new(),
+            subvolumes: false,
+            pool: String::new(),
+            bootloader: String::new(),
+            composefs,
+            generic: None,
+            admin_group: String::new(),
+            var_disk: None,
+            span: crate::diag::Span::default(),
+        }
+    }
+
+    #[test]
+    fn an_unmeasured_family_answers_for_itself_in_full_or_not_at_all() {
+        assert_eq!(unanswered(FEDORA, None), Vec::<&str>::new());
+        assert_eq!(
+            unanswered("plan9", None),
+            [
+                "filesystem",
+                "composefs",
+                "generic-image",
+                "admin-group",
+                "bootloader"
+            ]
+        );
+
+        let mut half = layout(Some(true));
+        half.filesystem = "btrfs".into();
+        assert_eq!(
+            unanswered("plan9", Some(&half)),
+            ["generic-image", "admin-group", "bootloader"]
+        );
+        assert_eq!(unanswered(FEDORA, Some(&half)), Vec::<&str>::new());
+
+        let mut whole = half;
+        whole.generic = Some(true);
+        whole.admin_group = "wheel".into();
+        whole.bootloader = "systemd".into();
+        assert_eq!(unanswered("plan9", Some(&whole)), Vec::<&str>::new());
+        let settled = settle(Some("plan9"), Some(&whole)).expect("all five are declared");
+        assert_eq!(settled.filesystem, "btrfs");
+        assert_eq!(settled.admin, "wheel");
+        assert!(settled.composefs && settled.generic);
+    }
+
+    #[test]
+    fn an_image_on_an_unmeasured_family_installs_off_its_own_declaration() {
+        let arch = fixture("unmeasured-family");
+        let recipe = build(&arch, "arch", "localhost/arch:latest", "imgref", &[])
+            .expect("all five are declared");
+        assert_eq!(
+            recipe.render(),
+            "{\n  \"image\": \"localhost/arch:latest\",\n  \"targetImgref\": \"imgref\",\n  \
+             \"composeFsBackend\": true,\n  \"genericImage\": true,\n  \"bootloader\": \
+             \"systemd\",\n  \"filesystem\": \"btrfs\",\n  \"hostname\": \"arch\",\n  \
+             \"user\": {\n    \"groups\": [\n      \"wheel\"\n    ]\n  },\n  \
+             \"btrfsSubvolumes\": true\n}\n"
+        );
+        assert!(media(&arch, "arch", "localhost/arch:latest", "imgref").is_some());
+    }
+
+    #[test]
     fn the_media_embeds_the_local_build_under_the_published_name() {
         let deb = fixture("deb-families");
         let assembled = media(
@@ -219,8 +396,11 @@ mod tests {
 
     #[test]
     fn a_family_with_no_measured_answer_is_refused_rather_than_defaulted() {
-        assert!(self::family("plan9").is_none());
-        assert!(self::family("").is_none());
+        assert!(settle(Some("plan9"), None).is_none());
+        assert!(settle(Some(""), None).is_none());
+        let mut half = layout(Some(true));
+        half.filesystem = "btrfs".into();
+        assert!(settle(Some("plan9"), Some(&half)).is_none());
         let deb = fixture("deb-families");
         assert!(build(&deb, "not-a-target", "image", "imgref", &[]).is_none());
     }

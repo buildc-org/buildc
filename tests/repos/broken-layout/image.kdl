@@ -1,0 +1,29 @@
+image {
+    name "Sealed"
+
+    base "docker.io/library/debian:forky" {
+        family "debian"
+    }
+
+    layout {
+        filesystem "xfs"
+        var-disk "sdb"
+    }
+
+    modules {}
+}
+
+image {
+    name "Halfway"
+
+    base "ghcr.io/someone/arch-bootc:latest" {
+        family "arch"
+    }
+
+    layout {
+        filesystem "btrfs"
+        composefs #true
+    }
+
+    modules {}
+}

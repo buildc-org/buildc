@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Source, Span};
-use crate::model::module::{Coverage, Module};
+use crate::model::module::{Coverage, Module, Refusal};
 use crate::model::options::Value;
 use crate::model::remote::{Collection, REMOTE_DIR};
 use crate::provenance::Evidence;
@@ -55,6 +55,8 @@ pub struct Image {
     pub logo_url: String,
     pub conforms: String,
     pub base: Option<Base>,
+    pub layout: Option<Layout>,
+    pub allows: Vec<Refusal>,
     pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
     pub suppressed: Vec<Entry>,
@@ -69,6 +71,24 @@ pub struct Base {
     pub requires: Vec<Decl>,
     pub satisfies: Vec<Coverage>,
     pub signed: bool,
+    pub span: Span,
+}
+
+pub struct Layout {
+    pub filesystem: String,
+    pub subvolumes: bool,
+    pub pool: String,
+    pub bootloader: String,
+    pub composefs: Option<bool>,
+    pub generic: Option<bool>,
+    pub admin_group: String,
+    pub var_disk: Option<VarDisk>,
+    pub span: Span,
+}
+
+pub struct VarDisk {
+    pub disk: String,
+    pub keep_existing: bool,
     pub span: Span,
 }
 

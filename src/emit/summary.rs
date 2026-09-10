@@ -11,10 +11,12 @@ struct Row {
     description: String,
     options: Vec<(String, String)>,
     satisfies: Vec<(String, Vec<String>)>,
+    refuses: Vec<(String, bool)>,
 }
 
 pub fn render(list: &List, target: &str) -> Option<String> {
-    let (_, flavour, entries) = of_target(list, target)?;
+    let (image, flavour, entries) = of_target(list, target)?;
+    let lifted: Vec<&str> = image.allows.iter().map(|a| a.rule.as_str()).collect();
     let rows: Vec<Row> = entries
         .iter()
         .map(|entry| {
@@ -39,6 +41,17 @@ pub fn render(list: &List, target: &str) -> Option<String> {
                     .iter()
                     .map(|coverage| (coverage.benchmark.clone(), coverage.rules.clone()))
                     .collect(),
+                refuses: module
+                    .map(|m| m.refuses.as_slice())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|refusal| {
+                        (
+                            refusal.rule.clone(),
+                            lifted.contains(&refusal.rule.as_str()),
+                        )
+                    })
+                    .collect(),
             }
         })
         .collect();
@@ -46,6 +59,10 @@ pub fn render(list: &List, target: &str) -> Option<String> {
 }
 
 pub fn on_host(target: &Json) -> String {
+    let lifted: Vec<String> = items(target, "allows")
+        .iter()
+        .filter_map(|allow| text(allow, "rule"))
+        .collect();
     let rows: Vec<Row> = items(target, "modules")
         .iter()
         .map(|module| Row {
@@ -84,6 +101,14 @@ pub fn on_host(target: &Json) -> String {
                     )
                 })
                 .collect(),
+            refuses: items(module, "refuses")
+                .iter()
+                .filter_map(|refusal| text(refusal, "rule"))
+                .map(|rule| {
+                    let lifted = lifted.contains(&rule);
+                    (rule, lifted)
+                })
+                .collect(),
         })
         .collect();
     table(text(target, "flavour").as_deref(), &rows)
@@ -98,7 +123,10 @@ fn table(flavour: Option<&str>, rows: &[Row]) -> String {
             rows.iter().filter(|row| row.flavour.is_some()).count()
         ),
     };
-    out.push_str("\n| Module | Description | Options | Satisfies |\n| --- | --- | --- | --- |\n");
+    out.push_str(
+        "\n| Module | Description | Options | Satisfies | Refuses |\n| --- | --- | --- | --- | \
+         --- |\n",
+    );
     for row in rows {
         let _ = write!(out, "| `{}`", row.path);
         if let Some(flavour) = &row.flavour {
@@ -129,12 +157,21 @@ fn table(flavour: Option<&str>, rows: &[Row]) -> String {
                 )
             })
             .collect();
+        let refuses: Vec<String> = row
+            .refuses
+            .iter()
+            .map(|(rule, lifted)| match lifted {
+                true => format!("`{}` (lifted)", cell(rule)),
+                false => format!("`{}`", cell(rule)),
+            })
+            .collect();
         let _ = writeln!(
             out,
-            " | {} | {} | {} |",
+            " | {} | {} | {} | {} |",
             cell(&row.description),
             options.join(" "),
-            satisfies.join(" ")
+            satisfies.join(" "),
+            refuses.join(" ")
         );
     }
     out
@@ -170,7 +207,7 @@ mod tests {
             out.lines().last(),
             Some(
                 "| `one/hello` |  | `count=3` `on=true` `missing=null` \
-                 `names=[ \"a\\|b\", \"two  spaces\" ]` |  |"
+                 `names=[ \"a\\|b\", \"two  spaces\" ]` |  |  |"
             ),
             "{out}"
         );

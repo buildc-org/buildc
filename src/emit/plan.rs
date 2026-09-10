@@ -116,6 +116,29 @@ fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
         ("keywords", Json::strings(image.keywords.iter().cloned())),
         ("logo_url", Json::string(&image.logo_url)),
         ("conforms", Json::string(&image.conforms)),
+        ("allows", refusals(&image.allows)),
+        (
+            "layout",
+            match &image.layout {
+                None => Json::Null,
+                Some(layout) => Json::object([
+                    ("filesystem", Json::string(&layout.filesystem)),
+                    ("subvolumes", Json::Bool(layout.subvolumes)),
+                    ("pool", Json::string(&layout.pool)),
+                    ("bootloader", Json::string(&layout.bootloader)),
+                    (
+                        "var_disk",
+                        match &layout.var_disk {
+                            None => Json::Null,
+                            Some(var) => Json::object([
+                                ("disk", Json::string(&var.disk)),
+                                ("keep_existing", Json::Bool(var.keep_existing)),
+                            ]),
+                        },
+                    ),
+                ]),
+            },
+        ),
         (
             "base",
             match &image.base {
@@ -196,6 +219,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         ),
         ("published", Json::string(target.published())),
         ("conforms", Json::string(image.conforms_of(flavour))),
+        ("allows", refusals(&image.allows)),
         (
             "default",
             Json::Bool(
@@ -353,7 +377,20 @@ fn module(list: &List, entry: &Entry, family: &str) -> Json {
                     }),
             ),
         ),
+        (
+            "refuses",
+            refusals(module.map(|m| m.refuses.as_slice()).unwrap_or_default()),
+        ),
     ])
+}
+
+fn refusals(declared: &[crate::model::module::Refusal]) -> Json {
+    Json::array(declared.iter().map(|refusal| {
+        Json::object([
+            ("rule", Json::string(&refusal.rule)),
+            ("because", Json::string(&refusal.because)),
+        ])
+    }))
 }
 
 fn batches(declared: Option<&[crate::model::module::PackageGroup]>, family: &str) -> Json {

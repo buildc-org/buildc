@@ -68,10 +68,14 @@ pub fn conformance(
         .filter(|i| !i.conforms.is_empty() || i.flavours.iter().any(|f| !f.conforms.is_empty()));
     for image in measured {
         out.extend(unremediated(image, index));
+        out.extend(allows_nothing(image));
         if let Some(content) = &content {
             out.extend(claimed_and_refused(image, content));
             out.extend(claims_nothing(image, content));
             out.extend(refuses_nothing(image, content));
+        }
+        if let Some(content) = &content {
+            out.extend(layout_owes(image, content));
         }
         match &content {
             Some(content) => out.extend(unclaimed(image, content, index)),
@@ -98,12 +102,18 @@ pub fn exclusions(image: &Image) -> (Vec<String>, Vec<String>) {
             .chain(image.modules().flat_map(|module| module.satisfies.iter()))
             .flat_map(|coverage| coverage.rules.iter().cloned()),
     );
-    let refused = crate::emit::plan::distinct(image.modules().flat_map(|module| {
-        module
-            .refuses
-            .iter()
-            .map(|r| rule_name(&r.rule).to_string())
-    }));
+    let lifted: BTreeSet<&str> = image
+        .allows
+        .iter()
+        .map(|allow| rule_name(&allow.rule))
+        .collect();
+    let refused = crate::emit::plan::distinct(
+        image
+            .modules()
+            .flat_map(|module| module.refuses.iter().map(|r| rule_name(&r.rule)))
+            .filter(|rule| !lifted.contains(rule))
+            .map(str::to_string),
+    );
     (claimed, refused)
 }
 
@@ -306,6 +316,57 @@ fn unclaimed(image: &Image, content: &Content, index: &Index) -> Option<String> 
         owed.open.len(),
         owed.selects
     ))
+}
+
+fn allows_nothing(image: &Image) -> Vec<String> {
+    let refused: BTreeSet<&str> = image
+        .modules()
+        .flat_map(|module| module.refuses.iter().map(|r| rule_name(&r.rule)))
+        .collect();
+    image
+        .allows
+        .iter()
+        .filter(|allow| !refused.contains(rule_name(&allow.rule)))
+        .map(|allow| {
+            format!(
+                "`{}` allows remediation of `{}` and nothing it installs refuses that rule, so \
+                 the allowance lifts nothing. A rule no module refuses is remediated already",
+                image.id, allow.rule
+            )
+        })
+        .collect()
+}
+
+const PARTITION: &str = "partition_for_";
+
+fn layout_owes(image: &Image, content: &Content) -> Option<String> {
+    let profile = content.profiles.iter().find(|p| p.is(&image.conforms))?;
+    let var = image
+        .layout
+        .as_ref()
+        .and_then(|layout| layout.var_disk.as_ref())
+        .is_some();
+    let open: Vec<String> = content
+        .selected(&profile.id)
+        .iter()
+        .map(|id| rule_name(id).to_string())
+        .filter(|rule| rule.starts_with(PARTITION))
+        .filter(|rule| !(var && rule == "partition_for_var"))
+        .collect();
+    (!open.is_empty()).then(|| {
+        let has = match var {
+            true => "a separate `/var` and nothing else",
+            false => "no separate mount at all",
+        };
+        format!(
+            "`{}` conforms to `{}`, and its layout declares {has}, so these rules it selects are \
+             open at install time: {}. The recipe asks for one separate mount, `/var`; the rest \
+             want partitions the installer does not create",
+            image.id,
+            image.conforms,
+            open.join(", ")
+        )
+    })
 }
 
 fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::Resolved>)> {
@@ -1251,6 +1312,30 @@ mod tests {
             "{said:#?}"
         );
 
+        assert!(
+            said.iter()
+                .any(|m| m.contains("`no_module_here_refuses_this`")
+                    && m.contains("the allowance lifts nothing")),
+            "{said:#?}"
+        );
+        assert!(
+            !said
+                .iter()
+                .any(|m| m.contains("`sshd_disable_root_login`") && m.contains("lifts nothing")),
+            "an allowance that answers a real refusal is silent: {said:#?}"
+        );
+
+        let image = &loaded.list.images[0];
+        let (_, refused) = exclusions(image);
+        assert!(
+            !refused.contains(&"sshd_disable_root_login".to_string()),
+            "{refused:?}"
+        );
+        assert!(
+            refused.contains(&"package_aide_installed".to_string()),
+            "another module's refusal is untouched: {refused:?}"
+        );
+
         let bare = fixture("tests/scap");
         let nothing = Index::scan(&bare, &[], &Disk::scan(&bare), false);
         assert!(
@@ -1260,6 +1345,48 @@ mod tests {
                 .any(|m| m.contains("scap-remediation")),
             "an unavailable capability is not offered"
         );
+    }
+
+    #[test]
+    fn the_notice_names_the_partitions_the_declared_layout_leaves_open() {
+        let root = fixture("tests/repos/enforced");
+        let mut loaded = crate::load(&root);
+        let content = content_of(&fixture("tests/scap/datastream.xml")).expect("the fixture reads");
+        let image = &mut loaded.list.images[0];
+        image.conforms = "ospp".to_string();
+
+        let said = layout_owes(image, &content).expect("ospp selects two of them");
+        assert!(
+            said.contains("no separate mount at all")
+                && said.contains("partition_for_home, partition_for_var"),
+            "{said}"
+        );
+
+        image.layout = Some(crate::model::image::Layout {
+            filesystem: String::new(),
+            subvolumes: false,
+            pool: String::new(),
+            bootloader: String::new(),
+            composefs: None,
+            generic: None,
+            admin_group: String::new(),
+            var_disk: Some(crate::model::image::VarDisk {
+                disk: "/dev/sdb".to_string(),
+                keep_existing: false,
+                span: Span::default(),
+            }),
+            span: Span::default(),
+        });
+        let said = layout_owes(image, &content).expect("`/home` is still open");
+        assert!(
+            said.contains("a separate `/var` and nothing else")
+                && said.contains("partition_for_home")
+                && !said.contains("partition_for_var"),
+            "{said}"
+        );
+
+        image.conforms = "standard".to_string();
+        assert_eq!(layout_owes(image, &content), None);
     }
 
     #[test]

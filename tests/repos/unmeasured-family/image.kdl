@@ -1,0 +1,17 @@
+image {
+    name "Arch"
+
+    base "ghcr.io/someone/arch-bootc:latest" {
+        family "arch"
+    }
+
+    layout {
+        filesystem "btrfs" subvolumes=#true
+        composefs #true
+        generic-image #true
+        admin-group "wheel"
+        bootloader "systemd"
+    }
+
+    modules {}
+}

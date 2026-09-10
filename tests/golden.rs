@@ -2083,6 +2083,7 @@ fn golden() {
     unpinned_import(&dir.join("unpinned-source"));
     why("enforced", &dir.join("enforced"), "one/hello");
     why("minimal", &dir.join("minimal"), "core/hello");
+    why("seeding", &dir.join("seeding"), "buildc-org/flatpak");
     why_unbuilt(&dir.join("suppressed"));
     for name in [
         "minimal",

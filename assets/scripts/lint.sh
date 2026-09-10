@@ -23,7 +23,12 @@ for tool in shellcheck shfmt; do
     }
 done
 
-shellcheck -s bash "${scripts[@]}"
+mapfile -t repos < <(printf '%s\n' "${scripts[@]}" | grep '/repo$' || true)
+mapfile -t rest < <(printf '%s\n' "${scripts[@]}" | grep -v '/repo$')
+shellcheck -s bash "${rest[@]}"
+# A repo.sh sets REPO_ID for the generated script.
+# Shellcheck cannot see that reader, so SC2034 is off for these files.
+[ "${#repos[@]}" -eq 0 ] || shellcheck -s bash -e SC2034 "${repos[@]}"
 "${shfmt[@]}" -d "${scripts[@]}" || {
     echo "lint: unformatted, run ./scripts/lint.sh --fix" >&2
     exit 1

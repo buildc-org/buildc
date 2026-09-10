@@ -4,10 +4,9 @@ cd "$(dirname "$0")/.."
 
 mapfile -t scripts < <(
     find scripts generated/lib modules -path modules/.remote -prune -o \
-        -name '*.sh' -type f -print
+        \( -name '*.sh' -o -name repo \) -type f -print
     find modules -path modules/.remote -prune -o -path '*/files/*' -type f \
         \( -path '*/libexec/*' -o -path '*/system-generators/*' \) -print
-    find modules -path modules/.remote -prune -o -name repo -type f -print
 )
 shfmt=(shfmt -i 4 -ci -bn -sr)
 

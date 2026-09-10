@@ -760,12 +760,14 @@ jobs:
             .images[] | select([.targets[].name] | index($t)) | .base.family
           ' generated/plan.json)"
           case "$family" in
-            fedora | rhel) installer="dnf -y install openscap-scanner" ;;
-            *) installer="apt-get update && apt-get install -y openscap-scanner" ;;
-          esac
-          case "$family" in
-            fedora | rhel) cleaner="dnf clean all" ;;
-            *) cleaner="apt-get clean" ;;
+            fedora | rhel)
+              installer="dnf -y install openscap-scanner"
+              cleaner="dnf clean all"
+              ;;
+            *)
+              installer="apt-get update && apt-get install -y openscap-scanner"
+              cleaner="apt-get clean"
+              ;;
           esac
           {
             echo "INSTALLER=${installer}"

@@ -103,7 +103,7 @@ fn script(
 
     let on_disk = layout::module(root, entry.dir());
     if let Some(at) = layout::shipped(&on_disk, base_family, "repo") {
-        match repo_id(&on_disk.join(&at)).filter(|_| base_family == "fedora") {
+        match repo_id(&on_disk.join(&at)).filter(|_| crate::parse::module::rpm(base_family)) {
             Some(id) => {
                 let _ = write!(
                     out,

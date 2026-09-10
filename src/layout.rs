@@ -46,9 +46,12 @@ impl Policy {
     }
 }
 
-pub const FAMILY_DIRS: [(&str, &[&str]); 4] = [
+// A broad family precedes the specific families it covers, because the specific directory overrides the broad one.
+pub const FAMILY_DIRS: [(&str, &[&str]); 6] = [
     ("deb", &["debian", "ubuntu"]),
+    ("rpm", &["fedora", "rhel"]),
     ("fedora", &["fedora"]),
+    ("rhel", &["rhel"]),
     ("debian", &["debian"]),
     ("ubuntu", &["ubuntu"]),
 ];
@@ -138,4 +141,23 @@ pub const LIB: &str = "lib";
 
 pub fn out(root: &Path) -> PathBuf {
     root.join(OUT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_family_reads_the_shared_directory_first() {
+        let root = std::env::temp_dir().join(format!("buildc-family-dirs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for name in ["rpm", "rhel", "fedora", "deb"] {
+            std::fs::create_dir_all(root.join(name)).unwrap();
+        }
+
+        assert_eq!(family_dirs(&root, "rhel"), ["rpm", "rhel"]);
+        assert_eq!(family_dirs(&root, "fedora"), ["rpm", "fedora"]);
+        assert_eq!(family_first(&root, "rhel"), ["rhel/", "rpm/", ""]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

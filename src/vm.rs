@@ -8,7 +8,7 @@ use std::process::Command;
 
 const SCRIPT: &str = "scripts/vm.sh";
 
-use crate::resolve::workflow::FEDORA;
+use crate::parse::module::rpm;
 
 const TYPES: [(&str, &str); 3] = [
     ("qcow2", copy::DISK_QCOW2),
@@ -215,7 +215,7 @@ fn installer(root: &Path, spec: &Spec, kind: &str, opts: &Options) -> Option<&'s
         return None;
     }
     family(root, opts)
-        .filter(|family| family != FEDORA)
+        .filter(|family| !rpm(family))
         .map(|_| BOOTC)
 }
 

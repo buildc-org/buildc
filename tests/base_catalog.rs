@@ -132,16 +132,30 @@ fn missing_runtime_file_falls_back_to_embedded_catalog() {
         assert!(!base.signed, "{image}");
         assert!(base.scap_content.is_empty(), "{image}");
     }
-    for (image, content) in [
-        ("quay.io/fedora/fedora-bootc:44", "ssg-fedora-ds.xml"),
+    for (image, family, content) in [
+        (
+            "quay.io/fedora/fedora-bootc:44",
+            "fedora",
+            "ssg-fedora-ds.xml",
+        ),
         (
             "quay.io/centos-bootc/centos-bootc:stream10",
+            "rhel",
             "ssg-cs10-ds.xml",
         ),
-        ("ghcr.io/ublue-os/bazzite:stable", "ssg-fedora-ds.xml"),
+        (
+            "registry.redhat.io/rhel10/rhel-bootc:latest",
+            "rhel",
+            "ssg-rhel10-ds.xml",
+        ),
+        (
+            "ghcr.io/ublue-os/bazzite:stable",
+            "fedora",
+            "ssg-fedora-ds.xml",
+        ),
     ] {
         let base = buildc::base::find(&bases, image).expect(image);
-        assert_eq!(base.family, "fedora", "{image}");
+        assert_eq!(base.family, family, "{image}");
         assert_eq!(base.scap_content, content, "{image}");
     }
 }

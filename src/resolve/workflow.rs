@@ -1,12 +1,13 @@
 use crate::diag::{Issue, Issues};
 use crate::layout;
 use crate::model::image::List;
+use crate::parse::module::rpm;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Needs {
     Nothing,
-    Fedora,
+    Selinux,
     Kernel,
 }
 
@@ -14,7 +15,7 @@ impl Needs {
     pub fn unmet(self) -> &'static str {
         match self {
             Self::Nothing => "",
-            Self::Fedora => "needs a fedora image",
+            Self::Selinux => "needs a fedora or rhel image",
             Self::Kernel => "needs a module taking a KERNEL arg",
         }
     }
@@ -36,7 +37,7 @@ impl Shipped {
     pub fn met(&self, basis: &Basis) -> bool {
         match self.needs {
             Needs::Nothing => true,
-            Needs::Fedora => basis.fedora,
+            Needs::Selinux => basis.selinux,
             Needs::Kernel => basis.kernel,
         }
     }
@@ -64,7 +65,7 @@ pub const SHIPPED: &[Shipped] = &[
     shipped!(
         "build-disk",
         "builds a disk image with bootc-image-builder",
-        Needs::Fedora,
+        Needs::Selinux,
         None
     ),
     shipped!(
@@ -100,19 +101,17 @@ pub fn find(stem: &str) -> Option<&'static Shipped> {
 pub const DEFAULT_AT: (u32, u32) = (12, 30);
 
 pub struct Basis {
-    pub fedora: bool,
+    pub selinux: bool,
     pub kernel: bool,
 }
 
 impl Basis {
     pub fn of(list: &List) -> Self {
         Self {
-            fedora: list.images.iter().any(|image| {
-                image
-                    .base
-                    .as_ref()
-                    .is_some_and(|base| base.family == FEDORA)
-            }),
+            selinux: list
+                .images
+                .iter()
+                .any(|image| image.base.as_ref().is_some_and(|base| rpm(&base.family))),
             kernel: list.images.iter().any(|image| {
                 image
                     .modules()
@@ -123,13 +122,12 @@ impl Basis {
 
     pub fn scaffolding(family: &str) -> Self {
         Self {
-            fedora: family == FEDORA,
+            selinux: rpm(family),
             kernel: false,
         }
     }
 }
 
-pub(crate) const FEDORA: &str = "fedora";
 const KERNEL_ARG: &str = "KERNEL";
 
 pub fn unlocked(list: &List, args: &[String]) -> Vec<&'static Shipped> {
@@ -138,7 +136,7 @@ pub fn unlocked(list: &List, args: &[String]) -> Vec<&'static Shipped> {
     }
     let was = Basis::of(list);
     let now = Basis {
-        fedora: was.fedora,
+        selinux: was.selinux,
         kernel: was.kernel || args.iter().any(|arg| arg == KERNEL_ARG),
     };
     SHIPPED
@@ -248,7 +246,7 @@ mod tests {
     #[test]
     fn a_deb_repository_may_smoke_test_and_may_not_build_a_disk() {
         let deb = Basis {
-            fedora: false,
+            selinux: false,
             kernel: false,
         };
         let met = |stem: &str| find(stem).expect(stem).met(&deb);
@@ -271,7 +269,7 @@ mod tests {
     #[test]
     fn publishing_on_schedule_also_schedules_scanning() {
         let basis = Basis {
-            fedora: true,
+            selinux: true,
             kernel: false,
         };
         assert_eq!(

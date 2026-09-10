@@ -459,18 +459,25 @@ fn measured_by(
 }
 
 fn installed(dir: &str, family: &str) -> Result<PathBuf, String> {
-    let file = match family {
-        "fedora" => "ssg-fedora-ds.xml",
-        "debian" | "ubuntu" => {
-            return Err(format!(
-                "SSG publishes no content a `{family}` image can be measured against\n\nhelp: \
+    let file =
+        match family {
+            "fedora" => "ssg-fedora-ds.xml",
+            "debian" | "ubuntu" => {
+                return Err(format!(
+                    "SSG publishes no content a `{family}` image can be measured against\n\nhelp: \
                  every SSG benchmark names the one release it applies to, and there is no Debian \
                  14 benchmark and no usable Ubuntu 26.04 one; drop `conforms` from this image, or \
                  name content of your own with `--datastream <file>`"
-            ))
-        }
-        _ => return Err(format!("no SSG content is known for the `{family}` family")),
-    };
+                ))
+            }
+            "rhel" => return Err(
+                "SSG writes one datastream per EL release, so the `rhel` family has no default\n\n\
+                 help: give the base's row a `scap-content` line, or name content of your own \
+                 with `--datastream <file>`"
+                    .to_string(),
+            ),
+            _ => return Err(format!("no SSG content is known for the `{family}` family")),
+        };
     Ok(Path::new(dir).join(file))
 }
 
@@ -1224,10 +1231,10 @@ mod tests {
     }
 
     #[test]
-    fn a_base_row_names_content_the_family_default_would_get_wrong() {
-        let row = |image: &str, content: &str| crate::base::Base {
+    fn a_base_row_names_content_the_family_cannot() {
+        let row = |image: &str, family: &str, content: &str| crate::base::Base {
             image: image.to_string(),
-            family: "fedora".to_string(),
+            family: family.to_string(),
             provides: Vec::new(),
             provides_files: Vec::new(),
             requires: Vec::new(),
@@ -1239,14 +1246,19 @@ mod tests {
         let bases = [
             row(
                 "quay.io/centos-bootc/centos-bootc:stream10",
+                "rhel",
                 "ssg-cs10-ds.xml",
             ),
-            row("quay.io/fedora/fedora-bootc:44", "ssg-fedora-ds.xml"),
-            row("example.invalid/silent:1", ""),
+            row(
+                "quay.io/fedora/fedora-bootc:44",
+                "fedora",
+                "ssg-fedora-ds.xml",
+            ),
+            row("example.invalid/silent:1", "fedora", ""),
         ];
         let of = |image, family| measured_by("/nowhere", &bases, image, family);
 
-        let el = of("quay.io/centos-bootc/centos-bootc:stream10", "fedora").unwrap();
+        let el = of("quay.io/centos-bootc/centos-bootc:stream10", "rhel").unwrap();
         assert!(el.ends_with("ssg-cs10-ds.xml"), "{}", el.display());
 
         let fedora = of("quay.io/fedora/fedora-bootc:44", "fedora").unwrap();
@@ -1258,13 +1270,15 @@ mod tests {
 
         let pinned = of(
             "quay.io/centos-bootc/centos-bootc:stream10@sha256:0000",
-            "fedora",
+            "rhel",
         )
         .unwrap();
         assert!(pinned.ends_with("ssg-cs10-ds.xml"), "{}", pinned.display());
 
         let fell = of("example.invalid/unknown:1", "fedora").unwrap();
         assert!(fell.ends_with("ssg-fedora-ds.xml"), "{}", fell.display());
+        let err = of("example.invalid/alma:10", "rhel").unwrap_err();
+        assert!(err.contains("one datastream per EL release"), "{err}");
 
         let err = of("example.invalid/silent:1", "fedora").unwrap_err();
         assert!(err.contains("names no `scap-content`"), "{err}");

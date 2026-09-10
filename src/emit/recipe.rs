@@ -1,7 +1,7 @@
 use crate::emit::json::Json;
 use crate::model::image::{Layout, List};
-use crate::resolve::workflow::FEDORA;
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 struct Family {
     composefs: bool,
     generic: bool,
@@ -12,7 +12,7 @@ struct Family {
 
 fn family(name: &str) -> Option<Family> {
     Some(match name {
-        FEDORA => Family {
+        "fedora" | "rhel" => Family {
             composefs: false,
             generic: false,
             bootloader: String::new(),
@@ -284,13 +284,13 @@ mod tests {
     fn a_sealed_family_is_the_only_one_that_refuses_a_filesystem() {
         assert!(seals("debian", None));
         assert!(seals("ubuntu", None));
-        assert!(!seals(FEDORA, None));
+        assert!(!seals("fedora", None));
         assert!(!seals("plan9", None));
 
         let sealing = layout(Some(true));
         let plain = layout(Some(false));
         assert!(seals("plan9", Some(&sealing)));
-        assert!(seals(FEDORA, Some(&sealing)), "the image overrides");
+        assert!(seals("fedora", Some(&sealing)), "the image overrides");
         assert!(!seals("debian", Some(&plain)), "in both directions");
     }
 
@@ -309,8 +309,15 @@ mod tests {
     }
 
     #[test]
+    fn rhel_installs_the_way_fedora_does() {
+        assert_eq!(settle(Some("rhel"), None), settle(Some("fedora"), None));
+        assert_eq!(unanswered("rhel", None), Vec::<&str>::new());
+        assert!(!seals("rhel", None));
+    }
+
+    #[test]
     fn an_unmeasured_family_answers_for_itself_in_full_or_not_at_all() {
-        assert_eq!(unanswered(FEDORA, None), Vec::<&str>::new());
+        assert_eq!(unanswered("fedora", None), Vec::<&str>::new());
         assert_eq!(
             unanswered("plan9", None),
             [
@@ -328,7 +335,7 @@ mod tests {
             unanswered("plan9", Some(&half)),
             ["generic-image", "admin-group", "bootloader"]
         );
-        assert_eq!(unanswered(FEDORA, Some(&half)), Vec::<&str>::new());
+        assert_eq!(unanswered("fedora", Some(&half)), Vec::<&str>::new());
 
         let mut whole = half;
         whole.generic = Some(true);

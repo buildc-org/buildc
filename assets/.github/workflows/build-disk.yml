@@ -44,12 +44,12 @@ jobs:
             '.images[] | select([.targets[].name] | index($t)) | .base.family' \
             <<< "$plan")"
           echo "family=${family}" >> "$GITHUB_OUTPUT"
-          [ "$family" = fedora ] || echo "::warning::the builder relabels its buildroot with SELinux, and the ${family} family carries no policy, so it builds no disk here"
+          [ "$family" = fedora ] || [ "$family" = rhel ] || echo "::warning::the builder relabels its buildroot with SELinux, and the ${family} family carries no policy, so it builds no disk here"
 
   build:
     name: Build disk images
     needs: family
-    if: needs.family.outputs.family == 'fedora'
+    if: needs.family.outputs.family == 'fedora' || needs.family.outputs.family == 'rhel'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

@@ -25,6 +25,15 @@ base "registry.redhat.io/rhel10/rhel-bootc:latest" {
     scap-content "ssg-rhel10-ds.xml"
 }
 
+base "quay.io/almalinuxorg/almalinux-bootc:10" {
+    about "AlmaLinux 10, the RHEL rebuild, whose benchmark needs no entitlement"
+    family "rhel"
+    provides "rechunking" "initramfs-generation" "selinux-policy"
+    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
+        "/usr/bin/podman" "/usr/bin/crun"
+    scap-content "ssg-almalinux10-ds.xml"
+}
+
 base "ghcr.io/ublue-os/bazzite:stable" {
     about "KDE, gaming and hardware support over kinoite-main"
     family "fedora"

@@ -458,13 +458,21 @@ fn provenance(list: &List, entry: &Entry) -> Json {
         ),
         (
             "imported",
-            match module.and_then(|m| m.imported.as_ref()) {
-                None => Json::Null,
-                Some(record) => Json::object([
+            match (
+                module.and_then(|m| m.imported.as_ref()),
+                &entry.source,
+                entry.pin(&list.sources),
+            ) {
+                (Some(record), _, _) => Json::object([
                     ("collection", Json::string(&record.collection)),
                     ("content", Json::string(&record.content)),
                     ("pin", record.pin.json()),
                 ]),
+                (None, Some(collection), Some(pin)) => Json::object([
+                    ("collection", Json::string(collection)),
+                    ("pin", pin.json()),
+                ]),
+                _ => Json::Null,
             },
         ),
     ])

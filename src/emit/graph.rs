@@ -47,29 +47,24 @@ pub fn of(image: &Image) -> Graph<'_> {
             name: BASE.to_string(),
             label: base.image.clone(),
         });
-        for (decls, file) in [(&base.provides, false), (&base.provides_files, true)] {
-            for decl in decls {
-                graph.cap(&decl.name, file).provider.get_or_insert(0);
-            }
+        for decl in &base.provides {
+            graph.cap(&decl.name).provider.get_or_insert(0);
         }
     }
 
     for module in image.modules() {
         let node = graph.node(module);
-        for (decls, file) in [(&module.provides, false), (&module.provides_files, true)] {
-            for decl in decls {
-                let build_only = module.provides_files_build_only.contains(&decl.name);
-                let cap = graph.cap(&decl.name, file);
-                if cap.provider.is_none() {
-                    cap.provider = Some(node);
-                    cap.build_only = build_only;
-                }
+        for decl in &module.provides {
+            let located = module.files.iter().find(|f| f.name == decl.name);
+            let cap = graph.cap(&decl.name);
+            if cap.provider.is_none() {
+                cap.provider = Some(node);
+                cap.file = located.is_some();
+                cap.build_only = located.is_some_and(|f| f.build_only);
             }
         }
-        for (decls, file) in [(&module.requires, false), (&module.requires_files, true)] {
-            for decl in decls {
-                graph.cap(&decl.name, file).required_by.push(node);
-            }
+        for decl in &module.requires {
+            graph.cap(&decl.name).required_by.push(node);
         }
         let after = module
             .after
@@ -77,7 +72,7 @@ pub fn of(image: &Image) -> Graph<'_> {
             .map(|decl| decl.name.as_str())
             .chain(module.policies.iter().copied());
         for name in after {
-            let held = &mut graph.cap(name, false).after;
+            let held = &mut graph.cap(name).after;
             if !held.contains(&node) {
                 held.push(node);
             }
@@ -93,7 +88,6 @@ pub fn of(image: &Image) -> Graph<'_> {
             module
                 .provides
                 .iter()
-                .chain(module.provides_files.iter())
                 .map(|decl| decl.name.as_str())
                 .collect(),
         ));
@@ -115,11 +109,8 @@ pub fn path(image: &Image, format: &str) -> PathBuf {
 }
 
 impl<'a> Graph<'a> {
-    fn cap(&mut self, name: &'a str, file: bool) -> &mut Cap {
-        self.caps.entry(name).or_insert(Cap {
-            file,
-            ..Cap::default()
-        })
+    fn cap(&mut self, name: &'a str) -> &mut Cap {
+        self.caps.entry(name).or_default()
     }
 
     fn node(&mut self, module: &'a Module) -> usize {

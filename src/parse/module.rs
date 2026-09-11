@@ -2,14 +2,15 @@ use crate::diag::{Issue, Issues, Source, Span};
 use crate::layout;
 use crate::model::image::{Entry, Image, List};
 use crate::model::module::{
-    Collect, Contribution, Copr, Coverage, Decl, FileMode, Key, Module, PackageGroup, Position,
-    VerifyException,
+    Collect, Contribution, Copr, Coverage, Decl, FileMode, Key, Located, Module, PackageGroup,
+    Position, VerifyException,
 };
 use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
 use crate::parse::prop_span;
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
-use crate::parse::{asset, boolean, check_capability, child, flag, int_prop, kids, options, prop};
+use crate::parse::{asset, boolean, check_capability, check_path, child, flag, int_prop, kids};
+use crate::parse::{options, prop};
 use crate::parse::{string_arg, string_args, syntax_issue};
 use crate::resolve::options as resolve_options;
 use crate::runtime::{class_names, VERIFY_CLASSES};
@@ -81,7 +82,8 @@ const KEY: Node = Node::new("key",
             ], Say::new("unknown `generator` property `{}`", "not part of the schema",
                 "`generator` accepts `profile` and `bits`")),
         Node::new("public",
-            "Where the public half is shipped, which is a contract path this module provides.")
+            "Where the public half is shipped, which witnesses the `<kind>-key` capability this \
+             module provides.")
             .arg(Arg::Str, Say::new("`public` needs an absolute path", "no path given", ""))
             .once("")
             .missing(NEEDED)
@@ -191,28 +193,27 @@ pub const MODULE: Node = Node::new("module",
             .arg(Arg::Strs, Say::NONE),
 
         Node::new("provides", "A capability this module satisfies for the modules that require it.")
-            .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", "")),
+            .arg(Arg::Strs, Say::new("`{}` needs a capability name", "nothing named", ""))
+            .props(&[
+                Prop { name: "file", kind: Kind::Str,
+                    desc: "The absolute path that witnesses the one name given, where it is \
+                           neither `/usr/bin/<name>` nor `/usr/sbin/<name>`; the finished image \
+                           is checked for it.",
+                    say: Say::new("`file` must be a string", "not a path", ""),
+                    missing: Say::NONE },
+                Prop { name: "build-only", kind: Kind::Bool,
+                    desc: "Whether the `file` exists only while the build runs.",
+                    say: Say::new("`build-only` takes #true or #false", "not a boolean", ""),
+                    missing: Say::NONE },
+            ], Say::new("unknown `provides` property `{}`", "not part of the schema",
+                "`provides` accepts `file` and `build-only`")),
         REQUIRES,
         AFTER,
 
-        Node::new("provides-file", "An absolute path this module guarantees, which another module \
-             may require.")
-            .arg(Arg::Strs, Say::NONE)
-            .props(&[
-                Prop { name: "build-only", kind: Kind::Bool,
-                    desc: "Whether the path exists only while the build runs.",
-                    say: Say::new("`build-only` takes #true or #false", "not a boolean", ""),
-                    missing: Say::NONE },
-            ], Say::new("unknown `provides-file` property `{}`", "not part of the schema",
-                "`provides-file` accepts `build-only`")),
-        Node::new("requires-file", "An absolute path some other module has to ship.")
-            .arg(Arg::Strs, Say::NONE)
-            .props(&[], Say::new("`{}` is not a `requires-file` property",
-                "only `provides-file` declares a lifetime", "")),
         Node::new("overrides", "An absolute path this module replaces deliberately.")
             .arg(Arg::Strs, Say::NONE)
-            .props(&[], Say::new("`{}` is not an `overrides` property",
-                "only `provides-file` declares a lifetime", "")),
+            .props(&[], Say::new("`{}` is not an `overrides` property", "not part of the schema",
+                "")),
         Node::new("mode", "An octal file mode applied to one path in this module's overlay.")
             .arg(Arg::StrPair("path, then octal mode"),
                 Say::new("`mode` needs one path and one octal file mode", "incomplete",
@@ -575,9 +576,7 @@ impl Module {
                 .filter(|policy| !policy.files(&dir).is_empty())
                 .map(|policy| policy.capability)
                 .collect(),
-            provides_files: Vec::new(),
-            provides_files_build_only: Vec::new(),
-            requires_files: Vec::new(),
+            files: Vec::new(),
             overrides: Vec::new(),
             verify_exceptions: Vec::new(),
             refuses: Vec::new(),
@@ -677,9 +676,7 @@ impl Module {
                 kind @ ("provides" | "requires" | "after") => {
                     module.parse_capabilities(kind, node, src, issues)
                 }
-                kind @ ("provides-file" | "requires-file" | "overrides") => {
-                    module.parse_paths(kind, node, src, issues)
-                }
+                "overrides" => module.parse_overrides(node, src, issues),
                 "mode" => module.parse_mode(node, dir, src, issues),
                 kind @ ("secret" | "arg") => {
                     for name in string_args(node) {
@@ -778,16 +775,22 @@ impl Module {
         src: &Source,
         issues: &mut Issues,
     ) -> Option<Self> {
-        let derived: Vec<Decl> = module
-            .keys
-            .iter()
-            .filter(|key| !module.provides_files.iter().any(|d| d.name == key.public))
-            .map(|key| Decl {
-                name: key.public.clone(),
-                span: key.span,
-            })
-            .collect();
-        module.provides_files.extend(derived);
+        for key in &module.keys {
+            let name = key_capability(&key.kind);
+            if !module.provides.iter().any(|d| d.name == name) {
+                module.provides.push(Decl {
+                    name: name.clone(),
+                    span: key.span,
+                });
+            }
+            if !module.files.iter().any(|f| f.name == name) {
+                module.files.push(Located {
+                    name,
+                    file: key.public.clone(),
+                    build_only: false,
+                });
+            }
+        }
 
         for key in &module.keys {
             let file = layout::public_key(root, &key.public);
@@ -986,6 +989,9 @@ impl Module {
         for decl in &decls {
             check_capability(&decl.name, decl.span, src, issues);
         }
+        if kind == "provides" {
+            self.locate(node, &decls, src, issues);
+        }
         match kind {
             "provides" => self.provides.extend(decls),
             "requires" => self.requires.extend(decls),
@@ -993,8 +999,39 @@ impl Module {
         }
     }
 
-    fn parse_paths(&mut self, kind: &str, node: &KdlNode, src: &Source, issues: &mut Issues) {
-        let build_only = kind == "provides-file" && flag(node, "build-only");
+    fn locate(&mut self, node: &KdlNode, decls: &[Decl], src: &Source, issues: &mut Issues) {
+        let span = node.name().span();
+        let build_only = flag(node, "build-only");
+        let Some(file) = prop(node, "file") else {
+            if build_only {
+                issues.push(
+                    Issue::new("`build-only` describes a `file`, and none is given", src)
+                        .at(span, "no `file`")
+                        .help("`provides \"x\" file=\"/usr/libexec/x\" build-only=#true`"),
+                );
+            }
+            return;
+        };
+        let [decl] = decls else {
+            issues.push(
+                Issue::new(
+                    "`file` witnesses one capability, and this names several",
+                    src,
+                )
+                .at(span, "one `provides` per located name")
+                .help("give each name its own `provides` with its own `file`"),
+            );
+            return;
+        };
+        check_path(file, decl.span, src, issues);
+        self.files.push(Located {
+            name: decl.name.clone(),
+            file: file.to_string(),
+            build_only,
+        });
+    }
+
+    fn parse_overrides(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
         for path in string_args(node) {
             if !path.starts_with('/') {
                 issues.push(
@@ -1002,20 +1039,10 @@ impl Module {
                         .at(node.name().span(), "an exact path in the image"),
                 );
             }
-            let decl = Decl {
+            self.overrides.push(Decl {
                 name: path.to_string(),
                 span: node.name().span().into(),
-            };
-            match kind {
-                "provides-file" => {
-                    if build_only {
-                        self.provides_files_build_only.push(path.to_string());
-                    }
-                    self.provides_files.push(decl);
-                }
-                "requires-file" => self.requires_files.push(decl),
-                _ => self.overrides.push(decl),
-            }
+            });
         }
     }
 
@@ -1392,6 +1419,10 @@ pub(crate) fn coverages(node: &KdlNode, src: &Source, issues: &mut Issues) -> Ve
     out
 }
 
+pub(crate) fn key_capability(kind: &str) -> String {
+    format!("{kind}-key")
+}
+
 pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Key> {
     let kind = string_arg(node)?.to_string();
     let generator = child(node, "generator")?;
@@ -1474,25 +1505,12 @@ pub fn summary(file: &Path) -> Summary {
             .iter()
             .filter(|node| node.name().value() == name)
             .flat_map(|node| node.entries())
+            .filter(|entry| entry.name().is_none())
             .filter_map(|entry| entry.value().as_string().map(str::to_string))
             .collect()
     };
     let mut provides = strings("provides");
-    provides.extend(strings("provides-file"));
-    provides.extend(
-        doc.nodes()
-            .iter()
-            .filter(|node| node.name().value() == "key")
-            .filter_map(|node| {
-                node.children()?
-                    .get("public")?
-                    .entries()
-                    .first()?
-                    .value()
-                    .as_string()
-            })
-            .map(str::to_string),
-    );
+    provides.extend(strings("key").iter().map(|kind| key_capability(kind)));
     Summary {
         description: strings("description").join(" "),
         provides,
@@ -1554,6 +1572,52 @@ mod tests {
             &mut issues,
         );
         issues.findings()
+    }
+
+    #[test]
+    fn a_provided_file_names_one_capability() {
+        let found = parsed(
+            "located",
+            "provides \"one\" \"two\" file=\"/usr/bin/one\"\n\
+             provides \"three\" build-only=#true\n\
+             provides \"four\" file=\"usr/four\"\n\
+             requires \"/usr/bin/five\"\n",
+        );
+        assert!(
+            found.iter().any(|m| m.contains("witnesses one capability")),
+            "{found:?}"
+        );
+        assert!(
+            found.iter().any(|m| m.contains("describes a `file`")),
+            "{found:?}"
+        );
+        assert!(
+            found
+                .iter()
+                .any(|m| m.contains("`usr/four` is not an absolute path")),
+            "{found:?}"
+        );
+        assert!(
+            found
+                .iter()
+                .any(|m| m.contains("`/usr/bin/five` is a path where")),
+            "{found:?}"
+        );
+
+        let text = "provides \"helpers\" file=\"/usr/libexec/helpers.sh\" build-only=#true\n";
+        let module = Module::parse(
+            "kept",
+            "kept",
+            Path::new("."),
+            text.to_string(),
+            None,
+            &mut Issues::default(),
+        )
+        .expect("a module");
+        assert_eq!(module.provides[0].name, "helpers");
+        assert_eq!(module.files[0].file, "/usr/libexec/helpers.sh");
+        assert!(module.files[0].build_only);
+        assert_eq!(key_capability("secureboot"), "secureboot-key");
     }
 
     #[test]
@@ -1647,8 +1711,10 @@ family "fedora" {
 description
 description "twice"
 provides
-requires-file "/usr/bin/one" build-only=#true
-provides-file "/usr/bin/two" build-only="yes" lifetime="long"
+provides "one" "two" file="/usr/bin/one"
+provides "three" build-only=#true
+provides "four" file="usr/four" build-only="yes" lifetime="long"
+requires "/usr/bin/five"
 mode "/etc/one"
 secret
 allow-verify "man-page-missing" unit=1 scope="image"
@@ -1677,9 +1743,8 @@ family "fedora" { supports "debian"; packages }
                 "`description` needs a string",
                 "`description` is declared twice",
                 "`provides` needs a capability name",
-                "`build-only` is not a `requires-file` property",
                 "`build-only` takes #true or #false",
-                "unknown `provides-file` property `lifetime`",
+                "unknown `provides` property `lifetime`",
                 "`mode` needs one path and one octal file mode",
                 "`secret` needs a name",
                 "`unit` must be a string",

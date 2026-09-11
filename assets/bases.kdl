@@ -1,9 +1,18 @@
+capability "ssh" "/usr/sbin/sshd"
+capability "initramfs-generation" "/usr/bin/dracut"
+capability "selinux-policy" "/usr/sbin/semodule"
+capability "flatpak" "/usr/bin/flatpak"
+capability "bootc" "/usr/bin/bootc"
+capability "bootupctl" "/usr/bin/bootupctl"
+capability "podman" "/usr/bin/podman"
+capability "crun" "/usr/bin/crun"
+capability "rechunking"
+
 base "quay.io/fedora/fedora-bootc:44" {
     about "Fedora 44, nothing above the base system"
     family "fedora"
-    provides "rechunking" "initramfs-generation" "selinux-policy"
-    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
-        "/usr/bin/podman" "/usr/bin/crun"
+    provides "rechunking" "initramfs-generation" "selinux-policy" "ssh" "bootc" "bootupctl" \
+        "podman" "crun"
     scap-content "ssg-fedora-ds.xml"
     signed #false
     bootloader "grub2"
@@ -12,9 +21,8 @@ base "quay.io/fedora/fedora-bootc:44" {
 base "quay.io/centos-bootc/centos-bootc:stream10" {
     about "CentOS Stream 10, the EL base a stated claim can be measured against"
     family "rhel"
-    provides "rechunking" "initramfs-generation" "selinux-policy"
-    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
-        "/usr/bin/podman" "/usr/bin/crun"
+    provides "rechunking" "initramfs-generation" "selinux-policy" "ssh" "bootc" "bootupctl" \
+        "podman" "crun"
     scap-content "ssg-cs10-ds.xml"
     signed #true
     bootloader "grub2"
@@ -23,9 +31,8 @@ base "quay.io/centos-bootc/centos-bootc:stream10" {
 base "registry.redhat.io/rhel10/rhel-bootc:latest" {
     about "RHEL 10, the supported EL base, behind a Red Hat login"
     family "rhel"
-    provides "rechunking" "initramfs-generation" "selinux-policy"
-    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
-        "/usr/bin/podman" "/usr/bin/crun"
+    provides "rechunking" "initramfs-generation" "selinux-policy" "ssh" "bootc" "bootupctl" \
+        "podman" "crun"
     scap-content "ssg-rhel10-ds.xml"
     signed #false
     bootloader "grub2"
@@ -34,9 +41,8 @@ base "registry.redhat.io/rhel10/rhel-bootc:latest" {
 base "quay.io/almalinuxorg/almalinux-bootc:10" {
     about "AlmaLinux 10, the RHEL rebuild, whose benchmark needs no entitlement"
     family "rhel"
-    provides "rechunking" "initramfs-generation" "selinux-policy"
-    provides-file "/usr/sbin/sshd" "/usr/bin/bootc" "/usr/bin/bootupctl" \
-        "/usr/bin/podman" "/usr/bin/crun"
+    provides "rechunking" "initramfs-generation" "selinux-policy" "ssh" "bootc" "bootupctl" \
+        "podman" "crun"
     scap-content "ssg-almalinux10-ds.xml"
     signed #true
     bootloader "grub2"
@@ -46,7 +52,6 @@ base "ghcr.io/ublue-os/bazzite:stable" {
     about "KDE, gaming and hardware support over kinoite-main"
     family "fedora"
     provides "rechunking" "flatpak"
-    provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
     bootloader "grub2"
@@ -56,7 +61,6 @@ base "ghcr.io/ublue-os/aurora:stable" {
     about "KDE developer workstation over kinoite-main"
     family "fedora"
     provides "rechunking" "flatpak"
-    provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
     bootloader "grub2"
@@ -66,7 +70,6 @@ base "ghcr.io/ublue-os/bluefin:stable" {
     about "GNOME developer workstation over silverblue-main"
     family "fedora"
     provides "rechunking" "flatpak"
-    provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
     bootloader "grub2"
@@ -76,7 +79,6 @@ base "ghcr.io/ublue-os/kinoite-main:44" {
     about "Fedora Kinoite with the ublue additions, what bazzite builds on"
     family "fedora"
     provides "rechunking" "flatpak"
-    provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
     bootloader "grub2"

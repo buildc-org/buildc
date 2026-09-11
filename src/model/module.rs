@@ -57,6 +57,12 @@ pub struct Decl {
     pub span: Span,
 }
 
+pub struct Located {
+    pub name: String,
+    pub file: String,
+    pub build_only: bool,
+}
+
 pub struct Collect {
     pub file: String,
     pub into: String,
@@ -117,9 +123,7 @@ pub struct Module {
     pub requires: Vec<Decl>,
     pub after: Vec<Decl>,
     pub policies: Vec<&'static str>,
-    pub provides_files: Vec<Decl>,
-    pub provides_files_build_only: Vec<String>,
-    pub requires_files: Vec<Decl>,
+    pub files: Vec<Located>,
     pub overrides: Vec<Decl>,
     pub verify_exceptions: Vec<VerifyException>,
     pub refuses: Vec<Refusal>,

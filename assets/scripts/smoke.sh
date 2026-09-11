@@ -91,11 +91,24 @@ render_menu() {
 render_menu
 sudo chown "$(id -u):$(id -g)" "${dir}/disk.raw"
 
-for code in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/edk2/ovmf/OVMF_CODE.fd; do
-    [ -f "$code" ] && break
+secure_boot="${SECURE_BOOT:-1}"
+if [ "$secure_boot" = 1 ]; then
+    firmware=(/usr/share/OVMF/OVMF_CODE_4M.secboot.fd:/usr/share/OVMF/OVMF_VARS_4M.ms.fd
+        /usr/share/edk2/ovmf/OVMF_CODE.secboot.fd:/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd)
+    machine=(-machine 'q35,smm=on' -global 'driver=cfi.pflash01,property=secure,value=on')
+else
+    firmware=(/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_VARS_4M.fd
+        /usr/share/edk2/ovmf/OVMF_CODE.fd:/usr/share/edk2/ovmf/OVMF_VARS.fd)
+    machine=(-machine q35)
+fi
+code=""
+for pair in "${firmware[@]}"; do
+    [ -f "${pair%%:*}" ] && [ -f "${pair#*:}" ] || continue
+    code="${pair%%:*}"
+    cp "${pair#*:}" "${dir}/vars.fd"
+    break
 done
-[ -f "$code" ] || die "no OVMF firmware is installed"
-cp "${code/CODE/VARS}" "${dir}/vars.fd"
+[ -n "$code" ] || die "no OVMF firmware for SECURE_BOOT=${secure_boot} is installed"
 # shellcheck disable=SC2016 # expanded by systemd, from each family's EnvironmentFile
 dropin="$(printf '%s\n' '[Service]' 'ExecStart=' \
     'ExecStart=/usr/sbin/sshd -D -oPermitRootLogin=prohibit-password $OPTIONS $SSHD_OPTS' \
@@ -104,7 +117,7 @@ qemu-system-x86_64 \
     -smbios "type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$(base64 -w0 "${dir}/key.pub")" \
     -smbios "type=11,value=io.systemd.credential.binary:systemd.unit-dropin.sshd.service=${dropin}" \
     -smbios "type=11,value=io.systemd.credential.binary:systemd.unit-dropin.ssh.service=${dropin}" \
-    -machine q35 -m "${RAM:-4096}" -smp 2 -cpu host -enable-kvm -display none \
+    "${machine[@]}" -m "${RAM:-4096}" -smp 2 -cpu host -enable-kvm -display none \
     -drive "if=pflash,unit=0,format=raw,readonly=on,file=${code}" \
     -drive "if=pflash,unit=1,format=raw,file=${dir}/vars.fd" \
     -serial "file:${dir}/console.log" \
@@ -113,11 +126,17 @@ qemu-system-x86_64 \
     -daemonize -pidfile "${dir}/qemu.pid" \
     > "${dir}/qemu.log" 2>&1
 
+on_machine() {
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 -o LogLevel=ERROR -i "${dir}/key" -p "$PORT" root@localhost "$@"
+}
 for i in $(seq 60); do
-    if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -o ConnectTimeout=5 -o LogLevel=ERROR -i "${dir}/key" -p "$PORT" \
-        root@localhost true 2> /dev/null; then
+    if on_machine true 2> /dev/null; then
         echo "smoke: ssh answered after ${i} attempts"
+        state="$(on_machine od -An -tu1 -j4 -N1 \
+            /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c | tr -d ' ')"
+        [ "$state" = "$secure_boot" ] \
+            || die "the machine reads Secure Boot as '${state}' where SECURE_BOOT is ${secure_boot}"
         exit 0
     fi
     sleep 10

@@ -899,6 +899,9 @@ fn reading(
         for name in &run.modified {
             eprintln!("buildc: `{name}` has been edited since it was imported");
         }
+        for line in crate::init::drifted(&root) {
+            eprintln!("buildc: {line}");
+        }
         for line in run.index.hidden() {
             eprintln!("buildc: {line}");
         }

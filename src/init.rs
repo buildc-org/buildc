@@ -8,6 +8,41 @@ const INSTALLED: [&str; 2] = [
     "/usr/share/buildc/assets",
 ];
 
+const SCAFFOLDED: [(&str, &str); 7] = [
+    (".dockerignore", include_str!("../assets/.dockerignore")),
+    (".gitattributes", include_str!("../assets/.gitattributes")),
+    (".gitignore", include_str!("../assets/.gitignore")),
+    (".shellcheckrc", include_str!("../assets/.shellcheckrc")),
+    (
+        ".github/renovate.json5",
+        include_str!("../assets/.github/renovate.json5"),
+    ),
+    (
+        "disk_config/disk.toml",
+        include_str!("../assets/disk_config/disk.toml"),
+    ),
+    (
+        "scripts/Containerfile.skeleton",
+        include_str!("../assets/scripts/Containerfile.skeleton"),
+    ),
+];
+
+pub fn drifted(root: &Path) -> Vec<String> {
+    SCAFFOLDED
+        .iter()
+        .filter(|(path, shipped)| {
+            fs::read_to_string(root.join(path)).is_ok_and(|held| held != *shipped)
+        })
+        .map(|(path, _)| {
+            format!(
+                "`{path}` is not what buildc v{} scaffolds, and nothing rewrites it; the \
+                 current one is assets/{path} in that release",
+                env!("CARGO_PKG_VERSION")
+            )
+        })
+        .collect()
+}
+
 pub const SOURCES_FILE: &str = "repo.sources.kdl";
 
 pub fn sources(assets: &Path) -> String {
@@ -141,4 +176,36 @@ fn copy_tree_except(from: &Path, to: &Path, skip: Option<&str>) -> Result<Vec<Pa
         }
     }
     Ok(wrote)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_scaffolded_table_is_what_create_repo_copies() {
+        let root = std::env::temp_dir().join(format!("buildc-scaffold-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+        let mut wrote: Vec<String> = write(&root, "Example", &assets)
+            .unwrap()
+            .iter()
+            .map(|path| path.display().to_string())
+            .filter(|path| {
+                ![layout::REPO_FILE, "README.md", "modules/.gitkeep"].contains(&path.as_str())
+            })
+            .collect();
+        wrote.sort();
+        let mut table: Vec<&str> = SCAFFOLDED.iter().map(|(path, _)| *path).collect();
+        table.sort();
+        assert_eq!(wrote, table);
+        assert!(drifted(&root).is_empty());
+
+        fs::write(root.join(".gitignore"), "mine\n").unwrap();
+        fs::remove_file(root.join(".shellcheckrc")).unwrap();
+        let said = drifted(&root);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].starts_with("`.gitignore`"), "{said:?}");
+        fs::remove_dir_all(root).unwrap();
+    }
 }

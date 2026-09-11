@@ -216,14 +216,35 @@ pub fn orphans(root: &Path, generated: &[(PathBuf, String)]) -> Vec<PathBuf> {
     SHIPPED
         .iter()
         .map(|shipped| PathBuf::from(layout::WORKFLOW_DIR).join(shipped.file()))
+        .chain(RETIRED.iter().map(PathBuf::from))
         .filter(|path| root.join(path).is_file())
         .filter(|path| !generated.iter().any(|(written, _)| written == path))
         .collect()
 }
 
+const RETIRED: [&str; 3] = [
+    ".github/workflows/reconcile-workflows.yml",
+    "scripts/render-iso-config.sh",
+    "disk_config/iso.template.toml",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_an_earlier_release_wrote_is_swept() {
+        let root = std::env::temp_dir().join(format!("buildc-retired-{}", std::process::id()));
+        let retired = root.join("scripts/render-iso-config.sh");
+        std::fs::create_dir_all(retired.parent().unwrap()).unwrap();
+        std::fs::write(&retired, "").unwrap();
+        std::fs::write(root.join("scripts/own.sh"), "").unwrap();
+        assert_eq!(
+            orphans(&root, &[]),
+            [PathBuf::from("scripts/render-iso-config.sh")]
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn every_shipped_body_carries_the_markers_its_row_claims() {

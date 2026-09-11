@@ -77,8 +77,6 @@ pub const INSTALL_DISK: &str = "Installation disk";
 pub const INSTALL_NAME: &str = "Computer name";
 pub const INSTALL_USER: &str = "Username";
 pub const INSTALL_PASSWORD: &str = "Password";
-pub const PASSWORD_AGAIN: &str = "Retype password";
-pub const NO_MATCH: &str = "Passwords did not match.";
 pub const INSTALL_ENCRYPTION: &str = "Encryption type";
 pub const LUKS_PASSPHRASE: &str = "LUKS passphrase";
 pub const ENC_NONE: &str = "not encrypted";
@@ -109,7 +107,6 @@ pub const NEST: &str = "filter, space toggles, ←/→ opens, enter confirms";
 pub const REVIEW_KEYS: &str = "enter to change a field, Create to write, esc cancels";
 pub const INSTALL_KEYS: &str = "\u{2191}\u{2193} move, enter change, esc leave";
 pub const FORM_KEYS: &str = "up and down to move, enter to change a field";
-pub const SECRET_KEYS: &str = "typed and not shown, enter confirms";
 pub const LINE_KEYS: &str = "enter confirms";
 
 pub const REVIEW: &str = "Review what will be created";

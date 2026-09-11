@@ -1,7 +1,7 @@
 pub mod table;
 pub mod tree;
 
-use crate::copy::{EITHER, LINE_KEYS, NEST, PICK, SECRET_KEYS, TOGGLE};
+use crate::copy::{EITHER, LINE_KEYS, NEST, PICK, TOGGLE};
 
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -587,11 +587,13 @@ fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<
     options
 }
 
-fn typing(keys: &str, draw: impl Fn(&mut Frame, Rect, &str)) -> Result<String, String> {
+pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<String, String> {
     inline(3, |terminal| {
         let mut typed = String::new();
         loop {
-            render(terminal, 3, keys, |frame, area| draw(frame, area, &typed))?;
+            render(terminal, 3, LINE_KEYS, |frame, area| {
+                written(frame, area, question, prefix, &typed, default)
+            })?;
             let Some(key) = read()? else { continue };
             match key {
                 KeyCode::Enter => return Ok(typed),
@@ -603,18 +605,6 @@ fn typing(keys: &str, draw: impl Fn(&mut Frame, Rect, &str)) -> Result<String, S
                 _ => {}
             }
         }
-    })
-}
-
-pub fn secret(question: &str) -> Result<String, String> {
-    typing(SECRET_KEYS, |frame, area, typed| {
-        masked(frame, area, question, typed.chars().count())
-    })
-}
-
-pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<String, String> {
-    typing(LINE_KEYS, |frame, area, typed| {
-        written(frame, area, question, prefix, typed, default)
     })
 }
 
@@ -639,18 +629,6 @@ fn written(
     };
     frame.render_widget(Line::from(vec![Span::raw(prefix), answer]), body);
     frame.render_widget(Line::from(hint_row(LINE_KEYS).dim()), foot);
-}
-
-fn masked(frame: &mut Frame, area: Rect, question: &str, typed: usize) {
-    let [head, body, foot] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
-    ])
-    .areas(area);
-    frame.render_widget(Line::from(question.bold().cyan()), head);
-    frame.render_widget(Line::from("*".repeat(typed)), body);
-    frame.render_widget(Line::from(hint_row(SECRET_KEYS).dim()), foot);
 }
 
 const NOTED: usize = 5;
@@ -1487,26 +1465,6 @@ mod tests {
         );
         assert!(drawn.contains(crate::copy::CONTINUE), "{drawn}");
         assert!(drawn.contains(crate::copy::GO_BACK), "{drawn}");
-    }
-
-    #[test]
-    fn a_secret_is_drawn_as_its_length_and_never_as_itself() {
-        let mut terminal = Terminal::new(TestBackend::new(60, 3)).unwrap();
-        terminal
-            .draw(|frame| {
-                masked(
-                    frame,
-                    frame.area(),
-                    crate::copy::LUKS_PASSPHRASE,
-                    "hunter2".len(),
-                )
-            })
-            .unwrap();
-        let drawn = terminal.backend().to_string();
-        assert!(drawn.contains(crate::copy::LUKS_PASSPHRASE), "{drawn}");
-        assert!(drawn.contains("*******"), "{drawn}");
-        assert!(!drawn.contains("hunter2"), "{drawn}");
-        assert!(drawn.contains(SECRET_KEYS), "{drawn}");
     }
 
     fn typed_line(prefix: &str, typed: &str, default: Option<&str>) -> String {

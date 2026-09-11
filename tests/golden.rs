@@ -2365,3 +2365,34 @@ fn scap() {
 
     compare("scap", "report.txt", &out);
 }
+
+#[test]
+fn drawn_create_repo() {
+    let dir = empty("flow-create-repo-drawn-in");
+    drawn_flow(
+        "flow-create-repo-drawn",
+        &dir,
+        &format!(
+            "env PATH='{}' HOME='{}' GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+             '{}' create repo",
+            bin("flow-create-repo-drawn", None).display(),
+            tmp().display(),
+            env!("CARGO_BIN_EXE_tect")
+        ),
+        "Creating example...",
+        &[
+            b"Example\r",
+            b"\r",
+            b"\r",
+            b"someone\r",
+            b"\x1b[B\r",
+            b"\x1b[B\r",
+            b"\r",
+            b"\r",
+            b"\r",
+            b"\r",
+            b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r",
+        ],
+    );
+    assert!(dir.join("example/repo.kdl").is_file());
+}

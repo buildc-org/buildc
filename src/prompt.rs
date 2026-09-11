@@ -6,20 +6,6 @@ fn stem(question: &str) -> &str {
     question.trim_end_matches(':')
 }
 
-fn retyped(question: &str, empty: Result<String, String>) -> Result<String, String> {
-    loop {
-        let typed = crate::ui::secret(question)?;
-        if typed.is_empty() {
-            return empty;
-        }
-        if typed == crate::ui::secret(crate::copy::PASSWORD_AGAIN)? {
-            println!("{}: {}\n", stem(question), crate::copy::PASSWORD_SET);
-            return Ok(typed);
-        }
-        println!("{}", crate::copy::NO_MATCH);
-    }
-}
-
 const SCRIPT: &str = "BUILDC_ANSWERS";
 
 pub struct Prompt {
@@ -152,31 +138,6 @@ impl Prompt {
         };
         println!("{}: {prefix}{answer}\n", stem(question));
         Ok(answer)
-    }
-
-    pub fn secret(
-        &self,
-        given: Option<String>,
-        question: &str,
-        flag: &str,
-    ) -> Result<String, String> {
-        if let Some(value) = given.filter(|value| !value.is_empty()) {
-            return Ok(value);
-        }
-        if !self.draw {
-            return self.text(None, question, flag, None);
-        }
-        retyped(
-            question,
-            Err(format!(
-                "give {flag}, since nothing was typed: {}",
-                stem(question)
-            )),
-        )
-    }
-
-    pub fn secret_current(&self, question: &str, current: &str) -> Result<String, String> {
-        retyped(question, Ok(current.to_string()))
     }
 
     pub fn line(

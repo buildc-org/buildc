@@ -103,10 +103,11 @@ else
 fi
 code=""
 for pair in "${firmware[@]}"; do
-    [ -f "${pair%%:*}" ] && [ -f "${pair#*:}" ] || continue
-    code="${pair%%:*}"
-    cp "${pair#*:}" "${dir}/vars.fd"
-    break
+    if [ -f "${pair%%:*}" ] && [ -f "${pair#*:}" ]; then
+        code="${pair%%:*}"
+        cp "${pair#*:}" "${dir}/vars.fd"
+        break
+    fi
 done
 [ -n "$code" ] || die "no OVMF firmware for SECURE_BOOT=${secure_boot} is installed"
 # shellcheck disable=SC2016 # expanded by systemd, from each family's EnvironmentFile
@@ -133,8 +134,12 @@ on_machine() {
 for i in $(seq 60); do
     if on_machine true 2> /dev/null; then
         echo "smoke: ssh answered after ${i} attempts"
-        state="$(on_machine od -An -tu1 -j4 -N1 \
-            /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c | tr -d ' ')"
+        # The SecureBoot efivar holds four attribute bytes before its one-byte value.
+        sb=/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c
+        state=0
+        if on_machine test -e "$sb"; then
+            state="$(on_machine od -An -tu1 -j4 -N1 "$sb" | tr -d ' ')"
+        fi
         [ "$state" = "$secure_boot" ] \
             || die "the machine reads Secure Boot as '${state}' where SECURE_BOOT is ${secure_boot}"
         exit 0

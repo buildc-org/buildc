@@ -68,6 +68,10 @@ fn after_rejects_a_provider_on_another_target() {
 
 #[test]
 fn shipped_policy_orders_a_module_after_the_mac_that_installs_it() {
+    std::env::set_var(
+        "BUILDC_ASSETS",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/assets"),
+    );
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("policy-ordering");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("modules/apparmor")).unwrap();

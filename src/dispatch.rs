@@ -626,11 +626,7 @@ pub fn dispatch(
             let imgref = crate::registry::reference(&list, &root, Some(&selected), tags.last())?;
             let image = images.last().cloned().unwrap_or_else(|| imgref.clone());
             let recipe = crate::emit::recipe::build(&list, &selected, &image, &imgref, &[])
-                .ok_or_else(|| {
-                    Error::Invocation(format!(
-                        "`{selected}` declares no base family an installer has an answer for"
-                    ))
-                })?;
+                .ok_or_else(|| Error::Invocation(crate::emit::recipe::refusal(&list, &selected)))?;
             print!("{}", recipe.render());
             Ok(ExitCode::SUCCESS)
         }

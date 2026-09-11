@@ -37,7 +37,7 @@ const SOURCE: Node = Node::new("source", "Modules referenced from one of the col
 
 const FILESYSTEMS: &[&str] = &["xfs", "ext4", "btrfs", "zfs"];
 
-const BOOTLOADERS: &[&str] = &["grub2", "systemd"];
+pub(crate) const BOOTLOADERS: &[&str] = &["grub2", "systemd"];
 
 #[rustfmt::skip]
 pub const IMAGE: Node = Node::new("image",
@@ -145,11 +145,11 @@ pub const IMAGE: Node = Node::new("image",
                         "`admin-group \"wheel\"`; `useradd` refuses the whole call when a listed \
                          group is missing on the target, so this names one"))
                     .once(""),
-                Node::new("bootloader", "The bootloader, in place of the one the base family settles.")
+                Node::new("bootloader", "The bootloader the installer installs, one the base's row lists.")
                     .arg(Arg::One(BOOTLOADERS), Say::new("`{}` is not a bootloader the installer installs",
                         "not a bootloader",
-                        "the installer writes `grub2` or `systemd`; omit the node to take the \
-                         family's own"))
+                        "the installer writes `grub2` or `systemd`; no family answers this, so \
+                         an image without it builds no install media"))
                     .once(""),
                 Node::new("var-disk", "A whole disk the installer mounts at `/var`, named by its device.")
                     .arg(Arg::Str, Say::new("`var-disk` needs a device", "no device given",
@@ -412,7 +412,16 @@ impl Image {
             return;
         };
         let missing = crate::emit::recipe::unanswered(&base.family, Some(layout));
-        if !missing.is_empty() {
+        if missing == ["bootloader"] {
+            issues.push(
+                Issue::new(format!("`{}` names no bootloader", self.id), src)
+                    .at(layout.span, "no bootloader")
+                    .help(
+                        "no family answers the bootloader: `bootloader \"grub2\"` here, from what \
+                         the base's row in bases.kdl lists",
+                    ),
+            );
+        } else if !missing.is_empty() {
             issues.push(
                 Issue::new(
                     format!("`{}` declares half an install layout", self.id),

@@ -15,6 +15,7 @@ pub struct Base {
     pub about: String,
     pub signed: bool,
     pub scap_content: String,
+    pub bootloaders: Vec<String>,
     pub span: Span,
 }
 
@@ -27,6 +28,7 @@ impl Base {
             || self.about != other.about
             || self.signed != other.signed
             || self.scap_content != other.scap_content
+            || self.bootloaders != other.bootloaders
     }
 }
 

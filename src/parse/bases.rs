@@ -49,10 +49,21 @@ const BASE: Node = Node::new("base",
                 "`scap-content \"ssg-cs10-ds.xml\"`, the file under \
                  /usr/share/xml/scap/ssg/content a scan of this base reads"))
             .once(""),
+        Node::new("bootloader",
+            "The bootloaders an image on this base can install, the one it boots by default \
+             first.")
+            .arg(Arg::Strs, Say::new("`bootloader` needs a name", "no bootloader given",
+                "`bootloader \"grub2\"`, or `bootloader \"grub2\" \"systemd\"` where the base \
+                 carries both"))
+            .once("")
+            .missing(Say::new("`base` names no `bootloader`", "no default bootloader",
+                "`bootloader \"grub2\"` states what an image on it boots with, and `buildc create \
+                 image` writes it into the image")),
     ], Say::new("unknown node `{}` in a base", "not part of the schema",
         "a base entry holds `about`, `family`, `provides`, `provides-file`, `requires`, \
-         `signed` and `scap-content`: what an image built on it may assume, what it still \
-         needs, what a person picks it by, and what measures it"));
+         `signed`, `scap-content` and `bootloader`: what an image built on it may assume, \
+         what it still needs, what a person picks it by, what measures it and what it boots \
+         with"));
 
 #[rustfmt::skip]
 pub const BASES: Node = Node::new("bases",
@@ -105,6 +116,14 @@ fn entry(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Base> {
             match kid.name().value() {
                 "provides" | "requires" => check_capability(value, span, src, issues),
                 "provides-file" => check_path(value, span, src, issues),
+                "bootloader" if !crate::parse::image::BOOTLOADERS.contains(&value) => issues.push(
+                    Issue::new(
+                        format!("`{value}` is not a bootloader the installer installs"),
+                        src,
+                    )
+                    .at(span, "not a bootloader")
+                    .help("the installer writes `grub2` or `systemd`"),
+                ),
                 _ => {}
             }
         }
@@ -118,6 +137,7 @@ fn entry(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Base> {
         about: text(node, "about"),
         signed: child(node, "signed").and_then(bool_arg).unwrap_or(false),
         scap_content: text(node, "scap-content"),
+        bootloaders: strings(node, "bootloader"),
         span: node.name().span().into(),
     };
     (!base.family.is_empty()).then_some(base)

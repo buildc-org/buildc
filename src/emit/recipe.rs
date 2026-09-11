@@ -5,7 +5,6 @@ use crate::model::image::{Layout, List};
 struct Family {
     composefs: bool,
     generic: bool,
-    bootloader: String,
     filesystem: String,
     admin: String,
 }
@@ -15,14 +14,12 @@ fn family(name: &str) -> Option<Family> {
         "fedora" | "rhel" => Family {
             composefs: false,
             generic: false,
-            bootloader: String::new(),
             filesystem: "xfs".into(),
             admin: "wheel".into(),
         },
         "debian" | "ubuntu" => Family {
             composefs: true,
             generic: true,
-            bootloader: "grub2".into(),
             filesystem: "ext4".into(),
             admin: "sudo".into(),
         },
@@ -30,7 +27,7 @@ fn family(name: &str) -> Option<Family> {
     })
 }
 
-fn settle(family: Option<&str>, layout: Option<&Layout>) -> Option<Family> {
+fn settle(family: Option<&str>, layout: Option<&Layout>) -> Option<(Family, String)> {
     let known = family.and_then(self::family);
     let told = |pick: fn(&Layout) -> &str| {
         layout
@@ -38,19 +35,19 @@ fn settle(family: Option<&str>, layout: Option<&Layout>) -> Option<Family> {
             .filter(|declared| !declared.is_empty())
             .map(str::to_string)
     };
-    Some(Family {
+    let bootloader = told(|l| &l.bootloader)?;
+    let family = Family {
         composefs: layout
             .and_then(|l| l.composefs)
             .or(known.as_ref().map(|f| f.composefs))?,
         generic: layout
             .and_then(|l| l.generic)
             .or(known.as_ref().map(|f| f.generic))?,
-        bootloader: told(|l| &l.bootloader)
-            .or_else(|| known.as_ref().map(|f| f.bootloader.clone()))?,
         filesystem: told(|l| &l.filesystem)
             .or_else(|| known.as_ref().map(|f| f.filesystem.clone()))?,
         admin: told(|l| &l.admin_group).or_else(|| known.as_ref().map(|f| f.admin.clone()))?,
-    })
+    };
+    Some((family, bootloader))
 }
 
 pub fn unanswered(family: &str, layout: Option<&Layout>) -> Vec<&'static str> {
@@ -67,10 +64,30 @@ pub fn unanswered(family: &str, layout: Option<&Layout>) -> Vec<&'static str> {
         ("bootloader", told(|l| &l.bootloader)),
     ]
     .into_iter()
-    .filter(|_| known.is_none())
+    .filter(|(name, _)| known.is_none() || *name == "bootloader")
     .filter(|(_, declared)| !declared)
     .map(|(name, _)| name)
     .collect()
+}
+
+pub fn refusal(list: &List, name: &str) -> String {
+    let declared = list
+        .targets()
+        .into_iter()
+        .find(|t| t.to_string() == name)
+        .and_then(|t| list.images.iter().find(|i| i.id == t.image));
+    let Some(image) = declared else {
+        return format!("`{name}` is not a target here");
+    };
+    let Some(base) = image.base.as_ref() else {
+        return format!("`{name}` declares no base, so there is nothing to install");
+    };
+    format!(
+        "`{name}` answers no {}, and guessing one erases a disk before it fails to \
+         boot\n\nhelp: declare it in the image's `layout {{ }}`; the bootloader is one \
+         its base's row in bases.kdl lists",
+        unanswered(&base.family, image.layout.as_ref()).join(", ")
+    )
 }
 
 pub fn seals(family: &str, layout: Option<&Layout>) -> bool {
@@ -89,14 +106,14 @@ pub fn build(
     let target = list.targets().into_iter().find(|t| t.to_string() == name)?;
     let declared = list.images.iter().find(|i| i.id == target.image)?;
     let layout = declared.layout.as_ref();
-    let settled = settle(Some(&declared.base.as_ref()?.family), layout)?;
+    let (settled, bootloader) = settle(Some(&declared.base.as_ref()?.family), layout)?;
 
     let mut fields = vec![
         ("image", Json::string(image)),
         ("targetImgref", Json::string(imgref)),
         ("composeFsBackend", Json::Bool(settled.composefs)),
         ("genericImage", Json::Bool(settled.generic)),
-        ("bootloader", Json::string(&settled.bootloader)),
+        ("bootloader", Json::string(&bootloader)),
         ("filesystem", Json::string(&settled.filesystem)),
         ("hostname", Json::string(target.published())),
         (
@@ -310,14 +327,32 @@ mod tests {
 
     #[test]
     fn rhel_installs_the_way_fedora_does() {
-        assert_eq!(settle(Some("rhel"), None), settle(Some("fedora"), None));
-        assert_eq!(unanswered("rhel", None), Vec::<&str>::new());
+        let mut grub = layout(None);
+        grub.bootloader = "grub2".into();
+        assert!(settle(Some("rhel"), Some(&grub)).is_some());
+        assert_eq!(
+            settle(Some("rhel"), Some(&grub)),
+            settle(Some("fedora"), Some(&grub))
+        );
+        assert_eq!(unanswered("rhel", Some(&grub)), Vec::<&str>::new());
         assert!(!seals("rhel", None));
     }
 
     #[test]
+    fn the_bootloader_is_the_image_s_own_answer() {
+        assert_eq!(unanswered("fedora", None), ["bootloader"]);
+        assert_eq!(settle(Some("debian"), None), None);
+        let deb = fixture("deb-families");
+        assert!(build(&deb, "ubuntu", "image", "imgref", &[]).is_some());
+
+        let silent = fixture("multi-image");
+        let name = silent.ungated_target().expect("a target").to_string();
+        assert!(build(&silent, &name, "image", "imgref", &[]).is_none());
+        assert!(refusal(&silent, &name).contains("answers no bootloader"));
+    }
+
+    #[test]
     fn an_unmeasured_family_answers_for_itself_in_full_or_not_at_all() {
-        assert_eq!(unanswered("fedora", None), Vec::<&str>::new());
         assert_eq!(
             unanswered("plan9", None),
             [
@@ -335,14 +370,16 @@ mod tests {
             unanswered("plan9", Some(&half)),
             ["generic-image", "admin-group", "bootloader"]
         );
-        assert_eq!(unanswered("fedora", Some(&half)), Vec::<&str>::new());
+        assert_eq!(unanswered("fedora", Some(&half)), ["bootloader"]);
 
         let mut whole = half;
         whole.generic = Some(true);
         whole.admin_group = "wheel".into();
         whole.bootloader = "systemd".into();
         assert_eq!(unanswered("plan9", Some(&whole)), Vec::<&str>::new());
-        let settled = settle(Some("plan9"), Some(&whole)).expect("all five are declared");
+        let (settled, bootloader) =
+            settle(Some("plan9"), Some(&whole)).expect("all five are declared");
+        assert_eq!(bootloader, "systemd");
         assert_eq!(settled.filesystem, "btrfs");
         assert_eq!(settled.admin, "wheel");
         assert!(settled.composefs && settled.generic);

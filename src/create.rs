@@ -418,6 +418,7 @@ pub struct Image {
     pub base: String,
     pub family: String,
     took: bool,
+    bootloader: Option<String>,
     names_default: Option<String>,
 }
 
@@ -517,7 +518,19 @@ impl Image {
             true => seeded(&wanted),
             false => String::new(),
         };
-        let text = image_kdl(&name, url.as_deref(), &base, &family, known, &seed);
+        let held = prev
+            .filter(|prev| prev.base == base)
+            .and_then(|prev| prev.bootloader.as_deref());
+        let bootloader = choose_bootloader(known, held, prompt)?;
+        let text = image_kdl(
+            &name,
+            url.as_deref(),
+            &base,
+            &family,
+            known,
+            bootloader.as_deref(),
+            &seed,
+        );
         Ok(Self {
             text,
             file,
@@ -525,6 +538,7 @@ impl Image {
             base,
             family,
             took: wanted.is_empty() || !seed.is_empty(),
+            bootloader,
             names_default,
         })
     }
@@ -676,6 +690,31 @@ fn choose_base(
             bases.first().map(|base| base.image.as_str()),
         ),
     }
+}
+
+// The base lists its default bootloader first.
+fn choose_bootloader(
+    known: Option<&crate::base::Base>,
+    held: Option<&str>,
+    prompt: &Prompt,
+) -> Result<Option<String>, String> {
+    let offered = known
+        .map(|base| base.bootloaders.as_slice())
+        .unwrap_or_default();
+    if offered.len() < 2 {
+        return Ok(offered.first().cloned());
+    }
+    let options: Vec<Choice> = offered
+        .iter()
+        .map(|name| match name.as_str() {
+            "grub2" => Choice::new(name, copy::BOOTLOADER_GRUB2),
+            _ => Choice::new(name, copy::BOOTLOADER_SYSTEMD),
+        })
+        .collect();
+    let at = held.and_then(|held| offered.iter().position(|name| name == held));
+    Ok(prompt
+        .choose_current(copy::IMAGE_BOOTLOADER, &options, at.unwrap_or(0))?
+        .map(|chosen| offered[chosen].clone()))
 }
 
 pub struct Module {
@@ -1222,8 +1261,18 @@ fn image_kdl(
     base: &str,
     family: &str,
     known: Option<&crate::base::Base>,
+    bootloader: Option<&str>,
     modules: &str,
 ) -> String {
+    let layout = match bootloader {
+        Some(bootloader) => format!(
+            "\x20   layout {{\n\
+             \x20       bootloader \"{bootloader}\"\n\
+             \x20   }}\n\
+             \n"
+        ),
+        None => String::new(),
+    };
     let urls = match url {
         Some(url) => format!(
             "\x20   url \"{url}\"\n\
@@ -1254,6 +1303,7 @@ fn image_kdl(
          {ships}\
          \x20   }}\n\
          \n\
+         {layout}\
          \x20   modules {{\n\
          {modules}\
          \x20   }}\n\
@@ -1413,10 +1463,15 @@ mod tests {
             bazzite,
             "fedora",
             crate::base::find(&seeded, bazzite),
+            Some("grub2"),
             "",
         );
         assert!(
             known.contains("        provides \"rechunking\" \"flatpak\"\n"),
+            "{known}"
+        );
+        assert!(
+            known.contains("    layout {\n        bootloader \"grub2\"\n    }\n"),
             "{known}"
         );
         assert!(
@@ -1430,6 +1485,7 @@ mod tests {
             bazzite,
             "fedora",
             None,
+            None,
             "",
         );
         assert!(
@@ -1439,7 +1495,7 @@ mod tests {
             "{shared}"
         );
 
-        let described = crate::base::Base {
+        let row = |bootloaders: &[&str]| crate::base::Base {
             image: "example.invalid/own:1".to_string(),
             family: "fedora".to_string(),
             provides: Vec::new(),
@@ -1448,20 +1504,55 @@ mod tests {
             about: "what a collection describes".to_string(),
             signed: true,
             scap_content: String::new(),
+            bootloaders: bootloaders.iter().map(|b| b.to_string()).collect(),
             span: crate::diag::Span::default(),
         };
+        let described = row(&["grub2", "systemd"]);
         let extended = image_kdl(
             "Own",
             None,
             &described.image,
             "fedora",
             Some(&described),
+            None,
             "",
         );
         assert!(extended.contains("        signed #true\n"), "{extended}");
 
-        let unknown = image_kdl("Own", None, "example.invalid/own:1", "fedora", None, "");
+        let unknown = image_kdl(
+            "Own",
+            None,
+            "example.invalid/own:1",
+            "fedora",
+            None,
+            None,
+            "",
+        );
         assert!(!unknown.contains("provides"), "{unknown}");
+        assert!(!unknown.contains("layout"), "{unknown}");
+
+        let one = row(&["grub2"]);
+        assert_eq!(
+            choose_bootloader(Some(&one), None, &Prompt::scripted(Vec::new())).unwrap(),
+            Some("grub2".to_string())
+        );
+        assert_eq!(
+            choose_bootloader(Some(&described), None, &Prompt::silent()).unwrap(),
+            Some("grub2".to_string())
+        );
+        assert_eq!(
+            choose_bootloader(Some(&described), None, &Prompt::scripted(vec!["2".into()])).unwrap(),
+            Some("systemd".to_string())
+        );
+        assert_eq!(
+            choose_bootloader(Some(&described), Some("systemd"), &Prompt::silent()).unwrap(),
+            Some("systemd".to_string()),
+            "asking again opens on the answer held"
+        );
+        assert_eq!(
+            choose_bootloader(None, None, &Prompt::silent()).unwrap(),
+            None
+        );
         assert!(
             unknown.contains("base \"example.invalid/own:1\" {\n        family \"fedora\"\n"),
             "{unknown}"
@@ -1496,6 +1587,7 @@ mod tests {
                 None,
                 "quay.io/fedora/fedora-bootc:44",
                 "fedora",
+                None,
                 None,
                 "",
             ),

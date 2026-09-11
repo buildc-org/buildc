@@ -78,13 +78,7 @@ fn documents(
              publishes"
         ));
     }
-    let refuse = || {
-        format!(
-            "there is no measured install recipe for `{name}`: its base family is \
-             none of `fedora`, `debian` or `ubuntu`, and guessing one erases a disk \
-             before it fails to boot"
-        )
-    };
+    let refuse = || recipe::refusal(list, name);
     let build = recipe::build(list, name, imgref, imgref, &[recipe::STORE.to_string()])
         .ok_or_else(refuse)?;
     let media = recipe::media(list, name, image, imgref).ok_or_else(refuse)?;
@@ -547,7 +541,7 @@ mod tests {
         assert!(local.contains("IMAGE_REGISTRY"), "{local}");
         let unknown =
             documents(&list, "not-a-target", "image", "ghcr.io/someone/x:latest").unwrap_err();
-        assert!(unknown.contains("no measured install recipe"), "{unknown}");
+        assert!(unknown.contains("not a target"), "{unknown}");
     }
 
     #[test]

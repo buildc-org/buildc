@@ -6,6 +6,7 @@ base "quay.io/fedora/fedora-bootc:44" {
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-fedora-ds.xml"
     signed #false
+    bootloader "grub2"
 }
 
 base "quay.io/centos-bootc/centos-bootc:stream10" {
@@ -16,6 +17,7 @@ base "quay.io/centos-bootc/centos-bootc:stream10" {
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-cs10-ds.xml"
     signed #true
+    bootloader "grub2"
 }
 
 base "registry.redhat.io/rhel10/rhel-bootc:latest" {
@@ -26,6 +28,7 @@ base "registry.redhat.io/rhel10/rhel-bootc:latest" {
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-rhel10-ds.xml"
     signed #false
+    bootloader "grub2"
 }
 
 base "quay.io/almalinuxorg/almalinux-bootc:10" {
@@ -36,6 +39,7 @@ base "quay.io/almalinuxorg/almalinux-bootc:10" {
         "/usr/bin/podman" "/usr/bin/crun"
     scap-content "ssg-almalinux10-ds.xml"
     signed #true
+    bootloader "grub2"
 }
 
 base "ghcr.io/ublue-os/bazzite:stable" {
@@ -45,6 +49,7 @@ base "ghcr.io/ublue-os/bazzite:stable" {
     provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
+    bootloader "grub2"
 }
 
 base "ghcr.io/ublue-os/aurora:stable" {
@@ -54,6 +59,7 @@ base "ghcr.io/ublue-os/aurora:stable" {
     provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
+    bootloader "grub2"
 }
 
 base "ghcr.io/ublue-os/bluefin:stable" {
@@ -63,6 +69,7 @@ base "ghcr.io/ublue-os/bluefin:stable" {
     provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
+    bootloader "grub2"
 }
 
 base "ghcr.io/ublue-os/kinoite-main:44" {
@@ -72,6 +79,7 @@ base "ghcr.io/ublue-os/kinoite-main:44" {
     provides-file "/usr/bin/flatpak"
     signed #true
     scap-content "ssg-fedora-ds.xml"
+    bootloader "grub2"
 }
 
 base "quay.io/rockylinux/rockylinux:10" {
@@ -80,6 +88,7 @@ base "quay.io/rockylinux/rockylinux:10" {
     requires "bootc-base"
     signed #false
     scap-content "ssg-rl10-ds.xml"
+    bootloader "grub2"
 }
 
 base "docker.io/library/debian:forky" {
@@ -87,6 +96,7 @@ base "docker.io/library/debian:forky" {
     family "debian"
     requires "bootc-base"
     signed #false
+    bootloader "grub2" "systemd"
 }
 
 base "docker.io/library/ubuntu:26.04" {
@@ -94,4 +104,5 @@ base "docker.io/library/ubuntu:26.04" {
     family "ubuntu"
     requires "bootc-base"
     signed #false
+    bootloader "grub2" "systemd"
 }

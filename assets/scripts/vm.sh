@@ -218,7 +218,7 @@ install_disk() {
             || die "qemu-img is not installed, and a qcow2 is converted from the raw disk"
     fi
 
-    local raw="out/${type}/disk.raw.part" layout="out/oci-cache" key_args=() key_mount=()
+    local raw="out/${type}/disk.raw.part" layout="out/oci-cache" key_args=()
     mkdir -p "out/${type}"
     rm -f "$raw"
     truncate -s "${DISK_SIZE:-20G}" "$raw"
@@ -229,8 +229,7 @@ install_disk() {
     # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
-        key_mount=(-v "$(realpath "$ssh_key"):/root-ssh-authorized-keys:ro")
-        key_args=(--root-ssh-authorized-keys /root-ssh-authorized-keys)
+        key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
     fi
 
     load_rootful
@@ -241,7 +240,6 @@ install_disk() {
         -v /dev:/dev \
         -v "${PWD}/out/${type}":/out \
         -v "${PWD}/${layout}":/oci:ro \
-        "${key_mount[@]}" \
         --security-opt label=type:unconfined_t \
         "$ref" \
         bootc install to-disk --via-loopback --composefs-backend \

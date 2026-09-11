@@ -22,6 +22,7 @@ done
 recipe="$(./scripts/buildc.sh recipe)"
 filesystem="$(jq -r .filesystem <<< "$recipe")"
 composefs="$(jq -r .composeFsBackend <<< "$recipe")"
+bootloader="$(jq -r .bootloader <<< "$recipe")"
 
 rm -f "${dir}/key" "${dir}/key.pub" "${dir}/disk.raw"
 ssh-keygen -q -t ed25519 -f "${dir}/key" -N '' -C smoke
@@ -33,6 +34,10 @@ args=(
     --karg console=tty0 --karg 'console=ttyS0,115200n8'
     --karg systemd.wants=sshd.service
 )
+case "$bootloader" in
+    "" | grub2) ;;
+    *) args+=(--bootloader "$bootloader") ;;
+esac
 mounts=()
 # A composefs install reads an OCI layout, so the image is pushed there before bootc runs.
 if [ "$composefs" = true ]; then

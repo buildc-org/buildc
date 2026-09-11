@@ -355,12 +355,12 @@ fn utf8_width(byte: u8) -> usize {
 }
 
 pub fn field<'a>(value: &'a Json, key: &str) -> Option<&'a Json> {
+    declared(value, key).filter(|v| !matches!(v, Json::Null))
+}
+
+pub fn declared<'a>(value: &'a Json, key: &str) -> Option<&'a Json> {
     match value {
-        Json::Object(fields) => fields
-            .iter()
-            .find(|(name, _)| name == key)
-            .map(|(_, v)| v)
-            .filter(|v| !matches!(v, Json::Null)),
+        Json::Object(fields) => fields.iter().find(|(name, _)| name == key).map(|(_, v)| v),
         _ => None,
     }
 }

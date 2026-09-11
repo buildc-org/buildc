@@ -18,13 +18,71 @@ fn mount_not_found(line: &str) -> bool {
 }
 
 fn man_page_missing(line: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    if let Some(status) = line
+        .strip_prefix("'(man)' failed with exit status ")
+        .and_then(|rest| rest.strip_suffix('.'))
+    {
+        return digits(status);
+    }
+    if line.contains(": Can't show ") {
+        return true;
+    }
     let Some((_, rest)) = line.split_once("Command 'man ") else {
         return false;
     };
     let Some((page, code)) = rest.split_once("' failed with code ") else {
         return false;
     };
-    !page.contains('\'') && !code.is_empty() && code.chars().all(|c| c.is_ascii_digit())
+    !page.contains('\'') && digits(code)
+}
+
+/// Whether a verify line is `<path>/<unit file>:<line>: …` about a unit other
+/// than `unit` or its template. A drop-in's `.conf` is never another unit.
+fn about_another_unit(line: &str, unit: &str) -> bool {
+    const TYPES: [&str; 11] = [
+        ".service",
+        ".socket",
+        ".target",
+        ".mount",
+        ".automount",
+        ".swap",
+        ".timer",
+        ".path",
+        ".slice",
+        ".scope",
+        ".device",
+    ];
+    let mut fields = line.splitn(3, ':');
+    let (Some(path), Some(number), Some(_)) = (fields.next(), fields.next(), fields.next()) else {
+        return false;
+    };
+    let name = path.rsplit('/').next().unwrap_or_default();
+    // A unit instance carries its template's faults, so a line naming the template is this unit's own.
+    let template = match (unit.split_once('@'), unit.rfind('.')) {
+        (Some((prefix, _)), Some(dot)) => format!("{prefix}@{}", &unit[dot..]),
+        _ => unit.to_string(),
+    };
+    path.starts_with('/')
+        && !number.is_empty()
+        && number.chars().all(|c| c.is_ascii_digit())
+        && TYPES.iter().any(|t| name.ends_with(t))
+        && name != unit
+        && name != template
+}
+
+fn unexpected<'a>(text: &'a str, unit: &str, allowed: &[&str]) -> Vec<&'a str> {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let own: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| !about_another_unit(line, unit))
+        .collect();
+    // A failed verify cannot read as a pass, so the unfiltered text stands when no line names this unit.
+    if own.is_empty() { lines } else { own }
+        .into_iter()
+        .filter(|line| !allowed.iter().any(|class| classify(line) == Some(*class)))
+        .collect()
 }
 
 pub fn class_names() -> String {
@@ -556,11 +614,7 @@ pub fn validate_image() -> Result<(), String> {
                     .filter(|(_, for_unit)| for_unit == unit)
                     .map(|(class, _)| class.as_str())
                     .collect();
-                let unexpected: Vec<&str> = text
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .filter(|line| !allowed.iter().any(|class| classify(line) == Some(*class)))
-                    .collect();
+                let unexpected = unexpected(&text, unit, &allowed);
 
                 if unexpected.is_empty() {
                     println!("        {unit} enabled (verify: declared exceptions only)");
@@ -749,7 +803,40 @@ mod tests {
             classify("systemd-analyze[1]: Command 'man foo.service(8)' failed with code 16"),
             Some("man-page-missing")
         );
+        assert_eq!(
+            classify("'(man)' failed with exit status 16."),
+            Some("man-page-missing")
+        );
+        assert_eq!(
+            classify("probe.service: Can't show no-such-page(8): Protocol error"),
+            Some("man-page-missing")
+        );
+        assert_eq!(classify("'(man)' failed with exit status ."), None);
         assert_eq!(classify("Unit is bad in some other way"), None);
+    }
+
+    #[test]
+    fn another_unit_s_diagnostics_do_not_fail_this_one() {
+        let xfs = "/usr/lib/systemd/system/xfs_scrub_all.service:26: Support for option \
+                   CPUAccounting= has been removed and it is ignored\n\
+                   /usr/lib/systemd/system/system-xfs_scrub.slice:15: Support for option \
+                   CPUAccounting= has been removed and it is ignored\n";
+        let own = "'(man)' failed with exit status 16.\n\
+                   probe.service: Can't show no-such-page(8): Protocol error\n";
+        let text = format!("{xfs}{own}");
+        assert!(unexpected(&text, "probe.service", &["man-page-missing"]).is_empty());
+        assert_eq!(unexpected(&text, "probe.service", &[]).len(), 2);
+        assert_eq!(
+            unexpected(xfs, "probe.service", &["man-page-missing"]).len(),
+            2
+        );
+        let mine = "/usr/lib/systemd/system/getty@.service:3: bad\n\
+                    /etc/systemd/system/probe.service.d/x.conf:1: bad\n";
+        assert_eq!(unexpected(mine, "getty@tty1.service", &[]).len(), 2);
+        assert!(!about_another_unit(
+            "/usr/lib/systemd/system/probe.service:2: bad",
+            "probe.service"
+        ));
     }
 
     #[test]

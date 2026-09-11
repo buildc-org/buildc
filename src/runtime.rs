@@ -824,7 +824,10 @@ mod tests {
         let here = std::env::temp_dir().join(format!("buildc-found-{}", std::process::id()));
         fs::write(&here, "").unwrap();
         let there = here.display().to_string();
-        assert_eq!(found(&format!("/nonexistent|{there}")), Some(there.as_str()));
+        assert_eq!(
+            found(&format!("/nonexistent|{there}")),
+            Some(there.as_str())
+        );
         assert_eq!(found("/nonexistent|/nonexistent/too"), None);
         fs::remove_file(here).unwrap();
     }

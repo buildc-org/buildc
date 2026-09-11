@@ -92,10 +92,7 @@ pub struct VarDisk {
     pub span: Span,
 }
 
-pub struct Decl {
-    pub name: String,
-    pub span: Span,
-}
+pub use crate::model::module::Decl;
 
 pub struct Flavour {
     pub name: String,

@@ -452,27 +452,20 @@ fn provenance(list: &List, entry: &Entry) -> Json {
             Json::optional(module.and_then(|m| m.content.clone())),
         ),
         ("repo", Json::Bool(module.is_some_and(|m| m.repo))),
+        ("source", Json::optional(entry.source.clone())),
         (
             "pin",
             entry.pin(&list.sources).map_or(Json::Null, Evidence::json),
         ),
         (
             "imported",
-            match (
-                module.and_then(|m| m.imported.as_ref()),
-                &entry.source,
-                entry.pin(&list.sources),
-            ) {
-                (Some(record), _, _) => Json::object([
+            match module.and_then(|m| m.imported.as_ref()) {
+                None => Json::Null,
+                Some(record) => Json::object([
                     ("collection", Json::string(&record.collection)),
                     ("content", Json::string(&record.content)),
                     ("pin", record.pin.json()),
                 ]),
-                (None, Some(collection), Some(pin)) => Json::object([
-                    ("collection", Json::string(collection)),
-                    ("pin", pin.json()),
-                ]),
-                _ => Json::Null,
             },
         ),
     ])

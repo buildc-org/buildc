@@ -356,7 +356,11 @@ fn utf8_width(byte: u8) -> usize {
 
 pub fn field<'a>(value: &'a Json, key: &str) -> Option<&'a Json> {
     match value {
-        Json::Object(fields) => fields.iter().find(|(name, _)| name == key).map(|(_, v)| v),
+        Json::Object(fields) => fields
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, v)| v)
+            .filter(|v| !matches!(v, Json::Null)),
         _ => None,
     }
 }
@@ -390,4 +394,17 @@ pub fn strings(value: &Json, key: &str) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{field, Json};
+
+    #[test]
+    fn an_explicit_null_is_absent() {
+        let doc = Json::parse(r#"{"imported": null, "source": "one"}"#).unwrap();
+        assert!(field(&doc, "imported").is_none());
+        assert!(field(&doc, "missing").is_none());
+        assert!(field(&doc, "source").is_some());
+    }
 }

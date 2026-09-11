@@ -39,7 +39,8 @@ RUN set -eux; \
     else \
         dnf install -y --setopt=install_weak_deps=False \
             podman fuse-overlayfs cryptsetup skopeo openssl \
-            util-linux dosfstools e2fsprogs xfsprogs kmscon; \
+            util-linux dosfstools e2fsprogs xfsprogs; \
+        dnf install -y --setopt=install_weak_deps=False kmscon || true; \
         dnf clean all; \
     fi; \
     for tool in podman fuse-overlayfs skopeo cryptsetup systemd-cryptenroll \
@@ -49,6 +50,22 @@ RUN set -eux; \
     done; \
     command -v kmscon > /dev/null 2>&1 \
         || echo "no kmscon here; the console falls back to the kernel VT" >&2
+
+# The installer media loads its squashfs store from a USB device at boot.
+# A modprobe.d blacklist or install line would stop these modules loading.
+ARG MEDIA_MODULES="usb_storage uas squashfs loop overlay isofs vfat"
+RUN set -eux; \
+    pattern="$(echo "$MEDIA_MODULES" | sed 's/_/[-_]/g; s/ /|/g')"; \
+    find /etc/modprobe.d /usr/lib/modprobe.d -name '*.conf' -type f -exec sed -i -E \
+        "/^[[:space:]]*(install|blacklist)[[:space:]]+(${pattern})([[:space:]]|\$)/d" {} +; \
+    kver="$(find /usr/lib/modules -mindepth 1 -maxdepth 1 -printf '%f\n' | head -n1)"; \
+    blocked="$(modprobe -S "$kver" -c 2> /dev/null \
+        | grep -E "^(install|blacklist) ($(echo "$MEDIA_MODULES" | tr ' ' '|'))( |\$)" || true)"; \
+    [ -z "$blocked" ] || { echo "the media cannot load: ${blocked}" >&2; exit 1; }; \
+    systemctl mask usbguard.service fapolicyd.service auditd.service; \
+    grep -rlZ TMOUT /etc/profile /etc/profile.d /etc/bashrc /etc/bash.bashrc 2> /dev/null \
+        | xargs -0r sed -i '/TMOUT/d'; \
+    systemctl set-default multi-user.target
 
 COPY --from=tools /out/fisherman /usr/bin/fisherman
 COPY recipe.json /usr/share/buildc/install-recipe.json

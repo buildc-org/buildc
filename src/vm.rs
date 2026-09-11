@@ -91,9 +91,29 @@ fn documents(
     Ok(vec![
         ("recipe.json", build.render()),
         ("media.json", media.render()),
-        ("Containerfile", recipe::LIVE_ENV.to_string()),
+        ("Containerfile", live_env(list, name, image)),
         ("efi-from-image.patch", recipe::EFI_PATCH.to_string()),
     ])
+}
+
+fn live_env(list: &crate::model::image::List, name: &str, image: &str) -> String {
+    let rpm = list
+        .targets()
+        .into_iter()
+        .find(|t| t.to_string() == name)
+        .and_then(|t| list.images.iter().find(|i| i.id == t.image))
+        .and_then(|i| i.base.as_ref())
+        .is_some_and(|base| rpm(&base.family));
+    let env = crate::emit::recipe::LIVE_ENV;
+    if !rpm {
+        return env.to_string();
+    }
+    env.lines()
+        .map(|line| match line.starts_with("ARG LIVE_BASE=") {
+            true => format!("ARG LIVE_BASE={image}\n"),
+            false => format!("{line}\n"),
+        })
+        .collect()
 }
 
 fn stage(root: &Path, opts: &Options) -> Result<String, String> {
@@ -528,6 +548,27 @@ mod tests {
         let unknown =
             documents(&list, "not-a-target", "image", "ghcr.io/someone/x:latest").unwrap_err();
         assert!(unknown.contains("no measured install recipe"), "{unknown}");
+    }
+
+    #[test]
+    fn the_live_environment_is_the_payload_on_a_dnf_family() {
+        let base = |repo: &str| {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/repos")
+                .join(repo);
+            let list = crate::model::image::List::load(&root).0;
+            let name = list.ungated_target().unwrap().to_string();
+            live_env(&list, &name, "localhost/payload:latest")
+                .lines()
+                .filter(|line| line.starts_with("ARG LIVE_BASE="))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(base("minimal"), ["ARG LIVE_BASE=localhost/payload:latest"]);
+        assert_eq!(
+            base("deb-families"),
+            ["ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44"]
+        );
     }
 
     #[test]

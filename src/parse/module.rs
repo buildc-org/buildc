@@ -1817,6 +1817,17 @@ family "fedora" {
 "#
         )
         .is_empty());
+        assert_eq!(
+            parsed(
+                "copr-deb",
+                r#"
+description "copr"
+supports "fedora" "debian"
+copr "owner/project"
+"#
+            ),
+            ["`copr` is Fedora's, and this one covers `debian`"]
+        );
     }
 
     #[test]

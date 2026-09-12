@@ -2018,6 +2018,7 @@ fn install_screens() {
             b"hunter2\r",
             b"\r",
             b"\r",
+            b"\r",
             b"\x1b[B\r",
             b"\x1b",
             b"\x1b[B\x1b[B\r",

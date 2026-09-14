@@ -6,6 +6,91 @@ use std::io::{BufRead as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+const LOCK: &str = "/run/bootc-anywhere.lock";
+
+fn lock() -> PathBuf {
+    std::env::var_os("BUILDC_INSTALLER_LOCK")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(LOCK))
+}
+
+fn console(pid: libc::pid_t) -> String {
+    name(std::fs::read_link(format!("/proc/{pid}/fd/0")).ok())
+}
+
+fn name(tty: Option<PathBuf>) -> String {
+    let is_console = |tty: &Path| {
+        tty.parent()
+            .is_some_and(|parent| parent.as_os_str() == "/dev")
+            && tty
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("tty") || name == "console")
+    };
+    match tty {
+        Some(tty) if is_console(&tty) => tty.display().to_string(),
+        Some(tty) if tty.starts_with("/dev/pts/") => {
+            format!("another session ({})", tty.display())
+        }
+        _ => "another console".into(),
+    }
+}
+
+pub fn hold() -> Result<std::fs::File, String> {
+    hold_at(&lock())
+}
+
+fn hold_at(path: &Path) -> Result<std::fs::File, String> {
+    use std::os::fd::AsRawFd as _;
+
+    let file = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .map_err(|why| {
+            format!(
+                "{}: {why}\nset $BUILDC_INSTALLER_LOCK to somewhere writable to run this without root",
+                path.display()
+            )
+        })?;
+    let wrlck = || libc::flock {
+        l_type: libc::F_WRLCK as libc::c_short,
+        l_whence: libc::SEEK_SET as libc::c_short,
+        l_start: 0,
+        l_len: 0,
+        l_pid: 0,
+    };
+    for _ in 0..2 {
+        if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETLK, &wrlck()) } != -1 {
+            return Ok(file);
+        }
+        let denied = std::io::Error::last_os_error().raw_os_error();
+        if denied != Some(libc::EACCES) && denied != Some(libc::EAGAIN) {
+            return Err(format!(
+                "{}: {}",
+                path.display(),
+                std::io::Error::last_os_error()
+            ));
+        }
+        let mut holder = wrlck();
+        if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETLK, &mut holder) } == -1 {
+            break;
+        }
+        if holder.l_type != libc::F_UNLCK as libc::c_short {
+            return Err(format!(
+                "the installer is running on {}; run `buildc installer` again once it finishes",
+                console(holder.l_pid)
+            ));
+        }
+    }
+    Err(
+        "the installer is running on another console; run `buildc installer` again once it finishes"
+            .into(),
+    )
+}
+
 pub const RECIPE: &str = "install-recipe.json";
 
 pub fn media() -> PathBuf {
@@ -569,10 +654,12 @@ fn shown(kind: &str) -> &'static str {
 fn kinds(tpm: bool) -> Vec<Choice> {
     KINDS
         .iter()
-        .map(|(name, shown, detail)| match tpm || !name.starts_with("tpm2") {
-            true => Choice::new(*shown, *detail),
-            false => Choice::new(*shown, copy::NO_TPM).unavailable(),
-        })
+        .map(
+            |(name, shown, detail)| match tpm || !name.starts_with("tpm2") {
+                true => Choice::new(*shown, *detail),
+                false => Choice::new(*shown, copy::NO_TPM).unavailable(),
+            },
+        )
         .collect()
 }
 
@@ -1541,14 +1628,13 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
 
         let mut encrypted = form("hunter2", "hunter2", "tpm2-luks", "");
         data(&mut encrypted, copy::DATA_HERE.to_string(), "200 GB");
-        assert_eq!(short_of(&encrypted).as_deref(), Some(copy::DATA_UNENCRYPTED));
+        assert_eq!(
+            short_of(&encrypted).as_deref(),
+            Some(copy::DATA_UNENCRYPTED)
+        );
 
         let mut same = form("hunter2", "hunter2", NONE, "");
-        data(
-            &mut same,
-            copy::on_disk("/dev/vda", copy::DATA_ERASED),
-            "",
-        );
+        data(&mut same, copy::on_disk("/dev/vda", copy::DATA_ERASED), "");
         assert_eq!(short_of(&same).as_deref(), Some(copy::DATA_SAME_DISK));
     }
 
@@ -1559,5 +1645,72 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
         assert!(nothing.contains("/mnt/buildc"), "{nothing}");
         let repo = Found::Repo("/mnt/buildc".into()).payload().unwrap_err();
         assert!(repo.contains("buildc build"), "{repo}");
+    }
+
+    #[test]
+    #[ignore]
+    fn holds_a_lock_for_another_process_to_find() {
+        let Ok(path) = std::env::var("BUILDC_TEST_LOCK") else {
+            return;
+        };
+        let _held = hold_at(Path::new(&path)).expect("the child takes the lock");
+        std::fs::write(format!("{path}.taken"), "").expect("the child reports it");
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+
+    #[test]
+    fn a_second_installer_is_refused_and_told_where_the_first_one_is() {
+        let path = std::env::temp_dir().join(format!("buildc-lock-{}", std::process::id()));
+        let taken = PathBuf::from(format!("{}.taken", path.display()));
+        let _ = std::fs::remove_file(&taken);
+
+        let mut child = Command::new(std::env::current_exe().expect("the test binary"))
+            .args([
+                "--ignored",
+                "--exact",
+                "install::tests::holds_a_lock_for_another_process_to_find",
+            ])
+            .env("BUILDC_TEST_LOCK", &path)
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("the test binary re-runs itself as the holder");
+        for _ in 0..200 {
+            if taken.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(taken.exists(), "the holder never took the lock");
+
+        let refused = hold_at(&path).expect_err("a second installer is refused");
+        assert!(
+            refused.starts_with("the installer is running on "),
+            "{refused}"
+        );
+        assert!(refused.contains("again once it finishes"), "{refused}");
+        child.kill().expect("the holder is killed");
+        child.wait().expect("the holder is reaped");
+        assert!(
+            hold_at(&path).is_ok(),
+            "the lock outlived the process holding it"
+        );
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&taken);
+    }
+
+    #[test]
+    fn a_pty_holder_is_named_as_the_graphical_console() {
+        assert_eq!(name(Some("/dev/ttyS0".into())), "/dev/ttyS0");
+        assert_eq!(name(Some("/dev/tty1".into())), "/dev/tty1");
+        assert_eq!(name(Some("/dev/console".into())), "/dev/console");
+        assert_eq!(
+            name(Some("/dev/pts/0".into())),
+            "another session (/dev/pts/0)"
+        );
+        assert_eq!(name(Some("/dev/null".into())), "another console");
+        assert_eq!(name(Some("/proc/1/fd/0".into())), "another console");
+        assert_eq!(name(None), "another console");
+        assert_eq!(console(-1), "another console");
     }
 }

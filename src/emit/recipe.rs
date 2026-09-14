@@ -426,16 +426,45 @@ mod tests {
 
     #[test]
     fn the_verb_the_live_environment_autostarts_is_one_that_resolves() {
-        let typed: Vec<&str> = LIVE_ENV
+        let started: Vec<Vec<&str>> = LIVE_ENV
             .lines()
-            .map(str::trim)
-            .find(|line| line.starts_with("buildc "))
-            .expect("the live environment types one command")
-            .split_whitespace()
-            .skip(1)
+            .filter(|line| line.starts_with("ExecStart=") && line.contains("/usr/bin/buildc "))
+            .filter_map(|line| line.split_once("/usr/bin/buildc "))
+            .map(|(_, rest)| rest.split_whitespace().collect())
             .collect();
-        let resolved = crate::command::resolve(&typed);
-        assert!(resolved.is_ok(), "{typed:?}: {:?}", resolved.err());
+        assert!(!started.is_empty(), "no unit runs the binary");
+        for verb in &started {
+            let resolved = crate::command::resolve(verb);
+            assert!(resolved.is_ok(), "{verb:?}: {:?}", resolved.err());
+        }
+        for unit in ["bootc-anywhere.service", "bootc-anywhere-vt.service"] {
+            assert!(
+                LIVE_ENV.contains(&format!("systemctl enable {unit}")),
+                "{unit} is never enabled"
+            );
+            assert!(
+                LIVE_ENV.contains(&format!("/usr/lib/systemd/system/{unit}")),
+                "{unit} is enabled but never written"
+            );
+        }
+        let directives = |want: &str| LIVE_ENV.lines().filter(|line| line.trim() == want).count();
+        assert_eq!(directives("Conflicts=getty@tty1.service"), 2);
+        let masks = LIVE_ENV
+            .lines()
+            .find(|line| line.contains("systemctl mask getty@"))
+            .expect("the getty on the installer's console is masked");
+        for masked in ["getty@tty1.service", "autovt@tty1.service"] {
+            assert!(masks.contains(masked), "{masked} is not in {masks}");
+        }
+        assert_eq!(directives("TTYPath=/dev/tty1"), 1);
+        let kmscon: Vec<&str> = LIVE_ENV
+            .lines()
+            .filter(|line| line.starts_with("ExecStart=") && line.contains("kmscon"))
+            .collect();
+        assert_eq!(kmscon.len(), 1, "{kmscon:?}");
+        for want in ["--vt=1", "--oneshot", "--no-switchvt"] {
+            assert!(kmscon[0].contains(want), "{want} is not in {}", kmscon[0]);
+        }
     }
 
     #[test]

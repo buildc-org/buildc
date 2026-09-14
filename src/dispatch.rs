@@ -365,6 +365,7 @@ pub fn dispatch(
                     spec.name()
                 )));
             }
+            let _lock = crate::install::hold()?;
             let root = match from {
                 Some(from) => PathBuf::from(from),
                 None => crate::install::root()?,

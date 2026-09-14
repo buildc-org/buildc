@@ -1972,6 +1972,80 @@ fn flows() {
 }
 
 #[test]
+fn a_second_installer_is_refused_while_the_first_holds_the_screen() {
+    use std::time::Duration;
+
+    let dir = empty("flow-install-lock");
+    std::fs::write(
+        dir.join(buildc::install::RECIPE),
+        r#"{
+  "image": "ghcr.io/buildc-org/deb2:latest",
+  "targetImgref": "ghcr.io/buildc-org/deb2:latest",
+  "composeFsBackend": true,
+  "genericImage": true,
+  "bootloader": "grub2",
+  "filesystem": "ext4",
+  "hostname": "deb2",
+  "user": { "groups": ["sudo"] }
+}
+"#,
+    )
+    .unwrap();
+    let lock = dir.join("installer.lock");
+    let second = || {
+        std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+            .args(["installer", "--from", "."])
+            .current_dir(&dir)
+            .env("BUILDC_ASSETS", crate_dir().join("assets"))
+            .env("BUILDC_INSTALLER_LOCK", &lock)
+            .env("BUILDC_TPM", "/nonexistent")
+            .output()
+            .unwrap()
+    };
+
+    let mut first = std::process::Command::new("script")
+        .args([
+            "-qfec",
+            &format!(
+                "BUILDC_INSTALLER_LOCK='{}' '{}' installer --from .",
+                lock.display(),
+                env!("CARGO_BIN_EXE_tect")
+            ),
+            "/dev/null",
+        ])
+        .current_dir(&dir)
+        .env("BUILDC_ASSETS", crate_dir().join("assets"))
+        .env("COLUMNS", "80")
+        .env("BUILDC_TPM", "/nonexistent")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("script from util-linux");
+
+    let mut refused = None;
+    for _ in 0..100 {
+        std::thread::sleep(Duration::from_millis(50));
+        let out = second();
+        let said = String::from_utf8_lossy(&out.stderr).into_owned();
+        if said.contains("the installer is running on") {
+            refused = Some(said);
+            break;
+        }
+    }
+    let killed = first.kill().and_then(|()| first.wait());
+    let refused = refused.expect("the first installer never held the lock while it ran");
+    killed.expect("the first installer is reaped");
+
+    assert!(refused.contains("run `buildc installer` again"), "{refused}");
+    let after = second();
+    assert!(
+        !String::from_utf8_lossy(&after.stderr).contains("the installer is running on"),
+        "the lock outlived the process holding it"
+    );
+}
+
+#[test]
 fn install_screens() {
     let dir = empty("flow-install-drawn");
     std::fs::write(
@@ -2004,7 +2078,8 @@ fn install_screens() {
         "flow-install-drawn",
         &dir,
         &format!(
-            "BUILDC_SYS_BLOCK='{}' '{}' installer --from .",
+            "BUILDC_INSTALLER_LOCK='{}' BUILDC_SYS_BLOCK='{}' '{}' installer --from .",
+            dir.join("installer.lock").display(),
             sys.display(),
             env!("CARGO_BIN_EXE_tect")
         ),

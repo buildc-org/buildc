@@ -117,21 +117,59 @@ COPY <<'QUIET' /usr/lib/sysctl.d/50-bootc-anywhere-console.conf
 kernel.printk = 1 4 1 4
 QUIET
 
-COPY <<'KMSCON' /usr/lib/systemd/system/kmsconvt@.service.d/autologin.conf
-[Service]
-ExecStart=
-ExecStart=kmscon --vt=%I --no-switchvt --login -- /bin/login -f root
-KMSCON
-
-RUN systemctl enable var-lib-buildc-store.mount \
-    && { [ ! -f /usr/lib/systemd/system/kmsconvt@.service ] \
-        || systemctl enable kmsconvt@tty1.service; }
+RUN systemctl enable var-lib-buildc-store.mount
 
 COPY buildc /usr/bin/buildc
 RUN /usr/bin/buildc --version
 
-COPY <<'START' /etc/profile.d/bootc-anywhere.sh
-if [ "$(id -u)" = 0 ] && [ -t 0 ]; then
-    buildc installer
-fi
-START
+# kmscon needs a DRM card to draw the installer on the console.
+# Without one, the assertion fails and systemd starts bootc-anywhere-vt.service.
+COPY <<'UNIT' /usr/lib/systemd/system/bootc-anywhere.service
+[Unit]
+Description=Install this image onto a disk
+After=var-lib-buildc-store.mount systemd-user-sessions.service getty@tty1.service
+Conflicts=getty@tty1.service
+AssertPathExistsGlob=/dev/dri/card*
+OnFailure=bootc-anywhere-vt.service
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/kmscon --vt=1 --no-switchvt --oneshot --login -- /usr/bin/buildc installer
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+COPY <<'UNIT' /usr/lib/systemd/system/bootc-anywhere-vt.service
+[Unit]
+Description=Install this image onto a disk, on the kernel console
+After=var-lib-buildc-store.mount systemd-user-sessions.service getty@tty1.service
+Conflicts=getty@tty1.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/buildc installer
+Restart=always
+RestartSec=1
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+RUN set -eux; \
+    systemctl mask getty@tty1.service autovt@tty1.service; \
+    if command -v kmscon > /dev/null 2>&1; then \
+        systemctl enable bootc-anywhere.service; \
+    else \
+        systemctl enable bootc-anywhere-vt.service; \
+    fi

@@ -54,6 +54,7 @@ pub struct Image {
     pub keywords: Vec<String>,
     pub logo_url: String,
     pub conforms: String,
+    pub boot: String,
     pub base: Option<Base>,
     pub layout: Option<Layout>,
     pub allows: Vec<Refusal>,

@@ -117,6 +117,7 @@ fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
         ("keywords", Json::strings(image.keywords.iter().cloned())),
         ("logo_url", Json::string(&image.logo_url)),
         ("conforms", Json::string(&image.conforms)),
+        ("boot", Json::string(&image.boot)),
         ("allows", refusals(&image.allows)),
         (
             "layout",
@@ -483,6 +484,9 @@ pub(crate) fn contract_files(
         }
     };
     for decl in image.base.iter().flat_map(|b| b.provides.iter()) {
+        if !image.boot.is_empty() && decl.name == "bootupctl" {
+            continue;
+        }
         if let Some(paths) = crate::base::witness(&decl.name, rows) {
             add(paths);
         }

@@ -2047,6 +2047,8 @@ fn a_second_installer_is_refused_while_the_first_holds_the_screen() {
 
 #[test]
 fn install_screens() {
+    use std::os::unix::fs::PermissionsExt;
+
     let dir = empty("flow-install-drawn");
     std::fs::write(
         dir.join(buildc::install::RECIPE),
@@ -2074,13 +2076,29 @@ fn install_screens() {
         std::fs::write(disk.join("removable"), removable).unwrap();
         std::fs::write(disk.join("device/model"), model).unwrap();
     }
+    let lsblk = dir.join("lsblk");
+    std::fs::write(
+        &lsblk,
+        r#"#!/bin/sh
+printf '%s\n' '{"blockdevices":[{"name":"/dev/vda","type":"disk","children":[{"name":"/dev/vda1","size":"512M","fstype":"vfat","label":"EFI","type":"part","parttype":"C12A7328-F81F-11D2-BA4B-00A0C93EC93B"},{"name":"/dev/vda2","size":"63.5G","fstype":"ext4","label":"old-root","type":"part","parttype":null},{"name":"/dev/vda3","size":"60G","fstype":"crypto_LUKS","label":"","type":"part","parttype":null}]}]}'
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&lsblk, std::fs::Permissions::from_mode(0o755)).unwrap();
+    for name in ["mount", "umount"] {
+        let fake = dir.join(name);
+        std::fs::write(&fake, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
     drawn_flow(
         "flow-install-drawn",
         &dir,
         &format!(
-            "BUILDC_INSTALLER_LOCK='{}' BUILDC_SYS_BLOCK='{}' '{}' installer --from .",
+            "PATH='{}':\"$PATH\" BUILDC_INSTALLER_LOCK='{}' BUILDC_SYS_BLOCK='{}' BUILDC_MOUNT_ROOT='{}' '{}' installer --from .",
+            dir.display(),
             dir.join("installer.lock").display(),
             sys.display(),
+            dir.join("mounts").display(),
             env!("CARGO_BIN_EXE_tect")
         ),
         "buildc: ghcr.io/buildc-org/deb2:latest, from .\r\n",
@@ -2088,10 +2106,19 @@ fn install_screens() {
             b"\r",
             b"\x1b[B\r",
             b"\r",
+            b"\r",
+            b"\r",
+            b"\x1b[B\x1b[B\r",
+            b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r",
+            b"\r",
+            b"\r",
+            b"\r",
+            b"opensesame\r",
+            b"\r",
+            b"\x1b[B\x1b[B\r\r",
             b"buildc\r",
             b"hunter2\r",
             b"hunter2\r",
-            b"\r",
             b"\r",
             b"\r",
             b"\x1b[B\r",
@@ -2107,6 +2134,18 @@ fn install_screens() {
     assert!(transcript.contains(buildc::copy::CONTINUE), "{transcript}");
     assert!(transcript.contains("/dev/sdb"), "{transcript}");
     assert!(transcript.contains("/dev/vda"), "{transcript}");
+    assert!(transcript.contains("/dev/vda1"), "{transcript}");
+    assert!(transcript.contains("old-root"), "{transcript}");
+    assert!(
+        transcript.contains("Partitions marked format"),
+        "{transcript}"
+    );
+    assert!(!transcript.contains("opensesame"), "{transcript}");
+    assert!(
+        transcript.contains(&buildc::copy::open_question("/dev/vda3", "/var")),
+        "{transcript}"
+    );
+    assert!(transcript.contains(buildc::copy::OLD_SYSTEM), "{transcript}");
 }
 
 #[test]

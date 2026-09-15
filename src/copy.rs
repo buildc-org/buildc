@@ -93,6 +93,73 @@ pub const DATA_ERASED: &str = "erased";
 pub const DATA_KEPT: &str = "keep what is on it";
 pub const DATA_UNENCRYPTED: &str = "an unencrypted home under an encrypted root";
 pub const DATA_SAME_DISK: &str = "that is the disk this installs to";
+pub const CUSTOM_ENCRYPTION: &str = "custom layouts cannot create encryption";
+pub const CUSTOM_OTHER_DISK: &str = "the custom layout belongs to another disk";
+pub const CUSTOM_ROOT: &str = "still needs a / partition";
+pub const CUSTOM_DUPLICATE: &str = "each mount point can be used only once";
+pub const CUSTOM_NEEDS_DISK: &str = "choose a disk before editing its partitions";
+pub const CUSTOM_FORMAT_FILESYSTEM: &str = "fisherman cannot format this filesystem";
+pub const CUSTOM_KEEP_FILESYSTEM: &str = "not a supported Linux filesystem here";
+pub const CUSTOM_KEEP_ESP: &str = "an EFI system partition must use FAT";
+pub const LEAVE_PARTITION: &str = "leave unchanged";
+
+pub fn open_at(target: &str) -> String {
+    format!("open it as {target}")
+}
+
+pub const CUSTOM_OPEN_BOOT: &str = "the bootloader cannot read an encrypted /boot";
+
+pub fn open_cost(target: &str) -> &'static str {
+    match target {
+        "/boot" => "decrypt it, and /boot has to be ext4",
+        _ => "decrypt it and keep its filesystem",
+    }
+}
+
+pub fn open_question(partition: &str, target: &str) -> String {
+    format!("How does {partition} open as {target}?")
+}
+
+pub fn opened(partition: &str) -> String {
+    format!("{partition}  decrypted and kept")
+}
+
+pub const OPEN_WITH: &str = "opens with";
+pub const USE_KEY: &str = "Open it";
+pub const KEY_PASSPHRASE: &str = "passphrase";
+pub const KEY_PASSPHRASE_COST: &str = "typed here, and asked for again at boot";
+pub const KEY_FILE: &str = "key file";
+pub const KEY_FILE_COST: &str = "a file this live system can read";
+pub const KEY_FILE_PATH: &str = "key file path";
+pub const KEY_FILE_MISSING: &str = "there is no file at that path";
+
+pub const OLD_SYSTEM: &str = "old system";
+pub const OLD_ROOT_NONE: &str = "no partition on this disk reads as an old system";
+pub fn old_root_unnamed(partition: &str) -> String {
+    format!("no old system on this disk names a key for {partition}")
+}
+pub fn old_root_partly(unread: &str) -> String {
+    format!("{unread}, and nothing readable named a key")
+}
+pub fn old_root_key_missing(volume: &str, at: &str, why: &str) -> String {
+    format!("the key {at} that opens {volume} could not be read: {why}")
+}
+pub fn old_root_key_outside(at: &str) -> String {
+    format!("the key {at} is not a file inside the system that names it")
+}
+pub fn old_root_key_wrong(partition: &str) -> String {
+    format!("the key the old system named for {partition} does not open it")
+}
+pub fn old_root_key_unreadable(volume: &str) -> String {
+    format!("{volume} opens with a script this installer cannot run")
+}
+
+pub fn custom_keep_boot(bootloader: &str) -> String {
+    match bootloader {
+        "systemd" => "systemd-boot does not use a separate /boot".to_string(),
+        _ => format!("{bootloader} installs with a supported ext4 /boot"),
+    }
+}
 
 pub fn on_disk(disk: &str, how: &str) -> String {
     format!("{disk}, {how}")
@@ -100,6 +167,10 @@ pub fn on_disk(disk: &str, how: &str) -> String {
 
 pub fn erasing(disk: &str) -> String {
     format!("Everything on {disk} will be erased. Are you sure?")
+}
+
+pub fn changing_partitions(disk: &str) -> String {
+    format!("Partitions marked format on {disk} will be erased. Are you sure?")
 }
 
 pub const WHICH_COMMAND: &str = "Which command?";
@@ -143,18 +214,56 @@ pub const INSTALL: &str = "Install";
 pub const SHUT_DOWN: &str = "Shut down";
 pub const CONTINUE: &str = "Continue";
 pub const GO_BACK: &str = "Go back";
+pub const USE_LAYOUT: &str = "Use layout";
+pub const AUTOMATIC_LAYOUT: &str = "Use automatic layout";
 pub const ROW_CONFIRM: &str = "password (confirm)";
 pub const ROW_LAYOUT: &str = "layout";
 
-pub fn layout(filesystem: &str, bootloader: &str) -> String {
-    match bootloader {
+pub fn layout(filesystem: &str, bootloader: &str, boot: &str) -> String {
+    let partitions = match bootloader {
         "systemd" => format!("esp + {filesystem} root"),
         _ => format!("esp + ext4 /boot + {filesystem} root"),
+    };
+    match boot_chain(boot) {
+        Some(chain) => format!("{partitions}; {chain}"),
+        None => partitions,
     }
 }
 
-pub fn written_over(bootloader: &str, filesystem: &str, var: &str) -> Vec<(String, String)> {
+pub fn custom_layout(disk: &str, mounts: usize, kept: usize, opened: usize) -> String {
+    let said = format!("custom on {disk}: {mounts} mounted partitions, {kept} kept");
+    match opened {
+        0 => said,
+        opened => format!("{said}, {opened} opened"),
+    }
+}
+
+pub fn keep_as(target: &str) -> String {
+    format!("keep as {target}")
+}
+
+pub fn format_at(filesystem: &str, target: &str) -> String {
+    format!("format as {filesystem} at {target}")
+}
+
+pub fn boot_chain(boot: &str) -> Option<&'static str> {
+    match boot {
+        "uki-shim" => Some("owner-signed UKI through Microsoft shim"),
+        "uki-db" => Some("owner-signed UKI through firmware keys"),
+        _ => None,
+    }
+}
+
+pub fn written_over(
+    bootloader: &str,
+    filesystem: &str,
+    var: &str,
+    boot: &str,
+) -> Vec<(String, String)> {
     let mut rows = vec![("esp".to_string(), "2 GB  fat32".to_string())];
+    if let Some(chain) = boot_chain(boot) {
+        rows.push(("boot chain".to_string(), chain.to_string()));
+    }
     if bootloader != "systemd" {
         rows.push(("/boot".to_string(), "2 GB  ext4".to_string()));
     }
@@ -211,6 +320,13 @@ pub const LEAVE_SHELL: &str = "Quit the installer";
 pub const INSTALL_DONE: &str = "Installation Complete!";
 pub const RESTART: &str = "Restart now";
 pub const DONE_KEYS: &str = "enter to restart, esc to quit the installer";
+pub fn enrollment(boot: &str) -> Option<&'static str> {
+    match boot {
+        "uki-shim" => Some("on first boot: use MokManager to enroll EFI/BOOT/MOK.cer"),
+        "uki-db" => Some("before restart: clear the platform key in firmware setup"),
+        _ => None,
+    }
+}
 pub const KEY_NOT_LOGGED: &str = "It is not in the install log.";
 
 #[cfg(test)]
@@ -232,5 +348,17 @@ mod tests {
             let text = rest.split_once("= \"").expect("a string literal").1;
             assert!(text.chars().count() - 2 < 60, "{line}");
         }
+    }
+
+    #[test]
+    fn uki_chains_are_visible_before_and_after_install() {
+        assert!(super::layout("ext4", "systemd", "uki-shim").contains("Microsoft shim"));
+        assert!(super::written_over("systemd", "ext4", "", "uki-db")
+            .iter()
+            .any(|(name, value)| name == "boot chain" && value.contains("firmware keys")));
+        assert!(super::enrollment("uki-db")
+            .is_some_and(|instruction| instruction.contains("clear the platform key")));
+        assert!(super::enrollment("uki-shim")
+            .is_some_and(|instruction| instruction.contains("EFI/BOOT/MOK.cer")));
     }
 }

@@ -39,6 +39,8 @@ const FILESYSTEMS: &[&str] = &["xfs", "ext4", "btrfs", "zfs"];
 
 pub(crate) const BOOTLOADERS: &[&str] = &["grub2", "systemd"];
 
+pub(crate) const BOOT_CHAINS: &[&str] = &["uki-shim", "uki-db"];
+
 #[rustfmt::skip]
 pub const IMAGE: Node = Node::new("image",
     "One image: what it calls itself, what it builds on, and everything it is made of.")
@@ -68,6 +70,13 @@ pub const IMAGE: Node = Node::new("image",
             .arg(Arg::Str, NEEDS_VALUE).once(""),
         Node::new("conforms", "The benchmark profile a scan measures the ungated target against. A scan reports it and enforces nothing.")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
+
+        Node::new("boot", "The UKI boot chain: owner-signed through shim, or through direct Secure Boot enrollment.")
+            .arg(Arg::One(BOOT_CHAINS), Say::new("`{}` is not a boot chain",
+                "not a boot chain",
+                "`boot \"uki-shim\"` for owner-signed through shim, or `boot \"uki-db\"` for direct \
+                 enrollment into the firmware key database"))
+            .once(""),
 
         Node::new("base", "The image every layer builds on, and what building on it may assume.")
             .arg(Arg::Str, Say::new("`base` needs an image reference", "no image given",
@@ -227,8 +236,8 @@ pub const IMAGE: Node = Node::new("image",
                 "`modules` holds `module` entries, `source` blocks and `flavour` blocks")),
     ], Say::new("unknown image property `{}`", "not part of the schema",
         "an image accepts `id`, `name`, `pretty-name`, `url`, `issues-url`, `description`, \
-         `keywords`, `logo-url`, `conforms` and `allow-remediation`, and the `base`, `layout`, \
-         `flavours` and `modules` blocks"));
+         `keywords`, `logo-url`, `conforms`, `boot` and `allow-remediation`, and the `base`, \
+         `layout`, `flavours` and `modules` blocks"));
 
 pub fn block_close(kdl: &str, image: &str, chain: &[(&str, Option<&str>)]) -> Option<usize> {
     let doc: KdlDocument = kdl.parse().ok()?;
@@ -299,6 +308,7 @@ impl List {
                 .collect(),
             logo_url: text(node, "logo-url"),
             conforms: text(node, "conforms"),
+            boot: text(node, "boot"),
             base: None,
             layout: None,
             allows: kids(node)
@@ -404,7 +414,7 @@ impl Image {
         let (Some(layout), Some(base)) = (&self.layout, &self.base) else {
             return;
         };
-        let missing = crate::emit::recipe::unanswered(&base.family, Some(layout));
+        let missing = crate::emit::recipe::unanswered(&base.family, Some(layout), &self.boot);
         if missing == ["bootloader"] {
             issues.push(
                 Issue::new(format!("`{}` names no bootloader", self.id), src)
@@ -430,7 +440,35 @@ impl Image {
                 )),
             );
         }
-        if layout.filesystem == "xfs" && crate::emit::recipe::seals(&base.family, Some(layout)) {
+        let mut conflicts = Vec::new();
+        if !self.boot.is_empty() {
+            if !layout.filesystem.is_empty() && layout.filesystem != "ext4" {
+                conflicts.push("filesystem");
+            }
+            if layout.composefs == Some(false) {
+                conflicts.push("composefs");
+            }
+            if layout.generic == Some(false) {
+                conflicts.push("generic-image");
+            }
+            if !layout.bootloader.is_empty() && layout.bootloader != "systemd" {
+                conflicts.push("bootloader");
+            }
+        }
+        if !conflicts.is_empty() {
+            issues.push(
+                Issue::new(
+                    format!("`{}` declares a layout that conflicts with its UKI chain", self.id),
+                    src,
+                )
+                .at(layout.span, format!("conflicting {}", conflicts.join(", ")))
+                .help("a UKI chain settles ext4, composefs, generic-image and systemd-boot; drop those layout rows or make them agree"),
+            );
+        }
+        if layout.filesystem == "xfs"
+            && self.boot.is_empty()
+            && crate::emit::recipe::seals(&base.family, Some(layout), &self.boot)
+        {
             issues.push(
                 Issue::new(
                     format!("`{}` installs a sealed deployment onto xfs", self.id),
@@ -696,6 +734,15 @@ mod tests {
         issues.findings()
     }
 
+    fn semantic_messages(text: &str) -> Vec<String> {
+        let doc: KdlDocument = text.parse().expect("valid KDL");
+        let src = Source::new("image.kdl", text);
+        let mut issues = Issues::default();
+        let mut list = List::empty(std::path::Path::new("."));
+        list.parse_image(&doc.nodes()[0], &src, &mut issues);
+        issues.findings()
+    }
+
     #[test]
     fn the_span_a_conforms_takes_is_the_node_or_where_the_next_one_goes() {
         let held =
@@ -808,5 +855,31 @@ image {
 "#,
         );
         assert_eq!(found, ["`flavours` has no flavours in it"]);
+    }
+
+    #[test]
+    fn boot_accepts_only_one_known_chain() {
+        for chain in BOOT_CHAINS {
+            assert!(messages(&format!(
+                "image {{\n name \"X\"\n boot \"{chain}\"\n base \"x\" {{ family \"fedora\" }}\n modules {{ }}\n}}"
+            ))
+            .is_empty());
+        }
+        assert_eq!(
+            messages(
+                "image {\n name \"X\"\n boot \"grub\"\n boot \"uki-db\"\n base \"x\" { family \"fedora\" }\n modules { }\n}"
+            ),
+            ["`grub` is not a boot chain", "`boot` is declared twice"]
+        );
+    }
+
+    #[test]
+    fn a_uki_chain_refuses_a_conflicting_layout() {
+        let found = semantic_messages(
+            "image {\n name \"X\"\n boot \"uki-db\"\n base \"x\" { family \"fedora\" }\n layout { filesystem \"xfs\"\n composefs #false\n generic-image #false\n bootloader \"grub2\" }\n modules { }\n}",
+        );
+        assert!(found
+            .iter()
+            .any(|message| message.contains("conflicts with its UKI chain")));
     }
 }

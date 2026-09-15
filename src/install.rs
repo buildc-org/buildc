@@ -2,7 +2,7 @@ use crate::copy;
 use crate::emit::json::{self, Json};
 use crate::prompt::Prompt;
 use crate::ui::Choice;
-use std::io::{BufRead as _, Write as _};
+use std::io::{BufRead as _, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -339,6 +339,60 @@ impl CustomLayout {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct Slots {
+    keys: Vec<u32>,
+    tokens: Vec<String>,
+}
+
+impl Slots {
+    fn has_tpm2(&self) -> bool {
+        self.tokens.iter().any(|kind| kind == "systemd-tpm2")
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Opened {
+    Keep,
+    Tpm2,
+    AddKey,
+}
+
+impl Opened {
+    fn of(shown: &str) -> Self {
+        match shown {
+            copy::OPENED_TPM2 => Self::Tpm2,
+            copy::OPENED_ADD_KEY => Self::AddKey,
+            _ => Self::Keep,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Keep => copy::OPENED_KEEP,
+            Self::Tpm2 => copy::OPENED_TPM2,
+            Self::AddKey => copy::OPENED_ADD_KEY,
+        }
+    }
+}
+
+fn at_boot(open: &LuksOpen, opened: Opened) -> &'static str {
+    if opened == Opened::Tpm2 {
+        return copy::BOOT_TPM2;
+    }
+    if open.target == "/" {
+        return match open.key {
+            Key::Passphrase(_) => copy::BOOT_PASSPHRASE,
+            _ => copy::OPENED_ROOT_KEYFILE,
+        };
+    }
+    match (&open.key, opened) {
+        (Key::Passphrase(_), Opened::AddKey) => copy::BOOT_ADDED_KEY,
+        (Key::Passphrase(_), _) => copy::BOOT_PASSPHRASE,
+        _ => copy::BOOT_KEYFILE,
+    }
+}
+
 #[derive(Default)]
 pub struct Data {
     pub disk: String,
@@ -366,6 +420,7 @@ pub struct Answers {
     pub encryption: Encryption,
     pub data: Data,
     layout: Option<CustomLayout>,
+    opened: Opened,
 }
 
 #[derive(Clone, Default)]
@@ -505,6 +560,8 @@ impl Answers {
                         }
                     };
                     fields[ROW_LAYOUT] = crate::ui::Field::action(copy::ROW_LAYOUT, &summary);
+                    fields[ROW_ENCRYPTION] =
+                        encryption_row(layout.as_ref(), &fields[ROW_ENCRYPTION], tpm().exists());
                 }
                 Ok(crate::ui::Filled::Opened(_)) => {}
                 Ok(crate::ui::Filled::Left) => match leave(prompt)? {
@@ -556,6 +613,7 @@ impl Answers {
                 encryption: ask_encryption(given.encryption, given.passphrase, prompt)?,
                 data: Data::default(),
                 layout: None,
+                opened: Opened::Keep,
             });
         }
         Ok(Self {
@@ -575,6 +633,7 @@ impl Answers {
             },
             data: Data::default(),
             layout: None,
+            opened: Opened::Keep,
         })
     }
 
@@ -638,6 +697,10 @@ impl Answers {
                 Some(_) => Data::default(),
                 None => chose(&at(ROW_DATA), &at(ROW_SIZE)),
             },
+            opened: match layout.as_ref().filter(|layout| !layout.opens.is_empty()) {
+                Some(_) => Opened::of(&at(ROW_ENCRYPTION)),
+                None => Opened::Keep,
+            },
             layout,
         }
     }
@@ -668,12 +731,12 @@ impl Answers {
                     };
                     (mount.target.clone(), how)
                 }));
-                rows.extend(
-                    layout
-                        .opens
-                        .iter()
-                        .map(|open| (open.target.clone(), copy::opened(&open.partition))),
-                );
+                rows.extend(layout.opens.iter().map(|open| {
+                    (
+                        open.target.clone(),
+                        copy::opened(&open.partition, at_boot(open, self.opened)),
+                    )
+                }));
                 if let Some(chain) = copy::boot_chain(&payload.boot) {
                     rows.push(("boot chain".to_string(), chain.to_string()));
                 }
@@ -721,6 +784,13 @@ fn short_of(fields: &[crate::ui::Field], layout: Option<&CustomLayout>) -> Optio
         }
         if written(&at(ROW_ENCRYPTION)) != NONE {
             return Some(copy::CUSTOM_ENCRYPTION.to_string());
+        }
+        if layout
+            .opens
+            .iter()
+            .any(|open| open.target == "/" && !matches!(open.key, Key::Passphrase(_)))
+        {
+            return Some(copy::OPENED_ROOT_KEYFILE.to_string());
         }
     }
     let data = match layout {
@@ -1425,11 +1495,11 @@ fn resolve_device(said: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("{said} is not present"))
 }
 
-fn test_key(container: &Partition, key: &[u8]) -> Result<bool, String> {
+fn test_key(container: &str, key: &[u8]) -> Result<bool, String> {
     let mut command = Command::new("cryptsetup");
     command
         .args(["-q", "luksOpen", "--test-passphrase", "--key-file", "-"])
-        .arg(&container.device)
+        .arg(container)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -1506,7 +1576,7 @@ fn old_keys(disk: &str, partitions: &[Partition]) -> Discovered {
         &systems,
         &unread,
         &mut mounts,
-        &|container, key| test_key(container, key),
+        &|container, key| test_key(&container.device, key),
     )
 }
 
@@ -1659,6 +1729,127 @@ fn kinds(tpm: bool) -> Vec<Choice> {
             },
         )
         .collect()
+}
+
+fn encryption_row(
+    layout: Option<&CustomLayout>,
+    held: &crate::ui::Field,
+    tpm: bool,
+) -> crate::ui::Field {
+    match layout.filter(|layout| !layout.opens.is_empty()) {
+        Some(layout) => {
+            let chosen = Opened::of(&held.value());
+            let rows = opened_rows(layout, tpm);
+            let at = rows
+                .iter()
+                .position(|row| row.label == chosen.label())
+                .or_else(|| rows.iter().position(|row| row.label == copy::OPENED_KEEP));
+            crate::ui::Field::pick(copy::ROW_ENCRYPTION, rows, at)
+        }
+        None => {
+            let kind = written(&held.value());
+            crate::ui::Field::pick(
+                copy::ROW_ENCRYPTION,
+                kinds(tpm),
+                KINDS.iter().position(|(name, _, _)| *name == kind),
+            )
+        }
+    }
+}
+
+fn opened_rows(layout: &CustomLayout, tpm: bool) -> Vec<Choice> {
+    let read: Vec<Result<Slots, String>> = layout
+        .opens
+        .iter()
+        .map(|open| slots(&open.partition))
+        .collect();
+    let said = match read.is_empty() {
+        true => String::new(),
+        false => read
+            .iter()
+            .map(|slots| match slots {
+                Ok(slots) => copy::slots_said(&slots.keys, &slots.tokens),
+                Err(why) => copy::slots_unknown(why),
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
+    };
+    let mut rows = vec![Choice::new(copy::OPENED_KEEP, said)];
+    let keyfile_root = layout
+        .opens
+        .iter()
+        .any(|open| open.target == "/" && !matches!(open.key, Key::Passphrase(_)));
+    if keyfile_root {
+        rows[0] = Choice::new(copy::OPENED_KEEP, copy::OPENED_ROOT_KEYFILE).unavailable();
+    }
+    let unread = read.iter().find_map(|slots| slots.as_ref().err());
+    let enrolled = read
+        .iter()
+        .any(|slots| slots.as_ref().is_ok_and(Slots::has_tpm2));
+    rows.push(match (tpm, unread, enrolled) {
+        (false, _, _) => Choice::new(copy::OPENED_TPM2, copy::NO_TPM).unavailable(),
+        (_, Some(why), _) => Choice::new(copy::OPENED_TPM2, why.clone()).unavailable(),
+        (_, _, true) => Choice::new(copy::OPENED_TPM2, copy::OPENED_TPM2_HAS).unavailable(),
+        _ if keyfile_root => {
+            Choice::new(copy::OPENED_TPM2, copy::OPENED_ROOT_KEYFILE).unavailable()
+        }
+        _ => Choice::new(copy::OPENED_TPM2, copy::OPENED_TPM2_COST),
+    });
+    if let Some((_, slots)) = layout
+        .opens
+        .iter()
+        .zip(read.iter())
+        .find(|(open, _)| open.target != "/" && matches!(open.key, Key::Passphrase(_)))
+    {
+        let detail = match slots {
+            Ok(slots) => format!(
+                "{}; {} slots now",
+                copy::OPENED_ADD_KEY_COST,
+                slots.keys.len()
+            ),
+            Err(_) => copy::OPENED_ADD_KEY_COST.to_string(),
+        };
+        rows.push(Choice::new(copy::OPENED_ADD_KEY, detail));
+    }
+    rows
+}
+
+fn slots(container: &str) -> Result<Slots, String> {
+    let out = Command::new("cryptsetup")
+        .args(["luksDump", "--dump-json-metadata"])
+        .arg(container)
+        .output()
+        .map_err(|err| format!("cryptsetup: {err}, and it is what reads a header"))?;
+    match out.status.success() {
+        true => slots_from(&String::from_utf8_lossy(&out.stdout)),
+        false => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+    }
+}
+
+fn slots_from(raw: &str) -> Result<Slots, String> {
+    const SLOTS: u32 = 32;
+    let doc = Json::parse(raw).map_err(|err| format!("luksDump wrote invalid JSON: {err}"))?;
+    let mut keys = Vec::new();
+    if let Some(keyslots) = json::field(&doc, "keyslots") {
+        for at in 0..SLOTS {
+            if json::field(keyslots, &at.to_string()).is_some() {
+                keys.push(at);
+            }
+        }
+    }
+    let mut tokens = Vec::new();
+    if let Some(listed) = json::field(&doc, "tokens") {
+        let Json::Object(entries) = listed else {
+            return Err("luksDump wrote tokens that are not an object".to_string());
+        };
+        for (_, token) in entries {
+            if let Some(kind) = json::text(token, "type") {
+                tokens.push(kind);
+            }
+        }
+    }
+    tokens.sort();
+    Ok(Slots { keys, tokens })
 }
 
 fn data_rows(disk: &str, found: &[(String, String)], encrypted: bool) -> Vec<Choice> {
@@ -2025,6 +2216,31 @@ fn require_signed_boot_chain(image: &str, chain: &str) -> Result<(), String> {
     ))
 }
 
+fn require_tpm2_enrolment(image: &str) -> Result<(), String> {
+    let out = Command::new("podman")
+        .args([
+            "run",
+            "--rm",
+            "--pull=never",
+            "--net=none",
+            "--security-opt",
+            "label=disable",
+            "--entrypoint",
+            "",
+            image,
+            "/usr/bin/systemd-cryptenroll",
+            "--version",
+        ])
+        .output()
+        .map_err(|err| format!("podman: {err}, and it is what checks {image} for TPM2"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "{image} has no /usr/bin/systemd-cryptenroll, so it cannot enrol the TPM2 token this answer asks for"
+    ))
+}
+
 fn run_enrolment(image: &str, esp: &Path) -> Result<(), String> {
     let target = format!("{}:/esp", esp.display());
     let out = Command::new("podman")
@@ -2248,8 +2464,502 @@ fn close_volume(name: &str) -> Result<(), String> {
     }
 }
 
+const ROOT_MOUNT: &str = "/run/buildc-root";
+
+const ROOT_GUID: &str = "4f68bce3-e8cd-4db1-96e7-fbcaf984b709";
+
+struct EtcWrite {
+    at: String,
+    bytes: Vec<u8>,
+    mode: u32,
+}
+
+fn arrange(payload: &Payload, answers: &Answers) -> Result<Vec<String>, String> {
+    let Some(layout) = &answers.layout else {
+        return Ok(Vec::new());
+    };
+    if layout.opens.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut writes: Vec<EtcWrite> = Vec::new();
+    let mut crypttab: Vec<(String, String)> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    let mut added: Vec<String> = Vec::new();
+    let mut root: Option<(String, String)> = None;
+    let planned = (|| {
+        for (mapper, open) in layout.mappers() {
+            let uuid = luks_uuid(&open.partition)?;
+            if open.target == "/" {
+                match payload.boot.is_empty() {
+                    true => root = Some((uuid.clone(), "root".to_string())),
+                    false => retag_root(&answers.disk, open, &mapper)?,
+                }
+            } else {
+                let name = crypttab_name(&open.target);
+                let (line, note) =
+                    data_volume(&name, open, &uuid, answers.opened, &mut writes, &mut added)?;
+                if let Some(note) = note {
+                    notes.extend(note);
+                }
+                crypttab.push((name, line));
+            }
+            if answers.opened == Opened::Tpm2 {
+                let name = match open.target.as_str() {
+                    "/" => "root".to_string(),
+                    target => crypttab_name(target),
+                };
+                stage_tpm2(&name, open, &uuid, &mut writes)?;
+            }
+        }
+        if !writes.is_empty() || !crypttab.is_empty() {
+            write_etc(layout, &writes, &crypttab)?;
+        }
+        if let Some((uuid, name)) = root {
+            inject_luks_args(&answers.disk, &uuid, &name)?;
+        }
+        Ok(())
+    })();
+    if let Err(err) = planned {
+        return Err(naming_added(err, &added));
+    }
+    Ok(notes)
+}
+
+fn naming_added(err: String, added: &[String]) -> String {
+    match added.is_empty() {
+        true => err,
+        false => format!(
+            "{err}; a key was added to {} and the install did not finish",
+            added.join(", ")
+        ),
+    }
+}
+
+fn crypttab_name(target: &str) -> String {
+    target.trim_start_matches('/').replace('/', "-")
+}
+
+fn data_volume(
+    name: &str,
+    open: &LuksOpen,
+    uuid: &str,
+    opened: Opened,
+    writes: &mut Vec<EtcWrite>,
+    added: &mut Vec<String>,
+) -> Result<(String, Option<Vec<String>>), String> {
+    let path = format!("/etc/cryptsetup-keys.d/{name}.key");
+    match (&open.key, opened) {
+        (Key::Passphrase(_), Opened::AddKey) => {
+            let before = slots(&open.partition)?.keys;
+            let key = random_key()?;
+            add_key(open, &key)?;
+            if !test_key(&open.partition, &key)? {
+                return Err(copy::added_key_wrong(&open.partition));
+            }
+            added.push(open.partition.clone());
+            writes.push(EtcWrite {
+                at: path.clone(),
+                bytes: key,
+                mode: 0o600,
+            });
+            let note = redundant_slot_note(&open.partition, &before)?;
+            Ok((copy::crypttab_line(name, uuid, Some(&path)), Some(note)))
+        }
+        (Key::Passphrase(_), _) => Ok((copy::crypttab_line(name, uuid, None), None)),
+        (key, _) => {
+            writes.push(EtcWrite {
+                at: path.clone(),
+                bytes: key_bytes_of(key)?,
+                mode: 0o600,
+            });
+            Ok((copy::crypttab_line(name, uuid, Some(&path)), None))
+        }
+    }
+}
+
+fn key_bytes_of(key: &Key) -> Result<Vec<u8>, String> {
+    match key {
+        Key::Passphrase(passphrase) => Ok(passphrase.as_bytes().to_vec()),
+        Key::Data(bytes) => Ok(bytes.clone()),
+        Key::File(path) => std::fs::read(path).map_err(|err| format!("{}: {err}", path.display())),
+    }
+}
+
+fn redundant_slot_note(partition: &str, before: &[u32]) -> Result<Vec<String>, String> {
+    let after = slots(partition)?;
+    let count = after.keys.len();
+    Ok(match before {
+        [only] => copy::kill_slot(partition, *only, count),
+        _ => copy::kill_a_slot(partition, count),
+    })
+}
+
+fn stage_tpm2(
+    name: &str,
+    open: &LuksOpen,
+    uuid: &str,
+    writes: &mut Vec<EtcWrite>,
+) -> Result<(), String> {
+    let key = format!("/etc/buildc/tpm2-enroll-{name}.key");
+    writes.push(EtcWrite {
+        at: key.clone(),
+        bytes: key_bytes_of(&open.key)?,
+        mode: 0o600,
+    });
+    writes.push(EtcWrite {
+        at: format!("/etc/systemd/system/buildc-tpm2-enroll-{name}.service"),
+        bytes: copy::tpm2_unit(name, &key, uuid).into_bytes(),
+        mode: 0o644,
+    });
+    Ok(())
+}
+
+fn write_etc(
+    layout: &CustomLayout,
+    writes: &[EtcWrite],
+    crypttab: &[(String, String)],
+) -> Result<(), String> {
+    let Some(device) = root_device(layout) else {
+        return Err("the layout names no / to write into".to_string());
+    };
+    let at = PathBuf::from(ROOT_MOUNT);
+    std::fs::create_dir_all(&at).map_err(|err| format!("{ROOT_MOUNT}: {err}"))?;
+    let mounted = Command::new("mount")
+        .arg(&device)
+        .arg(&at)
+        .output()
+        .map_err(|err| format!("mount: {err}, and it is what holds the installed root"))?;
+    if !mounted.status.success() {
+        return Err(format!(
+            "mounting {device} at {ROOT_MOUNT}: {}",
+            String::from_utf8_lossy(&mounted.stderr).trim()
+        ));
+    }
+    let written = (|| {
+        let etc = deployment_etc(&at)?;
+        for write in writes {
+            let path = etc.join(write.at.trim_start_matches('/'));
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("{}: {err}", parent.display()))?;
+            }
+            std::fs::write(&path, &write.bytes)
+                .map_err(|err| format!("{}: {err}", path.display()))?;
+            set_mode(&path, write.mode)?;
+        }
+        merge_crypttab(&etc, crypttab)?;
+        for write in writes {
+            let Some(unit) = write.at.rsplit('/').next() else {
+                continue;
+            };
+            if !unit.ends_with(".service") {
+                continue;
+            }
+            let wants = etc
+                .join("systemd/system/multi-user.target.wants")
+                .join(unit);
+            if let Some(parent) = wants.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("{}: {err}", parent.display()))?;
+            }
+            let _ = std::fs::remove_file(&wants);
+            std::os::unix::fs::symlink(format!("/etc/systemd/system/{unit}"), &wants)
+                .map_err(|err| format!("{}: {err}", wants.display()))?;
+        }
+        Ok(())
+    })();
+    let _ = Command::new("umount").arg(&at).output();
+    written
+}
+
+fn set_mode(path: &Path, mode: u32) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .map_err(|err| format!("{}: {err}", path.display()))
+}
+
+fn deployment_etc(root: &Path) -> Result<PathBuf, String> {
+    let mut found = Vec::new();
+    if let Ok(stateroots) = std::fs::read_dir(root.join("ostree/deploy")) {
+        for stateroot in stateroots.flatten() {
+            if let Ok(deployments) = std::fs::read_dir(stateroot.path().join("deploy")) {
+                for deployment in deployments.flatten() {
+                    let etc = deployment.path().join("etc");
+                    if etc.is_dir() {
+                        found.push(etc);
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(deployments) = std::fs::read_dir(root.join("state/deploy")) {
+        for deployment in deployments.flatten() {
+            let etc = deployment.path().join("etc");
+            if etc.is_dir() {
+                found.push(etc);
+            }
+        }
+    }
+    match found.as_slice() {
+        [one] => Ok(one.clone()),
+        [] => Err(format!(
+            "{}: no installed deployment carries an /etc",
+            root.display()
+        )),
+        many => Err(format!(
+            "{}: {} deployments carry an /etc, so which one to write is not clear",
+            root.display(),
+            many.len()
+        )),
+    }
+}
+
+fn merge_crypttab(etc: &Path, lines: &[(String, String)]) -> Result<(), String> {
+    let at = etc.join("crypttab");
+    let held = std::fs::read_to_string(&at).unwrap_or_default();
+    let mut out: Vec<&str> = held
+        .lines()
+        .filter(|line| {
+            let name = line.split_whitespace().next().unwrap_or("");
+            !lines.iter().any(|(ours, _)| ours == name)
+        })
+        .collect();
+    let ours: Vec<&str> = lines.iter().map(|(_, line)| line.as_str()).collect();
+    out.extend(ours);
+    if out.is_empty() {
+        return Ok(());
+    }
+    std::fs::write(&at, format!("{}\n", out.join("\n")))
+        .map_err(|err| format!("{}: {err}", at.display()))
+}
+
+fn root_device(layout: &CustomLayout) -> Option<String> {
+    if let Some((name, _)) = layout
+        .mappers()
+        .into_iter()
+        .find(|(_, open)| open.target == "/")
+    {
+        return Some(mapper_path(&name));
+    }
+    layout
+        .mounts
+        .iter()
+        .find(|mount| mount.target == "/")
+        .map(|mount| mount.partition.clone())
+}
+
+fn luks_uuid(partition: &str) -> Result<String, String> {
+    let out = Command::new("cryptsetup")
+        .args(["luksUUID", partition])
+        .output()
+        .map_err(|err| format!("cryptsetup: {err}, and it is what names a container"))?;
+    let uuid = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    match out.status.success() && !uuid.is_empty() {
+        true => Ok(uuid),
+        false => Err(format!(
+            "cryptsetup luksUUID {partition}: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+    }
+}
+
+fn add_key(open: &LuksOpen, key: &[u8]) -> Result<(), String> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let at = std::env::temp_dir().join(format!(
+        "buildc-luks-key.{}.{:x}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0)
+    ));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&at)
+        .map_err(|err| format!("{}: {err}", at.display()))?;
+    file.write_all(key)
+        .map_err(|err| format!("{}: {err}", at.display()))?;
+    drop(file);
+    let mut command = Command::new("cryptsetup");
+    command.args(["-q", "luksAddKey"]);
+    match &open.key {
+        Key::File(path) => {
+            command.arg("--key-file").arg(path);
+        }
+        _ => {
+            command.args(["--key-file", "-"]);
+        }
+    }
+    command.arg(&open.partition).arg(&at);
+    command.stdout(Stdio::null()).stderr(Stdio::piped());
+    if open.key.bytes().is_some() {
+        command.stdin(Stdio::piped());
+    }
+    let added = (|| {
+        let mut child = command
+            .spawn()
+            .map_err(|err| format!("cryptsetup: {err}, and it is what adds a key"))?;
+        if let Some(bytes) = open.key.bytes() {
+            child
+                .stdin
+                .take()
+                .ok_or("cryptsetup: no stdin")?
+                .write_all(bytes)
+                .map_err(|err| format!("cryptsetup: {err}"))?;
+        }
+        let out = child
+            .wait_with_output()
+            .map_err(|err| format!("cryptsetup: {err}"))?;
+        match out.status.success() {
+            true => Ok(()),
+            false => Err(format!(
+                "adding a key to {}: {}",
+                open.partition,
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+        }
+    })();
+    let _ = std::fs::remove_file(&at);
+    added
+}
+
+fn random_key() -> Result<Vec<u8>, String> {
+    let mut bytes = [0u8; 32];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut source| source.read_exact(&mut bytes))
+        .map_err(|err| format!("/dev/urandom: {err}"))?;
+    let mut said = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        said.push_str(&format!("{byte:02x}"));
+    }
+    Ok(said.into_bytes())
+}
+
+fn retag_root(disk: &str, open: &LuksOpen, mapper: &str) -> Result<(), String> {
+    let number = partition_number(&open.partition)?;
+    close_volume(mapper)?;
+    let out = Command::new("sfdisk")
+        .args(["--part-type", disk, &number, ROOT_GUID])
+        .output()
+        .map_err(|err| format!("sfdisk: {err}, and it is what retags a root"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "retagging {} as the root partition: {}",
+            open.partition,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    open_volume(open, mapper)
+}
+
+fn partition_number(device: &str) -> Result<String, String> {
+    let number: String = device
+        .chars()
+        .rev()
+        .take_while(char::is_ascii_digit)
+        .collect::<Vec<char>>()
+        .into_iter()
+        .rev()
+        .collect();
+    match number.is_empty() {
+        true => Err(format!("{device} names no partition number")),
+        false => Ok(number),
+    }
+}
+
+fn inject_luks_args(disk: &str, uuid: &str, name: &str) -> Result<usize, String> {
+    let at = PathBuf::from(TARGET);
+    let boot = at.join("boot");
+    std::fs::create_dir_all(&boot).map_err(|err| format!("{TARGET}: {err}"))?;
+    let Some((device, root)) = boot_partition(disk, &boot)? else {
+        return Err(format!(
+            "no partition of {disk} carries `loader/entries`, so the containers \
+             the layout opened have no boot entry to name"
+        ));
+    };
+    let entries_dir = match root {
+        "/target" => boot.clone(),
+        _ => boot.join("boot"),
+    };
+    let arg = format!("rd.luks.name={uuid}={name}");
+    let mut entries = 0;
+    let mut named = 0;
+    let mut patched = 0;
+    let listed = std::fs::read_dir(entries_dir.join("loader/entries"));
+    if let Ok(listed) = listed {
+        for entry in listed.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|kind| kind != "conf") {
+                continue;
+            }
+            entries += 1;
+            let raw = std::fs::read_to_string(&path)
+                .map_err(|err| format!("{}: {err}", path.display()))?;
+            let carried = boot_arg_named(&raw, &arg);
+            let (text, changed) = add_boot_arg(&raw, &arg);
+            if changed {
+                std::fs::write(&path, text).map_err(|err| format!("{}: {err}", path.display()))?;
+                patched += 1;
+            }
+            if changed || carried {
+                named += 1;
+            }
+        }
+    }
+    let unmounted = Command::new("umount").arg(&boot).output();
+    match unmounted {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            return Err(format!(
+                "unmounting {device}: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ))
+        }
+        Err(err) => return Err(format!("unmounting {device}: {err}")),
+    }
+    if named == 0 {
+        return Err(format!(
+            "{device} carries no boot entry naming the {name} container, so \
+             the machine would not find its root"
+        ));
+    }
+    eprintln!(
+        "buildc: named the {name} container in {patched} of {entries} boot entries on {device}"
+    );
+    Ok(patched)
+}
+
+fn boot_arg_named(raw: &str, arg: &str) -> bool {
+    raw.lines()
+        .any(|line| line.starts_with("options ") && line.split_whitespace().any(|word| word == arg))
+}
+
+fn add_boot_arg(raw: &str, arg: &str) -> (String, bool) {
+    let mut changed = false;
+    let mut lines: Vec<String> = raw
+        .lines()
+        .map(|line| {
+            if line.starts_with("options ") && !line.split_whitespace().any(|word| word == arg) {
+                changed = true;
+                format!("{line} {arg}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    if raw.ends_with('\n') {
+        lines.push(String::new());
+    }
+    (lines.join("\n"), changed)
+}
+
 pub fn run(payload: &Payload, answers: &Answers, prompt: &Prompt) -> Result<(), String> {
     require_signed_boot_chain(&payload.image, &payload.boot)?;
+    if answers.opened == Opened::Tpm2 {
+        require_tpm2_enrolment(&payload.image)?;
+    }
     let _opened = open_volumes(answers.layout.as_ref())?;
     let path = stage(&complete(&payload.recipe, answers)?)?;
     let (mut log, at) = open_log(payload);
@@ -2333,15 +3043,23 @@ pub fn run(payload: &Payload, answers: &Answers, prompt: &Prompt) -> Result<(), 
             copy::logging(at.as_deref())
         ));
     }
+    let notes = arrange(payload, answers)?;
     configure_boot_chain(&payload.image, &answers.disk, &payload.boot)?;
     render_menu(&payload.image, &answers.disk)?;
-    finish(recovery.as_deref(), at.as_deref(), &payload.boot, prompt)
+    finish(
+        recovery.as_deref(),
+        at.as_deref(),
+        &payload.boot,
+        &notes,
+        prompt,
+    )
 }
 
 fn finish(
     recovery: Option<&str>,
     log: Option<&Path>,
     boot: &str,
+    notes: &[String],
     prompt: &Prompt,
 ) -> Result<(), String> {
     if !prompt.draws() {
@@ -2352,12 +3070,15 @@ fn finish(
         if let Some(enrollment) = copy::enrollment(boot) {
             println!("{enrollment}");
         }
+        for note in notes {
+            println!("{note}");
+        }
         eprintln!("buildc: {}", copy::logging(log));
         return Ok(());
     }
     match crate::ui::offer_over(
         copy::INSTALL_DONE,
-        done_rows(recovery, log, boot),
+        done_rows(recovery, log, boot, notes),
         copy::RESTART,
         copy::DONE_KEYS,
     )? {
@@ -2366,7 +3087,12 @@ fn finish(
     }
 }
 
-pub(crate) fn done_rows(recovery: Option<&str>, log: Option<&Path>, boot: &str) -> Vec<Choice> {
+pub(crate) fn done_rows(
+    recovery: Option<&str>,
+    log: Option<&Path>,
+    boot: &str,
+    notes: &[String],
+) -> Vec<Choice> {
     let mut rows = Vec::new();
     if let Some(key) = recovery {
         rows.push(Choice::new(copy::WRITE_DOWN, "").content());
@@ -2375,6 +3101,9 @@ pub(crate) fn done_rows(recovery: Option<&str>, log: Option<&Path>, boot: &str) 
     }
     if let Some(enrollment) = copy::enrollment(boot) {
         rows.push(Choice::new(enrollment, "").content());
+    }
+    for note in notes {
+        rows.push(Choice::new(note.clone(), "").content());
     }
     rows.push(Choice::new(copy::logging(log), "").content());
     rows
@@ -2471,6 +3200,7 @@ mod tests {
             hostname: "deb2".to_string(),
             user: "buildc".to_string(),
             password: "hunter2".to_string(),
+            opened: Opened::Keep,
             encryption: Encryption {
                 kind: "luks-passphrase".to_string(),
                 passphrase: "opensesame".to_string(),
@@ -2749,6 +3479,7 @@ mod tests {
             hostname: "deb2".to_string(),
             user: "buildc".to_string(),
             password: "hunter2".to_string(),
+            opened: Opened::Keep,
             encryption: Encryption {
                 kind: NONE.to_string(),
                 passphrase: String::new(),
@@ -3065,6 +3796,7 @@ passphrase UUID=hh88
             hostname: "deb2".to_string(),
             user: "buildc".to_string(),
             password: "hunter2".to_string(),
+            opened: Opened::Keep,
             encryption: Encryption {
                 kind: NONE.to_string(),
                 passphrase: String::new(),
@@ -3131,6 +3863,7 @@ passphrase UUID=hh88
                 hostname: "deb2".to_string(),
                 user: "buildc".to_string(),
                 password: "hunter2".to_string(),
+                opened: Opened::Keep,
                 encryption: Encryption {
                     kind: name.to_string(),
                     passphrase: "opensesame".to_string(),
@@ -3195,6 +3928,7 @@ passphrase UUID=hh88
                 hostname: "deb2".to_string(),
                 user: "buildc".to_string(),
                 password: "hunter2".to_string(),
+                opened: Opened::Keep,
                 encryption: Encryption {
                     kind: NONE.to_string(),
                     passphrase: String::new(),
@@ -3373,6 +4107,7 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
             hostname: "deb2".to_string(),
             user: "buildc".to_string(),
             password: "hunter2".to_string(),
+            opened: Opened::Keep,
             encryption: Encryption {
                 kind: NONE.to_string(),
                 passphrase: String::new(),
@@ -3502,6 +4237,30 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
         let mut same = form("hunter2", "hunter2", NONE, "");
         data(&mut same, copy::on_disk("/dev/vda", copy::DATA_ERASED), "");
         assert_eq!(short_of(&same, None).as_deref(), Some(copy::DATA_SAME_DISK));
+
+        let root_keyfile = CustomLayout {
+            disk: "/dev/vda".to_string(),
+            mounts: Vec::new(),
+            opens: vec![LuksOpen {
+                partition: "/dev/vda3".to_string(),
+                target: "/".to_string(),
+                key: Key::Data(b"key".to_vec()),
+            }],
+        };
+        let opens_row = |label: &str| {
+            let mut fields = form("hunter2", "hunter2", NONE, "");
+            fields[ROW_ENCRYPTION] =
+                Field::pick(copy::ROW_ENCRYPTION, vec![Choice::new(label, "")], Some(0));
+            fields
+        };
+        assert_eq!(
+            short_of(&opens_row(copy::OPENED_KEEP), Some(&root_keyfile)).as_deref(),
+            Some(copy::OPENED_ROOT_KEYFILE)
+        );
+        assert_eq!(
+            short_of(&opens_row(copy::OPENED_TPM2), Some(&root_keyfile)).as_deref(),
+            Some(copy::OPENED_ROOT_KEYFILE)
+        );
     }
 
     #[test]
@@ -3578,5 +4337,153 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
         assert_eq!(name(Some("/proc/1/fd/0".into())), "another console");
         assert_eq!(name(None), "another console");
         assert_eq!(console(-1), "another console");
+    }
+
+    #[test]
+    fn a_headers_slots_are_read_by_index_and_the_tokens_beside_them() {
+        let raw = r#"{"keyslots":{"0":{"type":"luks2"},"2":{"type":"luks2"}},
+                      "tokens":{"0":{"type":"systemd-tpm2"}}}"#;
+        let slots = slots_from(raw).expect("a luksDump document");
+        assert_eq!(slots.keys, vec![0, 2]);
+        assert_eq!(slots.tokens, vec!["systemd-tpm2".to_string()]);
+        assert!(slots.has_tpm2());
+        let said = copy::slots_said(&slots.keys, &slots.tokens);
+        assert!(said.contains("slot 2"), "{said}");
+        assert!(said.contains("systemd-tpm2"), "{said}");
+    }
+
+    #[test]
+    fn a_boot_argument_lands_on_the_options_line_once() {
+        let raw = "title Fedora\nlinux /vmlinuz\noptions root=UUID=aa quiet\n";
+        let (text, changed) = add_boot_arg(raw, "rd.luks.name=bb=root");
+        assert!(changed);
+        assert!(text.contains("options root=UUID=aa quiet rd.luks.name=bb=root"));
+        assert!(text.ends_with('\n'));
+        let (again, changed) = add_boot_arg(&text, "rd.luks.name=bb=root");
+        assert!(!changed);
+        assert_eq!(again, text);
+        assert!(boot_arg_named(&text, "rd.luks.name=bb=root"));
+        assert!(!boot_arg_named(raw, "rd.luks.name=bb=root"));
+        assert!(!boot_arg_named("title nothing\n", "rd.luks.name=bb=root"));
+    }
+
+    #[test]
+    fn the_crypttab_keeps_other_entries_and_replaces_its_own() {
+        let root = scratch("crypttab");
+        let etc = root.join("etc");
+        std::fs::create_dir_all(&etc).expect("an etc");
+        std::fs::write(
+            etc.join("crypttab"),
+            "var UUID=old none luks\nhome UUID=bb none luks\n",
+        )
+        .expect("a crypttab");
+        let lines = vec![(
+            "var".to_string(),
+            "var UUID=new /etc/cryptsetup-keys.d/var.key luks".to_string(),
+        )];
+        merge_crypttab(&etc, &lines).expect("a merged crypttab");
+        let said = std::fs::read_to_string(etc.join("crypttab")).expect("a crypttab");
+        assert!(said.contains("home UUID=bb"), "{said}");
+        assert!(said.contains("UUID=new"), "{said}");
+        assert!(!said.contains("UUID=old"), "{said}");
+        let other = scratch("crypttab-empty");
+        let empty = other.join("etc");
+        std::fs::create_dir_all(&empty).expect("an etc");
+        merge_crypttab(&empty, &[]).expect("nothing to merge");
+        assert!(!empty.join("crypttab").exists());
+    }
+
+    #[test]
+    fn the_deployment_etc_is_the_single_one_installed() {
+        let root = scratch("deployments");
+        let ostree = root.join("ostree/deploy/default/deploy/deadbeef.0/etc");
+        std::fs::create_dir_all(&ostree).expect("an ostree deployment");
+        assert_eq!(deployment_etc(&root).expect("one"), ostree);
+        let composefs = root.join("state/deploy/deadbeef/etc");
+        std::fs::create_dir_all(&composefs).expect("a composefs deployment");
+        assert!(deployment_etc(&root).is_err());
+        std::fs::remove_dir_all(&ostree).expect("one deployment");
+        assert_eq!(deployment_etc(&root).expect("one"), composefs);
+    }
+
+    #[test]
+    fn the_root_device_is_where_the_layout_put_it() {
+        let opened = CustomLayout {
+            disk: "/dev/vda".to_string(),
+            mounts: Vec::new(),
+            opens: vec![LuksOpen {
+                partition: "/dev/vda3".to_string(),
+                target: "/".to_string(),
+                key: Key::Passphrase("opensesame".to_string()),
+            }],
+        };
+        assert_eq!(root_device(&opened).as_deref(), Some("/dev/mapper/buildc-1"));
+        let mounted = CustomLayout {
+            disk: "/dev/vda".to_string(),
+            mounts: vec![CustomMount {
+                partition: "/dev/vda2".to_string(),
+                target: "/".to_string(),
+                fstype: "ext4".to_string(),
+            }],
+            opens: Vec::new(),
+        };
+        assert_eq!(root_device(&mounted).as_deref(), Some("/dev/vda2"));
+    }
+
+    #[test]
+    fn the_ladder_says_how_each_container_opens_at_boot() {
+        let data = |key: Key| LuksOpen {
+            partition: "/dev/vda3".to_string(),
+            target: "/var".to_string(),
+            key,
+        };
+        let root = LuksOpen {
+            partition: "/dev/vda3".to_string(),
+            target: "/".to_string(),
+            key: Key::Data(b"opensesame".to_vec()),
+        };
+        assert_eq!(at_boot(&root, Opened::Keep), copy::OPENED_ROOT_KEYFILE);
+        assert_eq!(at_boot(&root, Opened::Tpm2), copy::BOOT_TPM2);
+        let root_passphrase = LuksOpen {
+            partition: "/dev/vda3".to_string(),
+            target: "/".to_string(),
+            key: Key::Passphrase("opensesame".to_string()),
+        };
+        assert_eq!(
+            at_boot(&root_passphrase, Opened::Keep),
+            copy::BOOT_PASSPHRASE
+        );
+        assert_eq!(
+            at_boot(&data(Key::Data(b"key".to_vec())), Opened::Keep),
+            copy::BOOT_KEYFILE
+        );
+        assert_eq!(
+            at_boot(&data(Key::Passphrase("x".into())), Opened::Keep),
+            copy::BOOT_PASSPHRASE
+        );
+        assert_eq!(
+            at_boot(&data(Key::Passphrase("x".into())), Opened::AddKey),
+            copy::BOOT_ADDED_KEY
+        );
+        assert_eq!(
+            at_boot(&data(Key::Passphrase("x".into())), Opened::Tpm2),
+            copy::BOOT_TPM2
+        );
+    }
+
+    #[test]
+    fn a_partition_number_is_the_trailing_digits() {
+        assert_eq!(partition_number("/dev/vda3").expect("a number"), "3");
+        assert_eq!(partition_number("/dev/nvme0n1p12").expect("a number"), "12");
+        assert_eq!(partition_number("/dev/mmcblk0p2").expect("a number"), "2");
+        assert!(partition_number("/dev/vda").is_err());
+    }
+
+    #[test]
+    fn the_opened_rows_answer_reads_back() {
+        assert_eq!(Opened::of(copy::OPENED_TPM2), Opened::Tpm2);
+        assert_eq!(Opened::of(copy::OPENED_ADD_KEY), Opened::AddKey);
+        assert_eq!(Opened::of(copy::OPENED_KEEP), Opened::Keep);
+        assert_eq!(Opened::of("anything else"), Opened::Keep);
     }
 }

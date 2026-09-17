@@ -5,8 +5,8 @@ ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44
 
 FROM ${GO_IMAGE} AS tools
 ARG FISHERMAN_ORG=buildc-org
-ARG FISHERMAN_COMMIT=738e437ff9c5ea4bb2bfc2955a2d38980d63ea3e
-ARG FISHERMAN_SHA256=aa01f941784d1b06faef33e87b786216e88198a42c3fd213b62d7a7e02c142d6
+ARG FISHERMAN_COMMIT=1caaf6023b4125c35bb3c4833ec2e5c4bb7cf14d
+ARG FISHERMAN_SHA256=ddb70a4b63925d9f0a79f9aef0eb9ebd894261e8402e963a633479b985593f1d
 ARG TACKLEBOX_ORG=buildc-org
 ARG TACKLEBOX_COMMIT=da820e5e9ac34c7a851382a9a1c7a4c6bd0c886f
 ARG TACKLEBOX_SHA256=c873e6a102640b2688de126238e2faae3abfd1c40370bf46df2906965d9c0439
@@ -29,6 +29,16 @@ RUN set -eux; \
 FROM ${LIVE_BASE}
 
 RUN set -eux; \
+    for split in /kernel/*; do \
+        [ -d "$split" ] || continue; \
+        kver="${split##*/}"; \
+        for file in vmlinuz initramfs.img; do \
+            [ ! -f "${split}/${file}" ] || [ -e "/usr/lib/modules/${kver}/${file}" ] \
+                || ln -s "/kernel/${kver}/${file}" "/usr/lib/modules/${kver}/${file}"; \
+        done; \
+    done
+
+RUN set -eux; \
     if command -v apt-get > /dev/null 2>&1; then \
         apt-get update -y; \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -40,6 +50,12 @@ RUN set -eux; \
         dnf install -y --setopt=install_weak_deps=False \
             podman fuse-overlayfs cryptsetup skopeo openssl \
             util-linux dosfstools e2fsprogs xfsprogs; \
+        if [ -s /usr/share/buildc/boot-chain ] && [ ! -d /usr/lib/efi/grub2 ]; then \
+            if ! dnf reinstall -y --setopt=install_weak_deps=False grub2-efi-x64; then \
+                dnf upgrade -y --setopt=install_weak_deps=False grub2-efi-x64; \
+            fi; \
+            test -d /usr/lib/efi/grub2; \
+        fi; \
         dnf install -y --setopt=install_weak_deps=False kmscon || true; \
         dnf clean all; \
     fi; \

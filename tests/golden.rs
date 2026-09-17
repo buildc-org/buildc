@@ -1985,6 +1985,7 @@ fn a_second_installer_is_refused_while_the_first_holds_the_screen() {
   "genericImage": true,
   "bootloader": "grub2",
   "filesystem": "ext4",
+  "luksInitramfs": true,
   "hostname": "deb2",
   "user": { "groups": ["sudo"] }
 }
@@ -2059,6 +2060,7 @@ fn install_screens() {
   "genericImage": true,
   "bootloader": "grub2",
   "filesystem": "ext4",
+  "luksInitramfs": true,
   "hostname": "deb2",
   "user": { "groups": ["sudo"] }
 }
@@ -2161,6 +2163,14 @@ esac
     assert!(transcript.contains(buildc::copy::OPENED_KEEP), "{transcript}");
     assert!(
         transcript.contains(buildc::copy::BOOT_PASSPHRASE),
+        "{transcript}"
+    );
+    assert!(
+        transcript.contains(buildc::copy::OPENED_ADD_KEY),
+        "{transcript}"
+    );
+    assert!(
+        transcript.contains("the root is not encrypted"),
         "{transcript}"
     );
 }

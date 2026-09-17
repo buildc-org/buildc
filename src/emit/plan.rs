@@ -508,6 +508,20 @@ pub(crate) fn contract_files(
     out
 }
 
+pub(crate) fn provides(image: &Image, entries: &[&Entry], name: &str) -> bool {
+    image
+        .base
+        .iter()
+        .flat_map(|base| &base.provides)
+        .chain(
+            entries
+                .iter()
+                .filter_map(|entry| entry.module.as_ref())
+                .flat_map(|module| &module.provides),
+        )
+        .any(|decl| decl.name == name)
+}
+
 fn witnesses(image: &Image, rows: &[Capability]) -> Json {
     let mut names: Vec<&str> = rows
         .iter()

@@ -408,6 +408,33 @@ fn modules_dir() -> Option<String> {
     }
 }
 
+fn initramfs() -> Option<PathBuf> {
+    let version = kernel_version();
+    version
+        .iter()
+        .flat_map(|version| {
+            [
+                PathBuf::from(format!("/usr/lib/modules/{version}/initramfs.img")),
+                PathBuf::from(format!("/kernel/{version}/initramfs.img")),
+            ]
+        })
+        .find(|path| path.is_file())
+}
+
+fn opens_luks(listing: &str) -> bool {
+    const BINARIES: [&str; 4] = [
+        "usr/bin/systemd-cryptsetup",
+        "usr/lib/systemd/systemd-cryptsetup",
+        "usr/bin/cryptsetup",
+        "usr/sbin/cryptsetup",
+    ];
+    // A symlink can dangle, so only a regular archive entry proves the binary is present.
+    listing
+        .lines()
+        .filter(|line| !line.contains(" -> "))
+        .any(|line| BINARIES.iter().any(|path| line.ends_with(path)))
+}
+
 pub(crate) const MODULE_PRESET: &str = "45-module-";
 
 struct Report {
@@ -430,6 +457,24 @@ fn output(program: &str, args: &[&str]) -> Result<(bool, String), String> {
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
     Ok((out.status.success(), text))
+}
+
+fn section_bytes(uki: &str, name: &str) -> Option<Vec<u8>> {
+    let at = std::env::temp_dir().join(format!("buildc-{name}"));
+    let out = Command::new("objcopy")
+        .args(["-O", "binary", "--only-section", name])
+        .arg(uki)
+        .arg(&at)
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        let _ = fs::remove_file(&at);
+        return None;
+    }
+    let bytes = fs::read(&at).ok();
+    let _ = fs::remove_file(&at);
+    bytes
 }
 
 fn signed_by(path: &Path, cert: &str, report: &mut Report) {
@@ -461,11 +506,36 @@ fn validate_boot_chain(report: &mut Report) {
     if Path::new("/usr/lib/efi/grub2").exists() {
         report.fail("/usr/lib/efi/grub2: GRUB payload remains in a UKI image");
     }
+    let pcr_key = fs::read("/usr/share/buildc/pcr-policy.pem")
+        .ok()
+        .filter(|bytes| !bytes.is_empty());
     for uki in &ukis {
         let name = uki.display().to_string();
         match output("objdump", &["--section-headers", &name]) {
-            Ok((true, text)) if text.split_whitespace().any(|field| field == ".initrd") => {
-                println!("    {name} carries .initrd")
+            Ok((true, text)) => {
+                if text.split_whitespace().any(|field| field == ".initrd") {
+                    println!("    {name} carries .initrd");
+                } else {
+                    report.fail(format!("{name}: UKI carries no .initrd section"));
+                }
+                if let Some(expected) = &pcr_key {
+                    for section in [".pcrpkey", ".pcrsig"] {
+                        if !text.split_whitespace().any(|field| field == section) {
+                            report.fail(format!(
+                                "{name}: carries no {section}, and this image declares a PCR policy"
+                            ));
+                        }
+                    }
+                    match section_bytes(&name, ".pcrpkey") {
+                        Some(bytes) if &bytes == expected => {
+                            println!("    {name} embeds the declared PCR policy key")
+                        }
+                        Some(_) => report.fail(format!(
+                            "{name}: .pcrpkey is not /usr/share/buildc/pcr-policy.pem"
+                        )),
+                        None => report.fail(format!("{name}: .pcrpkey could not be read")),
+                    }
+                }
             }
             Ok((_, _)) => report.fail(format!("{name}: UKI carries no .initrd section")),
             Err(message) => report.fail(message),
@@ -530,19 +600,28 @@ pub fn validate_image() -> Result<(), String> {
     }
 
     println!("==> initramfs");
+    let initramfs = initramfs();
     if Path::new("/usr/share/buildc/composefs-sealer-version").is_file() {
         println!("    embedded in the UKI; checked below");
     } else {
-        match kernel_version() {
-            Some(version) => {
-                let initramfs = format!("/usr/lib/modules/{version}/initramfs.img");
-                if Path::new(&initramfs).is_file() {
-                    println!("    {initramfs} present");
-                } else {
-                    report.fail(format!("initramfs missing at {initramfs}"));
+        match &initramfs {
+            Some(path) => println!("    {} present", path.display()),
+            None => report.fail("cannot find the kernel's initramfs"),
+        }
+    }
+    if env("LUKS_INITRAMFS").as_deref() == Some("true") {
+        match initramfs.as_ref() {
+            Some(path) => match output("lsinitrd", &[&path.display().to_string()]) {
+                Ok((true, listing)) if opens_luks(&listing) => {
+                    println!("    {} can open LUKS", path.display())
                 }
-            }
-            None => report.fail("cannot determine the kernel version"),
+                Ok((_, _)) => report.fail(format!(
+                    "{}: the image declares luks-initramfs, but the archive carries no cryptsetup binary",
+                    path.display()
+                )),
+                Err(message) => report.fail(message),
+            },
+            None => report.fail("luks-initramfs is declared, but there is no initramfs to inspect"),
         }
     }
 
@@ -926,6 +1005,23 @@ mod tests {
         );
         assert_eq!(found("/nonexistent|/nonexistent/too"), None);
         fs::remove_file(here).unwrap();
+    }
+
+    #[test]
+    fn luks_needs_a_binary_in_the_initramfs() {
+        assert!(opens_luks(
+            "-rwxr-xr-x root root usr/bin/systemd-cryptsetup\n"
+        ));
+        assert!(opens_luks("-rwxr-xr-x root root usr/sbin/cryptsetup\n"));
+        assert!(!opens_luks(
+            "dracut module: crypt\nusr/lib/dm-crypt.ko.xz\n"
+        ));
+        assert!(!opens_luks(
+            "lrwxrwxrwx root root usr/lib/systemd/systemd-cryptsetup -> ../../../bin/missing\n"
+        ));
+        assert!(!opens_luks(
+            "lrwxrwxrwx root root usr/bin/cryptsetup -> /usr/bin/systemd-cryptsetup\n"
+        ));
     }
 
     #[test]

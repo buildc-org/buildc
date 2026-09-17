@@ -108,6 +108,7 @@ pub struct Payload {
     pub filesystem: String,
     pub bootloader: String,
     pub boot: String,
+    pub luks_initramfs: bool,
 }
 
 #[derive(Debug)]
@@ -135,6 +136,7 @@ pub fn classify(root: &Path) -> Result<Found, String> {
             filesystem: told("filesystem"),
             bootloader: told("bootloader"),
             boot: told("boot"),
+            luks_initramfs: matches!(json::field(&doc, "luksInitramfs"), Some(Json::Bool(true))),
             recipe,
         }));
     }
@@ -337,6 +339,10 @@ impl CustomLayout {
             .map(|(at, open)| (format!("buildc-{}", at + 1), open))
             .collect()
     }
+
+    fn opens_the_root(&self) -> bool {
+        self.opens.iter().any(|open| open.target == "/")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -472,13 +478,18 @@ impl Answers {
             return Ok(Some(seeded));
         }
         let mut layout = seeded.layout.clone();
-        let mut fields = seeded.fields(&payload.filesystem, &payload.bootloader, &payload.boot);
+        let mut fields = seeded.fields(
+            &payload.filesystem,
+            &payload.bootloader,
+            &payload.boot,
+            payload.luks_initramfs,
+        );
         loop {
             let actions = [copy::INSTALL, copy::SHUT_DOWN];
             let filled = crate::ui::form(
                 &mut fields,
                 &actions,
-                |fields| short_of(fields, layout.as_ref()),
+                |fields| short_of(fields, layout.as_ref(), payload.luks_initramfs),
                 |fields| asked(fields, layout.is_some()),
                 copy::INSTALL_KEYS,
             );
@@ -525,6 +536,7 @@ impl Answers {
                                     &disk,
                                     &payload.filesystem,
                                     &payload.bootloader,
+                                    payload.luks_initramfs,
                                     &partitions,
                                     &mut layout,
                                     &found,
@@ -540,6 +552,7 @@ impl Answers {
                                                         &payload.filesystem,
                                                         &payload.bootloader,
                                                         &payload.boot,
+                                                        payload.luks_initramfs,
                                                     );
                                             continue;
                                         }
@@ -560,8 +573,12 @@ impl Answers {
                         }
                     };
                     fields[ROW_LAYOUT] = crate::ui::Field::action(copy::ROW_LAYOUT, &summary);
-                    fields[ROW_ENCRYPTION] =
-                        encryption_row(layout.as_ref(), &fields[ROW_ENCRYPTION], tpm().exists());
+                    fields[ROW_ENCRYPTION] = encryption_row(
+                        layout.as_ref(),
+                        &fields[ROW_ENCRYPTION],
+                        tpm().exists(),
+                        payload.luks_initramfs,
+                    );
                 }
                 Ok(crate::ui::Filled::Opened(_)) => {}
                 Ok(crate::ui::Filled::Left) => match leave(prompt)? {
@@ -572,6 +589,7 @@ impl Answers {
                             &payload.filesystem,
                             &payload.bootloader,
                             &payload.boot,
+                            payload.luks_initramfs,
                         )
                     }
                     Leave::Back => {}
@@ -584,6 +602,7 @@ impl Answers {
                             &payload.filesystem,
                             &payload.bootloader,
                             &payload.boot,
+                            payload.luks_initramfs,
                         )
                     }
                     Leave::Back => {}
@@ -610,7 +629,12 @@ impl Answers {
                     "--password",
                     None,
                 )?,
-                encryption: ask_encryption(given.encryption, given.passphrase, prompt)?,
+                encryption: ask_encryption(
+                    given.encryption,
+                    given.passphrase,
+                    prompt,
+                    payload.luks_initramfs,
+                )?,
                 data: Data::default(),
                 layout: None,
                 opened: Opened::Keep,
@@ -637,7 +661,13 @@ impl Answers {
         })
     }
 
-    fn fields(&self, filesystem: &str, bootloader: &str, boot: &str) -> Vec<crate::ui::Field> {
+    fn fields(
+        &self,
+        filesystem: &str,
+        bootloader: &str,
+        boot: &str,
+        luks_initramfs: bool,
+    ) -> Vec<crate::ui::Field> {
         use crate::ui::Field;
         let found = disks(&sys_block(), &in_use_now());
         let at = found.iter().position(|(disk, _)| *disk == self.disk);
@@ -667,7 +697,7 @@ impl Answers {
             Field::secret(copy::ROW_CONFIRM, &self.password),
             Field::pick(
                 copy::ROW_ENCRYPTION,
-                kinds(tpm().exists()),
+                kinds(tpm().exists(), luks_initramfs),
                 KINDS
                     .iter()
                     .position(|(name, _, _)| *name == self.encryption.kind),
@@ -720,7 +750,10 @@ impl Answers {
             ),
         ];
         if self.layout.is_none() {
-            rows.push((copy::ROW_DATA.to_string(), data_said(&self.data)));
+            rows.push((
+                copy::ROW_DATA.to_string(),
+                data_said(&self.data, self.encryption.kind != NONE),
+            ));
         }
         match &self.layout {
             Some(layout) => {
@@ -746,6 +779,7 @@ impl Answers {
                 &payload.filesystem,
                 &self.data.size,
                 &payload.boot,
+                self.encryption.kind != NONE,
             )),
         }
         rows
@@ -773,7 +807,11 @@ fn asked(fields: &[crate::ui::Field], custom: bool) -> Vec<usize> {
         .collect()
 }
 
-fn short_of(fields: &[crate::ui::Field], layout: Option<&CustomLayout>) -> Option<String> {
+fn short_of(
+    fields: &[crate::ui::Field],
+    layout: Option<&CustomLayout>,
+    luks_initramfs: bool,
+) -> Option<String> {
     let at = |row: usize| fields[row].value();
     if !at(ROW_PASSWORD).is_empty() && at(ROW_PASSWORD) != at(ROW_CONFIRM) {
         return Some(copy::NO_MATCH_ROW.to_string());
@@ -781,6 +819,9 @@ fn short_of(fields: &[crate::ui::Field], layout: Option<&CustomLayout>) -> Optio
     if let Some(layout) = layout {
         if layout.disk != at(ROW_DISK) {
             return Some(copy::CUSTOM_OTHER_DISK.to_string());
+        }
+        if layout.opens_the_root() && !luks_initramfs {
+            return Some(copy::NO_LUKS_INITRAMFS.to_string());
         }
         if written(&at(ROW_ENCRYPTION)) != NONE {
             return Some(copy::CUSTOM_ENCRYPTION.to_string());
@@ -792,12 +833,18 @@ fn short_of(fields: &[crate::ui::Field], layout: Option<&CustomLayout>) -> Optio
         {
             return Some(copy::OPENED_ROOT_KEYFILE.to_string());
         }
+        if !layout.opens_the_root() && Opened::of(&at(ROW_ENCRYPTION)) != Opened::Keep {
+            return Some(copy::OPENED_KEYFILE_PLAIN.to_string());
+        }
+    }
+    if written(&at(ROW_ENCRYPTION)) != NONE && !luks_initramfs {
+        return Some(copy::NO_LUKS_INITRAMFS.to_string());
     }
     let data = match layout {
         Some(_) => Data::default(),
         None => chose(&at(ROW_DATA), &at(ROW_SIZE)),
     };
-    if written(&at(ROW_ENCRYPTION)) != NONE && data.wanted() {
+    if written(&at(ROW_ENCRYPTION)) != NONE && data.wanted() && data.keep {
         return Some(copy::DATA_UNENCRYPTED.to_string());
     }
     if !data.disk.is_empty() && data.disk == at(ROW_DISK) {
@@ -828,6 +875,7 @@ fn edit_layout(
     disk: &str,
     filesystem: &str,
     bootloader: &str,
+    luks_initramfs: bool,
     partitions: &[Partition],
     held: &mut Option<CustomLayout>,
     found: &Discovered,
@@ -836,7 +884,7 @@ fn edit_layout(
         let mut fields: Vec<crate::ui::Field> = partitions
             .iter()
             .map(|partition| {
-                let options = mount_choices(partition, filesystem, bootloader);
+                let options = mount_choices(partition, filesystem, bootloader, luks_initramfs);
                 let previous = held.as_ref().and_then(|layout| layout.answer(partition));
                 let at = previous
                     .and_then(|previous| {
@@ -917,7 +965,12 @@ fn is_esp(partition: &Partition) -> bool {
             || partition.parttype.eq_ignore_ascii_case("0xef"))
 }
 
-fn mount_choices(partition: &Partition, filesystem: &str, bootloader: &str) -> Vec<Choice> {
+fn mount_choices(
+    partition: &Partition,
+    filesystem: &str,
+    bootloader: &str,
+    luks_initramfs: bool,
+) -> Vec<Choice> {
     let mut choices = vec![Choice::new(copy::LEAVE_PARTITION, "")];
     for (target, format) in [
         ("/", filesystem),
@@ -928,6 +981,9 @@ fn mount_choices(partition: &Partition, filesystem: &str, bootloader: &str) -> V
         if partition.fstype == "crypto_LUKS" && target != "/boot/efi" {
             let choice = Choice::new(copy::open_at(target), copy::open_cost(target));
             choices.push(match target {
+                "/" if !luks_initramfs => {
+                    Choice::new(copy::open_at(target), copy::NO_LUKS_INITRAMFS).unavailable()
+                }
                 "/boot" if bootloader == "systemd" => {
                     Choice::new(copy::open_at(target), copy::custom_keep_boot(bootloader))
                         .unavailable()
@@ -1015,23 +1071,31 @@ fn layout_from(
     (mounts, openings)
 }
 
+fn usable_key(key: &Key, encrypted_root: bool) -> bool {
+    encrypted_root || matches!(key, Key::Passphrase(_))
+}
+
 fn opens_from(
     openings: &[Opening],
     held: Option<&CustomLayout>,
     found: &Discovered,
 ) -> Result<Vec<LuksOpen>, String> {
+    let encrypted_root = openings.iter().any(|opening| opening.target == "/");
     let mut opens = Vec::new();
     for opening in openings {
+        let usable = |key: &Key| opening.target == "/" || usable_key(key, encrypted_root);
         let carried = held
             .and_then(|layout| {
                 layout.opens.iter().find(|open| {
                     open.partition == opening.partition && open.target == opening.target
                 })
             })
-            .map(|open| open.key.clone());
-        let key = match carried.or_else(|| found.key(&opening.partition).cloned()) {
+            .map(|open| open.key.clone())
+            .filter(usable);
+        let found_here = found.key(&opening.partition).cloned().filter(usable);
+        let key = match carried.or(found_here) {
             Some(key) => key,
-            None => ask_key(opening, found.why(&opening.partition))?,
+            None => ask_key(opening, found.why(&opening.partition), !encrypted_root)?,
         };
         opens.push(LuksOpen {
             partition: opening.partition.clone(),
@@ -1042,11 +1106,12 @@ fn opens_from(
     Ok(opens)
 }
 
-fn ask_key(opening: &Opening, why: Option<&str>) -> Result<Key, String> {
+fn ask_key(opening: &Opening, why: Option<&str>, plain_root: bool) -> Result<Key, String> {
+    let refused = plain_root.then_some(copy::OPENED_KEYFILE_PLAIN);
     let mut fields = vec![
         crate::ui::Field::pick(
             &copy::open_question(&opening.partition, &opening.target),
-            key_methods(),
+            key_methods(refused),
             Some(0),
         ),
         crate::ui::Field::secret(copy::ROW_PASSPHRASE, ""),
@@ -1080,10 +1145,13 @@ fn ask_key(opening: &Opening, why: Option<&str>) -> Result<Key, String> {
     }
 }
 
-fn key_methods() -> Vec<Choice> {
+fn key_methods(refused: Option<&str>) -> Vec<Choice> {
     vec![
         Choice::new(copy::KEY_PASSPHRASE, copy::KEY_PASSPHRASE_COST),
-        Choice::new(copy::KEY_FILE, copy::KEY_FILE_COST),
+        match refused {
+            Some(why) => Choice::new(copy::KEY_FILE, why).unavailable(),
+            None => Choice::new(copy::KEY_FILE, copy::KEY_FILE_COST),
+        },
     ]
 }
 
@@ -1184,6 +1252,7 @@ enum KeySource {
     Inside(PathBuf),
     Default,
     OnDevice { device: String, path: PathBuf },
+    Waited,
     Unreadable,
 }
 
@@ -1231,15 +1300,20 @@ fn crypttabs(raw: &str) -> Vec<Crypttab> {
         let keyscript = options
             .split(',')
             .find_map(|option| option.strip_prefix("keyscript="));
+        let timed = options
+            .split(',')
+            .any(|option| option.starts_with("keyfile-timeout="));
         let key = match keyscript {
             Some(script) if script.rsplit('/').next() == Some("passdev") => {
                 on_device(field, true).unwrap_or(KeySource::Unreadable)
             }
             Some(_) => KeySource::Unreadable,
             None if field == "none" || field == "-" => KeySource::Default,
-            None => {
-                on_device(field, false).unwrap_or_else(|| KeySource::Inside(PathBuf::from(field)))
-            }
+            None => match on_device(field, false) {
+                Some(device) => device,
+                None if timed => KeySource::Waited,
+                None => KeySource::Inside(PathBuf::from(field)),
+            },
         };
         found.push(Crypttab {
             name: name.to_string(),
@@ -1321,15 +1395,6 @@ fn mount_ro(device: &Path, fstype: &str, mounts: &mut Mounts) -> Result<PathBuf,
     }
     mounts.0.push(at.clone());
     Ok(at)
-}
-
-fn fstype_of(device: &Path) -> String {
-    Command::new("blkid")
-        .args(["-s", "TYPE", "-o", "value"])
-        .arg(device)
-        .output()
-        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        .unwrap_or_default()
 }
 
 fn mountable_rows(raw: &str) -> Result<Vec<(String, String)>, String> {
@@ -1466,10 +1531,14 @@ fn key_bytes(system: &OldSystem, entry: &Crypttab, mounts: &mut Mounts) -> Resul
         ),
         KeySource::OnDevice { device, path } => {
             let resolved = resolve_device(device)?;
+            if removable(&resolved) {
+                return Err(copy::old_root_key_removable(&entry.name));
+            }
             let fstype = fstype_of(&resolved);
             let at = mount_ro(&resolved, &fstype, mounts)?;
             key_file(&entry.name, &at, path)
         }
+        KeySource::Waited => Err(copy::old_root_key_waited(&entry.name)),
         KeySource::Unreadable => Err(copy::old_root_key_unreadable(&entry.name)),
     }
 }
@@ -1493,6 +1562,39 @@ fn resolve_device(said: &str) -> Result<PathBuf, String> {
         .next()
         .map(PathBuf::from)
         .ok_or_else(|| format!("{said} is not present"))
+}
+
+fn fstype_of(device: &Path) -> String {
+    Command::new("blkid")
+        .args(["-s", "TYPE", "-o", "value"])
+        .arg(device)
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+const SYS_CLASS_BLOCK: &str = "/sys/class/block";
+
+fn removable_at(class: &Path, device: &Path) -> bool {
+    let device = std::fs::canonicalize(device).unwrap_or_else(|_| device.to_path_buf());
+    let Some(name) = device.file_name() else {
+        return false;
+    };
+    let Ok(at) = std::fs::canonicalize(class.join(name)) else {
+        return false;
+    };
+    let disk = match at.join("partition").exists() {
+        true => match at.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => at,
+        },
+        false => at,
+    };
+    std::fs::read_to_string(disk.join("removable")).is_ok_and(|flag| flag.trim() == "1")
+}
+
+fn removable(device: &Path) -> bool {
+    removable_at(Path::new(SYS_CLASS_BLOCK), device)
 }
 
 fn test_key(container: &str, key: &[u8]) -> Result<bool, String> {
@@ -1719,15 +1821,18 @@ fn shown(kind: &str) -> &'static str {
         .map_or(copy::ENC_NONE, |(_, label, _)| *label)
 }
 
-fn kinds(tpm: bool) -> Vec<Choice> {
+fn kinds(tpm: bool, luks_initramfs: bool) -> Vec<Choice> {
     KINDS
         .iter()
-        .map(
-            |(name, shown, detail)| match tpm || !name.starts_with("tpm2") {
-                true => Choice::new(*shown, *detail),
-                false => Choice::new(*shown, copy::NO_TPM).unavailable(),
-            },
-        )
+        .map(|(name, shown, detail)| match () {
+            _ if *name != NONE && !luks_initramfs => {
+                Choice::new(*shown, copy::NO_LUKS_INITRAMFS).unavailable()
+            }
+            _ if !tpm && name.starts_with("tpm2") => {
+                Choice::new(*shown, copy::NO_TPM).unavailable()
+            }
+            _ => Choice::new(*shown, *detail),
+        })
         .collect()
 }
 
@@ -1735,11 +1840,12 @@ fn encryption_row(
     layout: Option<&CustomLayout>,
     held: &crate::ui::Field,
     tpm: bool,
+    luks_initramfs: bool,
 ) -> crate::ui::Field {
     match layout.filter(|layout| !layout.opens.is_empty()) {
         Some(layout) => {
             let chosen = Opened::of(&held.value());
-            let rows = opened_rows(layout, tpm);
+            let rows = opened_rows(layout, tpm, luks_initramfs);
             let at = rows
                 .iter()
                 .position(|row| row.label == chosen.label())
@@ -1750,14 +1856,14 @@ fn encryption_row(
             let kind = written(&held.value());
             crate::ui::Field::pick(
                 copy::ROW_ENCRYPTION,
-                kinds(tpm),
+                kinds(tpm, luks_initramfs),
                 KINDS.iter().position(|(name, _, _)| *name == kind),
             )
         }
     }
 }
 
-fn opened_rows(layout: &CustomLayout, tpm: bool) -> Vec<Choice> {
+fn opened_rows(layout: &CustomLayout, tpm: bool, luks_initramfs: bool) -> Vec<Choice> {
     let read: Vec<Result<Slots, String>> = layout
         .opens
         .iter()
@@ -1786,8 +1892,12 @@ fn opened_rows(layout: &CustomLayout, tpm: bool) -> Vec<Choice> {
     let enrolled = read
         .iter()
         .any(|slots| slots.as_ref().is_ok_and(Slots::has_tpm2));
+    let encrypted_root = layout.opens_the_root();
     rows.push(match (tpm, unread, enrolled) {
         (false, _, _) => Choice::new(copy::OPENED_TPM2, copy::NO_TPM).unavailable(),
+        _ if !encrypted_root => {
+            Choice::new(copy::OPENED_TPM2, copy::OPENED_KEYFILE_PLAIN).unavailable()
+        }
         (_, Some(why), _) => Choice::new(copy::OPENED_TPM2, why.clone()).unavailable(),
         (_, _, true) => Choice::new(copy::OPENED_TPM2, copy::OPENED_TPM2_HAS).unavailable(),
         _ if keyfile_root => {
@@ -1809,7 +1919,15 @@ fn opened_rows(layout: &CustomLayout, tpm: bool) -> Vec<Choice> {
             ),
             Err(_) => copy::OPENED_ADD_KEY_COST.to_string(),
         };
-        rows.push(Choice::new(copy::OPENED_ADD_KEY, detail));
+        rows.push(match encrypted_root {
+            true => Choice::new(copy::OPENED_ADD_KEY, detail),
+            false => Choice::new(copy::OPENED_ADD_KEY, copy::OPENED_KEYFILE_PLAIN).unavailable(),
+        });
+    }
+    if layout.opens_the_root() && !luks_initramfs {
+        for row in &mut rows {
+            *row = Choice::new(row.label.clone(), copy::NO_LUKS_INITRAMFS).unavailable();
+        }
     }
     rows
 }
@@ -1854,15 +1972,25 @@ fn slots_from(raw: &str) -> Result<Slots, String> {
 
 fn data_rows(disk: &str, found: &[(String, String)], encrypted: bool) -> Vec<Choice> {
     let mut rows = vec![Choice::new(copy::NONE, "")];
-    let mut offered = vec![Choice::new(copy::DATA_HERE, "")];
+    let mut offered = vec![(Choice::new(copy::DATA_HERE, ""), false)];
     for (other, detail) in found.iter().filter(|(other, _)| other != disk) {
-        offered.push(Choice::new(copy::on_disk(other, copy::DATA_ERASED), detail));
-        offered.push(Choice::new(copy::on_disk(other, copy::DATA_KEPT), detail));
+        offered.push((
+            Choice::new(copy::on_disk(other, copy::DATA_ERASED), detail),
+            false,
+        ));
+        offered.push((
+            Choice::new(copy::on_disk(other, copy::DATA_KEPT), detail),
+            true,
+        ));
     }
-    rows.extend(offered.into_iter().map(|row| match encrypted {
-        false => row,
-        true => Choice::new(row.label, copy::DATA_UNENCRYPTED).unavailable(),
-    }));
+    rows.extend(
+        offered
+            .into_iter()
+            .map(|(row, kept)| match encrypted && kept {
+                false => row,
+                true => Choice::new(row.label, copy::DATA_UNENCRYPTED).unavailable(),
+            }),
+    );
     rows
 }
 
@@ -1885,8 +2013,8 @@ fn chose(shown: &str, size: &str) -> Data {
     Data::default()
 }
 
-fn data_said(data: &Data) -> String {
-    match (data.disk.is_empty(), data.size.is_empty()) {
+fn data_said(data: &Data, encrypted: bool) -> String {
+    let said = match (data.disk.is_empty(), data.size.is_empty()) {
         (true, true) => copy::NONE.to_string(),
         (true, false) => copy::DATA_HERE.to_string(),
         _ => copy::on_disk(
@@ -1896,6 +2024,10 @@ fn data_said(data: &Data) -> String {
                 false => copy::DATA_ERASED,
             },
         ),
+    };
+    match encrypted && data.wanted() {
+        true => format!("{said}, {}", copy::DATA_ENCRYPTED),
+        false => said,
     }
 }
 
@@ -1903,18 +2035,22 @@ fn ask_encryption(
     given: Option<String>,
     passphrase: Option<String>,
     prompt: &Prompt,
+    luks_initramfs: bool,
 ) -> Result<Encryption, String> {
     let kind = match given {
         Some(kind) => named(kind)?,
         None if !prompt.asks() => NONE.to_string(),
         None => {
-            let options = kinds(tpm().exists());
+            let options = kinds(tpm().exists(), luks_initramfs);
             match prompt.choose_current(copy::INSTALL_ENCRYPTION, &options, 0)? {
                 Some(at) => KINDS[at].0.to_string(),
                 None => NONE.to_string(),
             }
         }
     };
+    if kind != NONE && !luks_initramfs {
+        return Err(copy::NO_LUKS_INITRAMFS.to_string());
+    }
     Ok(Encryption {
         passphrase: match Encryption::wants_passphrase(&kind) {
             true => prompt.text(passphrase, copy::LUKS_PASSPHRASE, "--passphrase", None)?,
@@ -1991,21 +2127,22 @@ pub fn complete(recipe: &Path, answers: &Answers) -> Result<Json, String> {
         set(&mut doc, "customMounts", Json::array(mounts));
         return Ok(doc);
     }
+    let encrypted = answers.encryption.kind != NONE;
     if !answers.data.disk.is_empty() {
-        set(
-            &mut doc,
-            "varDisk",
-            Json::object([
-                ("disk", Json::string(&answers.data.disk)),
-                ("keepExisting", Json::Bool(answers.data.keep)),
-            ]),
-        );
+        let mut var = Json::object([
+            ("disk", Json::string(&answers.data.disk)),
+            ("keepExisting", Json::Bool(answers.data.keep)),
+        ]);
+        if encrypted {
+            set(&mut var, "encrypt", Json::Bool(true));
+        }
+        set(&mut doc, "varDisk", var);
     } else if !answers.data.size.is_empty() {
-        set(
-            &mut doc,
-            "varDisk",
-            Json::object([("size", Json::string(&answers.data.size))]),
-        );
+        let mut var = Json::object([("size", Json::string(&answers.data.size))]);
+        if encrypted {
+            set(&mut var, "encrypt", Json::Bool(true));
+        }
+        set(&mut doc, "varDisk", var);
     }
     Ok(doc)
 }
@@ -2239,6 +2376,26 @@ fn require_tpm2_enrolment(image: &str) -> Result<(), String> {
     Err(format!(
         "{image} has no /usr/bin/systemd-cryptenroll, so it cannot enrol the TPM2 token this answer asks for"
     ))
+}
+
+fn pcr_policy_in(image: &str) -> bool {
+    Command::new("podman")
+        .args([
+            "run",
+            "--rm",
+            "--pull=never",
+            "--net=none",
+            "--security-opt",
+            "label=disable",
+            "--entrypoint",
+            "",
+            image,
+            "/usr/bin/test",
+            "-s",
+            "/usr/share/buildc/pcr-policy.pem",
+        ])
+        .output()
+        .is_ok_and(|out| out.status.success())
 }
 
 fn run_enrolment(image: &str, esp: &Path) -> Result<(), String> {
@@ -2486,6 +2643,8 @@ fn arrange(payload: &Payload, answers: &Answers) -> Result<Vec<String>, String> 
     let mut notes: Vec<String> = Vec::new();
     let mut added: Vec<String> = Vec::new();
     let mut root: Option<(String, String)> = None;
+    let encrypted_root = layout.opens_the_root();
+    let pcr_policy = answers.opened == Opened::Tpm2 && pcr_policy_in(&payload.image);
     let planned = (|| {
         for (mapper, open) in layout.mappers() {
             let uuid = luks_uuid(&open.partition)?;
@@ -2495,6 +2654,11 @@ fn arrange(payload: &Payload, answers: &Answers) -> Result<Vec<String>, String> 
                     false => retag_root(&answers.disk, open, &mapper)?,
                 }
             } else {
+                if !encrypted_root
+                    && (answers.opened != Opened::Keep || !matches!(open.key, Key::Passphrase(_)))
+                {
+                    return Err(copy::OPENED_KEYFILE_PLAIN.to_string());
+                }
                 let name = crypttab_name(&open.target);
                 let (line, note) =
                     data_volume(&name, open, &uuid, answers.opened, &mut writes, &mut added)?;
@@ -2508,7 +2672,7 @@ fn arrange(payload: &Payload, answers: &Answers) -> Result<Vec<String>, String> 
                     "/" => "root".to_string(),
                     target => crypttab_name(target),
                 };
-                stage_tpm2(&name, open, &uuid, &mut writes)?;
+                stage_tpm2(&name, open, &uuid, pcr_policy, &mut writes)?;
             }
         }
         if !writes.is_empty() || !crypttab.is_empty() {
@@ -2598,6 +2762,7 @@ fn stage_tpm2(
     name: &str,
     open: &LuksOpen,
     uuid: &str,
+    pcr_policy: bool,
     writes: &mut Vec<EtcWrite>,
 ) -> Result<(), String> {
     let key = format!("/etc/buildc/tpm2-enroll-{name}.key");
@@ -2608,7 +2773,7 @@ fn stage_tpm2(
     });
     writes.push(EtcWrite {
         at: format!("/etc/systemd/system/buildc-tpm2-enroll-{name}.service"),
-        bytes: copy::tpm2_unit(name, &key, uuid).into_bytes(),
+        bytes: copy::tpm2_unit(name, &key, uuid, pcr_policy).into_bytes(),
         mode: 0o644,
     });
     Ok(())
@@ -3170,16 +3335,18 @@ mod tests {
         assert_eq!(payload.image, "ghcr.io/buildc-org/deb2:latest");
         assert_eq!(payload.hostname, "deb2");
         assert!(payload.boot.is_empty());
+        assert!(!payload.luks_initramfs, "an old recipe proves nothing");
 
         let uki = EMITTED.replace(
             "\"bootloader\": \"grub2\",",
-            "\"bootloader\": \"systemd\",\n  \"boot\": \"uki-db\",",
+            "\"bootloader\": \"systemd\",\n  \"boot\": \"uki-db\",\n  \"luksInitramfs\": true,",
         );
         std::fs::write(root.join(RECIPE), uki).expect("a UKI recipe");
         let Ok(Found::Image(payload)) = classify(&root) else {
             panic!("a UKI recipe is a payload");
         };
         assert_eq!(payload.boot, "uki-db");
+        assert!(payload.luks_initramfs);
 
         std::fs::write(root.join(RECIPE), "{").expect("a broken recipe");
         assert!(classify(&root).is_err());
@@ -3277,10 +3444,10 @@ mod tests {
             ]
         );
         assert!(is_esp(&rows[0]));
-        assert!(mount_choices(&rows[0], "ext4", "grub2")
+        assert!(mount_choices(&rows[0], "ext4", "grub2", true)
             .iter()
             .any(|choice| choice.label == copy::keep_as("/boot/efi")));
-        let luks = mount_choices(&rows[1], "ext4", "grub2");
+        let luks = mount_choices(&rows[1], "ext4", "grub2", true);
         assert!(!luks
             .iter()
             .any(|choice| choice.label.starts_with("keep as ")));
@@ -3295,7 +3462,7 @@ mod tests {
             .iter()
             .any(|choice| choice.label == copy::open_at("/boot/efi")));
         for bootloader in ["grub2", "systemd"] {
-            let choices = mount_choices(&rows[1], "ext4", bootloader);
+            let choices = mount_choices(&rows[1], "ext4", bootloader, true);
             let boot = choices
                 .iter()
                 .find(|choice| choice.label == copy::open_at("/boot"))
@@ -3303,7 +3470,7 @@ mod tests {
             assert!(!boot.available, "{bootloader} opens an encrypted /boot");
         }
 
-        let choices = mount_choices(&rows[0], "zfs", "grub2");
+        let choices = mount_choices(&rows[0], "zfs", "grub2", true);
         assert!(
             !choices
                 .iter()
@@ -3327,7 +3494,7 @@ mod tests {
             parttype: String::new(),
             uuid: String::new(),
         };
-        let choices = mount_choices(&ext4, "ext4", "systemd");
+        let choices = mount_choices(&ext4, "ext4", "systemd", true);
         assert!(
             !choices
                 .iter()
@@ -3336,7 +3503,7 @@ mod tests {
                 .available
         );
         assert!(
-            mount_choices(&ext4, "ext4", "grub2")
+            mount_choices(&ext4, "ext4", "grub2", true)
                 .iter()
                 .find(|choice| choice.label == copy::keep_as("/boot"))
                 .expect("the kept grub /boot")
@@ -3443,6 +3610,15 @@ mod tests {
                 target: "/".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn a_key_file_is_usable_only_where_a_container_encrypts_the_root() {
+        assert!(usable_key(&Key::Passphrase("x".to_string()), false));
+        assert!(!usable_key(&Key::File(PathBuf::from("/run/key")), false));
+        assert!(!usable_key(&Key::Data(b"key".to_vec()), false));
+        assert!(usable_key(&Key::File(PathBuf::from("/run/key")), true));
+        assert!(usable_key(&Key::Data(b"key".to_vec()), true));
     }
 
     #[test]
@@ -3566,6 +3742,19 @@ mod tests {
     }
 
     #[test]
+    fn the_key_file_method_is_refused_where_the_root_is_not_encrypted() {
+        let both = key_methods(None);
+        assert!(both.iter().all(|method| method.available));
+        assert_eq!(both[1].detail, copy::KEY_FILE_COST);
+
+        let refused = key_methods(Some(copy::OPENED_KEYFILE_PLAIN));
+        assert!(refused[0].available);
+        assert!(refused[0].detail == copy::KEY_PASSPHRASE_COST);
+        assert!(!refused[1].available);
+        assert_eq!(refused[1].detail, copy::OPENED_KEYFILE_PLAIN);
+    }
+
+    #[test]
     fn a_passphrase_never_reads_back_out_of_a_key() {
         let said = format!("{:?}", Key::Passphrase("opensesame".to_string()));
         assert!(!said.contains("opensesame"), "{said}");
@@ -3584,9 +3773,10 @@ data UUID=cc33 /key:UUID=dd44 luks
 stick UUID=ee55 UUID=ff66:/key:10 luks,keyscript=/lib/cryptsetup/scripts/passdev
 other UUID=gg77 none luks,keyscript=/lib/cryptsetup/scripts/decrypt_derived
 passphrase UUID=hh88
+timed UUID=ii99 /media/stick/var.key luks,keyfile-timeout=30s
 ",
         );
-        assert_eq!(entries.len(), 6);
+        assert_eq!(entries.len(), 7);
         assert_eq!(entries[0].key, KeySource::Default);
         assert_eq!(
             entries[1].key,
@@ -3608,6 +3798,7 @@ passphrase UUID=hh88
         );
         assert_eq!(entries[4].key, KeySource::Unreadable);
         assert_eq!(entries[5].key, KeySource::Default);
+        assert_eq!(entries[6].key, KeySource::Waited);
     }
 
     #[test]
@@ -3657,7 +3848,7 @@ passphrase UUID=hh88
             fstab: std::fs::read_to_string(etc.join("fstab")).unwrap(),
             at: root.clone(),
         };
-        let choices = mount_choices(&container, "ext4", "grub2");
+        let choices = mount_choices(&container, "ext4", "grub2", true);
         let mut mounts = Mounts::default();
         let found = discover(
             std::slice::from_ref(&container),
@@ -3722,6 +3913,63 @@ passphrase UUID=hh88
             &|_, _| Ok(true),
         );
         assert_eq!(partly.why[0].1, copy::old_root_partly(&unread[0]));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_key_file_waited_for_at_boot_is_refused_rather_than_read() {
+        let container = Partition {
+            device: "/dev/vda3".to_string(),
+            size: String::new(),
+            fstype: "crypto_LUKS".to_string(),
+            label: String::new(),
+            parttype: String::new(),
+            uuid: "AA11".to_string(),
+        };
+        let system = OldSystem {
+            crypttab: "var UUID=aa11 /media/stick/var.key luks,keyfile-timeout=30s\n".to_string(),
+            fstab: String::new(),
+            at: PathBuf::from("/nonexistent-old-system"),
+        };
+        let mut mounts = Mounts::default();
+        let found = discover(
+            std::slice::from_ref(&container),
+            std::slice::from_ref(&system),
+            &[],
+            &mut mounts,
+            &|_, _| Ok(true),
+        );
+        assert!(found.found.is_empty());
+        assert_eq!(found.why[0].1, copy::old_root_key_waited("var"));
+    }
+
+    #[test]
+    fn a_key_mediums_devices_are_told_apart_by_the_kernels_own_flag() {
+        let root = scratch("removable");
+        let class = root.join("class");
+        let block = root.join("block");
+        std::fs::create_dir_all(&class).expect("a class directory");
+        for (disk, flag) in [("vdb", "1"), ("nvme0n1", "0")] {
+            std::fs::create_dir_all(block.join(disk)).expect("a disk");
+            std::fs::write(block.join(disk).join("removable"), flag).expect("a flag");
+            std::os::unix::fs::symlink(block.join(disk), class.join(disk)).expect("a class entry");
+        }
+        std::fs::create_dir_all(block.join("vdb/vdb1")).expect("a partition");
+        std::fs::write(block.join("vdb/vdb1/partition"), "1").expect("a partition number");
+        std::os::unix::fs::symlink(block.join("vdb/vdb1"), class.join("vdb1"))
+            .expect("a partition class entry");
+
+        let by_uuid = root.join("by-uuid");
+        std::fs::create_dir_all(&by_uuid).expect("a by-uuid directory");
+        std::os::unix::fs::symlink(block.join("vdb/vdb1"), by_uuid.join("AAAA"))
+            .expect("a udev name");
+
+        assert!(removable_at(&class, Path::new("/dev/vdb")));
+        assert!(removable_at(&class, Path::new("/dev/vdb1")));
+        assert!(removable_at(&class, &by_uuid.join("AAAA")));
+        assert!(!removable_at(&class, Path::new("/dev/nvme0n1")));
+        assert!(!removable_at(&class, Path::new("/dev/mapper/vg-data")));
+        assert!(!removable_at(&class, Path::new("/dev")));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3871,7 +4119,7 @@ passphrase UUID=hh88
                 data: Data::default(),
                 layout: None,
             };
-            let fields = answers.fields("ext4", "grub2", "");
+            let fields = answers.fields("ext4", "grub2", "", true);
             assert_eq!(fields[ROW_ENCRYPTION].value(), label);
             let read = Answers::of(&fields, None);
             assert_eq!(read.encryption.kind, name);
@@ -3883,6 +4131,7 @@ passphrase UUID=hh88
                 Some(name.to_string()),
                 Some("opensesame".to_string()),
                 &Prompt::silent(),
+                true,
             )
             .expect("one of the four");
             assert_eq!(flagged.kind, name);
@@ -3891,7 +4140,7 @@ passphrase UUID=hh88
     }
 
     #[test]
-    fn the_var_rows_are_shown_and_unpickable_under_an_encrypted_root() {
+    fn the_var_rows_an_encrypted_root_can_take_are_pickable() {
         let found = [
             ("/dev/vda".to_string(), "68 GB".to_string()),
             ("/dev/sdb".to_string(), "30 GB".to_string()),
@@ -3910,11 +4159,13 @@ passphrase UUID=hh88
         assert!(open.iter().all(|row| row.available));
 
         let gated = data_rows("/dev/vda", &found, true);
-        assert!(gated[0].available);
-        for row in &gated[1..] {
-            assert!(!row.available, "{} is pickable", row.label);
-            assert_eq!(row.detail, copy::DATA_UNENCRYPTED);
-        }
+        let at = |label: &str| gated.iter().find(|row| row.label == label).expect("a row");
+        assert!(at(copy::NONE).available);
+        assert!(at(copy::DATA_HERE).available);
+        assert!(at(&copy::on_disk("/dev/sdb", copy::DATA_ERASED)).available);
+        let kept = at(&copy::on_disk("/dev/sdb", copy::DATA_KEPT));
+        assert!(!kept.available);
+        assert_eq!(kept.detail, copy::DATA_UNENCRYPTED);
     }
 
     #[test]
@@ -3922,7 +4173,7 @@ passphrase UUID=hh88
         let root = scratch("var");
         let recipe = root.join(RECIPE);
         std::fs::write(&recipe, EMITTED).expect("a recipe");
-        let written = |data: Data| {
+        let written = |data: Data, kind: &str| {
             let answers = Answers {
                 disk: "/dev/vda".to_string(),
                 hostname: "deb2".to_string(),
@@ -3930,7 +4181,7 @@ passphrase UUID=hh88
                 password: "hunter2".to_string(),
                 opened: Opened::Keep,
                 encryption: Encryption {
-                    kind: NONE.to_string(),
+                    kind: kind.to_string(),
                     passphrase: String::new(),
                 },
                 data,
@@ -3944,26 +4195,46 @@ passphrase UUID=hh88
                 .map(|value| value.render().trim().to_string())
         };
 
-        let sized = written(chose(copy::DATA_HERE, "200 GB"));
+        let sized = written(chose(copy::DATA_HERE, "200 GB"), NONE);
         assert_eq!(held(&sized, "size").as_deref(), Some("\"200 GB\""));
         assert_eq!(held(&sized, "disk"), None);
+        assert_eq!(held(&sized, "encrypt"), None);
 
-        let other = written(chose(&copy::on_disk("/dev/sdb", copy::DATA_ERASED), ""));
+        let other = written(
+            chose(&copy::on_disk("/dev/sdb", copy::DATA_ERASED), ""),
+            NONE,
+        );
         assert_eq!(held(&other, "disk").as_deref(), Some("\"/dev/sdb\""));
         assert_eq!(held(&other, "size"), None);
         assert_eq!(held(&other, "keepExisting").as_deref(), Some("false"));
 
-        let kept = written(chose(&copy::on_disk("/dev/sdb", copy::DATA_KEPT), ""));
+        let kept = written(chose(&copy::on_disk("/dev/sdb", copy::DATA_KEPT), ""), NONE);
         assert_eq!(held(&kept, "disk").as_deref(), Some("\"/dev/sdb\""));
         assert_eq!(held(&kept, "keepExisting").as_deref(), Some("true"));
 
-        assert!(json::field(&written(Data::default()), "varDisk").is_none());
+        for data in [
+            chose(copy::DATA_HERE, "200 GB"),
+            chose(&copy::on_disk("/dev/sdb", copy::DATA_ERASED), ""),
+        ] {
+            let encrypted = written(data, "luks-passphrase");
+            assert_eq!(
+                held(&encrypted, "encrypt").as_deref(),
+                Some("true"),
+                "{}",
+                json::field(&encrypted, "varDisk")
+                    .map(|var| var.render())
+                    .unwrap_or_default()
+            );
+        }
+
+        assert!(json::field(&written(Data::default(), NONE), "varDisk").is_none());
+        assert!(json::field(&written(Data::default(), "tpm2-luks"), "varDisk").is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn the_tpm_forms_are_shown_and_unpickable_where_there_is_no_tpm() {
-        let rows = kinds(false);
+        let rows = kinds(false, true);
         let without: Vec<(&str, &str, bool)> = rows
             .iter()
             .map(|choice| {
@@ -3983,19 +4254,59 @@ passphrase UUID=hh88
                 (copy::ENC_BOTH, copy::NO_TPM, false),
             ]
         );
-        let with = kinds(true);
+        let with = kinds(true, true);
         assert!(with.iter().all(|choice| choice.available));
         assert_eq!(with[1].detail, copy::ENC_ANY_HOLDER);
         assert_eq!(with[3].detail, copy::ENC_ANY_HOLDER);
     }
 
     #[test]
+    fn root_encryption_is_refused_without_an_initramfs_witness() {
+        let rows = kinds(true, false);
+        assert!(rows[0].available);
+        for row in &rows[1..] {
+            assert!(!row.available, "{}", row.label);
+            assert_eq!(row.detail, copy::NO_LUKS_INITRAMFS);
+        }
+        assert_eq!(
+            ask_encryption(
+                Some("luks-passphrase".to_string()),
+                Some("opensesame".to_string()),
+                &Prompt::silent(),
+                false,
+            )
+            .err()
+            .as_deref(),
+            Some(copy::NO_LUKS_INITRAMFS)
+        );
+
+        let container = Partition {
+            device: "/dev/vda2".to_string(),
+            size: "60G".to_string(),
+            fstype: "crypto_LUKS".to_string(),
+            label: String::new(),
+            parttype: String::new(),
+            uuid: String::new(),
+        };
+        let choices = mount_choices(&container, "ext4", "grub2", false);
+        let at = |target| {
+            choices
+                .iter()
+                .find(|choice| choice.label == copy::open_at(target))
+                .expect("an open row")
+        };
+        assert!(!at("/").available);
+        assert_eq!(at("/").detail, copy::NO_LUKS_INITRAMFS);
+        assert!(at("/var").available, "a data volume opens after root boots");
+    }
+
+    #[test]
     fn an_encryption_no_backend_takes_is_refused_by_name() {
-        let refused = ask_encryption(Some("luks".to_string()), None, &Prompt::silent())
+        let refused = ask_encryption(Some("luks".to_string()), None, &Prompt::silent(), true)
             .err()
             .expect("a refusal");
         assert!(refused.contains("tpm2-luks-passphrase"), "{refused}");
-        let kept = ask_encryption(Some("tpm2-luks".to_string()), None, &Prompt::silent())
+        let kept = ask_encryption(Some("tpm2-luks".to_string()), None, &Prompt::silent(), true)
             .expect("one of the four");
         assert_eq!(kept.kind, "tpm2-luks");
         assert!(kept.passphrase.is_empty());
@@ -4123,6 +4434,7 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
                 filesystem: "ext4".to_string(),
                 bootloader: "grub2".to_string(),
                 boot: String::new(),
+                luks_initramfs: true,
             }),
             vec![
                 (copy::ROW_DISK.to_string(), "/dev/vda".to_string()),
@@ -4204,14 +4516,33 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
                 Field::text(copy::ROW_SIZE, ""),
             ]
         };
-        assert!(short_of(&form("hunter2", "hunter2", NONE, ""), None).is_none());
-        let differ = short_of(&form("hunter2", "hunter3", NONE, ""), None).unwrap();
+        assert!(short_of(&form("hunter2", "hunter2", NONE, ""), None, true).is_none());
+        let differ = short_of(&form("hunter2", "hunter3", NONE, ""), None, true).unwrap();
         assert_eq!(differ, copy::NO_MATCH_ROW);
-        assert!(short_of(&form("hunter2", "hunter2", "luks-passphrase", ""), None).is_some());
-        assert!(short_of(&form("hunter2", "hunter2", "luks-passphrase", "x"), None).is_none());
+        assert!(short_of(
+            &form("hunter2", "hunter2", "luks-passphrase", ""),
+            None,
+            true
+        )
+        .is_some());
+        assert!(short_of(
+            &form("hunter2", "hunter2", "luks-passphrase", "x"),
+            None,
+            true
+        )
+        .is_none());
+        assert_eq!(
+            short_of(
+                &form("hunter2", "hunter2", "luks-passphrase", "x"),
+                None,
+                false
+            )
+            .as_deref(),
+            Some(copy::NO_LUKS_INITRAMFS)
+        );
         let mut bare = form("", "", NONE, "");
         bare[ROW_ACCOUNT] = Field::text(copy::ROW_ACCOUNT, "");
-        let short = short_of(&bare, None).unwrap();
+        let short = short_of(&bare, None, true).unwrap();
         assert!(
             short.contains(copy::ROW_ACCOUNT) && short.contains(copy::ROW_PASSWORD),
             "{short}"
@@ -4223,20 +4554,29 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
         };
         let mut sized = form("hunter2", "hunter2", NONE, "");
         data(&mut sized, copy::DATA_HERE.to_string(), "");
-        assert!(short_of(&sized, None).unwrap().contains(copy::ROW_SIZE));
+        assert!(short_of(&sized, None, true)
+            .unwrap()
+            .contains(copy::ROW_SIZE));
         data(&mut sized, copy::DATA_HERE.to_string(), "200 GB");
-        assert!(short_of(&sized, None).is_none());
+        assert!(short_of(&sized, None, true).is_none());
 
         let mut encrypted = form("hunter2", "hunter2", "tpm2-luks", "");
         data(&mut encrypted, copy::DATA_HERE.to_string(), "200 GB");
+        assert!(short_of(&encrypted, None, true).is_none());
+
+        let mut kept = form("hunter2", "hunter2", "tpm2-luks", "");
+        data(&mut kept, copy::on_disk("/dev/sdb", copy::DATA_KEPT), "");
         assert_eq!(
-            short_of(&encrypted, None).as_deref(),
+            short_of(&kept, None, true).as_deref(),
             Some(copy::DATA_UNENCRYPTED)
         );
 
         let mut same = form("hunter2", "hunter2", NONE, "");
         data(&mut same, copy::on_disk("/dev/vda", copy::DATA_ERASED), "");
-        assert_eq!(short_of(&same, None).as_deref(), Some(copy::DATA_SAME_DISK));
+        assert_eq!(
+            short_of(&same, None, true).as_deref(),
+            Some(copy::DATA_SAME_DISK)
+        );
 
         let root_keyfile = CustomLayout {
             disk: "/dev/vda".to_string(),
@@ -4254,13 +4594,35 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
             fields
         };
         assert_eq!(
-            short_of(&opens_row(copy::OPENED_KEEP), Some(&root_keyfile)).as_deref(),
+            short_of(&opens_row(copy::OPENED_KEEP), Some(&root_keyfile), true).as_deref(),
             Some(copy::OPENED_ROOT_KEYFILE)
         );
         assert_eq!(
-            short_of(&opens_row(copy::OPENED_TPM2), Some(&root_keyfile)).as_deref(),
+            short_of(&opens_row(copy::OPENED_TPM2), Some(&root_keyfile), true).as_deref(),
             Some(copy::OPENED_ROOT_KEYFILE)
         );
+
+        let plain_root = CustomLayout {
+            disk: "/dev/vda".to_string(),
+            mounts: vec![CustomMount {
+                partition: "/dev/vda2".to_string(),
+                target: "/".to_string(),
+                fstype: "ext4".to_string(),
+            }],
+            opens: vec![LuksOpen {
+                partition: "/dev/vda3".to_string(),
+                target: "/var".to_string(),
+                key: Key::Passphrase("opensesame".to_string()),
+            }],
+        };
+        assert!(short_of(&opens_row(copy::OPENED_KEEP), Some(&plain_root), true).is_none());
+        for answer in [copy::OPENED_ADD_KEY, copy::OPENED_TPM2] {
+            assert_eq!(
+                short_of(&opens_row(answer), Some(&plain_root), true).as_deref(),
+                Some(copy::OPENED_KEYFILE_PLAIN),
+                "{answer}"
+            );
+        }
     }
 
     #[test]
@@ -4485,5 +4847,61 @@ tmpfs /run tmpfs rw,nosuid,nodev 0 0
         assert_eq!(Opened::of(copy::OPENED_ADD_KEY), Opened::AddKey);
         assert_eq!(Opened::of(copy::OPENED_KEEP), Opened::Keep);
         assert_eq!(Opened::of("anything else"), Opened::Keep);
+    }
+
+    #[test]
+    fn a_key_on_the_root_needs_an_encrypted_root() {
+        let volume = |target: &str, partition: &str| LuksOpen {
+            partition: partition.to_string(),
+            target: target.to_string(),
+            key: Key::Passphrase("opensesame".to_string()),
+        };
+        let layout = |encrypted_root: bool| {
+            let mounts = match encrypted_root {
+                true => Vec::new(),
+                false => vec![CustomMount {
+                    partition: "/dev/vda2".to_string(),
+                    target: "/".to_string(),
+                    fstype: "ext4".to_string(),
+                }],
+            };
+            let mut opens = vec![volume("/var", "/dev/buildc-test-no-luks")];
+            if encrypted_root {
+                opens.insert(0, volume("/", "/dev/buildc-test-no-luks-root"));
+            }
+            CustomLayout {
+                disk: "/dev/vda".to_string(),
+                mounts,
+                opens,
+            }
+        };
+        fn row<'a>(rows: &'a [Choice], label: &str) -> &'a Choice {
+            rows.iter().find(|row| row.label == label).expect("a row")
+        }
+        let plain = opened_rows(&layout(false), true, true);
+        for label in [copy::OPENED_ADD_KEY, copy::OPENED_TPM2] {
+            let row = row(&plain, label);
+            assert!(!row.available, "{label}");
+            assert_eq!(row.detail, copy::OPENED_KEYFILE_PLAIN, "{label}");
+        }
+        let encrypted = opened_rows(&layout(true), true, true);
+        assert!(row(&encrypted, copy::OPENED_ADD_KEY).available);
+        assert_eq!(
+            row(&encrypted, copy::OPENED_ADD_KEY).detail,
+            copy::OPENED_ADD_KEY_COST
+        );
+        assert!(row(&encrypted, copy::OPENED_KEEP)
+            .detail
+            .starts_with("its slots could not be read"));
+    }
+
+    #[test]
+    fn the_summary_says_a_created_var_is_encrypted() {
+        let sized = chose(copy::DATA_HERE, "200 GB");
+        assert!(data_said(&sized, true).contains(copy::DATA_ENCRYPTED));
+        assert!(!data_said(&sized, false).contains(copy::DATA_ENCRYPTED));
+        let disk = chose(&copy::on_disk("/dev/sdb", copy::DATA_ERASED), "");
+        assert!(data_said(&disk, true).contains(copy::DATA_ENCRYPTED));
+        assert!(!data_said(&Data::default(), true).contains(copy::DATA_ENCRYPTED));
     }
 }

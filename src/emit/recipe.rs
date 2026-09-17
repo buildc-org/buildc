@@ -1,5 +1,8 @@
 use crate::emit::json::Json;
+use crate::emit::plan::{of_target, provides};
 use crate::model::image::{Layout, List};
+
+pub const LUKS_INITRAMFS: &str = "luks-initramfs";
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 struct Family {
@@ -120,8 +123,12 @@ pub fn build(
     imgref: &str,
     stores: &[String],
 ) -> Option<Json> {
-    let target = list.targets().into_iter().find(|t| t.to_string() == name)?;
-    let declared = list.images.iter().find(|i| i.id == target.image)?;
+    let published = list
+        .targets()
+        .into_iter()
+        .find(|target| target.to_string() == name)?
+        .published();
+    let (declared, _, entries) = of_target(list, name)?;
     let layout = declared.layout.as_ref();
     let (settled, bootloader) = settle(
         Some(&declared.base.as_ref()?.family),
@@ -136,7 +143,7 @@ pub fn build(
         ("genericImage", Json::Bool(settled.generic)),
         ("bootloader", Json::string(&bootloader)),
         ("filesystem", Json::string(&settled.filesystem)),
-        ("hostname", Json::string(target.published())),
+        ("hostname", Json::string(published)),
         (
             "user",
             Json::object([("groups", Json::strings([&settled.admin]))]),
@@ -144,6 +151,9 @@ pub fn build(
     ];
     if !declared.boot.is_empty() {
         fields.push(("boot", Json::string(&declared.boot)));
+    }
+    if provides(declared, &entries, LUKS_INITRAMFS) {
+        fields.push(("luksInitramfs", Json::Bool(true)));
     }
     if layout.is_some_and(|l| l.subvolumes) {
         fields.push(("btrfsSubvolumes", Json::Bool(true)));
@@ -520,5 +530,6 @@ mod tests {
             .render();
         assert!(recipe.contains("\"bootloader\": \"systemd\""), "{recipe}");
         assert!(recipe.contains("\"boot\": \"uki-shim\""), "{recipe}");
+        assert!(recipe.contains("\"luksInitramfs\": true"), "{recipe}");
     }
 }

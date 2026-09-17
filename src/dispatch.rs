@@ -581,6 +581,7 @@ pub fn dispatch(
             };
             Ok(match crate::build::run(&repo_root(here)?, &opts)? {
                 crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
+                crate::build::Stopped::Built => ExitCode::SUCCESS,
             })
         }
         Verb::VmBuild | Verb::VmRun | Verb::VmSpawn => {

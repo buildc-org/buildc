@@ -86,6 +86,7 @@ pub const ENC_BOTH: &str = "luks with TPM2 decryption and recovery passphrase";
 pub const ENC_ANY_HOLDER: &str = "opens for anyone who has the machine";
 pub const ENC_ONLY_YOU: &str = "nothing opens it without you";
 pub const NO_TPM: &str = "No TPM available";
+pub const NO_LUKS_INITRAMFS: &str = "the image has not declared and proved `luks-initramfs`";
 pub const REMOVABLE: &str = "removable";
 
 pub const DATA_HERE: &str = "this disk, sized";
@@ -93,6 +94,7 @@ pub const DATA_ERASED: &str = "erased";
 pub const DATA_KEPT: &str = "keep what is on it";
 pub const DATA_UNENCRYPTED: &str = "an unencrypted home under an encrypted root";
 pub const DATA_SAME_DISK: &str = "that is the disk this installs to";
+pub const DATA_ENCRYPTED: &str = "encrypted with the root's passphrase";
 pub const CUSTOM_ENCRYPTION: &str = "custom layouts cannot create encryption";
 pub const CUSTOM_OTHER_DISK: &str = "the custom layout belongs to another disk";
 pub const CUSTOM_ROOT: &str = "still needs a / partition";
@@ -130,6 +132,7 @@ pub const OPENED_ADD_KEY: &str = "add a key file for boot";
 pub const OPENED_TPM2_COST: &str = "first boot asks once, then no prompt";
 pub const OPENED_TPM2_HAS: &str = "this container already has one";
 pub const OPENED_ADD_KEY_COST: &str = "this machine reads it, the old one keeps its own";
+pub const OPENED_KEYFILE_PLAIN: &str = "the root is not encrypted, so the key would be readable";
 pub const OPENED_ROOT_KEYFILE: &str = "a key file cannot open the root; use its passphrase";
 
 pub fn slots_said(keys: &[u32], tokens: &[String]) -> String {
@@ -171,7 +174,14 @@ pub fn crypttab_line(name: &str, uuid: &str, keyfile: Option<&str>) -> String {
     format!("{name} UUID={uuid} {} luks", keyfile.unwrap_or("none"))
 }
 
-pub fn tpm2_unit(name: &str, key: &str, uuid: &str) -> String {
+pub fn tpm2_unit(name: &str, key: &str, uuid: &str, pcr_policy: bool) -> String {
+    let enroll = match pcr_policy {
+        true => {
+            "--tpm2-pcrs=7 --tpm2-public-key=/run/systemd/tpm2-pcr-public-key.pem \
+                 --tpm2-signature=/run/systemd/tpm2-pcr-signature.json"
+        }
+        false => "--tpm2-pcrs=7",
+    };
     format!(
         "[Unit]\n\
          Description=Enroll the {name} container for TPM2 unlock\n\
@@ -182,7 +192,7 @@ pub fn tpm2_unit(name: &str, key: &str, uuid: &str) -> String {
          [Service]\n\
          Type=oneshot\n\
          RemainAfterExit=no\n\
-         ExecStart=/usr/bin/systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 \
+         ExecStart=/usr/bin/systemd-cryptenroll --tpm2-device=auto {enroll} \
          --unlock-key-file={key} /dev/disk/by-uuid/{uuid}\n\
          ExecStartPost=-/usr/bin/shred -u {key}\n\
          ExecStartPost=-/usr/bin/systemctl disable buildc-tpm2-enroll-{name}.service\n\
@@ -224,6 +234,13 @@ pub fn old_root_key_wrong(partition: &str) -> String {
 }
 pub fn old_root_key_unreadable(volume: &str) -> String {
     format!("{volume} opens with a script this installer cannot run")
+}
+pub fn old_root_key_removable(volume: &str) -> String {
+    format!("{volume} opens with a key file on removable media, which this installer does not copy onto the machine")
+}
+
+pub fn old_root_key_waited(volume: &str) -> String {
+    format!("{volume} waits for its key file at boot, which this installer does not configure")
 }
 
 pub fn custom_keep_boot(bootloader: &str) -> String {
@@ -331,6 +348,7 @@ pub fn written_over(
     filesystem: &str,
     var: &str,
     boot: &str,
+    encrypted: bool,
 ) -> Vec<(String, String)> {
     let mut rows = vec![("esp".to_string(), "2 GB  fat32".to_string())];
     if let Some(chain) = boot_chain(boot) {
@@ -340,7 +358,13 @@ pub fn written_over(
         rows.push(("/boot".to_string(), "2 GB  ext4".to_string()));
     }
     if !var.is_empty() {
-        rows.push(("/var".to_string(), format!("{var}  {filesystem}")));
+        rows.push((
+            "/var".to_string(),
+            match encrypted {
+                true => format!("{var}  {filesystem}  {DATA_ENCRYPTED}"),
+                false => format!("{var}  {filesystem}"),
+            },
+        ));
     }
     rows.push(("root".to_string(), format!("the rest  {filesystem}")));
     rows
@@ -425,12 +449,47 @@ mod tests {
     #[test]
     fn uki_chains_are_visible_before_and_after_install() {
         assert!(super::layout("ext4", "systemd", "uki-shim").contains("Microsoft shim"));
-        assert!(super::written_over("systemd", "ext4", "", "uki-db")
+        assert!(super::written_over("systemd", "ext4", "", "uki-db", false)
             .iter()
             .any(|(name, value)| name == "boot chain" && value.contains("firmware keys")));
         assert!(super::enrollment("uki-db")
             .is_some_and(|instruction| instruction.contains("clear the platform key")));
         assert!(super::enrollment("uki-shim")
             .is_some_and(|instruction| instruction.contains("EFI/BOOT/MOK.cer")));
+    }
+
+    #[test]
+    fn a_pcr_policy_tpm2_unit_names_the_embedded_files() {
+        let policy = super::tpm2_unit("root", "/etc/buildc/tpm2-enroll-root.key", "u", true);
+        assert!(policy.contains("--tpm2-pcrs=7"), "{policy}");
+        assert!(
+            policy.contains("--tpm2-public-key=/run/systemd/tpm2-pcr-public-key.pem"),
+            "{policy}"
+        );
+        assert!(
+            policy.contains("--tpm2-signature=/run/systemd/tpm2-pcr-signature.json"),
+            "{policy}"
+        );
+        let other = super::tpm2_unit("root", "/etc/buildc/tpm2-enroll-root.key", "u", false);
+        assert!(other.contains("--tpm2-pcrs=7"), "{other}");
+        assert!(!other.contains("tpm2-pcr-public-key"), "{other}");
+    }
+
+    #[test]
+    fn a_created_var_says_when_it_is_encrypted() {
+        let var = |encrypted: bool| {
+            super::written_over("grub2", "ext4", "200 GB", "", encrypted)
+                .into_iter()
+                .find(|(name, _)| name == "/var")
+                .expect("a /var row")
+                .1
+        };
+        assert!(var(true).contains(super::DATA_ENCRYPTED), "{}", var(true));
+        assert!(
+            !var(false).contains(super::DATA_ENCRYPTED),
+            "{}",
+            var(false)
+        );
+        assert!(super::DATA_ENCRYPTED.chars().count() < 60);
     }
 }

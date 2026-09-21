@@ -5,8 +5,8 @@ ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44
 
 FROM ${GO_IMAGE} AS tools
 ARG FISHERMAN_ORG=buildc-org
-ARG FISHERMAN_COMMIT=1caaf6023b4125c35bb3c4833ec2e5c4bb7cf14d
-ARG FISHERMAN_SHA256=ddb70a4b63925d9f0a79f9aef0eb9ebd894261e8402e963a633479b985593f1d
+ARG FISHERMAN_COMMIT=cf7e275e89ff8531c999c9b335f7055ccdaff14d
+ARG FISHERMAN_SHA256=066a8ee5d3f03a9af2c17e62f7eb2e8c59ff5e0b4eba2be995e68b27c132ed8a
 ARG TACKLEBOX_ORG=buildc-org
 ARG TACKLEBOX_COMMIT=da820e5e9ac34c7a851382a9a1c7a4c6bd0c886f
 ARG TACKLEBOX_SHA256=c873e6a102640b2688de126238e2faae3abfd1c40370bf46df2906965d9c0439
@@ -25,6 +25,23 @@ RUN set -eux; \
     mkdir -p /out; \
     cd /src/fisherman/fisherman && CGO_ENABLED=0 go build -trimpath -o /out/fisherman ./cmd/fisherman/; \
     cd /src/tacklebox && CGO_ENABLED=0 go build -trimpath -o /out/tacklebox ./cmd/tacklebox
+
+ARG INSTALLER_VERSION=0.1.0
+ARG INSTALLER_SHA256_X86_64=2efefc4563d8b4c06803d290c9c509bfac1e0115da3ed3afb9d4ef62925425ff
+ARG INSTALLER_SHA256_AARCH64=9a366d74761ec19ac8f9fc1f85a44b63bd97b8e67c7d4d4293087bc3728a8b09
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+        x86_64) sha="${INSTALLER_SHA256_X86_64}";; \
+        aarch64) sha="${INSTALLER_SHA256_AARCH64}";; \
+        *) echo "the installer publishes no release for ${arch}" >&2; exit 1;; \
+    esac; \
+    asset="bootc-anywhere-v${INSTALLER_VERSION}-${arch}-linux-gnu.tar.gz"; \
+    curl --retry 3 -fsSLo /tmp/installer.tar.gz \
+        "https://github.com/buildc-org/installer/releases/download/v${INSTALLER_VERSION}/${asset}"; \
+    echo "${sha}  /tmp/installer.tar.gz" | sha256sum -c -; \
+    mkdir -p /out; \
+    tar -xf /tmp/installer.tar.gz -C /out bootc-anywhere
 
 FROM ${LIVE_BASE}
 
@@ -135,8 +152,8 @@ QUIET
 
 RUN systemctl enable var-lib-buildc-store.mount
 
-COPY buildc /usr/bin/buildc
-RUN /usr/bin/buildc --version
+COPY --from=tools /out/bootc-anywhere /usr/bin/bootc-anywhere
+RUN /usr/bin/bootc-anywhere --version
 
 # kmscon needs a DRM card to draw the installer on the console.
 # Without one, the assertion fails and systemd starts bootc-anywhere-vt.service.
@@ -152,7 +169,7 @@ StartLimitBurst=10
 
 [Service]
 Type=idle
-ExecStart=/usr/bin/kmscon --vt=1 --no-switchvt --oneshot --login -- /usr/bin/buildc installer
+ExecStart=/usr/bin/kmscon --vt=1 --no-switchvt --oneshot --login -- /usr/bin/bootc-anywhere
 Restart=always
 RestartSec=1
 
@@ -169,7 +186,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=idle
-ExecStart=/usr/bin/buildc installer
+ExecStart=/usr/bin/bootc-anywhere
 Restart=always
 RestartSec=1
 StandardInput=tty

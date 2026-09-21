@@ -125,15 +125,7 @@ fn stage(root: &Path, opts: &Options) -> Result<String, String> {
     for (name, body) in documents(&list, &target.to_string(), &image, &imgref)? {
         crate::init::put(&root.join(BOOTISO).join(name), &body)?;
     }
-    frontend(&root.join(BOOTISO).join("buildc"))?;
     Ok(crate::emit::recipe::live(&published))
-}
-
-fn frontend(to: &Path) -> Result<(), String> {
-    let from = std::env::current_exe().map_err(|err| format!("this binary: {err}"))?;
-    std::fs::copy(&from, to)
-        .map(|_| ())
-        .map_err(|err| format!("{} -> {}: {err}", from.display(), to.display()))
 }
 
 fn converts(root: &Path, spec: &Spec, kind: &str, opts: &Options) -> bool {

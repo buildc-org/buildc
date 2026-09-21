@@ -54,7 +54,7 @@ fn settle(family: Option<&str>, layout: Option<&Layout>, boot: &str) -> Option<(
                 .and_then(|l| l.generic)
                 .or(known.as_ref().map(|f| f.generic))?,
         filesystem: if uki {
-            "ext4".into()
+            "btrfs".into()
         } else {
             told(|l| &l.filesystem).or_else(|| known.as_ref().map(|f| f.filesystem.clone()))?
         },
@@ -461,19 +461,35 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "the units start a verb this crate no longer owns; the media still has to be rewired"]
-    fn the_verb_the_live_environment_autostarts_is_one_that_resolves() {
-        let started: Vec<Vec<&str>> = LIVE_ENV
-            .lines()
-            .filter(|line| line.starts_with("ExecStart=") && line.contains("/usr/bin/buildc "))
-            .filter_map(|line| line.split_once("/usr/bin/buildc "))
-            .map(|(_, rest)| rest.split_whitespace().collect())
-            .collect();
-        assert!(!started.is_empty(), "no unit runs the binary");
-        for verb in &started {
-            let resolved = crate::command::resolve(verb);
-            assert!(resolved.is_ok(), "{verb:?}: {:?}", resolved.err());
+    fn both_installer_units_hand_over_to_the_binary_the_live_environment_stages() {
+        const STAGES: &str = "COPY --from=tools /out/bootc-anywhere /usr/bin/bootc-anywhere";
+        const RUNS: &str = "/usr/bin/bootc-anywhere";
+        assert!(
+            LIVE_ENV.contains(STAGES),
+            "the live environment does not stage the installer"
+        );
+        for unit in ["bootc-anywhere.service", "bootc-anywhere-vt.service"] {
+            let heredoc = format!("/usr/lib/systemd/system/{unit}\n");
+            let body = LIVE_ENV
+                .split_once(&heredoc)
+                .map(|(_, rest)| rest.split_once("\nUNIT\n").map_or(rest, |(body, _)| body))
+                .unwrap_or_else(|| panic!("{unit} is never written"));
+            let exec: Vec<&str> = body
+                .lines()
+                .filter_map(|line| line.strip_prefix("ExecStart="))
+                .collect();
+            assert_eq!(exec.len(), 1, "{unit} runs {} things", exec.len());
+            assert_eq!(
+                exec[0].split_whitespace().last(),
+                Some(RUNS),
+                "{unit} hands over to something else: {}",
+                exec[0]
+            );
         }
+    }
+
+    #[test]
+    fn the_units_that_autostart_the_installer_own_the_console_they_draw_on() {
         for unit in ["bootc-anywhere.service", "bootc-anywhere-vt.service"] {
             assert!(
                 LIVE_ENV.contains(&format!("systemctl enable {unit}")),
@@ -521,7 +537,7 @@ mod tests {
         assert_eq!(bootloader, "systemd");
         assert!(family.composefs);
         assert!(family.generic);
-        assert_eq!(family.filesystem, "ext4");
+        assert_eq!(family.filesystem, "btrfs");
         assert!(seals("fedora", None, "uki-db"));
         assert_eq!(unanswered("fedora", None, "uki-db"), Vec::<&str>::new());
 

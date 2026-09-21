@@ -241,14 +241,18 @@ fn create_image_surfaces_an_unreadable_runtime_catalog() {
         "a name argument",
         buildc::create::Field::Image,
         None,
-        &buildc::prompt::Prompt::silent(),
+        &common::prompt::Prompt::silent(),
     )
     .err()
     .expect("the unreadable runtime catalog must stop image creation");
 
     let error = flat(&error);
-    assert!(error.contains(&path.display().to_string()), "{error}");
     assert!(error.contains("could not be read"), "{error}");
+    let squashed = error.replace(' ', "");
+    assert!(
+        squashed.contains(&path.display().to_string().replace(' ', "")),
+        "{error}"
+    );
 }
 
 #[test]

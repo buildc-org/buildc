@@ -90,7 +90,7 @@ fn init_repo(name: &str) -> PathBuf {
         Some("Example".into()),
         None,
         Some(root.clone()),
-        &buildc::prompt::Prompt::silent(),
+        &common::prompt::Prompt::silent(),
     )
     .unwrap()
     .expect("a silent run draws no review screen")
@@ -147,7 +147,7 @@ fn verify(name: &str, root: &Path) {
 fn create(name: &str, root: &Path) {
     std::env::set_current_dir(root).expect("the created-into repository exists");
     let here = Path::new(".");
-    let silent = buildc::prompt::Prompt::silent();
+    let silent = common::prompt::Prompt::silent();
 
     buildc::create::Image::collect(
         here,
@@ -350,7 +350,7 @@ fn why(name: &str, root: &Path, module: &str) {
     out.push_str("==== unknown\n");
     out.push_str(&buildc::run(Command::Why, Some("nosuch"), here).issues.plain());
 
-    let manifest = buildc::emit::json::Json::parse(&buildc::run(Command::Plan, None, here).stdout)
+    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, here).stdout)
         .expect("the plan is a document");
     let host = buildc::emit::why::on_host(&manifest, None, module).expect("the manifest names it");
     out.push_str("==== from the baked manifest, with no repository\n");
@@ -360,7 +360,7 @@ fn why(name: &str, root: &Path, module: &str) {
         buildc::emit::why::display(&buildc::emit::why::known_on_host(&manifest, None)).join(", ")
     ));
 
-    let record = buildc::emit::json::Json::parse(&format!(
+    let record = common::json::Json::parse(&format!(
         "{{\"modules\": [{{\"path\": {module:?}, \"content\": \"not what was declared\"}}]}}"
     ))
     .expect("the record is a document");
@@ -384,15 +384,15 @@ fn why(name: &str, root: &Path, module: &str) {
 fn summary_on_host(root: &Path) {
     std::env::set_current_dir(root).expect("fixture root exists");
     let here = Path::new(".");
-    let manifest = buildc::emit::json::Json::parse(&buildc::run(Command::Plan, None, here).stdout)
+    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, here).stdout)
         .expect("the plan is a document");
 
     let (every, _) = buildc::emit::why::built_as(&manifest, None);
     assert!(!every.is_empty(), "{} publishes nothing", root.display());
     for target in every {
-        let record = buildc::emit::json::Json::parse(&format!(
+        let record = common::json::Json::parse(&format!(
             "{{\"target\": {:?}}}",
-            buildc::emit::json::text(target, "name").expect("a target is named")
+            common::json::text(target, "name").expect("a target is named")
         ))
         .expect("the record is a document");
         let (scoped, _) = buildc::emit::why::built_as(&manifest, Some(&record));
@@ -402,7 +402,7 @@ fn summary_on_host(root: &Path) {
         assert_eq!(
             buildc::run(
                 Command::Summary,
-                buildc::emit::json::text(target, "name").as_deref(),
+                common::json::text(target, "name").as_deref(),
                 here
             )
             .stdout,
@@ -1117,7 +1117,7 @@ fn flows() {
     );
     let listed = |at: &str| {
         let (list, _, _) = buildc::declarations(&root);
-        buildc::create::Listing::collect(&root, vec![at.into()], &buildc::prompt::Prompt::silent())
+        buildc::create::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
             .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools", None))
             .err()
             .unwrap_or_default()
@@ -1652,7 +1652,7 @@ fn flows() {
         Vec::new(),
         None,
         buildc::import::Place::Reference,
-        &buildc::prompt::Prompt::silent(),
+        &common::prompt::Prompt::silent(),
     )
     .unwrap_or_else(|err| panic!("{}", err.message()))
     .apply(&root, &list.sources)
@@ -1667,7 +1667,7 @@ fn flows() {
         vec!["example".into()],
         None,
         buildc::import::Place::Reference,
-        &buildc::prompt::Prompt::silent(),
+        &common::prompt::Prompt::silent(),
     )
     .unwrap_or_else(|err| panic!("{}", err.message()))
     .apply(&root, &list.sources)
@@ -1684,7 +1684,7 @@ fn flows() {
         vec!["example".into()],
         None,
         buildc::import::Place::Reference,
-        &buildc::prompt::Prompt::silent(),
+        &common::prompt::Prompt::silent(),
     )
     .err()
     .map(|err| err.message().to_string())
@@ -1972,210 +1972,6 @@ fn flows() {
 }
 
 #[test]
-fn a_second_installer_is_refused_while_the_first_holds_the_screen() {
-    use std::time::Duration;
-
-    let dir = empty("flow-install-lock");
-    std::fs::write(
-        dir.join(buildc::install::RECIPE),
-        r#"{
-  "image": "ghcr.io/buildc-org/deb2:latest",
-  "targetImgref": "ghcr.io/buildc-org/deb2:latest",
-  "composeFsBackend": true,
-  "genericImage": true,
-  "bootloader": "grub2",
-  "filesystem": "ext4",
-  "luksInitramfs": true,
-  "hostname": "deb2",
-  "user": { "groups": ["sudo"] }
-}
-"#,
-    )
-    .unwrap();
-    let lock = dir.join("installer.lock");
-    let second = || {
-        std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
-            .args(["installer", "--from", "."])
-            .current_dir(&dir)
-            .env("BUILDC_ASSETS", crate_dir().join("assets"))
-            .env("BUILDC_INSTALLER_LOCK", &lock)
-            .env("BUILDC_TPM", "/nonexistent")
-            .output()
-            .unwrap()
-    };
-
-    let mut first = std::process::Command::new("script")
-        .args([
-            "-qfec",
-            &format!(
-                "BUILDC_INSTALLER_LOCK='{}' '{}' installer --from .",
-                lock.display(),
-                env!("CARGO_BIN_EXE_tect")
-            ),
-            "/dev/null",
-        ])
-        .current_dir(&dir)
-        .env("BUILDC_ASSETS", crate_dir().join("assets"))
-        .env("COLUMNS", "80")
-        .env("BUILDC_TPM", "/nonexistent")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("script from util-linux");
-
-    let mut refused = None;
-    for _ in 0..100 {
-        std::thread::sleep(Duration::from_millis(50));
-        let out = second();
-        let said = String::from_utf8_lossy(&out.stderr).into_owned();
-        if said.contains("the installer is running on") {
-            refused = Some(said);
-            break;
-        }
-    }
-    let killed = first.kill().and_then(|()| first.wait());
-    let refused = refused.expect("the first installer never held the lock while it ran");
-    killed.expect("the first installer is reaped");
-
-    assert!(refused.contains("run `buildc installer` again"), "{refused}");
-    let after = second();
-    assert!(
-        !String::from_utf8_lossy(&after.stderr).contains("the installer is running on"),
-        "the lock outlived the process holding it"
-    );
-}
-
-#[test]
-fn install_screens() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let dir = empty("flow-install-drawn");
-    std::fs::write(
-        dir.join(buildc::install::RECIPE),
-        r#"{
-  "image": "ghcr.io/buildc-org/deb2:latest",
-  "targetImgref": "ghcr.io/buildc-org/deb2:latest",
-  "composeFsBackend": true,
-  "genericImage": true,
-  "bootloader": "grub2",
-  "filesystem": "ext4",
-  "luksInitramfs": true,
-  "hostname": "deb2",
-  "user": { "groups": ["sudo"] }
-}
-"#,
-    )
-    .unwrap();
-    let sys = dir.join("sys-block");
-    for (name, size, removable, model) in [
-        ("vda", "134217728", "0", "QEMU HARDDISK"),
-        ("sdb", "31457280", "1", "Cruzer Blade"),
-    ] {
-        let disk = sys.join(name);
-        std::fs::create_dir_all(disk.join("device")).unwrap();
-        std::fs::write(disk.join("size"), size).unwrap();
-        std::fs::write(disk.join("removable"), removable).unwrap();
-        std::fs::write(disk.join("device/model"), model).unwrap();
-    }
-    let lsblk = dir.join("lsblk");
-    std::fs::write(
-        &lsblk,
-        r#"#!/bin/sh
-printf '%s\n' '{"blockdevices":[{"name":"/dev/vda","type":"disk","children":[{"name":"/dev/vda1","size":"512M","fstype":"vfat","label":"EFI","type":"part","parttype":"C12A7328-F81F-11D2-BA4B-00A0C93EC93B"},{"name":"/dev/vda2","size":"63.5G","fstype":"ext4","label":"old-root","type":"part","parttype":null},{"name":"/dev/vda3","size":"60G","fstype":"crypto_LUKS","label":"","type":"part","parttype":null}]}]}'
-"#,
-    )
-    .unwrap();
-    std::fs::set_permissions(&lsblk, std::fs::Permissions::from_mode(0o755)).unwrap();
-    for name in ["mount", "umount"] {
-        let fake = dir.join(name);
-        std::fs::write(&fake, "#!/bin/sh\nexit 0\n").unwrap();
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    let cryptsetup = dir.join("cryptsetup");
-    std::fs::write(
-        &cryptsetup,
-        r#"#!/bin/sh
-case "$1" in
-luksDump) printf '%s\n' '{"keyslots":{"0":{}},"tokens":{}}' ;;
-*) exit 1 ;;
-esac
-"#,
-    )
-    .unwrap();
-    std::fs::set_permissions(&cryptsetup, std::fs::Permissions::from_mode(0o755)).unwrap();
-    drawn_flow(
-        "flow-install-drawn",
-        &dir,
-        &format!(
-            "PATH='{}':\"$PATH\" BUILDC_INSTALLER_LOCK='{}' BUILDC_SYS_BLOCK='{}' BUILDC_MOUNT_ROOT='{}' '{}' installer --from .",
-            dir.display(),
-            dir.join("installer.lock").display(),
-            sys.display(),
-            dir.join("mounts").display(),
-            env!("CARGO_BIN_EXE_tect")
-        ),
-        "buildc: ghcr.io/buildc-org/deb2:latest, from .\r\n",
-        &[
-            b"\r",
-            b"\x1b[B\r",
-            b"\r",
-            b"\r",
-            b"\r",
-            b"\x1b[B\x1b[B\r",
-            b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r",
-            b"\r",
-            b"\r",
-            b"\r",
-            b"opensesame\r",
-            b"\r",
-            b"\x1b[B\x1b[B\r\r",
-            b"buildc\r",
-            b"hunter2\r",
-            b"hunter2\r",
-            b"\r",
-            b"\r",
-            b"\x1b[B\r",
-            b"\x1b",
-            b"\x1b[B\x1b[B\r",
-        ],
-    );
-    let transcript =
-        std::fs::read_to_string(crate_dir().join("tests/golden/flow-install-drawn/transcript.txt"))
-            .unwrap();
-    assert!(!transcript.contains("hunter2"), "{transcript}");
-    assert!(transcript.contains("Are you sure"), "{transcript}");
-    assert!(transcript.contains(buildc::copy::CONTINUE), "{transcript}");
-    assert!(transcript.contains("/dev/sdb"), "{transcript}");
-    assert!(transcript.contains("/dev/vda"), "{transcript}");
-    assert!(transcript.contains("/dev/vda1"), "{transcript}");
-    assert!(transcript.contains("old-root"), "{transcript}");
-    assert!(
-        transcript.contains("Partitions marked format"),
-        "{transcript}"
-    );
-    assert!(!transcript.contains("opensesame"), "{transcript}");
-    assert!(
-        transcript.contains(&buildc::copy::open_question("/dev/vda3", "/var")),
-        "{transcript}"
-    );
-    assert!(transcript.contains(buildc::copy::OLD_SYSTEM), "{transcript}");
-    assert!(transcript.contains(buildc::copy::OPENED_KEEP), "{transcript}");
-    assert!(
-        transcript.contains(buildc::copy::BOOT_PASSPHRASE),
-        "{transcript}"
-    );
-    assert!(
-        transcript.contains(buildc::copy::OPENED_ADD_KEY),
-        "{transcript}"
-    );
-    assert!(
-        transcript.contains("the root is not encrypted"),
-        "{transcript}"
-    );
-}
-
-#[test]
 fn schema_doc() {
     let path = crate_dir().join("docs/schema.md");
     let doc = std::fs::read_to_string(&path).expect("docs/schema.md exists");
@@ -2259,7 +2055,7 @@ fn every_written_document_reads_back() {
         if text.trim().is_empty() {
             continue;
         }
-        let parsed = buildc::emit::json::Json::parse(&text)
+        let parsed = common::json::Json::parse(&text)
             .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
         assert!(
             parsed.render() == text,

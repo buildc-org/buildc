@@ -1,9 +1,9 @@
 use crate::copy;
 use crate::diag::Issues;
 use crate::layout;
-use crate::prompt::Prompt;
-pub use crate::ui::tree::Change;
-use crate::ui::Choice;
+use common::prompt::Prompt;
+pub use common::ui::tree::Change;
+use common::ui::Choice;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -91,7 +91,7 @@ impl Repo {
                 .iter()
                 .map(|(_, label, value)| (label.to_string(), value.clone()))
                 .collect();
-            match crate::ui::review(
+            match common::ui::review(
                 copy::REVIEW,
                 &drawn,
                 copy::CREATE,
@@ -366,7 +366,7 @@ impl Repo {
 
 pub fn report(root: &Path, wrote: &[(PathBuf, Change)]) {
     let id = crate::model::image::List::load(root).0.id;
-    crate::ui::tree::print(&id, wrote, describe);
+    common::ui::tree::print(&id, wrote, describe);
 }
 
 fn describe(_path: &Path, change: Option<&Change>) -> String {
@@ -855,8 +855,8 @@ impl Listing {
 
         let chosen: Vec<usize> = match given.is_empty() {
             true => match ask(&list, &targets, prompt)? {
-                crate::ui::Answer::Cancelled => return Ok(Self::Cancelled),
-                crate::ui::Answer::Chosen(chosen) => chosen,
+                common::ui::Answer::Cancelled => return Ok(Self::Cancelled),
+                common::ui::Answer::Chosen(chosen) => chosen,
             },
             false => given
                 .iter()
@@ -1100,10 +1100,10 @@ fn ask(
     list: &crate::model::image::List,
     targets: &[crate::model::image::Target],
     prompt: &Prompt,
-) -> Result<crate::ui::Answer, String> {
+) -> Result<common::ui::Answer, String> {
     if let [only] = targets {
         let listed = prompt.confirm(&copy::list_in(&only.to_string()), copy::YES, copy::NO)?;
-        return Ok(crate::ui::Answer::Chosen(match listed {
+        return Ok(common::ui::Answer::Chosen(match listed {
             true => vec![0],
             false => Vec::new(),
         }));

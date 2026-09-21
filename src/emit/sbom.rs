@@ -1,8 +1,8 @@
-use crate::emit::json::Json;
 use crate::emit::plan::{of_target, pinned};
 use crate::model::asset::Asset;
 use crate::model::image::List;
 use crate::model::module::Module;
+use common::json::Json;
 
 pub fn build(list: &List, target: &str) -> Option<Json> {
     let (_, _, entries) = of_target(list, target)?;

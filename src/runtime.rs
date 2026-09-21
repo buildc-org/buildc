@@ -506,9 +506,7 @@ fn validate_boot_chain(report: &mut Report) {
     if Path::new("/usr/lib/efi/grub2").exists() {
         report.fail("/usr/lib/efi/grub2: GRUB payload remains in a UKI image");
     }
-    let pcr_key = fs::read("/usr/share/buildc/pcr-policy.pem")
-        .ok()
-        .filter(|bytes| !bytes.is_empty());
+    let pcr_key = fs::read(PCR_POLICY).ok().filter(|bytes| !bytes.is_empty());
     for uki in &ukis {
         let name = uki.display().to_string();
         match output("objdump", &["--section-headers", &name]) {
@@ -530,9 +528,7 @@ fn validate_boot_chain(report: &mut Report) {
                         Some(bytes) if &bytes == expected => {
                             println!("    {name} embeds the declared PCR policy key")
                         }
-                        Some(_) => report.fail(format!(
-                            "{name}: .pcrpkey is not /usr/share/buildc/pcr-policy.pem"
-                        )),
+                        Some(_) => report.fail(format!("{name}: .pcrpkey is not {PCR_POLICY}")),
                         None => report.fail(format!("{name}: .pcrpkey could not be read")),
                     }
                 }
@@ -555,7 +551,7 @@ fn validate_boot_chain(report: &mut Report) {
         )),
         Err(message) => report.fail(message),
     }
-    let signed = Path::new("/usr/share/buildc/secureboot-signed").exists();
+    let signed = Path::new(SIGNED_MARKER).exists();
     match fs::read_to_string("/usr/share/buildc/boot-chain")
         .unwrap_or_default()
         .trim()
@@ -576,7 +572,7 @@ fn validate_boot_chain(report: &mut Report) {
     }
 
     if !signed {
-        println!("    unsigned build: signature checks skipped");
+        println!("    no {SIGNED_MARKER}: signature checks skipped");
         return;
     }
     let cert = "/usr/share/secureboot/sb_cert.pem";
@@ -589,6 +585,9 @@ fn validate_boot_chain(report: &mut Report) {
         signed_by(&uki, cert, report);
     }
 }
+
+const SIGNED_MARKER: &str = "/usr/share/secureboot/signed";
+const PCR_POLICY: &str = "/usr/share/secureboot/pcr-policy.pem";
 
 pub fn validate_image() -> Result<(), String> {
     let mut report = Report { failures: 0 };

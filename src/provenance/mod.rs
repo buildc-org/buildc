@@ -3,7 +3,7 @@ pub mod evidence;
 pub mod record;
 
 use crate::diag::Span;
-use crate::emit::json::Json;
+use common::json::Json;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ShaFrom {

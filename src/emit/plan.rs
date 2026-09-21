@@ -1,5 +1,4 @@
 use crate::base::Capability;
-use crate::emit::json::Json;
 use crate::model::asset::Asset;
 use crate::model::image::{Entry, Image, List, Target, NO_FLAVOUR};
 use crate::model::module::Module;
@@ -7,6 +6,7 @@ use crate::provenance::Evidence;
 use crate::resolve::overlay;
 use crate::resolve::workflow::Declared;
 use crate::resolve::Resolved;
+use common::json::Json;
 
 pub(crate) fn of_target<'a>(
     list: &'a List,

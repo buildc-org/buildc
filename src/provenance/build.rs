@@ -1,4 +1,4 @@
-use crate::emit::json::Json;
+use common::json::Json;
 use std::path::Path;
 use std::process::Command;
 

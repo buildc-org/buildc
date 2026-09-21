@@ -2,7 +2,6 @@ pub mod containerfile;
 pub mod coverage;
 pub mod finalize;
 pub mod graph;
-pub mod json;
 pub mod module_build;
 pub mod plan;
 pub mod recipe;

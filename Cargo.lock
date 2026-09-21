@@ -90,6 +90,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+source = "git+https://github.com/buildc-org/common?rev=53ec29e2b4ec4b939116d654c7ed8254c0c3093b#53ec29e2b4ec4b939116d654c7ed8254c0c3093b"
+dependencies = [
+ "libc",
+ "ratatui",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,10 +866,10 @@ dependencies = [
 name = "buildc"
 version = "0.6.46"
 dependencies = [
+ "common",
  "kdl",
  "libc",
  "miette",
- "ratatui",
 ]
 
 [[package]]

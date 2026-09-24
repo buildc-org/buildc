@@ -337,11 +337,22 @@ login_credentials() {
     echo "vm: login as ${vm_user}; credentials provision the account on its first boot"
 }
 
+partitioned() {
+    [ -f "$1" ] || return 1
+    [ "$(dd if="$1" bs=1 skip=510 count=2 2> /dev/null | od -An -tx1 | tr -d ' \n')" = "55aa" ]
+}
+
 run_qemu() {
-    local port=8006 arguments sysusers_base64 credential_args=() storage=()
+    local port=8006 arguments sysusers_base64 credential_args=() storage=() media=()
     if [ "$type" = iso ]; then
         mkdir -p "${staged}/storage"
         storage=(--volume "${PWD}/${staged}/storage":/storage)
+    fi
+    media=(--volume "${PWD}/${image_file}":"/boot.${type}")
+    if [ "$type" = iso ] && partitioned "${staged}/storage/data.img"; then
+        media=()
+        echo "vm: the storage disk has a partition table; booting the disk"
+        echo "vm: remove ${staged}/storage to boot the installer again"
     fi
     while ss -tunal | grep -q ":${port} "; do
         port=$((port + 1))
@@ -365,7 +376,7 @@ run_qemu() {
         "${credential_args[@]}" \
         "${storage[@]}" \
         --device=/dev/kvm \
-        --volume "${PWD}/${image_file}":"/boot.${type}" \
+        "${media[@]}" \
         docker.io/qemux/qemu
 }
 

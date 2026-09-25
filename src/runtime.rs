@@ -132,6 +132,7 @@ pub fn os_release() -> Result<(), String> {
     }
 
     let text = fs::read_to_string(OS_RELEASE).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
+    fs::remove_file(OS_RELEASE).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
     fs::write(OS_RELEASE, assign(&text, &set)).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
 
     let link = Path::new("/etc/os-release");

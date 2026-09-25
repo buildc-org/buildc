@@ -9,7 +9,7 @@ description = "Reads the image files and the per-module module.kdl manifests"
 kdl = "6.3.4"
 libc = "0.2"
 miette = { version = "7.6.0", features = ["fancy"] }
-common = { git = "https://github.com/buildc-org/common", rev = "53ec29e2b4ec4b939116d654c7ed8254c0c3093b" }
+common = { git = "https://github.com/buildc-org/common", rev = "c7e9c09e315173d59ea54d659148136a559dc937" }
 
 # A local release build uses this profile, so it favours compile time over runtime performance.
 [profile.release]

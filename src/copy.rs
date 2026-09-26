@@ -4,13 +4,13 @@ pub const REPO_NAME: &str = "What will the repo be called?";
 pub const SCHEDULED: &str = "Sync this repo to a provider?";
 pub const REPO_HOST: &str = "Where will the repo be hosted?";
 pub const FORGEJO_ADDRESS: &str = "What is the address of the Forgejo instance?";
-pub const CREATE_REMOTE: &str = "Would you like to create this repo on Github now?";
+pub const CREATE_REMOTE: &str = "Create this repo on Github now?";
 pub const NO_GH: &str = "Install the Github CLI now?";
 
 pub fn username(host: &str) -> String {
     match host {
-        crate::create::HOST => "What is your github username?".to_string(),
-        host => format!("What is your username on {host}?"),
+        crate::create::HOST => "Github username?".to_string(),
+        host => format!("Username on {host}?"),
     }
 }
 
@@ -37,7 +37,7 @@ pub fn list_in(target: &str) -> String {
 }
 
 pub const BRING_REQUIRED: &str = "Bring what these modules require?";
-pub const BRING_FOR_BASE: &str = "Do you want to add them now?";
+pub const BRING_FOR_BASE: &str = "Add them now?";
 pub const IMPORT_CLAIMING: &str = "Import the modules claiming these rules?";
 
 pub fn cleared(named: &str, unmet: &str) -> String {
@@ -61,7 +61,7 @@ pub fn claimed_rules(named: &str) -> String {
 
 pub const WHICH_KEY: &str = "Which key?";
 pub const KEY_CN: &str = "common name, which is what the enrolment prompt shows";
-pub const KEY_FROM: &str = "path to the public half you already hold";
+pub const KEY_FROM: &str = "path to the public half already held";
 
 pub fn key_provider(kind: &str) -> String {
     format!("Which module's {kind} key?")
@@ -80,8 +80,11 @@ pub const NO: &str = "No";
 pub const SKIP: &str = "Skip";
 pub const SKIP_REMOTE: &str = "Skip Github repo creation";
 
-pub const HOST_GITHUB: &str = "Github, and the workflows Buildc ships";
-pub const HOST_FORGEJO: &str = "a Forgejo instance, whose address you give";
+pub const HOST_FORGEJO: &str = "a Forgejo instance, at an address asked next";
+
+pub fn host_github() -> String {
+    format!("Github, and the workflows {PRODUCT} ships")
+}
 
 pub const REVIEW_KEYS: &str = "enter to change a field, Create to write, esc cancels";
 pub const FORM_KEYS: &str = "up and down to move, enter to change a field";

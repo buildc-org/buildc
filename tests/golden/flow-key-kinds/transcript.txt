@@ -5,5 +5,5 @@ Which key? [1, 0 for none]: 0
 
 Error: `buildc create key <kind>` names which key; this repository declares secureboot.
 
-You can find the available commands by typing 'buildc' or 'buildc --help'
+Run 'buildc --help' to list the commands
 ==== exit 1

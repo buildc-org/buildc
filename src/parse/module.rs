@@ -309,7 +309,7 @@ pub const MODULE: Node = Node::new("module",
 
         FAMILY,
     ], Say::new("unknown node `{}`", "not part of the schema",
-        "docs/schema.md documents every node a manifest may hold"));
+        "docs/schema/module.md documents every node a manifest may hold"));
 
 fn copr_parts(value: &str) -> Option<(&str, &str)> {
     let (owner, project) = value.split_once('/')?;

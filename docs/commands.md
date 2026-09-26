@@ -1,74 +1,96 @@
 # Commands
 
-`buildc --help` lists the commands a person runs: `upgrade` and `create repo`,
-and the ones that need a repository. Every one of them is in that list now that
-the installer is its own binary, documented in its own repository. The two
-families at the end of this file — what a build runs against, and what runs
-inside a build layer — are the contract rather than the help, and are not in
-that list.
+This document contains the help content for the `buildc` command-line program.
 
-`buildc` with nothing after it opens a picker where the output is a terminal, and
-prints the list where it is not. A verb with no noun — `buildc create`, `buildc
-copy`, `buildc import`, `buildc registry`, `buildc set`, `buildc vm` — opens a picker of
-its nouns. **The picker offers what runs where it was typed**, with each row's own
-description; the help above keeps every row and groups them by where they run.
-Leaving a picker is not an error: it exits 0 having done nothing.
+**Command Overview:**
 
-The repository is the nearest directory at or above the working directory
-holding a `repo.kdl`, or `--root <dir>`. Data goes to stdout, diagnostics to
-stderr. Exit 1 is the invocation, exit 2 the repository.
+* [`buildc`↴](#buildc)
+* [`buildc upgrade`↴](#buildc-upgrade)
+* [`buildc create`↴](#buildc-create)
+* [`buildc create repo`↴](#buildc-create-repo)
+* [`buildc create image`↴](#buildc-create-image)
+* [`buildc create flavour`↴](#buildc-create-flavour)
+* [`buildc create module`↴](#buildc-create-module)
+* [`buildc create key`↴](#buildc-create-key)
+* [`buildc import`↴](#buildc-import)
+* [`buildc import module`↴](#buildc-import-module)
+* [`buildc copy`↴](#buildc-copy)
+* [`buildc copy module`↴](#buildc-copy-module)
+* [`buildc set`↴](#buildc-set)
+* [`buildc set workflows`↴](#buildc-set-workflows)
+* [`buildc set conforms`↴](#buildc-set-conforms)
+* [`buildc set claims`↴](#buildc-set-claims)
+* [`buildc set key`↴](#buildc-set-key)
+* [`buildc check`↴](#buildc-check)
+* [`buildc generate`↴](#buildc-generate)
+* [`buildc build`↴](#buildc-build)
+* [`buildc vm`↴](#buildc-vm)
+* [`buildc vm build`↴](#buildc-vm-build)
+* [`buildc vm run`↴](#buildc-vm-run)
+* [`buildc vm spawn`↴](#buildc-vm-spawn)
+* [`buildc section`↴](#buildc-section)
+* [`buildc graph`↴](#buildc-graph)
+* [`buildc why`↴](#buildc-why)
+* [`buildc coverage`↴](#buildc-coverage)
+* [`buildc plan`↴](#buildc-plan)
+* [`buildc verify`↴](#buildc-verify)
+* [`buildc summary`↴](#buildc-summary)
+* [`buildc sbom`↴](#buildc-sbom)
+* [`buildc scap`↴](#buildc-scap)
+* [`buildc scap content`↴](#buildc-scap-content)
+* [`buildc scap tailoring`↴](#buildc-scap-tailoring)
+* [`buildc scap rules`↴](#buildc-scap-rules)
+* [`buildc fetch`↴](#buildc-fetch)
+* [`buildc fetch modules`↴](#buildc-fetch-modules)
+* [`buildc registry`↴](#buildc-registry)
+* [`buildc registry namespace`↴](#buildc-registry-namespace)
+* [`buildc registry ref`↴](#buildc-registry-ref)
+* [`buildc recipe`↴](#buildc-recipe)
+* [`buildc os-release`↴](#buildc-os-release)
+* [`buildc build-record`↴](#buildc-build-record)
+* [`buildc validate-image`↴](#buildc-validate-image)
 
-## On a booted image
+## `buildc`
 
-A built image carries `/usr/share/buildc/manifest.json` — what it declares it
-is made of — and `/usr/share/buildc/build.json`, what the build resolved. With
-no `repo.kdl` anywhere above, `why`, `summary`, `scap content` and `plan`
-answer off those two and need no checkout. A repository wins whenever there is
-one, because it is the more specific answer and it has the source.
+the build tool for a bootc image repository
 
-Everything else needs the source tree and says so, naming what does answer here.
+**Usage:** `buildc [OPTIONS] [COMMAND]`
 
-**Every host answer is scoped to the target the record says this image was
-built as.** The manifest holds every target the repository declares, so an
-unscoped answer would describe an image that is not this one; a `summary` or
-`scap content` naming a different target is refused. A record that names no
-target falls back to reading across all of them and says in the output that it
-did.
+###### **Subcommands:**
 
-`docs/schema.md` is the reference for what the manifests hold.
+* `upgrade` — replace this buildc and its assets with the latest
+* `create` — start a repository, or add an image, flavour, module or key to one
+* `import` — reference a collection module from an image
+* `copy` — copy a collection module into this repository
+* `set` — choose what this repository declares, or record a key
+* `check` — read every manifest and say what is wrong with it
+* `generate` — write the build files, and list what was written
+* `build` — verify the build files, then build the image
+* `vm` — turn the built image into a disk, and boot it
+* `section` — print the Containerfile section an image generates
+* `graph` — print what provides what, and what the base carries
+* `why` — print one module's trust read-out, byte by byte
+* `coverage` — print who claims each rule the image conforms to
+* `plan` — print every fact this repository derives, as json
+* `verify` — byte-compare what is generated against what is committed
+* `summary` — print what one target is made of, as a markdown table
+* `sbom` — print the pinned payloads one target carries, as SPDX
+* `scap` — print what one scan says about the target
+* `fetch` — download one payload, verify it, and place it
+* `registry` — print where images publish, and under what reference
+* `recipe` — print the installer recipe one target installs from
+* `os-release` — write the image identity the build ARGs carry
+* `build-record` — write the record of what the build resolved
+* `validate-image` — run every check a built image has to pass
 
-## Flags and prompts
+###### **Options:**
 
-Every command takes a flag for everything it needs.
+* `--root <dir>` — the repository, else the nearest `repo.kdl` at or above the working directory
+* `--no-tui` — ask nothing, and fail naming the flag a missing answer needs
 
-- All of them supplied: nothing is asked, and nothing opens.
-- One missing, and stdin is a terminal: it is asked for.
-- One missing, and stdin is not a terminal: the command fails naming the flag.
 
-`--no-tui` forces the third case, so a script behaves the same whether or not
-it has a terminal.
 
-A yes or no step has no flag of its own. The flag that answers it is the
-answer: `--image desktop` on `create repo` means yes and names the image, and
-its absence under `--no-tui` means no. A repeatable flag answers a step that
-takes several values.
-
-Every question is asked before anything is written, so a name already taken or
-an image that is not declared is refused with nothing left behind. A step that
-fails stops the command: what earlier steps wrote stays, and each of those
-steps is a command of its own to finish the run with.
-
-`create repo`, `create image`, `create flavour`, `create module`, `import
-module`, `copy module` and `generate` end with a tree of the files they wrote,
-rooted at the repository, each leaf carrying a phrase saying what it is for. `create key` names its two halves
-instead: one of them is private and ignored, so a tracked-file tree omits it.
-
-`--root <dir>` is accepted by every command below. A flag a command does not
-read is an error, not a silent no-op.
-
-## Upgrading the tool
-
-### `upgrade`
+## `buildc upgrade`
 
 Replaces this `buildc`, and the assets it scaffolds from, with the latest
 published release. It takes no argument and no flag.
@@ -76,7 +98,10 @@ published release. It takes no argument and no flag.
 It prints the running version and the latest one, and stops there when they are
 the same or when the running build is ahead of the tag.
 
-#### Notes:
+**Usage:** `buildc upgrade`
+
+Notes:
+
 - The binary and the assets move together. A binary that arrived alone would
   leave the host scaffolding from whatever stale `assets/` it already had, with
   no diagnostic, which is the failure this command exists to prevent.
@@ -85,72 +110,96 @@ the same or when the running build is ahead of the tag.
   anyone else takes `~/.local/bin` with `$XDG_DATA_HOME/buildc/assets`, which
   is `~/.local/share/buildc/assets` unless that variable says otherwise. A
   destination it cannot write is refused, naming the other pair, because
-  falling back to one you did not ask for is the guess it exists not to make.
+  falling back to a pair the user did not ask for is the guess it exists not to
+  make.
 - The assets are swapped rather than merged, so a file a release dropped does
   not survive into every repository created afterwards.
 - The download is verified against the `.sha256` published beside it before
   anything on disk is touched, so a refusal leaves the existing install intact.
 - An `assets` directory beside the binary outranks the pair this places, and is
-  refused before anything is fetched. A set `BUILDC_ASSETS` outranks it too, but
+  refused before the release is fetched. A set `BUILDC_ASSETS` outranks it too, but
   that is environment rather than disk and may be deliberate, so it warns.
 - x86_64 and aarch64 Linux are what is published. Anywhere else it refuses by
   name rather than fetching a 404.
 - On a machine with no `buildc` yet, the same thing is
   `curl -fsSL https://raw.githubusercontent.com/buildc-org/buildc/main/install.sh | sh`.
 
-## Starting a repository
 
-### `create repo [name]`
+
+## `buildc create`
+
+start a repository, or add an image, flavour, module or key to one
+
+**Usage:** `buildc create [COMMAND]`
+
+###### **Subcommands:**
+
+* `repo` — start a repository for your own images
+* `image` — add an image: its name, and what it builds on
+* `flavour` — add a gated module set an image also publishes
+* `module` — write a module, and offer to list it in an image
+* `key` — generate a key one of this repository's modules declares
+
+
+
+## `buildc create repo`
 
 Writes a new repository with the following into the current directory unless a `--root`
 location is defined in the command:
+
 - A `repo.kdl` file
 - A module directory
-- A build scripts directory
-- A shell helpers directory
-- A disk config directory
-- A workflows directory for CI
+- A `scripts/` directory holding the Containerfile skeleton
+- A `disk_config/` directory
 
-#### Flags:
-    --host <domain>   where the repository is hosted; github.com by default
-    --owner <name>    your account or org for your repo host
-    --image <name>    optionally write an initial image (`create image` can create this later)
-    --base <ref>      a bootc image that this image is based on
+**Usage:** `buildc create repo [OPTIONS] [name]`
 
-#### Notes:
+Notes:
+
 - `--host` and `--owner` compose into the origin every image URL is built from.
-  They are asked for only if you say the images build on a schedule.
-- On github it offers to create the repository for you, and says what to do
-  instead where `gh` is missing or logged out.
+  It asks for them only when the images build on a schedule.
+- On github it offers to create the repository, and says what to do where `gh`
+  is missing or logged out.
 - `git init` is all of git the tool does. The first commit, the remote and the
-  push are yours, and the closing lines are the commands for them.
+  push are the user's, and the closing lines are the commands for them.
 - The `repo.kdl` it writes declares `buildc-org/modules` in `sources`, so
   `import module` works immediately. That collection is `unpinned`: it follows a
   branch head, so every fetch takes whatever the branch holds then and no
   `sha256` checks what arrived. Delete the block or replace it with a tagged and
-  hashed pin if that trade is not one you want.
+  hashed pin if that trade is not the trade the user wants.
 - A repository does not nest, and one inside another is refused.
 
-## Working in a repository
+###### **Arguments:**
 
-### `create image [name]`
+* `<name>`
+
+###### **Options:**
+
+* `--host <domain>` — where the repository is hosted; github.com by default
+* `--owner <name>` — your account or org on the repository host
+* `--image <name>` — write a first image too; `create image` adds one later
+* `--base <ref>` — the bootc image the first image is based on
+
+
+
+## `buildc create image`
 
 Writes one image file, `<image-id>.image.kdl`, at the repository root. The id
-is the machine name your name derives, so "My Desktop" writes
-`my-desktop.image.kdl`. A root `.kdl` is an image only when it is named
-`image.kdl` or ends in `.image.kdl`; anything else is reported rather than read.
+derives from the name, so "My Desktop" writes `my-desktop.image.kdl`. A root
+`.kdl` is an image only when it is named `image.kdl` or ends in
+`.image.kdl`; anything else is reported rather than read.
 
-Asks you for:
+Prompts for:
+
 - The image name, which defaults to what the repository is called
 - The base it builds on, picked from the catalog or given as any bootc reference
 
-#### Flags:
-    --base <ref>      a bootc image that this image is based on; skips the picker
-    --owner <name>    your account or org, where no image already carries one
+**Usage:** `buildc create image [OPTIONS] [name]`
 
-#### Notes:
+Notes:
+
 - A base from the catalog writes its family and what it already ships into
-  `base`. A base from outside the catalog asks you for the family and writes no
+  `base`. A base from outside the catalog prompts for the family and writes no
   `provides`, so `check` reports what no module satisfies.
 - `url` and `issues-url` are the repository's, not the image's, since every
   image is published out of one remote. A repository that declared no origin
@@ -160,8 +209,8 @@ Asks you for:
   built before. Nothing else in `repo.kdl` moves.
 - The `modules` block opens with what the base cannot build without, offered as
   one question naming the modules: whatever fills the family-adapter role for
-  the base's family — the module that `supports` it and `provides
-  "build-environment"` — and whatever satisfies each capability the base row
+  the base's family (the module that `supports` it and `provides
+  "build-environment"`) and whatever satisfies each capability the base row
   `requires`. Both come out of the collections `sources` declares, both are
   missing on a fresh repository, and both read as one question. Declining
   writes an empty block, and every line it writes is an ordinary one, so
@@ -171,47 +220,68 @@ Asks you for:
   collections already on disk answer the question, and nothing is fetched with
   nobody to ask: a `--no-tui` run offers only what is already there. A
   repository that does not exist yet caches that fetch outside itself and
-  throws it away, so a run left at the review screen leaves nothing behind —
-  which does mean re-editing the base re-fetches.
+  throws it away, so a run left at the review screen leaves nothing behind.
+  That does mean re-editing the base re-fetches.
 
-### `create flavour [name]`
+###### **Arguments:**
+
+* `<name>`
+
+###### **Options:**
+
+* `--owner <name>` — your account or org, where no image already carries one
+* `--base <ref>` — the bootc image this image is based on; skips the picker
+
+
+
+## `buildc create flavour`
 
 Writes one flavour into an image's `flavours` block, creating the block when
 the image has none. A flavour is published as `<image>-<flavour>` beside the
 image's ungated build.
 
-Asks you for:
+Prompts for:
+
 - The flavour name
 - Which image publishes it, when `--image` names none
 
-#### Flags:
-    --image <name>    the image that publishes the flavour
+**Usage:** `buildc create flavour [OPTIONS] [name]`
 
-#### Notes:
+Notes:
+
 - Neither `default` nor `pr-build` is written. Both are edits: `default`
-  changes what a bare `--target <image>` builds, which is not a thing to write
-  into a file on your behalf.
+  changes what a bare `--target <image>` builds, and the tool writes no such
+  change on the user's behalf.
 - Listing a module under the flavour is a separate step; the `flavours` block
   declares the flavour, the `modules` block gates the modules.
 - A name the image already declares is refused, as is `none`, which is what the
   ungated build is called.
 
-### `create module [name]`
+###### **Arguments:**
+
+* `<name>`
+
+###### **Options:**
+
+* `--image <name>` — the image that publishes the flavour
+
+
+
+## `buildc create module`
 
 Writes one module manifest, `modules/<name>/module.kdl`. The name may be a
 path, so `create module apps/firefox` writes
 `modules/apps/firefox/module.kdl`.
 
-Asks you for:
+Prompts for:
+
 - Whether the module installs packages, and which ones
 - Which images the module is listed in, if any
 
-#### Flags:
-    --pkg <name>          a package the module installs; repeatable
-    --with verb=value     one more line in the manifest, such as `--with provides=browser`; repeatable
-    --image <name>        list the module in this image or flavour; repeatable
+**Usage:** `buildc create module [OPTIONS] [name]`
 
-#### Notes:
+Notes:
+
 - Packages are scaffolded as one flat `packages` line on every family the
   module supports; a `family` gate is where names that differ go. The generated
   build layer installs through the family's adapter: `dnf install -y` on Fedora
@@ -219,10 +289,10 @@ Asks you for:
 - `enablerepo=` is dnf's, and naming it on a Debian or Ubuntu batch is a
   `check` diagnostic. One naming a COPR is Fedora's alone.
 - Anything `--with` writes is held to the schema like the rest of the manifest.
-- You are asked which of the declared images list the module, with each image's
-  flavours under it, and several are an answer: enter or space toggles one on a
-  terminal, and `1 3` or `1,3` answers the numbered list where there is not one.
-  A repository with one image and no flavours is asked as a yes or a no instead.
+- It asks which declared images list the module, with each image's flavours under
+  it; several are an answer. Enter or space toggles one on a terminal, and `1 3`
+  or `1,3` answers the numbered list where there is not one. A repository with
+  one image and no flavours is asked as a yes or a no instead.
 - An image and one of its own flavours cannot both be chosen: the ungated entry
   is already in every flavour, so the gated one would be a duplicate. Two
   flavours of one image can, and are two lines in the one file.
@@ -232,78 +302,33 @@ Asks you for:
 - None is an answer too: having a module and listing it in an image are
   different decisions. Leaving the picker instead writes nothing at all.
 
-### `import module [name]`
+###### **Arguments:**
 
-References modules from a source collection by adding them to an image's
-`source` block. The module stays out of the tracked tree; import populates its
-ignored `modules/.remote/<owner>/<name>` cache, and a build fetches it again
-when the collection pin changes.
+* `<name>`
 
-Asks you for:
-- Which modules, listing every one the collections hold with its description and
-  what it requires, when no name is given. Several may be chosen, and they share
-  the one listing answer and one of each offer below
-- Which images or flavours the modules are listed in; an import with none has no
-  repository representation and is refused
-- Whether to bring what they require and nothing in those images provides
-- Whether to generate the CI they make runnable
-- Which profile to be measured against, where they claim benchmark rules a
-  profile selects and an image listing them declares no `conforms`
+###### **Options:**
 
-#### Flags:
-    --image <name>    list the module in this image or flavour; repeatable
-    --datastream <f>  the SCAP content the profile offer is read out of;
-                      defaults to the family's installed copy, and no content
-                      is no offer
+* `--image <name>` — list the module in this image or flavour; repeatable
+* `--pkg <name>` — a package the module installs; repeatable
+* `--with <verb=value>` — one more line in the manifest, such as `--with provides=browser`; repeatable
 
-#### Notes:
-- The argument names one module. The picker is what takes several, since one
-  answer per question is what makes a set cheaper than a module at a time.
-- A bare name is searched for in every collection. `<owner>/<name>` picks
-  between two collections that both have it.
-- A pinned collection member is downloaded and verified once. An `unpinned`
-  member is downloaded unverified each time, and audit enforcement refuses the
-  reference.
-- An image already listing the module is refused here rather than at the next
-  command that reads the file. A module gated to two flavours is listed under
-  each, so only an overlap is a duplicate.
-- The requirements the offer brings in are listed in the same images, ahead of
-  the module itself. Declining leaves a file that is still valid; `check` then
-  names the import that would satisfy what is missing.
-- Nothing here is automatic. Both offers default to no where there is nobody to
-  ask, so a scripted import writes exactly what it was told to.
 
-### `copy module [name]`
 
-Copies modules out of a source collection into `modules/<name>` and records
-each one's source in `provenance.kdl`. The repository owns them from then on:
-nothing fetches over them and no pin moves them.
-
-It is `import module` with a different ending — the same picker, the same
-questions, the same offers, the same flags and the same refusals — and differs
-only in these three ways:
-- The modules land under `modules/` and are listed by their own names, with no
-  `source` block, so what the requires offer brings is vendored too
-- No image is not a refusal. A copied module is in the repository whether one
-  lists it or not, and the listing offer is the second half of the job rather
-  than the whole of it
-- Something already at `modules/<name>` is refused, and the refusal names the
-  collection the thing there came from
-
-### `create key <kind>`
+## `buildc create key`
 
 Generates one of the keys the repository's modules declare, and writes:
+
 - The public half, under `keys/public/` at the path it has in the image
 - The private half, under `keys/private/` with the name the declaration gives it
 
-Asks you for:
+Prompts for:
+
 - Which kind, listing the kinds the modules declare, when no argument is given
 
-#### Flags:
-    --module <name>   which module, where two of them declare the same kind
-    --cn <name>       the certificate common name; the repository directory name by default
+**Usage:** `buildc create key [OPTIONS] [kind]`
 
-#### Notes:
+Notes:
+
 - `keys/private/` is covered by the scaffolded `.gitignore`. A repository
   whose `.gitignore` does not cover one is told rather than edited.
 - An existing key is never replaced, because the private half cannot be
@@ -313,6 +338,7 @@ Asks you for:
   `import module` line that fetches it.
 
 The generators are closed, and each is one of:
+
 - `cosign` writes the keypair a published image is signed with and a policy
   verifies updates against. `cosign` has to be installed. The key carries no
   password; set it as the `SIGNING_SECRET` repository secret.
@@ -333,79 +359,191 @@ The generators are closed, and each is one of:
   the public half as a trust anchor and the private half can issue the server
   certificate it stands behind. It names no repository secret, because the
   issuing happens in a build rather than in CI.
-- `ssh-keygen` writes the keypair a person logs in with, ed25519 and with no
+- `ssh-keygen` writes the keypair the user logs in with, ed25519 and with no
   passphrase. `bits` is an RSA size and means nothing here. Nothing in a build
-  reads the private half: it is yours, and the public half is what the image
-  ships.
+  reads the private half: it is the user's, and the public half is what the
+  image ships.
 
-### `set key <kind>`
+###### **Arguments:**
 
-Records a public half you already hold, in place of generating one. Where
-`create key` invents a key, this writes down one that exists: a cosign public
-key, a MOK certificate and an authorized key are all things a person may
-already have, and every kind a module declares can be recorded this way.
+* `<kind>`
 
-Asks you for:
-- Which kind, listing the kinds the modules declare, when no argument is given
-- The file to read it from, where `--from` did not name one
+###### **Options:**
 
-#### Flags:
-    --module <name>   which module, where two of them declare the same kind
-    --from <path>     the public half to record
+* `--module <name>` — which module, where two of them declare the same kind
+* `--cn <name>` — the certificate common name; the repository directory name by default
 
-#### Notes:
-- The destination is the module's own `public` declaration, so nothing here
-  takes a path to write to.
-- Only the public half. A private half is not the repository's: a cosign key
-  signs in CI, a MOK signs a kernel module, a PCR key signs the machine's TPM
-  unlock policy, and an authorized key logs a person in — none of them wants
-  its private half copied here.
-- The file is read before it is written: a key in the wrong form for the
-  generator that would have made it — a PEM public key for `cosign`, a PEM or
-  DER certificate for `module-signing`, a bare PEM public key for
-  `pcr-signing`, an OpenSSH key line for `ssh-keygen` — is refused here rather
-  than by a build a long way from here.
-- An existing key is never replaced, exactly as with `create key`.
 
-### `set workflows`
+
+## `buildc import`
+
+reference a collection module from an image
+
+**Usage:** `buildc import [COMMAND]`
+
+###### **Subcommands:**
+
+* `module` — reference a module from a collection repo.kdl declares
+
+
+
+## `buildc import module`
+
+References modules from a source collection by adding them to an image's
+`source` block. The module stays out of the tracked tree; import populates its
+ignored `modules/.remote/<owner>/<name>` cache, and a build fetches it again
+when the collection pin changes.
+
+Prompts for:
+
+- Which modules, listing every one the collections hold with its description and
+  what it requires, when no name is given. Several may be chosen, and they share
+  the one listing answer and one of each offer below
+- Which images or flavours the modules are listed in; an import with none has no
+  repository representation and is refused
+- Whether to bring what they require and nothing in those images provides
+- Whether to generate the CI they make runnable
+- Which profile to be measured against, where they claim benchmark rules a
+  profile selects and an image listing them declares no `conforms`
+
+**Usage:** `buildc import module [OPTIONS] [name]`
+
+Notes:
+
+- The argument names one module. The picker is what takes several, since one
+  answer per question is what makes a set cheaper than a module at a time.
+- A bare name is searched for in every collection. `<owner>/<name>` picks
+  between two collections that both have it.
+- A pinned collection member is downloaded and verified once. An `unpinned`
+  member is downloaded unverified each time, and audit enforcement refuses the
+  reference.
+- An image already listing the module is refused here rather than at the next
+  command that reads the file. A module gated to two flavours is listed under
+  each, so only an overlap is a duplicate.
+- The requirements the offer brings in are listed in the same images, ahead of
+  the module itself. Declining leaves a file that is still valid; `check` then
+  names the import that would satisfy what is missing.
+- Both offers default to no where there is nobody to ask, so a scripted import
+  writes exactly what it was told to.
+
+###### **Arguments:**
+
+* `<name>`
+
+###### **Options:**
+
+* `--image <name>` — list the module in this image or flavour; repeatable
+* `--datastream <file>` — the SCAP content the profile offer is read out of; the family's installed copy by default, and no content is no offer
+
+
+
+## `buildc copy`
+
+copy a collection module into this repository
+
+**Usage:** `buildc copy [COMMAND]`
+
+###### **Subcommands:**
+
+* `module` — copy a collection module into this repository
+
+
+
+## `buildc copy module`
+
+Copies modules out of a source collection into `modules/<name>` and records
+each one's source in `provenance.kdl`. The repository owns them from then on:
+nothing fetches over them and no pin moves them.
+
+It is `import module` with a different ending: the same picker, the same
+questions, the same offers, the same flags and the same refusals. It differs
+only in these three ways:
+
+- The modules land under `modules/` and are listed by their own names, with no
+  `source` block, so what the requires offer brings is vendored too
+- No image is not a refusal. A copied module is in the repository whether one
+  lists it or not, and the listing offer is the second half of the job rather
+  than the whole of it
+- Something already at `modules/<name>` is refused, and the refusal names the
+  collection the thing there came from
+
+**Usage:** `buildc copy module [OPTIONS] [name]`
+
+###### **Arguments:**
+
+* `<name>`
+
+###### **Options:**
+
+* `--image <name>` — list the module in this image or flavour; repeatable
+* `--datastream <file>` — the SCAP content the profile offer is read out of; the family's installed copy by default, and no content is no offer
+
+
+
+## `buildc set`
+
+choose what this repository declares, or record a key
+
+**Usage:** `buildc set [COMMAND]`
+
+###### **Subcommands:**
+
+* `workflows` — choose the CI this repository generates
+* `conforms` — choose the benchmark profile an image is measured by
+* `claims` — choose the benchmark rules a module claims to cover
+* `key` — record a key you already hold, in place of generating one
+
+
+
+## `buildc set workflows`
 
 Chooses the CI this repository generates, and writes the choice into the
 `workflows` block of `repo.kdl`. `buildc generate` is what then writes the files.
 
-Asks you for:
+Prompts for:
+
 - Which of the shipped workflows to generate, opening with the ones already
   declared, and drawing what each of them needs where the repository cannot run
   it
 - What time the daily build runs, UTC, where any of the chosen ones has a
   schedule
 
-#### Notes:
+**Usage:** `buildc set workflows`
+
+Notes:
+
 - There are no toggle flags. The declaration file was always the interface, so
   with nobody to ask this says to edit `repo.kdl` rather than naming a flag
   that would be a second way to write the same line.
 - Leaving the picker changes nothing. Choosing nothing takes the block away,
   and a repository declaring no block generates no CI.
-- `build-disk` and `smoke-test` need a fedora or rhel image, because the image
-  builder relabels its buildroot with SELinux and builds no disk otherwise.
-  `kernel-freshness` needs a module taking a `KERNEL` build arg. One whose
-  basis is absent is drawn with the reason and refused.
+- `build-disk` needs a fedora or rhel image, because the image builder relabels
+  its buildroot with SELinux and builds no disk otherwise. `kernel-freshness`
+  needs a module taking a `KERNEL` build arg. One whose basis is absent is drawn
+  with the reason and refused.
 - Every schedule is an offset from the daily build, so moving one value moves
   all of them. A cron is the one value the emitter writes into a workflow file
   rather than putting in `plan.json`, because the forge reads it out of the
   file before any job exists.
 
-### `set conforms [image]`
+
+
+## `buildc set conforms`
 
 Chooses the benchmark profile a scan measures one image against, and writes it
 into that image's `conforms`. Naming no image picks the only one, or asks which.
 
-Asks you for:
+Prompts for:
+
 - Which profile, out of the ones the datastream carries, with what each is
   called beside it
 - Whether to import the collection modules claiming rules that profile selects
   and nothing the image installs or builds on claims
 
-#### Notes:
+**Usage:** `buildc set conforms [OPTIONS] [image]`
+
+Notes:
+
 - `--datastream <file>` names the content to choose out of. Without it this
   reads the copy installed on this machine for the image's family, and refuses
   by naming `scap-security-guide` and the flag when there is none. `buildc
@@ -423,18 +561,32 @@ Asks you for:
 - There are no toggle flags, the same way `set workflows` has none: with nobody
   to ask this says to write the line into the image file.
 
-### `set claims <module>`
+###### **Arguments:**
+
+* `<image>`
+
+###### **Options:**
+
+* `--datastream <file>` — the SCAP content the profile is chosen out of; the installed copy for the image's family by default
+
+
+
+## `buildc set claims`
 
 Chooses the benchmark rules one module this repository holds claims to cover,
 and writes them into its `satisfies` block as numbers.
 
-Asks you for:
+Prompts for:
+
 - Which profile the rules are read out of, out of the ones the datastream
   carries
 - Which of that profile's rules the module claims, as a tree grouped by the
   numbers' own dotted sections, opening on what it already claims
 
-#### Notes:
+**Usage:** `buildc set claims [OPTIONS] [module]`
+
+Notes:
+
 - `--datastream <file>` names the content, and without it this reads the copy
   installed on this machine for the family the module `supports`, refusing by
   naming `scap-security-guide` and the flag when there is none. The contract is
@@ -456,28 +608,77 @@ Asks you for:
   a module against a second profile does not drop what the first one wrote.
 - Claiming nothing takes the block away, the way `set workflows` takes the
   workflow block away. Leaving either picker changes nothing.
-- The benchmark each number is written under is `<profile>-<family>`, and it is
-  decorative: a number resolves against the datastream, never against the name
-  it was written under.
+- The benchmark each number is written under is decorative: a number resolves
+  against the datastream, never against the name it was written under.
 
-### `check`
+###### **Arguments:**
+
+* `<module>`
+
+###### **Options:**
+
+* `--datastream <file>` — the SCAP content the rules are read out of; the installed copy for the module's family by default
+
+
+
+## `buildc set key`
+
+Records a public half the user already holds, in place of generating one. Where
+`create key` invents a key, this writes down one that exists: a cosign public
+key, a MOK certificate and an authorized key are all things the user may
+already have, and every kind a module declares can be recorded this way.
+
+Prompts for:
+
+- Which kind, listing the kinds the modules declare, when no argument is given
+- The file to read it from, where `--from` did not name one
+
+**Usage:** `buildc set key [OPTIONS] [kind]`
+
+Notes:
+
+- The destination is the module's own `public` declaration, so nothing here
+  takes a path to write to.
+- Only the public half. A private half is not the repository's: a cosign key
+  signs in CI, a MOK signs a kernel module, a PCR key signs the machine's TPM
+  unlock policy, and an authorized key logs the user in. None of them wants
+  its private half copied here.
+- The file is read before it is written: a key in the wrong form for the
+  generator that would have made it (a PEM public key for `cosign`, a PEM or
+  DER certificate for `module-signing`, a bare PEM public key for
+  `pcr-signing`, an OpenSSH key line for `ssh-keygen`) is refused here rather
+  than by a build a long way from here.
+- An existing key is never replaced, exactly as with `create key`.
+
+###### **Arguments:**
+
+* `<kind>`
+
+###### **Options:**
+
+* `--module <name>` — which module, where two of them declare the same kind
+* `--from <path>` — the public half to record
+
+
+
+## `buildc check`
 
 Reads every manifest and reports every problem at the line that caused it, then
 the counts on the last line: images, modules, flavours, and how many listed
 modules the base already provides.
 
-#### Flags:
-    --datastream <f>      the SSG content, for the conformance read-out
+**Usage:** `buildc check [OPTIONS]`
 
-#### Notes:
+Notes:
+
 - Above the counts it names every base a collection describes differently from
   the tool's own entry, every collection declared `unpinned`, every image
   declaring a `conforms` nothing it installs or builds on claims a rule of, and
   every `module.kdl` sitting below another member's directory in a collection.
 - A member inside a member is invisible everywhere else: the walk stops at the
   first `module.kdl`, and everything below one is that module's own content. It
-  is left that way — descending would make a member's own subdirectory
-  ambiguous — so what `check` fixes is the silence, not the walk.
+  is left that way, because descending would make a member's own subdirectory
+  ambiguous, so what `check` fixes is the silence, not the walk.
 - None of those is an error, and none changes the exit code. An image is
   allowed to declare a target it has not reached; that is what declaring one
   first is for.
@@ -488,9 +689,16 @@ modules the base already provides.
   and it names any declared collection nothing read rather than concluding
   from its silence. `buildc scap content` prints the path to pass it.
 
-### `generate`
+###### **Options:**
+
+* `--datastream <file>` — the SSG content, for the conformance read-out
+
+
+
+## `buildc generate`
 
 Writes the build files and draws the tree of what it wrote:
+
 - `generated/<image>/Containerfile`, one per image
 - `generated/<image>/modules/<module>.sh`, the per-module build scripts
 - `generated/<image>/finalize.sh`
@@ -500,15 +708,18 @@ Writes the build files and draws the tree of what it wrote:
 - `generated/seed.kdl`, where `repo.kdl` nominates a seedable image
 - Every workflow the `workflows` block names, under `.github/workflows/`
 
-#### Notes:
+**Usage:** `buildc generate`
+
+Notes:
+
 - Everything one image generates lives under a directory named for it, so what
   belongs to the repository and what belongs to one image are not the same
   pile. The Containerfile is called `Containerfile` rather than the image's
-  name, which left the one file a person goes looking for with no extension to
-  find it by.
+  name, so the one file the user goes looking for always has a name to find it
+  by.
 - Referenced modules are fetched first. What is written is read off
   `modules/.remote/`, so a tree older than the collection would bake a deleted
-  file into `plan.json` and CI — which fetches into an empty tree — would
+  file into `plan.json` and CI, which fetches into an empty tree, would
   disagree and be right. `build` does not fetch; this is where it happens.
 - `generated/` is cleared first, so an image or module that is gone leaves with
   its files. A workflow is removed by name instead: one the tool does not ship
@@ -528,78 +739,87 @@ Writes the build files and draws the tree of what it wrote:
   `org.opencontainers.image.base.digest` and the build record agree rather than
   resolving a moving tag twice.
 
-### `build [target]`
+
+
+## `buildc build`
 
 Builds one target: runs `verify` as the drift gate, then execs the container
 backend. A target is `<image>/<flavour>`, and the ungated set is named by the
 bare image id. The default target when none is named.
 
-#### Flags:
-    --target <t>          the target, where the positional argument is not used
-    --kernel <name>       the KERNEL build arg
-    --tag <ref>           tag the result; repeatable, and $TAGS adds to it
-    --secret <id>=<path>  mount <path> as the build secret <id>; repeatable
-    --backend <name>      buildx or buildah, else $BUILD_BACKEND, else buildah
-    --oci-output <path>   write an OCI archive instead of loading the image
-    --cache-to            export the layer cache to the registry cache repo
-    --no-cache-from       do not import the layer cache
+**Usage:** `buildc build [OPTIONS] [target]`
 
-#### Notes:
+Notes:
+
 - `$LABELS` adds OCI labels the way `$TAGS` adds tags, and `$IMAGE_VERSION` is
   stamped into the image, defaulting to today in UTC.
 - Nothing is fetched and nothing is regenerated here. A build proves the
   committed files are current, and a build that first wrote them would be
   proving nothing. `buildc fetch modules` and `buildc generate` are what change the
-  repository; run them first, or let `buildc vm --rebuild` run all three in
+  repository; run them first, or let `buildc vm run --rebuild` run all three in
   order.
 - A UKI target builds in two passes: the split image, then the whole image
-  sealed with that split's storage digest — the number `bootc install`
+  sealed with that split's storage digest, the number `bootc install`
   compares and a single build cannot read. The digest is computed from the
   local buildah store, so `--backend buildx` is refused for a UKI target, and
   the generated boot chain's tail must carry `FROM ${SPLIT_BASE}` and
   `ARG COMPOSEFS_DIGEST`; a module collection that predates them is refused by
   name. The sealed image is digested from the store again and its UKI cmdline
   read back, both compared with the embedded digest, and only then are the
-  requested tags applied — so a failed check leaves nothing published as the
+  requested tags applied, so a failed check leaves nothing published as the
   image that failed it. The skeleton's validation step also runs against the
   sealed image: the seal pass stops at the tail, because a step that runs after
   the seal writes to the image and moves the digest the UKI embedded.
 
-### `vm build|run|spawn <type>`
+###### **Arguments:**
+
+* `<target>`
+
+###### **Options:**
+
+* `--target <target>` — the target, where the positional argument is not used
+* `--tag <tag>` — tag the result; repeatable, and $TAGS adds to it
+* `--kernel <name>` — the KERNEL build arg
+* `--backend <name>` — buildx or buildah, else $BUILD_BACKEND, else buildah
+* `--oci-output <path>` — write an OCI archive instead of loading the image
+* `--secret <id=path>` — mount <path> as the build secret <id>; repeatable
+* `--cache-to` — export the layer cache to the registry cache repository
+* `--no-cache-from` — do not import the layer cache
+
+
+
+## `buildc vm`
 
 Turns the container image into a disk and boots it. `<type>` is `qcow2`, `raw`
 or `iso`, asked for where there is a terminal to ask on. `build` converts,
 `run` boots under qemu and converts first where the disk is missing, and
 `spawn` boots it with systemd-vmspawn, which cannot boot an installer iso.
 
-#### Flags:
-    --target <t>          what a rebuild builds, and what an iso installs
-    --image <ref>         the container image to convert, without its tag
-    --tag <tag>           its tag, else $DEFAULT_TAG, else latest
-    --ram <size>          memory for the virtual machine
-    --rebuild             fetch, generate and build the container image first
+**Usage:** `buildc vm [COMMAND]`
 
-#### Notes:
+Notes:
+
 - `--rebuild` is the one form of this that changes the repository, and it runs
   the whole chain in the only order it works in: `fetch modules`, then
-  `generate`, then `build`. Without it nothing is fetched, written or built —
-  the disk that is already there is booted.
+  `generate`, then `build`. Without it nothing is fetched, written or built,
+  and the disk that is already there is booted.
 - This is `scripts/vm.sh`, which `generate` writes and this execs. The terminal
   is the script's: it asks for sudo and boots a machine onto it, and nothing
   here captures or reimplements any of that. Every default is the script's too,
   so a flag not passed is not restated in Rust.
-- The disk is the size `disk_config/disk.toml` declares. Its
-  `[[customizations.filesystem]]` root is applied by the image builder, and the
-  disk comes out that size plus about 1.5 GiB of ESP and `/boot`.
+- The disk is the size `disk_config/disk.toml` declares, plus the ESP and `/boot`
+  the image builder adds. The `bootc install to-disk` path writes a `DISK_SIZE`
+  disk, 20G by default.
 - It reads the image out of rootful podman, so it asks for sudo and copies the
   image into root's store with `podman image scp` where it is not there.
-- Fedora disks use bootc-image-builder. Other families use `bootc install
-  to-disk --composefs-backend --filesystem ext4` for `qcow2` and `raw`. The
-  family is read off the target's base, so an `--image` naming a ref this
-  repository does not describe is not guessed.
+- Fedora and RHEL disks use bootc-image-builder. Debian and Ubuntu use `bootc
+  install to-disk` with the target's settled `--filesystem` and
+  `--composefs-backend` flags for `qcow2` and `raw`. The family is read off the
+  target's base, so an `--image` naming a ref this repository does not describe
+  is not guessed.
 - An `iso` is converted by neither, on any family. It is a live environment
   layered on the target's own image, carrying fisherman and the target's bytes,
-  assembled into media by tacklebox — both built from source pins in the same
+  assembled into media by tacklebox, both built from source pins in the same
   build. `buildc vm build iso` stages the two recipes, the live environment's
   Containerfile and one upstream patch under `out/bootiso/`; they are not
   generated files, because each depends on `--target`, `--tag` and
@@ -611,11 +831,11 @@ or `iso`, asked for where there is a terminal to ask on. `build` converts,
   is erased and then does not boot. A successful `buildc build` inspects the
   initramfs before that witness can enable root encryption. `buildc recipe` prints
   the same document.
-- Building an `iso` needs a published reference, and says so when there is
-  none. The media installs local bytes while recording `$IMAGE_REGISTRY`'s
-  reference as the installed machine's update origin, so a local namespace
-  would write `localhost/...` into a machine. A disk records nothing and is
-  not refused for this.
+- Building an `iso` needs a published reference, and `buildc vm build iso` says
+  so when there is none. The media installs local bytes while recording
+  `$IMAGE_REGISTRY`'s reference as the installed machine's update origin, so a
+  local namespace would write `localhost/...` into a machine. A disk records
+  nothing and is not refused for this.
 - `run iso` keeps its target disk under `out/bootiso/storage/`, so completing
   an install and rebooting tests what was installed.
 - The live environment autologins root on the console and asks for no VM
@@ -633,200 +853,120 @@ or `iso`, asked for where there is a terminal to ask on. `build` converts,
   `VM_USER` to change the account or `VM_PASSWORD_HASH` to supply a stable
   crypt(5) hash on a run without a terminal. Credentials provision an account
   only on its first boot, so later boots use the password chosen then.
-- Where the target also declares an SSH key and its public half has been
-  recorded, the bootc installer passes it through
-  `--root-ssh-authorized-keys`. This provisions root SSH access at install time
-  and works independently of the hypervisor credential path.
+- On the `bootc install to-disk` path, where the target also declares an SSH key
+  and its public half has been recorded, the install passes it as a kernel
+  command line credential,
+  `systemd.set_credential_binary=ssh.authorized_keys.root`, which systemd's
+  `provision.conf` reads on the installed machine, because a composefs install
+  drops `--root-ssh-authorized-keys`. This is separate from the hypervisor
+  credential path.
 
-### `section [image]`
+###### **Subcommands:**
+
+* `build` — convert the built image into a qcow2, raw or iso
+* `run` — boot that disk under qemu, building it if missing
+* `spawn` — boot a qcow2 or raw disk with systemd-vmspawn
+
+
+
+## `buildc vm build`
+
+convert the built image into a qcow2, raw or iso
+
+**Usage:** `buildc vm build [OPTIONS] [type]`
+
+###### **Arguments:**
+
+* `<type>`
+
+###### **Options:**
+
+* `--target <target>` — what a rebuild builds, and what an iso installs
+* `--image <ref>` — the container image to convert, without its tag
+* `--tag <tag>` — its tag, else $DEFAULT_TAG, else latest
+* `--ram <size>` — memory for the virtual machine
+* `--rebuild` — fetch, generate and build the container image first
+
+
+
+## `buildc vm run`
+
+boot that disk under qemu, building it if missing
+
+**Usage:** `buildc vm run [OPTIONS] [type]`
+
+###### **Arguments:**
+
+* `<type>`
+
+###### **Options:**
+
+* `--target <target>` — what a rebuild builds, and what an iso installs
+* `--image <ref>` — the container image to convert, without its tag
+* `--tag <tag>` — its tag, else $DEFAULT_TAG, else latest
+* `--ram <size>` — memory for the virtual machine
+* `--rebuild` — fetch, generate and build the container image first
+
+
+
+## `buildc vm spawn`
+
+boot a qcow2 or raw disk with systemd-vmspawn
+
+**Usage:** `buildc vm spawn [OPTIONS] [type]`
+
+###### **Arguments:**
+
+* `<type>`
+
+###### **Options:**
+
+* `--target <target>` — what a rebuild builds, and what an iso installs
+* `--image <ref>` — the container image to convert, without its tag
+* `--tag <tag>` — its tag, else $DEFAULT_TAG, else latest
+* `--ram <size>` — memory for the virtual machine
+* `--rebuild` — fetch, generate and build the container image first
+
+
+
+## `buildc section`
 
 Prints the generated Containerfile module section for one image, the default
 image when none is named.
 
-### `graph`
+**Usage:** `buildc section [image]`
+
+###### **Arguments:**
+
+* `<image>`
+
+
+
+## `buildc graph`
 
 Prints the default image's capability graph: what provides what, what requires
 it, what only orders against it, and what the base already carries.
 
-#### Flags:
-    --format <md|json>    markdown holding a mermaid diagram by default, or json
+**Usage:** `buildc graph [OPTIONS]`
 
-### `coverage [image] [--format md|json]`
+###### **Options:**
 
-Every rule the profile an image declares `conforms` to selects, the number a
-claim names it by, which of the image's modules claims it, and which module in
-the repository or its collections would claim one nothing does. The default
-image when none is named, a picker where there is a terminal to pick on.
+* `--format <md|json>` — markdown holding a mermaid diagram by default, or json
 
-#### Flags:
-    --datastream <f>      the SSG content the profile is read out of
-    --format <md|json>    markdown, the default, or json
 
-#### Notes:
-- No scan is involved and no report is read. This says what is claimed, not
-  what passes; `buildc scap` is what measures.
-- The content is only ever the one `--datastream` names. Nothing probes the
-  host for installed SSG, so what this prints does not depend on the machine.
-  `buildc scap content` prints the path a scan of this repository would use.
-- A terminal draws it as a table, red for a rule nothing claims. Everything
-  else gets the markdown, so `buildc coverage > report.md` is the export.
-- The counts and the collections nothing read go to stderr, since the second
-  is about this machine rather than about the image.
-- A rule with no number in the `Number` column is one no `satisfies` can name.
-  It is unclaimable rather than unclaimed.
 
-## For scripts
-
-None of these is in the help a person reads. They are the contract the build
-runs against.
-
-### `plan [--json]`
-
-Prints every fact this repository derives, as one JSON document: the images,
-each image's targets, and what each target is made of. Read a field out of it
-rather than deriving anything from a name.
-
-### `verify`
-
-Re-emits every artifact and byte-compares it against what is committed under
-`generated/`, naming what differs, what is missing, and anything under
-`generated/` that nothing emits. It runs before every build.
-
-### `summary [target]`
-
-Prints what one target is made of, as a markdown table: every module it builds,
-with its description and the options it resolved. This is what a build writes
-into its job summary.
-
-### `sbom [target]`
-
-Prints the pinned payloads one target carries, as SPDX packages and the
-relationships that describe them. A scan of the built image cannot see where a
-downloaded asset came from, so this is merged into the SBOM the scan produces.
-
-### `fetch modules`
-
-Fetches every out-of-tree module the images reference, verifies one whose pin
-has a hash, and puts it under `modules/.remote/`.
-
-#### Notes:
-- A tree already at its pin is left alone; one no image references any more is
-  removed.
-- It reads the declarations rather than the resolved plan, so it runs before the
-  modules it fetches can be read.
-
-### `scap <arf.xml>`
-
-Reads one scan's report against the datastream it was produced with, and prints
-what the two of them say about the target, as markdown: what the modules
-claimed and what was measured for each, what the image scores against every
-profile the datastream carries, and what stopped passing since the last scan.
-
-#### Flags:
-    --target <t>          the target, else the ungated one
-    --datastream <f>      the SSG content, else the one `scap content` names
-    --baseline <f>        the last scan's pass set, read then rewritten
-    --base-scan <f>       what the bare base passed alone, read only
-
-#### Notes:
-- The mapping from a benchmark number to a rule is the datastream's own, over
-  every `reference`, `ident` and `version` it carries, and the first rule in
-  document order wins. A number that maps to nothing is a failure of the
-  declaration rather than of the image.
-- A claimed rule the image fails names the module that claimed it, and, where
-  another module replaced a file the claimant ships, names that too: the claim
-  is not contradicted, the composition defeats it.
-- `image { conforms }` is measured and reported, never enforced. A profile
-  nothing in the datastream carries is a finding, and the ones it does carry
-  are listed.
-- `--baseline` is the ratchet. The file is read before it is written, so a rule
-  that passed the last scan and does not now is a finding, and every run leaves
-  the current pass set behind as the next floor. One deliberate regression is
-  one red run rather than a file somebody has to go and delete.
-- `--base-scan` names a pass set a scan of the bare base wrote, in the same
-  format `--baseline` writes, and adds a *base alone* column. A claim the base
-  already passes is reported not load-bearing, which is a notice and never a
-  finding: the module may implement the rule as well, and it applies its
-  settings either way. The document records passes only, so a rule missing from
-  it is not a rule the base failed.
-- Findings are fatal only under `audit { enforce #true }`, like every other
-  audit fact, and the report goes to stdout either way.
-
-### `scap content`
-
-Prints the datastream the target is measured with, and nothing at all when the
-image declares no `conforms`, which is an image asking not to be scanned. This
-is what the scan job gates on, and `buildc set conforms` is what opens it.
-
-#### Flags:
-    --target <t>          the target, else the ungated one
-
-### `scap tailoring`
-
-Prints the XCCDF tailoring a scan of the target runs, as profile
-`xccdf_tect_profile_measured`: the declared profile, with every group and rule
-selected. Nothing at all when the image declares no `conforms`.
-
-#### Flags:
-    --target <t>          the target, else the ungated one
-    --datastream <f>      the SSG content, else the one `scap content` names
-
-#### Notes:
-- `--profile '(all)'` scores every variable at its default, so a rule
-  remediated to the profile's value reads as failing. The tailoring keeps the
-  profile's values and still evaluates every claim outside it.
-
-### `registry namespace`
-
-Prints where images publish: `$IMAGE_REGISTRY`, else `ghcr.io/<owner>` read off
-the github origin remote.
-
-### `registry ref`
-
-Prints the full reference one target publishes under, joining the namespace to
-the target's name and tag. The ungated target when none is named.
-
-#### Flags:
-    --target <t>          the target, else the ungated one
-    --tag <x>             the tag, else $DEFAULT_TAG, else latest
-
-### `recipe`
-
-Prints the half of an installation recipe the declaration answers, as JSON for
-`fisherman`: the reference installed and the reference the installed machine
-updates from, plus image properties such as composefs sealing, the boot chain
-and bootloader, the root filesystem and whether the target declares a
-LUKS-capable initramfs. A successful `buildc build` validates that last
-declaration against the archive itself. The disk, the account and the encryption
-choice are the person's and are not in it.
-
-#### Flags:
-    --target <t>          the target, else the ungated one
-    --tag <x>             the tag, else $DEFAULT_TAG, else latest
-    --image <ref>         the bytes installed, else the published reference
-
-#### Notes:
-- The base family settles every derived value, and a family with no answer is
-  refused rather than defaulted: a wrong one here is a disk that is erased and
-  then does not boot, minutes after the person confirmed.
-- `--image` is what installs a local build without making `localhost/...` the
-  machine's update origin: the bytes come from it, `targetImgref` stays the
-  published reference.
-- `hostname` is the published name, and is the one derived value a person is
-  expected to replace.
-
-### `why [module] [--format md|json]`
+## `buildc why`
 
 One module's trust read-out: which targets build it, what it provides and who
 requires that, what it requires and what provides it, what it claims to
-harden, and where every byte of it came from — the collection it was imported
+harden, and where every byte of it came from: the collection it was imported
 from and at what pin, whether it has been edited since, what it fetches, and
 whether it enables a third-party package repository.
 
-#### Flags:
-    --format <md|json>    markdown, the default, or JSON
+**Usage:** `buildc why [OPTIONS] [module]`
 
-#### Notes:
+Notes:
+
 - It answers two ways from one renderer. In a repository it reads the resolved
   plan; on a booted image it reads the two baked documents, scoped to the
   target the record names.
@@ -840,23 +980,334 @@ whether it enables a third-party package repository.
   the commit it was at, with the `git clone` that reaches them. The module tree
   is deliberately not in the finished image, so comparing this machine against
   its declarations means fetching them rather than reconstructing them.
-- A module edited since it was imported is said so plainly and is not an error.
-  Forking one is legitimate; what the record buys is that the fork is visible
-  rather than silent. `audit { enforce #true }` is what makes it fail.
+- `why` says plainly when a module was edited since it was imported, and that
+  is not an error. Forking one is legitimate; what the record buys is that the
+  fork is visible rather than silent. `audit { enforce #true }` is what makes it
+  fail.
 - A name nothing declares lists the ones that are declared.
 - There is no grammar for a `repo` file, so this points at it and prints the
   URLs it found rather than claiming to have understood it.
 
-## Inside a build layer
+###### **Arguments:**
 
-These read the image around them rather than a repository, and run where the
-binary is mounted into a build.
+* `<module>`
 
-### `os-release`
+###### **Options:**
+
+* `--format <md|json>` — markdown, the default, or JSON
+
+
+
+## `buildc coverage`
+
+Every rule the profile an image declares `conforms` to selects, the number a
+claim names it by, which of the image's modules claims it, and which module in
+the repository or its collections would claim one nothing does. The default
+image when none is named, a picker where there is a terminal to pick on.
+
+**Usage:** `buildc coverage [OPTIONS] [image]`
+
+Notes:
+
+- No scan is involved and no report is read. This says what is claimed, not
+  what passes; `buildc scap` is what measures.
+- The content is only ever the one `--datastream` names. Nothing probes the
+  host for installed SSG, so what this prints does not depend on the machine.
+  `buildc scap content` prints the path a scan of this repository would use.
+- A terminal draws it as a table, red for a rule nothing claims. Everything
+  else gets the markdown, so `buildc coverage > report.md` is the export.
+- The counts and the collections nothing read go to stderr, since the second
+  is about this machine rather than about the image.
+- A rule with no number in the `Number` column is one no `satisfies` can name.
+  It is unclaimable rather than unclaimed.
+
+###### **Arguments:**
+
+* `<image>`
+
+###### **Options:**
+
+* `--format <md|json>` — markdown, the default, or json
+* `--datastream <file>` — the SSG content the profile is read out of
+
+
+
+## `buildc plan`
+
+Prints every fact this repository derives, as one JSON document: the images,
+each image's targets, and what each target is made of. Read a field out of it
+rather than deriving anything from a name.
+
+**Usage:** `buildc plan [OPTIONS]`
+
+###### **Options:**
+
+* `--json` — the output is JSON with or without it
+
+
+
+## `buildc verify`
+
+Re-emits every artifact and byte-compares it against what is committed under
+`generated/`, naming what differs, what is missing, and anything under
+`generated/` that nothing emits. It runs before every build.
+
+**Usage:** `buildc verify`
+
+
+
+## `buildc summary`
+
+Prints what one target is made of, as a markdown table: every module it builds,
+with its description and the options it resolved. This is what a build writes
+into its job summary.
+
+**Usage:** `buildc summary [target]`
+
+###### **Arguments:**
+
+* `<target>`
+
+
+
+## `buildc sbom`
+
+Prints the pinned payloads one target carries, as SPDX packages and the
+relationships that describe them. A scan of the built image cannot see where a
+downloaded asset came from, so this is merged into the SBOM the scan produces.
+
+**Usage:** `buildc sbom [target]`
+
+###### **Arguments:**
+
+* `<target>`
+
+
+
+## `buildc scap`
+
+Reads one scan's report against the datastream it was produced with, and prints
+what the two of them say about the target, as markdown: what the modules
+claimed and what was measured for each, what the image scores against every
+profile the datastream carries, and what stopped passing since the last scan.
+
+**Usage:** `buildc scap [OPTIONS] [arf.xml] [COMMAND]`
+
+Notes:
+
+- The mapping from a benchmark number to a rule is the datastream's own, over
+  every `reference`, `ident` and `version` it carries, and the first rule in
+  document order wins. A number that maps to nothing is a failure of the
+  declaration rather than of the image.
+- A claimed rule the image fails names the module that claimed it, and, where
+  another module replaced a file the claimant ships, names that too: the claim
+  is not contradicted, the composition defeats it.
+- `image { conforms }` is measured and reported, never enforced. A profile
+  nothing in the datastream carries is a finding, and the ones it does carry
+  are listed.
+- `--baseline` is the ratchet. The file is read before it is written, so a rule
+  that passed the last scan and does not now is a finding, and every run leaves
+  the current pass set behind as the next floor. So one deliberate regression is
+  one red run, and no file the user must find and delete.
+- `--base-scan` names a pass set a scan of the bare base wrote, in the same
+  format `--baseline` writes, and adds a *base alone* column. A claim the base
+  already passes is reported not load-bearing, which is a notice and never a
+  finding: the module may implement the rule as well, and it applies its
+  settings either way. The document records passes only, so a rule missing from
+  it is not a rule the base failed.
+- Findings are fatal only under `audit { enforce #true }`, like every other
+  audit fact, and the report goes to stdout either way.
+
+###### **Subcommands:**
+
+* `content` — print the datastream the target is measured with
+* `tailoring` — print the tailoring the target is scanned with
+* `rules` — print the rule each benchmark number reaches, one per line
+
+###### **Arguments:**
+
+* `<arf.xml>`
+
+###### **Options:**
+
+* `--target <target>` — the target, else the ungated one
+* `--datastream <file>` — the SSG content, else the one `scap content` names
+* `--baseline <file>` — the last scan's pass set, read then rewritten
+* `--base-scan <file>` — what the bare base passed alone, read only
+
+
+
+## `buildc scap content`
+
+Prints the datastream the target is measured with, and nothing at all when the
+image declares no `conforms`, which is an image asking not to be scanned. This
+is what the scan job gates on, and `buildc set conforms` is what opens it.
+
+**Usage:** `buildc scap content [OPTIONS]`
+
+###### **Options:**
+
+* `--target <target>` — the target, else the ungated one
+
+
+
+## `buildc scap tailoring`
+
+Prints the XCCDF tailoring a scan of the target runs, as profile
+`xccdf_tect_profile_measured`: the declared profile, with every group and rule
+selected. Nothing at all when the image declares no `conforms`.
+
+**Usage:** `buildc scap tailoring [OPTIONS]`
+
+Notes:
+
+- `--profile '(all)'` scores every variable at its default, so a rule
+  remediated to the profile's value reads as failing. The tailoring keeps the
+  profile's values and still evaluates every claim outside it.
+
+###### **Options:**
+
+* `--target <target>` — the target, else the ungated one
+* `--datastream <file>` — the SSG content, else the one `scap content` names
+
+
+
+## `buildc scap rules`
+
+print the rule each benchmark number reaches, one per line
+
+**Usage:** `buildc scap rules [OPTIONS] [number]...`
+
+###### **Arguments:**
+
+* `<number>`
+
+###### **Options:**
+
+* `--datastream <file>` — the SSG content, else the one `scap content` names
+
+
+
+## `buildc fetch`
+
+Downloads one payload, verifies it against the hash, and places it by what it
+is:
+
+- `file` keeps it
+- `tree` unpacks it
+- `bin` installs one executable
+- `rpm` installs the package, on an rpm family
+- `deb` installs the package, on a deb family
+
+**Usage:** `buildc fetch <what> <url> <sha256> [target] [extra]...
+       fetch [what] [url] [sha256] [target] [extra]... <COMMAND>`
+
+###### **Subcommands:**
+
+* `modules` — fetch every out-of-tree module the images reference
+
+###### **Arguments:**
+
+* `<what>`
+* `<url>`
+* `<sha256>`
+* `<target>`
+* `<extra>`
+
+
+
+## `buildc fetch modules`
+
+Fetches every out-of-tree module the images reference, verifies one whose pin
+has a hash, and puts it under `modules/.remote/`.
+
+**Usage:** `buildc fetch modules`
+
+Notes:
+
+- A tree already at its pin is left alone; one no image references any more is
+  removed.
+- It reads the declarations rather than the resolved plan, so it runs before the
+  modules it fetches can be read.
+
+
+
+## `buildc registry`
+
+print where images publish, and under what reference
+
+**Usage:** `buildc registry [COMMAND]`
+
+###### **Subcommands:**
+
+* `namespace` — print where images publish
+* `ref` — print the full reference one target publishes under
+
+
+
+## `buildc registry namespace`
+
+Prints where images publish: `$IMAGE_REGISTRY`, else `ghcr.io/<owner>` read off
+the github origin remote.
+
+**Usage:** `buildc registry namespace`
+
+
+
+## `buildc registry ref`
+
+Prints the full reference one target publishes under, joining the namespace to
+the target's name and tag. The ungated target when none is named.
+
+**Usage:** `buildc registry ref [OPTIONS]`
+
+###### **Options:**
+
+* `--target <target>` — the target, else the ungated one
+* `--tag <tag>` — the tag, else $DEFAULT_TAG, else latest
+
+
+
+## `buildc recipe`
+
+Prints the half of an installation recipe the declaration answers, as JSON for
+`fisherman`: the reference installed and the reference the installed machine
+updates from, plus image properties such as composefs sealing, the boot chain
+and bootloader, the root filesystem and whether the target declares a
+LUKS-capable initramfs. A successful `buildc build` validates that last
+declaration against the archive itself. The disk, the account and the encryption
+choice are the person's and are not in it.
+
+**Usage:** `buildc recipe [OPTIONS]`
+
+Notes:
+
+- The base family settles every derived value, and a family with no answer is
+  refused rather than defaulted: a wrong one here is a disk that is erased and
+  then does not boot, minutes after the person confirmed.
+- `--image` is what installs a local build without making `localhost/...` the
+  machine's update origin: the bytes come from it, `targetImgref` stays the
+  published reference.
+- `hostname` is the published name, and is the one derived value the user is
+  expected to replace.
+
+###### **Options:**
+
+* `--target <target>` — the target, else the ungated one
+* `--tag <tag>` — the tag, else $DEFAULT_TAG, else latest
+* `--image <ref>` — the bytes installed, else the published reference
+
+
+
+## `buildc os-release`
 
 Writes the image identity the build ARGs carry into `/usr/lib/os-release`.
 
-### `build-record`
+**Usage:** `buildc os-release`
+
+
+
+## `buildc build-record`
 
 Writes `/usr/share/buildc/build.json`, the record of what the build
 **resolved**, where the baked `manifest.json` beside it is what the repository
@@ -870,17 +1321,16 @@ changing resolution in a committed file would fail the drift gate every
 morning, which is why the resolution is a second document rather than a field
 of the first.
 
-### `fetch <what> <url> <sha256> [target] [extra...]`
+**Usage:** `buildc build-record`
 
-Downloads one payload, verifies it against the hash, and places it by what it
-is:
-- `file` keeps it
-- `tree` unpacks it
-- `bin` installs one executable
-- `rpm` installs the package, on an rpm family
-- `deb` installs the package, on a deb family
 
-### `validate-image`
+
+## `buildc validate-image`
 
 Runs every check a built image has to pass. The build passes it the preset files
 the enabled modules' overlays ship, and it fails on any the image does not have.
+
+**Usage:** `buildc validate-image`
+
+
+

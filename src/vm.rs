@@ -1,4 +1,3 @@
-use crate::command::Spec;
 use crate::copy;
 use common::prompt::Prompt;
 use common::ui::Choice;
@@ -32,16 +31,17 @@ struct Access {
 
 pub fn run(
     root: &Path,
-    spec: &Spec,
+    noun: &str,
+    name: &str,
     given: Option<&str>,
     opts: &Options,
     prompt: &Prompt,
 ) -> Result<(), String> {
-    let Some(kind) = kind(spec, given, prompt)? else {
+    let Some(kind) = kind(noun, name, given, prompt)? else {
         return Ok(());
     };
-    let installer = installer(root, spec, kind, opts);
-    let live = match kind == "iso" && converts(root, spec, kind, opts) {
+    let installer = installer(root, noun, kind, opts);
+    let live = match kind == "iso" && converts(root, noun, kind, opts) {
         true => Some(stage(root, opts)?),
         false => None,
     };
@@ -57,7 +57,7 @@ pub fn run(
         "{}: {}",
         script.display(),
         Command::new(&script)
-            .args(argv(spec, kind, opts, installer, live.as_deref(), &access))
+            .args(argv(noun, kind, opts, installer, live.as_deref(), &access))
             .exec()
     ))
 }
@@ -128,8 +128,8 @@ fn stage(root: &Path, opts: &Options) -> Result<String, String> {
     Ok(crate::emit::recipe::live(&published))
 }
 
-fn converts(root: &Path, spec: &Spec, kind: &str, opts: &Options) -> bool {
-    if spec.noun == "build" || opts.rebuild {
+fn converts(root: &Path, noun: &str, kind: &str, opts: &Options) -> bool {
+    if noun == "build" || opts.rebuild {
         return true;
     }
     let at = match kind {
@@ -216,8 +216,8 @@ fn imports_passwords(root: &Path, module: &str) -> bool {
     false
 }
 
-fn installer(root: &Path, spec: &Spec, kind: &str, opts: &Options) -> Option<&'static str> {
-    if kind == "iso" || !converts(root, spec, kind, opts) {
+fn installer(root: &Path, noun: &str, kind: &str, opts: &Options) -> Option<&'static str> {
+    if kind == "iso" || !converts(root, noun, kind, opts) {
         return None;
     }
     family(root, opts)
@@ -228,14 +228,14 @@ fn installer(root: &Path, spec: &Spec, kind: &str, opts: &Options) -> Option<&'s
 const BOOTC: &str = "bootc";
 
 fn argv(
-    spec: &Spec,
+    noun: &str,
     kind: &str,
     opts: &Options,
     installer: Option<&str>,
     live: Option<&str>,
     access: &Access,
 ) -> Vec<String> {
-    let mut args = vec![spec.noun.to_string(), kind.to_string()];
+    let mut args = vec![noun.to_string(), kind.to_string()];
     if let Some(installer) = installer {
         args.extend(["--installer".to_string(), installer.to_string()]);
     }
@@ -264,7 +264,12 @@ fn argv(
     args
 }
 
-fn kind(spec: &Spec, given: Option<&str>, prompt: &Prompt) -> Result<Option<&'static str>, String> {
+fn kind(
+    noun: &str,
+    name: &str,
+    given: Option<&str>,
+    prompt: &Prompt,
+) -> Result<Option<&'static str>, String> {
     let names = || match TYPES
         .iter()
         .map(|(name, _)| format!("`{name}`"))
@@ -277,25 +282,21 @@ fn kind(spec: &Spec, given: Option<&str>, prompt: &Prompt) -> Result<Option<&'st
     if let Some(named) = given {
         return match TYPES.iter().find(|(name, _)| *name == named) {
             Some((name, _)) => Ok(Some(name)),
-            None => Err(format!(
-                "`{}` takes {}, not `{named}`",
-                spec.name(),
-                names()
-            )),
+            None => Err(format!("`{}` takes {}, not `{named}`", name, names())),
         };
     }
     if !prompt.draws() {
-        return Err(format!("`{}` takes {}", spec.name(), names()));
+        return Err(format!("`{name}` takes {}", names()));
     }
     Ok(prompt
-        .choose(copy::WHICH_DISK, &rows(spec))?
+        .choose(copy::WHICH_DISK, &rows(noun))?
         .map(|at| TYPES[at].0))
 }
 
-fn rows(spec: &Spec) -> Vec<Choice> {
+fn rows(noun: &str) -> Vec<Choice> {
     TYPES
         .iter()
-        .map(|(name, about)| match (*name, spec.noun) {
+        .map(|(name, about)| match (*name, noun) {
             ("iso", "spawn") => Choice::new(*name, copy::NO_ISO_SPAWN).unavailable(),
             _ => Choice::new(*name, *about),
         })
@@ -305,7 +306,6 @@ fn rows(spec: &Spec) -> Vec<Choice> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::Verb;
 
     #[test]
     fn the_script_it_execs_is_one_the_repository_generates() {
@@ -322,14 +322,7 @@ mod tests {
             rebuild: true,
         };
         assert_eq!(
-            argv(
-                Verb::VmRun.spec(),
-                "qcow2",
-                &opts,
-                None,
-                None,
-                &Access::default()
-            ),
+            argv("run", "qcow2", &opts, None, None, &Access::default()),
             [
                 "run",
                 "qcow2",
@@ -341,23 +334,16 @@ mod tests {
             ]
         );
         assert_eq!(
-            argv(
-                Verb::VmBuild.spec(),
-                "raw",
-                &opts,
-                Some(BOOTC),
-                None,
-                &Access::default()
-            )[..4],
+            argv("build", "raw", &opts, Some(BOOTC), None, &Access::default())[..4],
             ["build", "raw", "--installer", "bootc"]
         );
     }
 
     #[test]
     fn spawn_shows_the_iso_it_cannot_boot_rather_than_hiding_it() {
-        let iso = |spec| rows(spec).pop().expect("iso is the last row");
-        assert!(!iso(Verb::VmSpawn.spec()).available);
-        assert!(iso(Verb::VmRun.spec()).available);
+        let iso = |noun| rows(noun).pop().expect("iso is the last row");
+        assert!(!iso("spawn").available);
+        assert!(iso("run").available);
     }
 
     #[test]
@@ -403,30 +389,16 @@ mod tests {
         let recorded = access(&root, "raw", &opts(None));
         assert!(recorded.login);
         assert!(recorded.ssh_key.is_some());
-        let args = argv(
-            Verb::VmRun.spec(),
-            "raw",
-            &opts(None),
-            Some(BOOTC),
-            None,
-            &recorded,
-        );
+        let args = argv("run", "raw", &opts(None), Some(BOOTC), None, &recorded);
         assert!(args.contains(&"--login".to_string()));
         assert!(args.contains(&"--ssh-key".to_string()));
         assert!(!access(&root, "raw", &opts(Some("localhost/other"))).login);
         assert!(!access(&root, "iso", &opts(None)).login);
         let refuse = |kind, opts: &Options| {
-            run(
-                &root,
-                Verb::VmRun.spec(),
-                Some(kind),
-                opts,
-                &Prompt::silent(),
-            )
-            .unwrap_err()
+            run(&root, "run", "vm run", Some(kind), opts, &Prompt::silent()).unwrap_err()
         };
 
-        let build = Verb::VmBuild.spec();
+        let build = "build";
         for kind in ["qcow2", "raw"] {
             assert_eq!(installer(&root, build, kind, &opts(None)), Some(BOOTC));
         }
@@ -434,36 +406,27 @@ mod tests {
         assert!(installed.contains("vm.sh is not there"), "{installed}");
         assert_eq!(installer(&root, build, "iso", &opts(None)), None);
 
-        let unasked = run(
-            &root,
-            Verb::VmRun.spec(),
-            None,
-            &opts(None),
-            &Prompt::silent(),
-        )
-        .unwrap_err();
+        let unasked =
+            run(&root, "run", "vm run", None, &opts(None), &Prompt::silent()).unwrap_err();
         assert!(
             unasked.contains("takes `qcow2`, `raw` or `iso`"),
             "{unasked}"
         );
 
         crate::init::put(&root.join("out/raw/disk.raw"), "").unwrap();
-        assert!(!converts(&root, Verb::VmSpawn.spec(), "raw", &opts(None)));
-        assert!(!converts(&root, Verb::VmRun.spec(), "raw", &opts(None)));
-        assert_eq!(
-            installer(&root, Verb::VmRun.spec(), "raw", &opts(None)),
-            None
-        );
+        assert!(!converts(&root, "spawn", "raw", &opts(None)));
+        assert!(!converts(&root, "run", "raw", &opts(None)));
+        assert_eq!(installer(&root, "run", "raw", &opts(None)), None);
         let booted = refuse("raw", &opts(None));
         assert!(booted.contains("vm.sh is not there"), "{booted}");
 
-        assert!(converts(&root, Verb::VmBuild.spec(), "raw", &opts(None)));
-        assert!(converts(&root, Verb::VmRun.spec(), "qcow2", &opts(None)));
+        assert!(converts(&root, "build", "raw", &opts(None)));
+        assert!(converts(&root, "run", "qcow2", &opts(None)));
         let rebuilding = Options {
             rebuild: true,
             ..opts(None)
         };
-        assert!(converts(&root, Verb::VmSpawn.spec(), "raw", &rebuilding));
+        assert!(converts(&root, "spawn", "raw", &rebuilding));
 
         assert_eq!(family(&root, &opts(Some("localhost/other"))), None);
 
@@ -560,9 +523,11 @@ mod tests {
     #[test]
     fn a_type_that_is_not_one_of_the_three_is_refused_by_name() {
         let silent = Prompt::silent();
-        let spec = Verb::VmBuild.spec();
-        assert!(kind(spec, Some("vmdk"), &silent).is_err());
-        assert_eq!(kind(spec, Some("raw"), &silent).unwrap(), Some("raw"));
-        assert!(kind(spec, None, &silent).is_err());
+        assert!(kind("build", "vm build", Some("vmdk"), &silent).is_err());
+        assert_eq!(
+            kind("build", "vm build", Some("raw"), &silent).unwrap(),
+            Some("raw")
+        );
+        assert!(kind("build", "vm build", None, &silent).is_err());
     }
 }

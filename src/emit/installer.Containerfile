@@ -4,12 +4,9 @@ ARG GO_IMAGE=docker.io/library/golang:1.26
 ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44
 
 FROM ${GO_IMAGE} AS tools
-ARG FISHERMAN_ORG=buildc-org
-ARG FISHERMAN_COMMIT=2ac6e1850734d82c3a40090d49a7565e02d610ea
-ARG FISHERMAN_SHA256=4ab6984245fd35843e86c7ff762b1672e193d3a2a6b939fada13be44605af933
 ARG TACKLEBOX_ORG=buildc-org
-ARG TACKLEBOX_COMMIT=da820e5e9ac34c7a851382a9a1c7a4c6bd0c886f
-ARG TACKLEBOX_SHA256=c873e6a102640b2688de126238e2faae3abfd1c40370bf46df2906965d9c0439
+ARG TACKLEBOX_COMMIT=a536788bac2eaeb1403cb2855a7f3b4bc2a1a029
+ARG TACKLEBOX_SHA256=9116d68d4bb2030398a1759ac6c029a0f4d8a2edb513e018a54aeaaf144e5ebc
 COPY efi-from-image.patch /tmp/efi-from-image.patch
 RUN set -eux; \
     fetch() { \
@@ -19,16 +16,14 @@ RUN set -eux; \
         mkdir -p "/src/$2"; \
         tar -xf "/tmp/$2.tar.gz" -C "/src/$2" --strip-components=1; \
     }; \
-    fetch "${FISHERMAN_ORG}" fisherman "${FISHERMAN_COMMIT}" "${FISHERMAN_SHA256}"; \
     fetch "${TACKLEBOX_ORG}" tacklebox "${TACKLEBOX_COMMIT}" "${TACKLEBOX_SHA256}"; \
     git -C /src/tacklebox apply -p1 /tmp/efi-from-image.patch; \
     mkdir -p /out; \
-    cd /src/fisherman/fisherman && CGO_ENABLED=0 go build -trimpath -o /out/fisherman ./cmd/fisherman/; \
     cd /src/tacklebox && CGO_ENABLED=0 go build -trimpath -o /out/tacklebox ./cmd/tacklebox
 
-ARG INSTALLER_VERSION=0.1.3
-ARG INSTALLER_SHA256_X86_64=9fea5189ce22ea53af7ab2804ba7c5221ca9b6438de7db8937d5ef8a728057ff
-ARG INSTALLER_SHA256_AARCH64=360c0dca9cb63d0878a9b313b6fc6aa9b3e9e2c4cb5345d18075db3773364d7c
+ARG INSTALLER_VERSION=0.1.5
+ARG INSTALLER_SHA256_X86_64=ee8f0548545378e66161f427f514928cf35683b916b591550108f0cb8c42b7e8
+ARG INSTALLER_SHA256_AARCH64=0c2e3f6da8d13579d3d9e2b1c644cbde7611fdc0c28225a727105d336c488b29
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
@@ -59,14 +54,14 @@ RUN set -eux; \
     if command -v apt-get > /dev/null 2>&1; then \
         apt-get update -y; \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            podman fuse-overlayfs systemd-cryptsetup cryptsetup skopeo openssl \
-            fdisk dosfstools e2fsprogs xfsprogs; \
+            podman cryptsetup openssl fdisk util-linux passwd policycoreutils kbd \
+            dosfstools e2fsprogs xfsprogs btrfs-progs; \
         apt-get clean -y; \
         rm -rf /var/lib/apt/lists/*; \
     else \
         dnf install -y --setopt=install_weak_deps=False \
-            podman fuse-overlayfs cryptsetup skopeo openssl \
-            util-linux dosfstools e2fsprogs xfsprogs; \
+            podman cryptsetup openssl util-linux shadow-utils policycoreutils kbd \
+            dosfstools e2fsprogs xfsprogs; \
         if [ -s /usr/share/buildc/boot-chain ] && [ ! -d /usr/lib/efi/grub2 ]; then \
             if ! dnf reinstall -y --setopt=install_weak_deps=False grub2-efi-x64; then \
                 dnf upgrade -y --setopt=install_weak_deps=False grub2-efi-x64; \
@@ -74,10 +69,11 @@ RUN set -eux; \
             test -d /usr/lib/efi/grub2; \
         fi; \
         dnf install -y --setopt=install_weak_deps=False kmscon || true; \
+        dnf install -y --setopt=install_weak_deps=False btrfs-progs || true; \
         dnf clean all; \
     fi; \
-    for tool in podman fuse-overlayfs skopeo cryptsetup systemd-cryptenroll \
-        openssl sfdisk mkfs.fat mkfs.ext4 mkfs.xfs; do \
+    for tool in podman cryptsetup openssl sfdisk lsblk blkid losetup mount umount mountpoint \
+        chroot useradd setfiles systemctl chvt mkfs.fat mkfs.ext4 mkfs.xfs; do \
         command -v "$tool" > /dev/null 2>&1 \
             || { echo "the live environment has no ${tool}" >&2; exit 1; }; \
     done; \
@@ -100,7 +96,6 @@ RUN set -eux; \
         | xargs -0r sed -i '/TMOUT/d'; \
     systemctl set-default multi-user.target
 
-COPY --from=tools /out/fisherman /usr/bin/fisherman
 COPY recipe.json /usr/share/buildc/install-recipe.json
 
 COPY <<'MOUNT' /usr/lib/systemd/system/var-lib-buildc-store.mount
@@ -118,6 +113,20 @@ Options=ro,loop
 WantedBy=multi-user.target
 MOUNT
 
+COPY <<'MOUNT' /usr/lib/systemd/system/var-lib-containers-storage.mount
+[Unit]
+Description=Temporary container storage for the installer
+
+[Mount]
+What=tmpfs
+Where=/var/lib/containers/storage
+Type=tmpfs
+Options=mode=0700
+
+[Install]
+WantedBy=multi-user.target
+MOUNT
+
 COPY <<'CONF' /etc/containers/storage.conf
 [storage]
 driver = "overlay"
@@ -126,9 +135,6 @@ graphroot = "/var/lib/containers/storage"
 
 [storage.options]
 additionalimagestores = ["/var/lib/buildc/store"]
-
-[storage.options.overlay]
-mount_program = "/usr/bin/fuse-overlayfs"
 CONF
 
 COPY <<'AUTOLOGIN' /usr/lib/systemd/system/serial-getty@.service.d/autologin.conf
@@ -150,7 +156,7 @@ COPY <<'QUIET' /usr/lib/sysctl.d/50-bootc-anywhere-console.conf
 kernel.printk = 1 4 1 4
 QUIET
 
-RUN systemctl enable var-lib-buildc-store.mount
+RUN systemctl enable var-lib-buildc-store.mount var-lib-containers-storage.mount
 
 COPY --from=tools /out/bootc-anywhere /usr/bin/bootc-anywhere
 RUN /usr/bin/bootc-anywhere --version
@@ -160,7 +166,8 @@ RUN /usr/bin/bootc-anywhere --version
 COPY <<'UNIT' /usr/lib/systemd/system/bootc-anywhere.service
 [Unit]
 Description=Install this image onto a disk
-After=var-lib-buildc-store.mount systemd-user-sessions.service getty@tty1.service
+Requires=var-lib-containers-storage.mount
+After=var-lib-buildc-store.mount var-lib-containers-storage.mount systemd-user-sessions.service getty@tty1.service
 Conflicts=getty@tty1.service
 AssertPathExistsGlob=/dev/dri/card*
 OnFailure=bootc-anywhere-vt.service
@@ -169,7 +176,7 @@ StartLimitBurst=10
 
 [Service]
 Type=idle
-ExecStart=/usr/bin/kmscon --vt=1 --no-switchvt --oneshot --login -- /usr/bin/bootc-anywhere
+ExecStart=/usr/bin/kmscon --vt=1 --no-switchvt --oneshot --login -- /usr/bin/env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin /usr/bin/bootc-anywhere
 Restart=always
 RestartSec=1
 
@@ -180,7 +187,8 @@ UNIT
 COPY <<'UNIT' /usr/lib/systemd/system/bootc-anywhere-vt.service
 [Unit]
 Description=Install this image onto a disk, on the kernel console
-After=var-lib-buildc-store.mount systemd-user-sessions.service getty@tty1.service
+Requires=var-lib-containers-storage.mount
+After=var-lib-buildc-store.mount var-lib-containers-storage.mount systemd-user-sessions.service getty@tty1.service
 Conflicts=getty@tty1.service
 StartLimitIntervalSec=0
 

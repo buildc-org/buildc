@@ -32,10 +32,7 @@
       "allows": [],
       "layout": {
         "filesystem": "btrfs",
-        "subvolumes": true,
-        "pool": "",
-        "bootloader": "systemd",
-        "var_disk": null
+        "bootloader": "systemd"
       },
       "base": {
         "image": "ghcr.io/someone/arch-bootc:latest",

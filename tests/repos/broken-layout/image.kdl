@@ -6,7 +6,7 @@ image {
     }
 
     layout {
-        filesystem "xfs"
+        filesystem "xfs" subvolumes=#true pool="rpool"
         var-disk "sdb"
     }
 
@@ -21,7 +21,7 @@ image {
     }
 
     layout {
-        filesystem "btrfs"
+        filesystem "zfs"
         composefs #true
     }
 

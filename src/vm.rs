@@ -110,8 +110,12 @@ fn live_env(list: &crate::model::image::List, name: &str, image: &str) -> String
         .collect()
 }
 
-fn stage(root: &Path, opts: &Options) -> Result<String, String> {
-    let list = crate::model::image::List::load(root).0;
+fn staged_list(root: &Path) -> crate::model::image::List {
+    crate::load(root).list
+}
+
+fn staged(root: &Path, opts: &Options) -> Result<(String, Vec<(&'static str, String)>), String> {
+    let list = staged_list(root);
     let target = target(&list, opts)
         .ok_or("no target to build an installer iso for; name one with `--target`")?;
     let published = target.published();
@@ -122,10 +126,16 @@ fn stage(root: &Path, opts: &Options) -> Result<String, String> {
         Some(named) => format!("{named}:{tag}"),
         None => crate::registry::at("localhost", &published, &tag),
     };
-    for (name, body) in documents(&list, &target.to_string(), &image, &imgref)? {
+    let documents = documents(&list, &target.to_string(), &image, &imgref)?;
+    Ok((crate::emit::recipe::live(&published), documents))
+}
+
+fn stage(root: &Path, opts: &Options) -> Result<String, String> {
+    let (live, documents) = staged(root, opts)?;
+    for (name, body) in documents {
         crate::init::put(&root.join(BOOTISO).join(name), &body)?;
     }
-    Ok(crate::emit::recipe::live(&published))
+    Ok(live)
 }
 
 fn converts(root: &Path, noun: &str, kind: &str, opts: &Options) -> bool {
@@ -497,6 +507,51 @@ mod tests {
         let unknown =
             documents(&list, "not-a-target", "image", "ghcr.io/someone/x:latest").unwrap_err();
         assert!(unknown.contains("not a target"), "{unknown}");
+    }
+
+    #[test]
+    fn a_module_provided_capability_reaches_the_staged_recipe() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/media-recipe");
+        let root = std::env::temp_dir().join(format!("buildc-media-recipe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for file in ["repo.kdl", "deb.image.kdl", "modules/core/luks/module.kdl"] {
+            let body = std::fs::read_to_string(fixture.join(file)).expect("the fixture file reads");
+            crate::init::put(&root.join(file), &body).expect("the fixture file writes");
+        }
+        let pinned = std::env::var("IMAGE_REGISTRY").ok();
+        std::env::set_var("IMAGE_REGISTRY", "ghcr.io/example");
+        let opts = Options {
+            target: Some("deb".to_string()),
+            image: None,
+            tag: None,
+            ram: None,
+            rebuild: false,
+        };
+        let answered = staged(&root, &opts);
+        match pinned {
+            Some(previous) => std::env::set_var("IMAGE_REGISTRY", previous),
+            None => std::env::remove_var("IMAGE_REGISTRY"),
+        }
+        let (_, files) = answered.expect("the fixture answers its recipe");
+        let recipe = files
+            .into_iter()
+            .find(|(name, _)| *name == "recipe.json")
+            .expect("recipe.json is staged")
+            .1;
+        assert!(recipe.contains("\"luksInitramfs\": true"), "{recipe}");
+        let bare = documents(
+            &crate::model::image::List::load(&root).0,
+            "deb",
+            "localhost/deb:latest",
+            "ghcr.io/example/deb:latest",
+        )
+        .expect("the fixture answers its recipe")
+        .into_iter()
+        .find(|(name, _)| *name == "recipe.json")
+        .expect("recipe.json is staged")
+        .1;
+        assert!(!bare.contains("luksInitramfs"), "{bare}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

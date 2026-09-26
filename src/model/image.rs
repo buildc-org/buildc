@@ -76,19 +76,10 @@ pub struct Base {
 
 pub struct Layout {
     pub filesystem: String,
-    pub subvolumes: bool,
-    pub pool: String,
     pub bootloader: String,
     pub composefs: Option<bool>,
     pub generic: Option<bool>,
     pub admin_group: String,
-    pub var_disk: Option<VarDisk>,
-    pub span: Span,
-}
-
-pub struct VarDisk {
-    pub disk: String,
-    pub keep_existing: bool,
     pub span: Span,
 }
 

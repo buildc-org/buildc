@@ -579,7 +579,8 @@ pub fn dispatch(
         }
         Verb::Recipe => {
             let root = repo_root(here)?;
-            let (list, issues, context) = crate::declarations(&root);
+            let loaded = crate::load(&root);
+            let (list, issues, context) = (loaded.list, loaded.issues, loaded.context);
             if issues.report(&context) {
                 return Ok(ExitCode::from(REPO_ERROR));
             }

@@ -6,16 +6,16 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
 
       - name: Verify tag matches package version
         run: |
@@ -25,20 +25,24 @@ jobs:
           [ "${GITHUB_REF_NAME}" = "v${version}" ] \
             || { echo "tag ${GITHUB_REF_NAME} does not match package version ${version}" >&2; exit 1; }
 
+      - name: Install the SBOM tools
+        run: cargo install --locked cargo-auditable@0.7.6 cargo-cyclonedx@0.5.9
+
       - name: Build
         run: |
           set -euo pipefail
           rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
-          cargo build --profile dist --locked --target x86_64-unknown-linux-musl
+          cargo auditable build --profile dist --locked --target x86_64-unknown-linux-musl
           # rust-lld links the aarch64 binary, so the workflow installs no cross linker.
           lld="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/rust-lld"
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C linker-flavor=ld.lld -C linker=${lld}" \
-            cargo build --profile dist --locked --target aarch64-unknown-linux-musl
+            cargo auditable build --profile dist --locked --target aarch64-unknown-linux-musl
 
       - name: Package with checksums
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          epoch="$(git log -1 --format=%ct)"
           for arch in x86_64:x86-64 aarch64:"ARM aarch64"; do
             machine="${arch#*:}"
             arch="${arch%%:*}"
@@ -46,21 +50,84 @@ jobs:
             file "$bin" | grep -q "${machine}"
             file "$bin" | grep -q static
             asset="buildc-v${version}-${arch}-linux-musl.tar.gz"
-            tar -czf "$asset" --transform "s|^${bin%/buildc}/||" "$bin" assets
+            # A reproducible tarball keeps its sha256 stable across rebuilds of the same commit.
+            tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+              --transform "s|^${bin%/buildc}/||" -cf - "$bin" assets | gzip -9n > "$asset"
             # The bootstrap installer reads the checksum file as a bare digest, so the packaging step strips the file name.
             sha256sum "$asset" | cut -d' ' -f1 > "${asset}.sha256"
+            cargo cyclonedx --format json --spec-version 1.5 \
+              --target "${arch}-unknown-linux-musl" \
+              --override-filename "buildc-v${version}-${arch}-linux-musl.cdx"
           done
 
+      - name: Hand the release files to the release job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release
+          path: |
+            buildc-v*-linux-musl.tar.gz
+            buildc-v*-linux-musl.tar.gz.sha256
+            buildc-v*-linux-musl.cdx.json
+          if-no-files-found: error
+
+  # The build job runs with read-only permissions, so a compromised build dependency cannot publish a release.
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Collect the release files
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release
+
+      - name: Read the dependency list back
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          tar -xzOf "buildc-v${version}-x86_64-linux-musl.tar.gz" buildc > shipped
+          # The release job attests this binary, so the embedded dependency list must name the tagged version.
+          objcopy --dump-section .dep-v0=dep-v0.z shipped
+          python3 -c 'import sys, zlib; sys.stdout.buffer.write(zlib.decompress(open("dep-v0.z", "rb").read()))' \
+            | jq -e --arg v "$version" \
+              '.packages | (map(select(.root and .name == "buildc" and .version == $v)) | length == 1) and length > 1'
+          rm shipped dep-v0.z
+
       - name: Attest the tarballs
-        uses: actions/attest-build-provenance@bd77c077858b8d561b7a36cbe48ef4cc642ca39d
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: buildc-v*-linux-musl.tar.gz
+
+      - name: Keep the provenance bundle
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        # The release ships the bundle, so the user can verify a download without GitHub's attestation store.
+        run: cp "$BUNDLE" "buildc-${GITHUB_REF_NAME}.sigstore.json"
+
+      - name: Attest the x86_64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: buildc-${{ github.ref_name }}-x86_64-linux-musl.tar.gz
+          sbom-path: buildc-${{ github.ref_name }}-x86_64-linux-musl.cdx.json
+
+      - name: Attest the aarch64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: buildc-${{ github.ref_name }}-aarch64-linux-musl.tar.gz
+          sbom-path: buildc-${{ github.ref_name }}-aarch64-linux-musl.cdx.json
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          # The release job has no checkout, so gh reads the repository from the environment.
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes \
-            buildc-v*-linux-musl.tar.gz buildc-v*-linux-musl.tar.gz.sha256
+            buildc-v*-linux-musl.tar.gz buildc-v*-linux-musl.tar.gz.sha256 \
+            buildc-v*-linux-musl.cdx.json "buildc-${GITHUB_REF_NAME}.sigstore.json"

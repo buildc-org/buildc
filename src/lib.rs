@@ -65,6 +65,7 @@ pub struct Run {
     pub shadowed: Vec<base::Shadow>,
     pub unpinned: Vec<String>,
     pub modified: Vec<String>,
+    pub ungoverned: Vec<String>,
     pub(crate) index: provider::Index,
     pub(crate) list: List,
     pub(crate) resolved: Vec<Resolved>,
@@ -131,21 +132,27 @@ pub(crate) struct Loaded {
     index: provider::Index,
     issues: Issues,
     context: String,
+    ungoverned: Vec<String>,
 }
 
 pub(crate) fn load(root: &Path) -> Loaded {
     let (mut list, mut issues) = List::load(root);
+    let mut ungoverned: Vec<String> = Vec::new();
     let context = context(&list, root);
 
     let disk = parse::disk::Disk::scan(root);
     let index = provider::Index::scan(root, &list.sources, &disk, false);
     parse::module::check_unlisted(&list, root, &disk, &mut issues);
 
+    let network = list.network;
     let mut resolved: Vec<Resolved> = Vec::new();
     for image in &mut list.images {
         let mut entries = std::mem::take(&mut image.entries);
         for entry in &mut entries {
             entry.module = Module::load(entry, image, root, &mut issues);
+            if let Some(module) = entry.module.as_mut() {
+                module.access = network.access(module);
+            }
         }
         image.entries = entries;
 
@@ -154,12 +161,17 @@ pub(crate) fn load(root: &Path) -> Loaded {
         resolve::order::apply(image, &order);
         resolve::graph::check_graph(image, &index, &mut issues);
         resolve::graph::check_fragments(image, &mut issues);
+        provenance::check_network(image, network.scripts, root, &mut issues);
+        ungoverned.extend(provenance::ungoverned(image, network.scripts));
         let shipped = resolve::overlay::index(image, &disk);
         resolve::overlay::check(image, &shipped, &mut issues);
         let collected = resolve::collect::resolve_collects(image, root, &disk, &mut issues);
 
         resolved.push(Resolved { shipped, collected });
     }
+
+    ungoverned.sort();
+    ungoverned.dedup();
 
     let basis = resolve::workflow::Basis::of(&list);
     let workflows = resolve::workflow::resolve(&list, &basis, &mut issues);
@@ -173,6 +185,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
         index,
         issues,
         context,
+        ungoverned,
     }
 }
 
@@ -194,6 +207,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         index,
         mut issues,
         context,
+        ungoverned,
     } = loaded;
 
     let (shadowed, unpinned, modified) = match command {
@@ -428,6 +442,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         shadowed,
         unpinned,
         modified,
+        ungoverned,
         index,
         list,
         resolved,

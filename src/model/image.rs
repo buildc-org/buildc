@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Source, Span};
-use crate::model::module::{Coverage, Module, Refusal};
+use crate::model::module::{Access, Coverage, Module, Refusal};
 use crate::model::options::Value;
 use crate::model::remote::{Collection, REMOTE_DIR};
 use crate::provenance::Evidence;
@@ -171,11 +171,50 @@ pub struct List {
     pub seed: Option<Seed>,
     pub manifest_label: bool,
     pub audit_enforce: bool,
+    pub network: Network,
     pub capabilities: Vec<crate::base::Capability>,
     pub schema_version: Option<u32>,
     pub(crate) schema_version_seen: bool,
     pub repo_src: Source,
     pub files: Vec<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum NetRule {
+    #[default]
+    Allow,
+    Strict,
+    Deny,
+}
+
+impl NetRule {
+    pub fn of(word: &str) -> Option<NetRule> {
+        match word {
+            "allow" => Some(NetRule::Allow),
+            "strict" => Some(NetRule::Strict),
+            "deny" => Some(NetRule::Deny),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Network {
+    pub packages: NetRule,
+    pub scripts: NetRule,
+}
+
+impl Network {
+    pub fn access(&self, module: &Module) -> Access {
+        Access {
+            packages: self.packages != NetRule::Deny,
+            scripts: match self.scripts {
+                NetRule::Allow => true,
+                NetRule::Strict => module.network.is_some(),
+                NetRule::Deny => false,
+            },
+        }
+    }
 }
 
 impl Image {

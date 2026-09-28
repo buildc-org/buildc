@@ -41,6 +41,7 @@ pub enum Arg {
     Strs,
     StrPair(&'static str),
     One(&'static [&'static str]),
+    MaybeOne(&'static [&'static str]),
 }
 
 pub enum Kind {
@@ -185,6 +186,16 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                 schema
                     .arg_say
                     .raise(given.unwrap_or(about), here, src, issues);
+            }
+        }
+        Arg::MaybeOne(set) => {
+            let positional = node.entries().iter().find(|entry| entry.name().is_none());
+            if let Some(entry) = positional {
+                let given = entry.value().to_string();
+                let given = entry.value().as_string().unwrap_or(&given);
+                if !set.contains(&given) {
+                    schema.arg_say.raise(given, here, src, issues);
+                }
             }
         }
     }

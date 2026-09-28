@@ -149,4 +149,19 @@ pub struct Module {
     pub content: Option<String>,
     pub imported: Option<Record>,
     pub repo: bool,
+    pub network: Option<Span>,
+    pub access: Access,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Access {
+    pub packages: bool,
+    pub scripts: bool,
+}
+
+impl Access {
+    pub const OPEN: Access = Access {
+        packages: true,
+        scripts: true,
+    };
 }

@@ -18,11 +18,58 @@ pub fn dir(image: &Image) -> PathBuf {
 }
 
 pub fn path(image: &Image, entry: &Entry) -> PathBuf {
-    let name = match &entry.flavour {
+    dir(image).join(file_name(entry))
+}
+
+pub fn packages_path(image: &Image, entry: &Entry) -> PathBuf {
+    layout::generated_image(&image.id)
+        .join("packages")
+        .join(file_name(entry))
+}
+
+fn file_name(entry: &Entry) -> String {
+    match &entry.flavour {
         Some(flavour) => format!("{}@{flavour}.sh", entry.path),
         None => format!("{}.sh", entry.path),
-    };
-    dir(image).join(name)
+    }
+}
+
+pub fn installs_packages(image: &Image, entry: &Entry, module: &Module, root: &Path) -> bool {
+    let base_family = image.base.as_ref().map_or("", |b| b.family.as_str());
+    !split_packages(entry, module, base_family, &provided(image), root).is_empty()
+}
+
+fn split_packages(
+    entry: &Entry,
+    module: &Module,
+    base_family: &str,
+    has: &BTreeSet<&str>,
+    root: &Path,
+) -> String {
+    let mut out = package_step(entry, module, base_family, root);
+    let on_disk = layout::module(root, entry.dir());
+    if has.contains(layout::SELINUX.capability) && !layout::SELINUX.files(&on_disk).is_empty() {
+        out.push_str("\nsource /ctx/lib/selinux-helpers.sh\nensure_checkpolicy\n");
+    }
+    out
+}
+
+fn carried(module: &Module, base_family: &str) -> String {
+    let mut out =
+        String::from("\nif [ -f /ctx/lib/family.sh ]; then\n    source /ctx/lib/family.sh\nfi\n");
+    for copr in coprs(module, base_family) {
+        let _ = writeln!(
+            out,
+            "export {}={}",
+            copr.env_name(),
+            shell(&copr.selector())
+        );
+    }
+    out
+}
+
+pub fn splits(image: &Image, entry: &Entry, module: &Module, root: &Path) -> bool {
+    module.access.packages != module.access.scripts && installs_packages(image, entry, module, root)
 }
 
 fn provided(image: &Image) -> BTreeSet<&str> {
@@ -48,31 +95,25 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
         let Some(module) = entry.module.as_ref().filter(|m| m.standard_layer) else {
             continue;
         };
-        out.push((
-            path(image, entry),
-            script(
-                entry,
-                module,
-                collection,
-                base_family,
-                &image.boot,
-                &has,
-                root,
-            ),
-        ));
+        let prelude = prelude(entry, module, &image.boot);
+        let rest = rest(entry, module, collection, base_family, &has, root);
+        match splits(image, entry, module, root) {
+            true => {
+                let packages = split_packages(entry, module, base_family, &has, root);
+                let carried = carried(module, base_family);
+                out.push((packages_path(image, entry), format!("{prelude}{packages}")));
+                out.push((path(image, entry), format!("{prelude}{carried}{rest}")));
+            }
+            false => {
+                let packages = package_step(entry, module, base_family, root);
+                out.push((path(image, entry), format!("{prelude}{packages}{rest}")));
+            }
+        }
     }
     out
 }
 
-fn script(
-    entry: &Entry,
-    module: &Module,
-    collection: &Collection,
-    base_family: &str,
-    boot: &str,
-    has: &BTreeSet<&str>,
-    root: &Path,
-) -> String {
+fn prelude(entry: &Entry, module: &Module, boot: &str) -> String {
     let dir = format!("/ctx/modules/{}", entry.dir());
     let mut out = String::from(HEADER);
     let _ = write!(out, "\nMODDIR={dir}\nexport MODDIR\n");
@@ -113,6 +154,34 @@ fn script(
             let _ = writeln!(out, "export {name}=\"{value}\"");
         }
     }
+    out
+}
+
+fn family_helpers(module: &Module, base_family: &str) -> &'static str {
+    match !coprs(module, base_family).is_empty() || installs(module, base_family) {
+        true => "\nsource /ctx/lib/family.sh\n",
+        false => "",
+    }
+}
+
+fn coprs<'a>(module: &'a Module, base_family: &str) -> Vec<&'a Copr> {
+    match base_family {
+        "fedora" => module.coprs.iter().collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn installs(module: &Module, base_family: &str) -> bool {
+    module
+        .packages
+        .iter()
+        .chain(&module.groups)
+        .any(|group| group.family == base_family)
+}
+
+fn package_step(entry: &Entry, module: &Module, base_family: &str, root: &Path) -> String {
+    let dir = format!("/ctx/modules/{}", entry.dir());
+    let mut out = String::new();
 
     let on_disk = layout::module(root, entry.dir());
     if let Some(at) = layout::shipped(&on_disk, base_family, "repo") {
@@ -133,20 +202,8 @@ fn script(
         }
     }
 
-    let coprs: Vec<&Copr> = match base_family {
-        "fedora" => module.coprs.iter().collect(),
-        _ => Vec::new(),
-    };
-    if !coprs.is_empty()
-        || module
-            .packages
-            .iter()
-            .chain(&module.groups)
-            .any(|group| group.family == base_family)
-    {
-        out.push_str("\nsource /ctx/lib/family.sh\n");
-    }
-    for copr in coprs {
+    out.push_str(family_helpers(module, base_family));
+    for copr in coprs(module, base_family) {
         let _ = write!(
             out,
             "\nexport {}={}\nenable_copr {}\n",
@@ -174,6 +231,20 @@ fn script(
             let _ = write!(out, "\n{repo}{helper} {names}\n");
         }
     }
+    out
+}
+
+fn rest(
+    entry: &Entry,
+    module: &Module,
+    collection: &Collection,
+    base_family: &str,
+    has: &BTreeSet<&str>,
+    root: &Path,
+) -> String {
+    let dir = format!("/ctx/modules/{}", entry.dir());
+    let on_disk = layout::module(root, entry.dir());
+    let mut out = String::new();
 
     let mut roots = vec![(on_disk.clone(), dir.clone())];
     for gated in layout::family_dirs(&on_disk, base_family) {

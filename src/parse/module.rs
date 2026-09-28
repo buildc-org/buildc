@@ -2,8 +2,8 @@ use crate::diag::{Issue, Issues, Source, Span};
 use crate::layout;
 use crate::model::image::{Entry, Image, List};
 use crate::model::module::{
-    Collect, Contribution, Copr, Coverage, Decl, FileMode, Key, Located, Module, PackageGroup,
-    Position, VerifyException,
+    Access, Collect, Contribution, Copr, Coverage, Decl, FileMode, Key, Located, Module,
+    PackageGroup, Position, VerifyException,
 };
 use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
@@ -301,6 +301,13 @@ pub const MODULE: Node = Node::new("module",
         options::OPTION,
         options::VARIANT,
         asset::ASSET,
+        Node::new("network", "Declares that the module's script step reaches the network. \
+             Only a `strict` rule in repo.kdl reads it.")
+            .arg(Arg::One(&["scripts"]), Say::new("`{}` is not a step this module declares",
+                "not a step",
+                "`network \"scripts\"`; a `packages`, `copr` or repo file already declares the \
+                 package step"))
+            .once(""),
 
         PACKAGES,
         PACKAGE_GROUPS,
@@ -606,6 +613,8 @@ impl Module {
                 .map(|(gated, _)| dir.join(gated).join("repo"))
                 .chain(std::iter::once(dir.join("repo")))
                 .any(|at| at.is_file()),
+            network: None,
+            access: Access::OPEN,
             src: src.clone(),
         };
 
@@ -718,6 +727,11 @@ impl Module {
                         if !module.options.iter().any(|o| o.name == opt.name) {
                             module.options.push(opt);
                         }
+                    }
+                }
+                "network" => {
+                    if string_arg(node) == Some("scripts") {
+                        module.network = Some(node.name().span().into());
                     }
                 }
                 "asset" => {

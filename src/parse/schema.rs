@@ -39,7 +39,7 @@ pub enum Arg {
     Bool,
     Int,
     Strs,
-    StrPair(&'static str),
+    StrPair(&'static str, &'static str),
     One(&'static [&'static str]),
     MaybeOne(&'static [&'static str]),
 }
@@ -62,6 +62,7 @@ pub struct Prop {
 pub struct Node {
     pub name: &'static str,
     pub desc: &'static str,
+    pub about: &'static str,
     pub arg: Arg,
     pub arg_say: Say,
     pub missing: Say,
@@ -73,6 +74,12 @@ pub struct Node {
     pub prop_say: Say,
     pub children: &'static [Node],
     pub child_say: Say,
+    pub notes: &'static [&'static str],
+    pub values: &'static [(&'static str, &'static str)],
+    pub lists: &'static [(&'static str, &'static [&'static str])],
+    pub example: &'static str,
+    pub minimal: bool,
+    pub scaffolds: &'static [&'static str],
 }
 
 impl Node {
@@ -80,6 +87,7 @@ impl Node {
         Node {
             name,
             desc,
+            about: "",
             arg: Arg::None,
             arg_say: Say::NONE,
             missing: Say::NONE,
@@ -91,7 +99,51 @@ impl Node {
             prop_say: Say::NONE,
             children: &[],
             child_say: Say::NONE,
+            notes: &[],
+            values: &[],
+            lists: &[],
+            example: "",
+            minimal: false,
+            scaffolds: &[],
         }
+    }
+
+    pub const fn scaffolds(mut self, names: &'static [&'static str]) -> Node {
+        self.scaffolds = names;
+        self
+    }
+
+    pub const fn about(mut self, about: &'static str) -> Node {
+        self.about = about;
+        self
+    }
+
+    pub const fn example(mut self, example: &'static str) -> Node {
+        self.example = example;
+        self
+    }
+
+    pub const fn minimal(mut self) -> Node {
+        self.minimal = true;
+        self
+    }
+
+    pub const fn notes(mut self, notes: &'static [&'static str]) -> Node {
+        self.notes = notes;
+        self
+    }
+
+    pub const fn values(mut self, values: &'static [(&'static str, &'static str)]) -> Node {
+        self.values = values;
+        self
+    }
+
+    pub const fn lists(
+        mut self,
+        lists: &'static [(&'static str, &'static [&'static str])],
+    ) -> Node {
+        self.lists = lists;
+        self
     }
 
     pub const fn arg(mut self, arg: Arg, say: Say) -> Node {
@@ -134,6 +186,19 @@ impl Node {
     }
 }
 
+#[cfg(test)]
+pub fn check_text(text: &str, schema: &Node, declared: bool) -> Result<Issues, String> {
+    let doc: KdlDocument = text.parse().map_err(|err| format!("{err}"))?;
+    let src = Source::new(schema.name, text);
+    let mut issues = Issues::default();
+    match (declared, doc.nodes().first()) {
+        (true, Some(node)) => check(node, schema, &src, &mut issues),
+        (true, None) => return Err(format!("`{}` writes no node", schema.name)),
+        (false, _) => check_doc(&doc, schema, &src, &mut issues),
+    }
+    Ok(issues)
+}
+
 pub fn check_doc(doc: &KdlDocument, schema: &Node, src: &Source, issues: &mut Issues) {
     walk(doc.nodes(), schema, Span::default(), src, issues);
 }
@@ -170,7 +235,7 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                 schema.arg_say.raise(about, here, src, issues);
             }
         }
-        Arg::StrPair(_) => {
+        Arg::StrPair(..) => {
             let args: Vec<_> = node
                 .entries()
                 .iter()

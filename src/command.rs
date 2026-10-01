@@ -1,5 +1,7 @@
+use crate::emit::schema_md::Area;
 use clap::{ArgMatches, ColorChoice, CommandFactory, Parser, Subcommand};
 use common::ui::Choice;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 mod help;
@@ -12,6 +14,7 @@ pub enum Verb {
     CreateFlavour,
     CreateModule,
     CreateKey,
+    CreateScripts,
     ImportModule,
     CopyModule,
     SetWorkflows,
@@ -46,6 +49,80 @@ pub enum Verb {
     ValidateImage,
 }
 
+impl Verb {
+    pub fn schema(self) -> Option<(&'static str, Area, &'static str)> {
+        match self {
+            Verb::CreateRepo => Some(("repository&nbsp;layout", Area::Repository, "")),
+            Verb::CreateImage => Some(("`image.kdl`", Area::Image, "")),
+            Verb::CreateFlavour => Some((
+                "`image.kdl`&nbsp;›&nbsp;`flavours`",
+                Area::Image,
+                "image-flavours",
+            )),
+            Verb::CreateModule => Some(("`module.kdl`", Area::Module, "")),
+            Verb::CreateKey | Verb::SetKey => {
+                Some(("`module.kdl`&nbsp;›&nbsp;`key`", Area::Module, "key"))
+            }
+            Verb::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
+            Verb::ImportModule => Some((
+                "`image.kdl`&nbsp;›&nbsp;`source`",
+                Area::Image,
+                "image-modules-source",
+            )),
+            Verb::CopyModule => Some(("`provenance.kdl`", Area::Provenance, "")),
+            Verb::SetWorkflows => Some((
+                "`repo.kdl`&nbsp;›&nbsp;`workflows`",
+                Area::Repo,
+                "workflows",
+            )),
+            Verb::SetConforms | Verb::Coverage => Some((
+                "`image.kdl`&nbsp;›&nbsp;`conforms`",
+                Area::Image,
+                "image-conforms",
+            )),
+            Verb::SetClaims => Some((
+                "`module.kdl`&nbsp;›&nbsp;`satisfies`",
+                Area::Module,
+                "satisfies",
+            )),
+            Verb::Generate => Some(("`generated/`", Area::Repository, "")),
+            Verb::FetchModules => Some((
+                "`image.kdl`&nbsp;›&nbsp;`pin`",
+                Area::Image,
+                "image-modules-module-pin",
+            )),
+            Verb::OsRelease => Some(("`image.kdl`&nbsp;›&nbsp;`image`", Area::Image, "image")),
+            Verb::Fetch => Some(("`module.kdl`&nbsp;›&nbsp;`asset`", Area::Module, "asset")),
+            Verb::ValidateImage => Some((
+                "`module.kdl`&nbsp;›&nbsp;`allow-verify`",
+                Area::Module,
+                "allow-verify",
+            )),
+            Verb::Upgrade
+            | Verb::Check
+            | Verb::Build
+            | Verb::VmBuild
+            | Verb::VmRun
+            | Verb::VmSpawn
+            | Verb::Section
+            | Verb::Graph
+            | Verb::Why
+            | Verb::Plan
+            | Verb::Verify
+            | Verb::Summary
+            | Verb::Sbom
+            | Verb::Scap
+            | Verb::ScapContent
+            | Verb::ScapRules
+            | Verb::ScapTailoring
+            | Verb::RegistryNamespace
+            | Verb::RegistryRef
+            | Verb::Recipe
+            | Verb::BuildRecord => None,
+        }
+    }
+}
+
 pub const ALL: &[Verb] = &[
     Verb::Upgrade,
     Verb::CreateRepo,
@@ -53,6 +130,7 @@ pub const ALL: &[Verb] = &[
     Verb::CreateFlavour,
     Verb::CreateModule,
     Verb::CreateKey,
+    Verb::CreateScripts,
     Verb::ImportModule,
     Verb::CopyModule,
     Verb::SetWorkflows,
@@ -95,56 +173,259 @@ pub enum Family {
     Layer,
 }
 
-const SURFACE: &[(&str, Verb, Family, bool)] = &[
-    ("upgrade", Verb::Upgrade, Family::Anywhere, false),
-    ("create repo", Verb::CreateRepo, Family::Anywhere, false),
-    ("create image", Verb::CreateImage, Family::Repo, false),
-    ("create flavour", Verb::CreateFlavour, Family::Repo, false),
-    ("create module", Verb::CreateModule, Family::Repo, false),
-    ("create key", Verb::CreateKey, Family::Repo, false),
-    ("import module", Verb::ImportModule, Family::Repo, false),
-    ("copy module", Verb::CopyModule, Family::Repo, false),
-    ("set workflows", Verb::SetWorkflows, Family::Repo, false),
-    ("set conforms", Verb::SetConforms, Family::Repo, false),
-    ("set claims", Verb::SetClaims, Family::Repo, false),
-    ("set key", Verb::SetKey, Family::Repo, false),
-    ("check", Verb::Check, Family::Repo, false),
-    ("generate", Verb::Generate, Family::Repo, false),
-    ("build", Verb::Build, Family::Repo, false),
-    ("vm build", Verb::VmBuild, Family::Repo, false),
-    ("vm run", Verb::VmRun, Family::Repo, false),
-    ("vm spawn", Verb::VmSpawn, Family::Repo, false),
-    ("section", Verb::Section, Family::Repo, false),
-    ("graph", Verb::Graph, Family::Repo, false),
-    ("why", Verb::Why, Family::Repo, true),
-    ("coverage", Verb::Coverage, Family::Repo, false),
-    ("plan", Verb::Plan, Family::Script, true),
-    ("verify", Verb::Verify, Family::Script, false),
-    ("summary", Verb::Summary, Family::Script, true),
-    ("sbom", Verb::Sbom, Family::Script, false),
-    ("fetch modules", Verb::FetchModules, Family::Script, false),
-    ("scap content", Verb::ScapContent, Family::Script, true),
-    ("scap rules", Verb::ScapRules, Family::Script, true),
-    ("scap tailoring", Verb::ScapTailoring, Family::Script, false),
-    ("scap", Verb::Scap, Family::Script, false),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Topic {
+    Tool,
+    Repository,
+    Image,
+    Modules,
+    Keys,
+    Check,
+    Build,
+    Ci,
+    Inspect,
+    Audit,
+    Layer,
+}
+
+pub const TOPICS: [Topic; 11] = [
+    Topic::Repository,
+    Topic::Image,
+    Topic::Modules,
+    Topic::Keys,
+    Topic::Check,
+    Topic::Build,
+    Topic::Ci,
+    Topic::Inspect,
+    Topic::Audit,
+    Topic::Layer,
+    Topic::Tool,
+];
+
+impl Topic {
+    pub fn heading(self) -> &'static str {
+        match self {
+            Topic::Tool => "CLI tool",
+            Topic::Repository => "Repository",
+            Topic::Image => "Image",
+            Topic::Modules => "Modules",
+            Topic::Keys => "Keys",
+            Topic::Check => "Check and generate",
+            Topic::Build => "Build and boot",
+            Topic::Ci => "CI",
+            Topic::Inspect => "Inspect",
+            Topic::Audit => "Audit",
+            Topic::Layer => "Inside a build",
+        }
+    }
+}
+
+const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
+    (
+        "upgrade",
+        Verb::Upgrade,
+        Family::Anywhere,
+        false,
+        Topic::Tool,
+    ),
+    (
+        "create repo",
+        Verb::CreateRepo,
+        Family::Anywhere,
+        false,
+        Topic::Repository,
+    ),
+    (
+        "create image",
+        Verb::CreateImage,
+        Family::Repo,
+        false,
+        Topic::Image,
+    ),
+    (
+        "create flavour",
+        Verb::CreateFlavour,
+        Family::Repo,
+        false,
+        Topic::Image,
+    ),
+    (
+        "create module",
+        Verb::CreateModule,
+        Family::Repo,
+        false,
+        Topic::Modules,
+    ),
+    (
+        "create key",
+        Verb::CreateKey,
+        Family::Repo,
+        false,
+        Topic::Keys,
+    ),
+    (
+        "create scripts",
+        Verb::CreateScripts,
+        Family::Repo,
+        false,
+        Topic::Repository,
+    ),
+    (
+        "import module",
+        Verb::ImportModule,
+        Family::Repo,
+        false,
+        Topic::Modules,
+    ),
+    (
+        "copy module",
+        Verb::CopyModule,
+        Family::Repo,
+        false,
+        Topic::Modules,
+    ),
+    (
+        "set workflows",
+        Verb::SetWorkflows,
+        Family::Repo,
+        false,
+        Topic::Ci,
+    ),
+    (
+        "set conforms",
+        Verb::SetConforms,
+        Family::Repo,
+        false,
+        Topic::Audit,
+    ),
+    (
+        "set claims",
+        Verb::SetClaims,
+        Family::Repo,
+        false,
+        Topic::Audit,
+    ),
+    ("set key", Verb::SetKey, Family::Repo, false, Topic::Keys),
+    ("check", Verb::Check, Family::Repo, false, Topic::Check),
+    (
+        "generate",
+        Verb::Generate,
+        Family::Repo,
+        false,
+        Topic::Check,
+    ),
+    ("build", Verb::Build, Family::Repo, false, Topic::Build),
+    ("vm build", Verb::VmBuild, Family::Repo, false, Topic::Build),
+    ("vm run", Verb::VmRun, Family::Repo, false, Topic::Build),
+    ("vm spawn", Verb::VmSpawn, Family::Repo, false, Topic::Build),
+    (
+        "section",
+        Verb::Section,
+        Family::Repo,
+        false,
+        Topic::Inspect,
+    ),
+    ("graph", Verb::Graph, Family::Repo, false, Topic::Inspect),
+    ("why", Verb::Why, Family::Repo, true, Topic::Inspect),
+    (
+        "coverage",
+        Verb::Coverage,
+        Family::Repo,
+        false,
+        Topic::Audit,
+    ),
+    ("plan", Verb::Plan, Family::Script, true, Topic::Inspect),
+    ("verify", Verb::Verify, Family::Script, false, Topic::Check),
+    (
+        "summary",
+        Verb::Summary,
+        Family::Script,
+        true,
+        Topic::Inspect,
+    ),
+    ("sbom", Verb::Sbom, Family::Script, false, Topic::Inspect),
+    (
+        "fetch modules",
+        Verb::FetchModules,
+        Family::Script,
+        false,
+        Topic::Modules,
+    ),
+    (
+        "scap content",
+        Verb::ScapContent,
+        Family::Script,
+        true,
+        Topic::Audit,
+    ),
+    (
+        "scap rules",
+        Verb::ScapRules,
+        Family::Script,
+        true,
+        Topic::Audit,
+    ),
+    (
+        "scap tailoring",
+        Verb::ScapTailoring,
+        Family::Script,
+        false,
+        Topic::Audit,
+    ),
+    ("scap", Verb::Scap, Family::Script, false, Topic::Audit),
     (
         "registry namespace",
         Verb::RegistryNamespace,
         Family::Script,
         false,
+        Topic::Inspect,
     ),
-    ("registry ref", Verb::RegistryRef, Family::Script, false),
-    ("recipe", Verb::Recipe, Family::Script, false),
-    ("os-release", Verb::OsRelease, Family::Layer, false),
-    ("build-record", Verb::BuildRecord, Family::Layer, false),
-    ("fetch", Verb::Fetch, Family::Layer, false),
-    ("validate-image", Verb::ValidateImage, Family::Layer, false),
+    (
+        "registry ref",
+        Verb::RegistryRef,
+        Family::Script,
+        false,
+        Topic::Inspect,
+    ),
+    (
+        "recipe",
+        Verb::Recipe,
+        Family::Script,
+        false,
+        Topic::Inspect,
+    ),
+    (
+        "os-release",
+        Verb::OsRelease,
+        Family::Layer,
+        false,
+        Topic::Layer,
+    ),
+    (
+        "build-record",
+        Verb::BuildRecord,
+        Family::Layer,
+        false,
+        Topic::Layer,
+    ),
+    ("fetch", Verb::Fetch, Family::Layer, false, Topic::Layer),
+    (
+        "validate-image",
+        Verb::ValidateImage,
+        Family::Layer,
+        false,
+        Topic::Layer,
+    ),
 ];
 
 #[derive(Parser)]
 #[command(
     name = "buildc",
     about = "the build tool for a bootc image repository",
+    long_about = "The build tool for a bootc image repository. With no command, it opens a picker \
+                  of the commands that run where it is typed. If no terminal is watching, then it \
+                  lists those commands instead.",
+    after_long_help = help::ROOT_NOTES,
     disable_help_subcommand = true,
     disable_version_flag = true,
     color = ColorChoice::Never,
@@ -445,6 +726,12 @@ pub enum CreateWhat {
         #[arg(long, value_name = "name")]
         cn: Option<String>,
     },
+    /// copy the scripts that buildc supplies into scripts/
+    #[command(long_about = help::CREATE_SCRIPTS, after_long_help = help::CREATE_SCRIPTS_NOTES)]
+    Scripts {
+        #[arg(value_name = "name")]
+        names: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -462,7 +749,7 @@ pub enum ImportWhat {
 
 #[derive(Subcommand)]
 pub enum CopyWhat {
-    #[command(long_about = help::COPY_MODULE)]
+    #[command(long_about = help::COPY_MODULE, after_long_help = help::COPY_MODULE_NOTES)]
     Module {
         #[arg(value_name = "name")]
         name: Option<String>,
@@ -603,19 +890,19 @@ pub struct Row {
     pub about: String,
 }
 
-fn surface(path: &str) -> Option<(&'static str, Verb, Family, bool)> {
+fn surface(path: &str) -> Option<(&'static str, Verb, Family, bool, Topic)> {
     SURFACE.iter().copied().find(|(words, ..)| *words == path)
 }
 
 pub fn verb(path: &str) -> Option<Verb> {
-    surface(path).map(|(_, verb, _, _)| verb)
+    surface(path).map(|(_, verb, ..)| verb)
 }
 
 pub fn on_host(verb: Verb) -> bool {
     SURFACE
         .iter()
-        .find(|(_, row, _, _)| *row == verb)
-        .is_some_and(|(.., host)| *host)
+        .find(|(_, row, ..)| *row == verb)
+        .is_some_and(|(_, _, _, host, _)| *host)
 }
 
 fn levels(matches: &ArgMatches) -> Vec<&ArgMatches> {
@@ -723,7 +1010,7 @@ fn collect(command: &clap::Command, prefix: &str, rows: &mut Vec<Row>) {
             collect(sub, &path, rows);
         }
         if !nested || sub.get_positionals().next().is_some() {
-            let (_, verb, _, _) = surface(&path).expect("every leaf has a place row");
+            let (_, verb, ..) = surface(&path).expect("every leaf has a place row");
             rows.push(Row {
                 verb,
                 label: label(&path, sub),
@@ -758,7 +1045,7 @@ pub fn rows(word: Option<&str>) -> Vec<Row> {
 }
 
 pub fn runs_in(path: &str, here: &Context) -> bool {
-    let (_, _, family, host) = surface(path).expect("every command path has a place row");
+    let (_, _, family, host, _) = surface(path).expect("every command path has a place row");
     match family {
         Family::Anywhere | Family::Layer => true,
         Family::Repo | Family::Script => match here {
@@ -769,17 +1056,115 @@ pub fn runs_in(path: &str, here: &Context) -> bool {
     }
 }
 
-pub fn choices(rows: &[Row], here: &Context) -> (Vec<Row>, Vec<Choice>) {
-    let kept: Vec<Row> = rows
+pub fn choices(rows: &[Row], here: &Context) -> (Vec<Option<Row>>, Vec<Choice>) {
+    let runs: Vec<Row> = rows
         .iter()
         .filter(|row| runs_in(&row.path, here))
         .cloned()
         .collect();
-    let drawn = kept
-        .iter()
-        .map(|row| Choice::new(row.label.clone(), row.about.clone()))
-        .collect();
+    let groups = grouped(&runs);
+    let headed = groups.len() > 1;
+    let mut kept = Vec::new();
+    let mut drawn = Vec::new();
+    for (topic, rows) in groups {
+        if headed {
+            kept.push(None);
+            drawn.push(Choice::new(topic.heading(), "").heading());
+        }
+        for row in rows {
+            kept.push(Some(row.clone()));
+            drawn.push(Choice::new(row.label.clone(), row.about.clone()));
+        }
+    }
     (kept, drawn)
+}
+
+const INTRO: &str = "\
+# The `buildc` CLI
+
+`buildc` is the one tool that manages a bootc image repository. The user describes each image \
+in KDL files, and `buildc` turns those files into the Containerfiles and the CI workflows that \
+build the image. `buildc` works out the module order, the options, the names and the tags in \
+one place, so the build scripts hold no logic of their own and the user can see what goes \
+into each image.
+
+## Where it runs
+
+`buildc` runs in three places:
+
+- On the user's machine, it scaffolds the repository and its images, modules and keys. It \
+checks the KDL files, writes the build files, and builds and boots an image.
+- In CI, the generated workflows call it to fetch modules, write the build files, build and \
+publish each image, and scan it.
+- Inside a build, the generated Containerfile calls it to write the image identity, record \
+what the build resolved and check the finished image. A module script can call `buildc fetch` \
+to download a payload and check it against its hash.
+
+";
+
+fn link(verb: Verb) -> Option<String> {
+    verb.schema().map(|(label, area, at)| match at {
+        "" => format!("[{label}](schema/{})", area.file()),
+        at => format!("[{label}](schema/{}#{at})", area.file()),
+    })
+}
+
+pub fn schema_links() -> Vec<(String, String)> {
+    leaves()
+        .into_iter()
+        .filter_map(|row| link(row.verb).map(|link| (row.path, link)))
+        .collect()
+}
+
+pub fn overview() -> String {
+    let mut out = String::from(INTRO);
+    globals(&mut out);
+    out.push_str("## Commands\n\n");
+    for (topic, rows) in grouped(&leaves()) {
+        let _ = write!(
+            out,
+            "### {}\n\n| Command | Description | Schema |\n| --- | --- | --- |\n",
+            topic.heading()
+        );
+        if topic == Topic::Tool {
+            out.push_str(
+                "| [`buildc`](#buildc) | open a picker of the commands that run here, or list them \
+                 where no terminal is watching |  |\n",
+            );
+        }
+        for row in rows {
+            let anchor = format!("buildc-{}", row.path.replace(' ', "-"));
+            let schema = link(row.verb).unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "| [`buildc {}`](#{anchor}) | {} | {schema} |",
+                row.label, row.about
+            );
+        }
+        out.push('\n');
+    }
+    out
+}
+
+fn globals(out: &mut String) {
+    out.push_str(
+        "## Global options\n\nEvery command takes these options, before or after its own \
+         words. [`buildc`](#buildc) says how a command asks for an answer, and what `--no-tui` \
+         changes.\n\n| Option | Description |\n| --- | --- |\n",
+    );
+    for arg in Cli::command()
+        .get_arguments()
+        .filter(|arg| arg.is_global_set())
+    {
+        let long = arg.get_long().expect("a global flag has a long name");
+        let value = match (arg.get_action().takes_values(), arg.get_value_names()) {
+            (true, Some(names)) => format!(" <{}>", names.join("> <")),
+            _ => String::new(),
+        };
+        let help = arg.get_help().map(ToString::to_string).unwrap_or_default();
+        let _ = writeln!(out, "| `--{long}{value}` | {help} |");
+    }
+    out.push('\n');
 }
 
 pub fn takes(word: &str) -> String {
@@ -848,12 +1233,31 @@ const RULE: &str = "\
 Every command takes a flag for everything it needs. What no flag gave is asked
 for, and `--no-tui` asks nothing, failing and naming the flag instead.
 
-docs/commands.md is the reference. Data goes to stdout and diagnostics to
+docs/cli.md is the reference. Data goes to stdout and diagnostics to
 stderr; exit 1 is the invocation, exit 2 the repository.
 ";
 
 fn family(path: &str) -> Family {
     surface(path).expect("every command path has a place row").2
+}
+
+pub fn topic(path: &str) -> Topic {
+    surface(path).expect("every command path has a place row").4
+}
+
+pub fn grouped<'a>(rows: &'a [Row]) -> Vec<(Topic, Vec<&'a Row>)> {
+    TOPICS
+        .iter()
+        .map(|&at| {
+            (
+                at,
+                rows.iter()
+                    .filter(|row| topic(&row.path) == at)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .filter(|(_, rows)| !rows.is_empty())
+        .collect()
 }
 
 fn is_host(path: &str) -> bool {
@@ -869,19 +1273,28 @@ pub fn usage(here: &Context) -> String {
     let kept: Vec<&Row> = rows.iter().filter(|row| shown(&row.path)).collect();
     let width = kept.iter().map(|row| row.label.len()).max().unwrap_or(0);
     let block = |keep: &dyn Fn(&str) -> bool| -> String {
-        kept.iter()
+        let rows: Vec<Row> = kept
+            .iter()
             .filter(|row| keep(&row.path))
-            .map(|row| format!("  {:width$}  {}\n", row.label, row.about))
-            .collect()
+            .map(|row| (*row).clone())
+            .collect();
+        grouped(&rows)
+            .iter()
+            .map(|(topic, rows)| {
+                let lines: String = rows
+                    .iter()
+                    .map(|row| format!("  {:width$}  {}\n", row.label, row.about))
+                    .collect();
+                format!("{}:\n{lines}", topic.heading().to_lowercase())
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let anywhere = block(&|path| family(path) == Family::Anywhere);
     let repo =
         |host: bool| block(&move |path| family(path) == Family::Repo && is_host(path) == host);
     match here {
-        Context::Repo(_) => format!(
-            "{HEAD}\n{anywhere}{}\n{RULE}",
-            block(&|path| family(path) == Family::Repo)
-        ),
+        Context::Repo(_) => format!("{HEAD}\n{}\n{RULE}", block(&|_| true)),
         Context::Host => format!(
             "{HEAD}\n{anywhere}\nthis is a buildc image, and it answers these about itself:\n\n\
              {}\nthese read the source tree, and there is none here:\n\n{}\n{RULE}",
@@ -954,6 +1367,7 @@ impl Verb {
             | Self::CreateFlavour
             | Self::CreateModule
             | Self::CreateKey
+            | Self::CreateScripts
             | Self::ImportModule
             | Self::CopyModule
             | Self::SetWorkflows
@@ -1002,7 +1416,7 @@ mod tests {
         assert_eq!(tree.len(), ALL.len(), "a verb has no path or two");
         for verb in ALL {
             assert_eq!(
-                SURFACE.iter().filter(|(_, row, _, _)| row == verb).count(),
+                SURFACE.iter().filter(|(_, row, ..)| row == verb).count(),
                 1,
                 "{verb:?} has no one row"
             );
@@ -1106,11 +1520,12 @@ mod tests {
         let (kept, drawn) = choices(&rows(None), &Context::Loose);
         assert!(kept
             .iter()
+            .flatten()
             .all(|row| surface(&row.path)
-                .is_some_and(|(_, _, family, _)| family == Family::Anywhere)));
+                .is_some_and(|(_, _, family, ..)| family == Family::Anywhere)));
         assert_eq!(kept.len(), drawn.len());
         let (kept, _) = choices(&rows(None), &Context::Host);
-        let verbs: Vec<Verb> = kept.iter().map(|row| row.verb).collect();
+        let verbs: Vec<Verb> = kept.iter().flatten().map(|row| row.verb).collect();
         assert!(verbs.contains(&Verb::Why) && !verbs.contains(&Verb::Check));
 
         let host = usage(&Context::Host);
@@ -1135,12 +1550,52 @@ mod tests {
     }
 
     #[test]
+    fn every_schema_link_lands_on_an_anchor_its_page_holds() {
+        for verb in ALL {
+            let Some((label, area, at)) = verb.schema() else {
+                continue;
+            };
+            let page = crate::emit::schema_md::page(area);
+            assert!(
+                at.is_empty() || page.contains(&format!("<a id=\"{at}\"></a>")),
+                "{verb:?} links {label} to `{at}`, which {} does not hold",
+                area.file()
+            );
+        }
+    }
+
+    #[test]
+    fn the_picker_heads_each_topic_only_where_rows_span_several() {
+        let repo = Context::Repo(".".into());
+        let (_, drawn) = choices(&rows(None), &repo);
+        let headings: Vec<&str> = drawn
+            .iter()
+            .filter(|choice| choice.heading)
+            .map(|choice| choice.label.as_str())
+            .collect();
+        assert_eq!(headings.last(), Some(&"CLI tool"), "{headings:?}");
+        assert!(headings.contains(&"Modules"), "{headings:?}");
+        let (_, drawn) = choices(&rows(Some("vm")), &repo);
+        assert!(drawn.iter().all(|choice| !choice.heading));
+    }
+
+    #[test]
     fn the_picker_and_prompt_rows_come_from_the_tree() {
         let repo = Context::Repo(".".into());
         let (kept, drawn) = choices(&rows(Some("create")), &repo);
         assert_eq!(kept.len(), drawn.len());
-        assert!(kept.iter().all(|row| row.path.starts_with("create ")));
-        assert!(drawn.iter().all(|choice| !choice.detail.is_empty()));
+        assert!(kept
+            .iter()
+            .flatten()
+            .all(|row| row.path.starts_with("create ")));
+        for (row, choice) in kept.iter().zip(&drawn) {
+            assert_eq!(row.is_none(), choice.heading, "{}", choice.label);
+            assert!(
+                row.is_none() || !choice.detail.is_empty(),
+                "{}",
+                choice.label
+            );
+        }
         assert_eq!(
             host_labels(),
             [

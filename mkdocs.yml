@@ -1,0 +1,54 @@
+site_name: buildc
+site_description: The build tool for a bootc image repository
+site_url: https://buildc-org.github.io/buildc/
+repo_url: https://github.com/buildc-org/buildc
+edit_uri: ""
+
+theme:
+  name: shadcn
+  custom_dir: .github/pages/theme
+  show_stargazers: false
+  pygments_style:
+    light: shadcn-light
+    dark: github-dark
+
+extra_css:
+  - buildc.css
+
+hooks:
+  - .github/pages/hooks.py
+
+nav:
+  - Home: index.md
+  - CLI: cli.md
+  - Schema:
+      - KDL: kdl.md
+      - Repository:
+          - Layout: schema/repository.md
+          - repo.kdl: schema/repo.md
+          - image.kdl: schema/image.md
+      - Modules:
+          - Layout: schema/modules.md
+          - module.kdl: schema/module.md
+          - provenance.kdl: schema/provenance.md
+      - Assets:
+          - bases.kdl: schema/bases.md
+  - Project:
+      - Changelog: changelog.md
+      - Contributing: contributing.md
+
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    anchors: warn
+    unrecognized_links: warn
+
+markdown_extensions:
+  admonition:
+  codehilite:
+    guess_lang: false
+  fenced_code:
+  tables:
+  toc:
+    permalink: true

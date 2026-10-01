@@ -28,13 +28,14 @@ impl Provider {
     }
 
     pub fn about(&self) -> String {
-        match self.declares.requires.is_empty() {
-            true => self.declares.description.clone(),
-            false => format!(
-                "{} (requires {})",
-                self.declares.description,
-                self.declares.requires.join(", ")
-            ),
+        let requires = format!("(requires {})", self.declares.requires.join(", "));
+        match (
+            self.declares.description.is_empty(),
+            self.declares.requires.is_empty(),
+        ) {
+            (_, true) => self.declares.description.clone(),
+            (true, false) => requires,
+            (false, false) => format!("{} {requires}", self.declares.description),
         }
     }
 }
@@ -43,7 +44,6 @@ pub struct Index {
     held: Vec<Provider>,
     unread: Vec<String>,
     sourced: bool,
-    hidden: Vec<String>,
     unreached: Option<String>,
 }
 
@@ -62,7 +62,7 @@ impl Index {
         let fetched = crate::import::catalog(root, sources, fetch);
         let unreached = fetched.as_ref().err().cloned();
         let reached = fetched.is_ok();
-        let (found, hidden) = fetched
+        let found = fetched
             .or_else(|_| crate::import::catalog(root, sources, false))
             .unwrap_or_default();
         for module in found {
@@ -72,7 +72,6 @@ impl Index {
         }
         Self {
             held: out,
-            hidden,
             unreached,
             unread: match fetch && reached {
                 true => Vec::new(),
@@ -96,10 +95,6 @@ impl Index {
 
     pub fn sourced(&self) -> bool {
         self.sourced
-    }
-
-    pub fn hidden(&self) -> &[String] {
-        &self.hidden
     }
 
     pub fn unsearched(&self) -> String {

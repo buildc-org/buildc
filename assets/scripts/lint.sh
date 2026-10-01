@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -f repo.kdl ] || cd ..
 
-mapfile -t scripts < <(find scripts generated/lib modules -path modules/.remote -prune -o \
+roots=(generated/lib modules)
+for dir in generated/scripts scripts; do
+    [ ! -d "$dir" ] || roots+=("$dir")
+done
+mapfile -t scripts < <(find "${roots[@]}" -path modules/.remote -prune -o \
     -name '*.sh' -type f ! \( -path '*/files/*' \
     \( -path '*/libexec/*' -o -path '*/system-generators/*' \) \) -print)
 mapfile -t repos < <(find modules -path modules/.remote -prune -o -name repo -type f -print)

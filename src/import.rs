@@ -113,63 +113,23 @@ pub fn find(
 }
 
 fn members(tree: &Path) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut dirs: Vec<PathBuf> = match std::fs::read_dir(tree) {
-        Ok(dirs) => dirs.flatten().map(|entry| entry.path()).collect(),
-        Err(_) => return out,
-    };
-    while let Some(dir) = dirs.pop() {
-        let hidden = |name: &std::ffi::OsStr| name.to_string_lossy().starts_with('.');
-        if !dir.is_dir() || dir.file_name().is_some_and(hidden) {
-            continue;
-        }
-        let manifest = dir.join(layout::MODULE_FILE);
-        if !manifest.is_file() {
-            dirs.extend(
-                std::fs::read_dir(&dir)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|entry| entry.path()),
-            );
-            continue;
-        }
-        out.push(dir.strip_prefix(tree).unwrap_or(&dir).display().to_string());
-    }
-    out
+    layout::module_dirs(
+        tree,
+        |path| path.join(layout::MODULE_FILE).is_file(),
+        |name| name.starts_with('.'),
+    )
+    .iter()
+    .map(|path| {
+        path.strip_prefix(tree)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    })
+    .collect()
 }
 
-fn nested(tree: &Path) -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = Vec::new();
-    for member in members(tree) {
-        let mut dirs: Vec<PathBuf> = vec![tree.join(&member)];
-        while let Some(dir) = dirs.pop() {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if !entry.file_type().is_ok_and(|kind| kind.is_dir())
-                    || entry.file_name().to_string_lossy().starts_with('.')
-                {
-                    continue;
-                }
-                if path.join(layout::MODULE_FILE).is_file() {
-                    let under = path.strip_prefix(tree).unwrap_or(&path);
-                    out.push((member.clone(), under.display().to_string()));
-                }
-                dirs.push(path);
-            }
-        }
-    }
-    out.sort();
-    out
-}
-
-pub fn catalog(
-    root: &Path,
-    sources: &[Collection],
-    fetch: bool,
-) -> Result<(Vec<Provider>, Vec<String>), String> {
+pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<Provider>, String> {
     let mut listed: Vec<Provider> = Vec::new();
-    let mut hidden: Vec<String> = Vec::new();
     for collection in sources {
         let tree = match fetch {
             true => tree(root, collection)?,
@@ -195,21 +155,13 @@ pub fn catalog(
                 here: false,
             });
         }
-        for (holder, under) in nested(&tree) {
-            hidden.push(format!(
-                "`{owner}/{under}` is inside `{owner}/{holder}`, so nothing can list it: the walk \
-                 stops at the first module.kdl and everything below one is that module's own \
-                 content. Move it beside `{holder}` for it to be a module",
-                owner = collection.name
-            ));
-        }
     }
     listed.sort_by(|a, b| (&a.name, &a.owner).cmp(&(&b.name, &b.owner)));
-    Ok((listed, hidden))
+    Ok(listed)
 }
 
 fn offered(root: &Path, sources: &[Collection]) -> Result<(Vec<Provider>, Vec<Choice>), String> {
-    let listed = catalog(root, sources, true)?.0;
+    let listed = catalog(root, sources, true)?;
     if listed.is_empty() {
         return Err(format!("no module in {}", names(sources)));
     }

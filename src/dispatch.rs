@@ -112,7 +112,7 @@ fn note_pin(root: &Path) {
         eprintln!(
             "buildc: this repository pins buildc {version} and this is {}, so what it generates may \
              differ; `buildc generate` writes this release's output, `buildc-version` moves the pin, \
-             and `scripts/buildc.sh` fetches the pinned release",
+             and `buildc.sh` fetches the pinned release",
             crate::model::image::BUILDC_VERSION
         );
     }
@@ -408,6 +408,19 @@ pub fn dispatch(
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             crate::key::Key::collect(&root, kind, module_arg, cn, prompt)?.apply(&root)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::CreateScripts => {
+            let Some(root) = open(here)? else {
+                return Ok(ExitCode::from(REPO_ERROR));
+            };
+            if let Some(scripts) = crate::create::Scripts::collect(&root, rest, &[], prompt)? {
+                let wrote = scripts.apply(&root)?;
+                crate::create::report(&root, &wrote);
+                if !wrote.is_empty() {
+                    println!("{}", crate::copy::SCRIPTS_NEXT);
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetKey => {
@@ -890,9 +903,6 @@ fn reading(
             );
         }
         for line in crate::init::drifted(&root) {
-            eprintln!("buildc: {line}");
-        }
-        for line in run.index.hidden() {
             eprintln!("buildc: {line}");
         }
         match run.index.unsearched() {

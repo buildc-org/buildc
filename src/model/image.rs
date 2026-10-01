@@ -174,7 +174,6 @@ pub struct List {
     pub network: Network,
     pub capabilities: Vec<crate::base::Capability>,
     pub schema_version: Option<u32>,
-    pub(crate) schema_version_seen: bool,
     pub repo_src: Source,
     pub files: Vec<String>,
 }

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+[ -f repo.kdl ] || cd ..
 
 RENDERER=/usr/libexec/grub-menu-from-bls
 PORT=2222

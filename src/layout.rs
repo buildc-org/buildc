@@ -7,6 +7,9 @@ pub const KEYS: &str = "keys";
 const PUBLIC_KEYS: &str = "public";
 const PRIVATE_KEYS: &str = "private";
 
+pub const SCRIPT: &str = "module.sh";
+pub const FRAGMENT: &str = "Containerfile.inc";
+
 pub const OVERLAY: &str = "files";
 
 pub struct Policy {
@@ -81,6 +84,57 @@ pub fn family_dirs(module_dir: &Path, family: &str) -> Vec<&'static str> {
         .collect()
 }
 
+pub fn module_owned(name: &str) -> bool {
+    name == OVERLAY
+        || name == SELINUX.dir
+        || name == APPARMOR.dir
+        || FAMILY_DIRS.iter().any(|(dir, _)| *dir == name)
+}
+
+pub fn module_dirs(
+    tree: &Path,
+    marks: impl Fn(&Path) -> bool,
+    skip: impl Fn(&str) -> bool,
+) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut dirs = vec![(tree.to_path_buf(), false)];
+    while let Some((dir, in_module)) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let path = entry.path();
+            if !path.is_dir() || skip(&name) || (in_module && module_owned(&name)) {
+                continue;
+            }
+            let module = marks(&path);
+            if module {
+                out.push(path.clone());
+            }
+            // A symlinked directory is never entered, so a cycle through a link cannot repeat the walk.
+            if !entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
+                dirs.push((path, module));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+pub const SCRIPTS: &str = "scripts";
+
+pub fn script(root: &Path, name: &str) -> String {
+    match root.join(SCRIPTS).join(name).is_file() {
+        true => format!("{SCRIPTS}/{name}"),
+        false => format!("{GENERATED}/{SCRIPTS}/{name}"),
+    }
+}
+
+pub fn is_module(dir: &Path) -> bool {
+    dir.join(MODULE_FILE).is_file()
+        || dir.join(SCRIPT).is_file()
+        || dir.join(FRAGMENT).is_file()
+        || dir.join(OVERLAY).is_dir()
+}
+
 pub const WORKFLOW_DIR: &str = ".github/workflows";
 
 pub const REPO_FILE: &str = "repo.kdl";
@@ -143,9 +197,160 @@ pub fn out(root: &Path) -> PathBuf {
     root.join(OUT)
 }
 
+pub struct Place {
+    pub path: &'static [&'static str],
+    pub writer: &'static str,
+    pub tracked: bool,
+    pub what: &'static str,
+}
+
+pub struct Tree {
+    pub root: &'static str,
+    pub intro: &'static str,
+    pub places: &'static [Place],
+    pub lists: &'static [(&'static str, &'static [&'static str])],
+    pub notes: &'static [&'static str],
+}
+
+#[rustfmt::skip]
+pub const REPOSITORY: Tree = Tree {
+    root: "<repository>/",
+    intro: "A repository is a git repository with `repo.kdl` at its root, which is how `buildc` \
+        finds the root. `buildc create repo` scaffolds the layout below. Every path that `buildc` \
+        reads or writes has a fixed place, so every repository looks alike.",
+    places: &[
+        Place { path: &[REPO_FILE], writer: "`buildc create repo`, then the user", tracked: true,
+            what: "The settings of the whole repository. See [`repo.kdl`](repo.md)." },
+        Place { path: &[IMAGE_FILE], writer: "`buildc create image`, then the user", tracked: true,
+            what: "The images of the repository. See [`image.kdl`](image.md)." },
+        Place { path: &["<name>", IMAGE_SUFFIX], writer: "`buildc create image`, then the user", tracked: true,
+            what: "More images. The name in front of the suffix is decorative." },
+        Place { path: &[MODULES, "/"], writer: "the user, `buildc create module` or `buildc copy module`", tracked: true,
+            what: "The modules of the repository, one directory each. See [Modules](modules.md)." },
+        Place { path: &[MODULES, "/", crate::model::remote::REMOTE_DIR, "/"], writer: "`buildc`", tracked: false,
+            what: "The modules that an image pins from another repository, fetched and verified \
+                against their hash." },
+        Place { path: &[KEYS, "/", PUBLIC_KEYS, "/"], writer: "`buildc create key` or `buildc set key`", tracked: true,
+            what: "The public half of each key, at the path it has in the image." },
+        Place { path: &[KEYS, "/", PRIVATE_KEYS, "/"], writer: "`buildc create key`", tracked: false,
+            what: "The private half of each key. The build never copies it into the image." },
+        Place { path: &[GENERATED, "/"], writer: "`buildc generate`", tracked: true,
+            what: "Everything that `buildc generate` writes. `buildc verify` compares it byte for \
+                byte, so the user does not edit it." },
+        Place { path: &[SCRIPTS, "/"], writer: "`buildc create scripts`, then the user", tracked: true,
+            what: "The scripts that the repository keeps in place of the ones `buildc generate` \
+                writes into `generated/scripts/`." },
+        Place { path: &[WORKFLOW_DIR, "/"], writer: "`buildc generate`", tracked: true,
+            what: "The CI workflows that `workflows` in `repo.kdl` names." },
+        Place { path: &[OUT, "/"], writer: "`buildc`", tracked: false,
+            what: "Local exports, caches and scratch. `buildc` reads nothing here as a declaration." },
+        Place { path: &[SOURCES_CACHE, "/"], writer: "`buildc`", tracked: false,
+            what: "The collections that `buildc` fetches. An imported module is read from here." },
+        Place { path: &[".gitignore"], writer: "`buildc create repo`", tracked: true,
+            what: "Keeps `keys/private/`, `out/` and `modules/.remote/` out of git." },
+    ],
+    lists: &[],
+    notes: &[],
+};
+
+#[rustfmt::skip]
+pub const MODULE_DIR: Tree = Tree {
+    root: "modules/<module-name>/",
+    intro: "A module is a directory under `modules/`, at whatever depth groups it, and its path \
+        names the module. The build reads the files below by convention, so a module can be as \
+        small as one `module.sh`. A module can also hold other modules. The walk that finds \
+        modules passes over the directories that the build of a module reads.",
+    places: &[
+        Place { path: &[MODULE_FILE], writer: "", tracked: true,
+            what: "What the module declares about itself. A module with only a script and \
+                `files/` can leave it out. A module fetched from another repository needs one. \
+                See [`module.kdl`](module.md)." },
+        Place { path: &[SCRIPT], writer: "", tracked: true,
+            what: "The install logic. The build sources it in the layer of the module." },
+        Place { path: &["finalize.sh"], writer: "", tracked: true,
+            what: "The finalize phase sources it, in resolved order." },
+        Place { path: &[OVERLAY, "/"], writer: "", tracked: true,
+            what: "An overlay that the build copies over `/`." },
+        Place { path: &["repo"], writer: "", tracked: true,
+            what: "A package repository file. The build sources it first. On Fedora, if the \
+                `REPO_ID` of `repo` is already configured, then the build skips it." },
+        Place { path: &[FRAGMENT], writer: "", tracked: true,
+            what: "Containerfile lines that the build adds verbatim, for a need that the \
+                fields cannot express. `fragment` in `module.kdl` places them." },
+        Place { path: &[SELINUX.dir, "/*.te"], writer: "", tracked: true,
+            what: "SELinux policy. If the image provides `selinux-policy`, then the build \
+                compiles and installs it." },
+        Place { path: &[APPARMOR.dir, "/"], writer: "", tracked: true,
+            what: "AppArmor profiles. If the image provides `apparmor-policy`, then the build \
+                validates them and places them in `/etc/apparmor.d`." },
+        Place { path: &["<family>/"], writer: "", tracked: true,
+            what: "The files of the module that apply to one base family." },
+        Place { path: &["<collected file>"], writer: "", tracked: true,
+            what: "A part of a file that another module collects. The build stages it for that \
+                module." },
+        Place { path: &[RECORD_FILE], writer: "", tracked: true,
+            what: "Where a copied module came from, which `buildc copy module` writes. See \
+                [`provenance.kdl`](provenance.md)." },
+    ],
+    lists: &[
+        ("A policy directory follows these rules:", &[
+            "A module that ships `selinux/` or `apparmor/` builds after the module that provides \
+             that MAC, as if it declared `after`.",
+            "A module can ship both policy directories. The build takes each directory only where \
+             the image has that MAC. An image with no MAC installs no policy and needs no provider.",
+            "A policy directory declares no requirement. A module that needs a MAC declares \
+             `requires \"selinux-policy\"` or `requires \"apparmor-policy\"`, and `buildc` refuses \
+             it on an image without that MAC.",
+        ]),
+        ("A `<family>/` directory gates `module.sh`, `finalize.sh`, `files/`, `repo` and a \
+          collected file:", &[
+            "The six directory names are `fedora/`, `rhel/`, `debian/`, `ubuntu/`, `rpm/` and \
+             `deb/`. The build reads no other directory in a module.",
+            "The build takes `deb/` on Debian and Ubuntu, and `rpm/` on Fedora and RHEL. It takes \
+             `debian/` on Debian only, after `deb/`.",
+            "A gated half runs after the ungated half. The family `files/` is copied over the \
+             shared `files/`, and the family `module.sh` is sourced after the shared `module.sh`.",
+            "A family `repo` replaces the other copies. `debian/repo` wins over `deb/repo`, which \
+             wins over the `repo` at the module root, and the build sources only the winner.",
+            "If the directory names a family that the module does not `supports`, then `buildc` \
+             refuses it.",
+        ]),
+    ],
+    notes: &[
+        "A module with no `<family>/` directory gates nothing. Its `module.sh` and `files/` run on \
+         every family it supports.",
+    ],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_walk_finds_nested_modules_and_passes_over_module_content() {
+        let root = std::env::temp_dir().join(format!("buildc-module-dirs-{}", std::process::id()));
+        if root.exists() {
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        for dir in ["a/b", "a/files/c", "a/fedora/d", ".git/e", "group/f"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+            std::fs::write(root.join(dir).join(MODULE_FILE), "").unwrap();
+        }
+        std::fs::write(root.join("a").join(MODULE_FILE), "").unwrap();
+        std::os::unix::fs::symlink(&root, root.join("a/b/loop")).unwrap();
+        std::os::unix::fs::symlink(root.join("group/f"), root.join("linked")).unwrap();
+
+        let found: Vec<String> = module_dirs(
+            &root,
+            |path| path.join(MODULE_FILE).is_file(),
+            |name| name.starts_with('.'),
+        )
+        .iter()
+        .map(|path| path.strip_prefix(&root).unwrap().display().to_string())
+        .collect();
+        assert_eq!(found, ["a", "a/b", "group/f", "linked"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_family_reads_the_shared_directory_first() {

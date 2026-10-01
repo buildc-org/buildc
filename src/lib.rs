@@ -79,7 +79,17 @@ fn skeleton(
 ) -> Option<String> {
     use emit::containerfile::{BEGIN, END, SKELETON, TAIL_BEGIN, TAIL_END};
 
-    let text = std::fs::read_to_string(root.join(SKELETON)).ok()?;
+    let text = match std::fs::read_to_string(root.join(SKELETON)) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => init::SKELETON.to_string(),
+        Err(err) => {
+            issues.push(Issue::new(
+                format!("`{SKELETON}` cannot be read: {err}"),
+                &Source::new(SKELETON, String::new()),
+            ));
+            return None;
+        }
+    };
     let src = Source::new(SKELETON, text.clone());
     let mut found = true;
     let markers = if needs_tail {
@@ -149,7 +159,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
     for image in &mut list.images {
         let mut entries = std::mem::take(&mut image.entries);
         for entry in &mut entries {
-            entry.module = Module::load(entry, image, root, &mut issues);
+            entry.module = Module::load(entry, image, root, &disk, &mut issues);
             if let Some(module) = entry.module.as_mut() {
                 module.access = network.access(module);
             }
@@ -304,7 +314,15 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         files.extend(
             emit::SCRIPTS
                 .iter()
-                .map(|(path, body)| (PathBuf::from(path), (*body).to_string())),
+                .filter(|script| !root.join(layout::SCRIPTS).join(script.name).is_file())
+                .map(|script| {
+                    (
+                        PathBuf::from(layout::GENERATED)
+                            .join(layout::SCRIPTS)
+                            .join(script.name),
+                        emit::located(root, script.body),
+                    )
+                }),
         );
         for (image, resolved) in list.images.iter().zip(&resolved) {
             if let Some(skeleton) = &skeleton {
@@ -330,7 +348,10 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         files.extend(workflows.iter().map(|declared| {
             (
                 PathBuf::from(layout::WORKFLOW_DIR).join(&declared.file),
-                emit::workflows::render(declared.body, declared.schedule.as_deref(), &facts),
+                emit::located(
+                    root,
+                    &emit::workflows::render(declared.body, declared.schedule.as_deref(), &facts),
+                ),
             )
         }));
     }
@@ -518,9 +539,13 @@ pub fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), S
         std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
         std::fs::write(&path, text).map_err(|err| format!("{}: {err}", path.display()))?;
     }
-    for (path, _) in emit::SCRIPTS {
+    let scripts = layout::generated(root).join(layout::SCRIPTS);
+    for script in emit::SCRIPTS {
         use std::os::unix::fs::PermissionsExt;
-        let path = root.join(path);
+        let path = scripts.join(script.name);
+        if !path.is_file() {
+            continue;
+        }
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
             .map_err(|err| format!("{}: {err}", path.display()))?;
     }
@@ -575,7 +600,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-skeleton-{}", std::process::id()));
         let path = root.join(emit::containerfile::SKELETON);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let stale = include_str!("../assets/scripts/Containerfile.skeleton").replace(
+        let stale = init::SKELETON.replace(
             "--mount=type=tmpfs,target=/run",
             "--mount=type=cache,target=/run",
         );
@@ -589,8 +614,7 @@ mod tests {
             .iter()
             .any(|message| message.contains("does not isolate `/run`")));
 
-        let stale = include_str!("../assets/scripts/Containerfile.skeleton")
-            .replace("LUKS_INITRAMFS=\"${LUKS_INITRAMFS}\"", "");
+        let stale = init::SKELETON.replace("LUKS_INITRAMFS=\"${LUKS_INITRAMFS}\"", "");
         std::fs::write(&path, stale).unwrap();
         let mut issues = Issues::default();
         assert!(skeleton(&root, false, true, &mut issues).is_none());

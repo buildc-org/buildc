@@ -5,7 +5,7 @@ use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::Command;
 
-const SCRIPT: &str = "scripts/vm.sh";
+const SCRIPT: &str = "vm.sh";
 
 use crate::parse::module::rpm;
 
@@ -46,7 +46,7 @@ pub fn run(
         false => None,
     };
     let access = access(root, kind, opts);
-    let script = root.join(SCRIPT);
+    let script = root.join(crate::layout::script(root, SCRIPT));
     if !script.is_file() {
         return Err(format!(
             "{} is not there; `buildc generate` writes it",
@@ -319,7 +319,9 @@ mod tests {
 
     #[test]
     fn the_script_it_execs_is_one_the_repository_generates() {
-        assert!(crate::emit::SCRIPTS.iter().any(|(path, _)| *path == SCRIPT));
+        assert!(crate::emit::SCRIPTS
+            .iter()
+            .any(|script| script.name == SCRIPT));
     }
 
     #[test]

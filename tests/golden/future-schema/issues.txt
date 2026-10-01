@@ -6,5 +6,5 @@
  2 | name "Future Schema"
    `----
   help: the repository is ahead of the tool; `buildc-version` names the release
-        that reads it, and `scripts/buildc.sh` fetches that one
+        that reads it, and `buildc.sh` fetches that one
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -f repo.kdl ] || cd ..
 
 die() {
     echo "buildc: $*" >&2
@@ -46,6 +47,7 @@ if [ -n "$sha256" ] && [ "$arch" != "x86_64" ]; then
     die "repo.kdl pins the sha256 of the x86_64 release, and this is ${arch}"
 fi
 
+# The hash joins the cache name so a same-version repin cannot reuse the old binary.
 bin="${BUILDC_BIN:-out/buildc-${version}${sha256:+-${sha256}}}"
 
 if [ ! -x "$bin" ]; then

@@ -104,7 +104,7 @@ fn block_required(node: &Node) -> bool {
 }
 
 fn presence(node: &Node) -> String {
-    let need = match is_minimal(node) {
+    let need = match is_minimal(node) && !node.pick {
         true => "required",
         false => "optional",
     };

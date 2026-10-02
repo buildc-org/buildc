@@ -79,6 +79,7 @@ pub struct Node {
     pub lists: &'static [(&'static str, &'static [&'static str])],
     pub example: &'static str,
     pub minimal: bool,
+    pub pick: bool,
     pub scaffolds: &'static [&'static str],
 }
 
@@ -104,6 +105,7 @@ impl Node {
             lists: &[],
             example: "",
             minimal: false,
+            pick: false,
             scaffolds: &[],
         }
     }
@@ -125,6 +127,12 @@ impl Node {
 
     pub const fn minimal(mut self) -> Node {
         self.minimal = true;
+        self
+    }
+
+    pub const fn pick(mut self) -> Node {
+        self.minimal = true;
+        self.pick = true;
         self
     }
 

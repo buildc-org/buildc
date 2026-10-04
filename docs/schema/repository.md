@@ -5,7 +5,9 @@ A repository is a git repository with `repo.kdl` at its root, which is how `buil
 ```text
 <repository>/
 ├── .github/
-│   └── workflows/
+│   ├── workflows/
+│   └── renovate.json5
+├── disk_config/
 ├── generated/
 ├── keys/
 │   ├── private/  (not in git)
@@ -35,4 +37,6 @@ A repository is a git repository with `repo.kdl` at its root, which is how `buil
 | `.github/workflows/` | `buildc generate` | yes | The CI workflows that `workflows` in `repo.kdl` names. |
 | `out/` | `buildc` | no | Local exports, caches and scratch. `buildc` reads nothing here as a declaration. |
 | `out/sources/` | `buildc` | no | The collections that `buildc` fetches. An imported module is read from here. |
+| `disk_config/` | `buildc create repo`, then the user | yes | The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk image. `disk.toml` sets the smallest size of `/`. |
+| `.github/renovate.json5` | `buildc create repo`, then the user | yes | The Renovate settings. Its custom managers keep the `buildc` release in `repo.kdl` and each pin that declares `renovate` current. |
 | `.gitignore` | `buildc create repo` | yes | Keeps `keys/private/`, `out/` and `modules/.remote/` out of git. |

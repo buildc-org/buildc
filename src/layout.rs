@@ -246,6 +246,12 @@ pub const REPOSITORY: Tree = Tree {
             what: "Local exports, caches and scratch. `buildc` reads nothing here as a declaration." },
         Place { path: &[SOURCES_CACHE, "/"], writer: "`buildc`", tracked: false,
             what: "The collections that `buildc` fetches. An imported module is read from here." },
+        Place { path: &["disk_config/"], writer: "`buildc create repo`, then the user", tracked: true,
+            what: "The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk \
+                image. `disk.toml` sets the smallest size of `/`." },
+        Place { path: &[".github/renovate.json5"], writer: "`buildc create repo`, then the user", tracked: true,
+            what: "The Renovate settings. Its custom managers keep the `buildc` release in `repo.kdl` \
+                and each pin that declares `renovate` current." },
         Place { path: &[".gitignore"], writer: "`buildc create repo`", tracked: true,
             what: "Keeps `keys/private/`, `out/` and `modules/.remote/` out of git." },
     ],

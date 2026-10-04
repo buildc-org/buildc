@@ -176,9 +176,10 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                     .any(|group| group.family == base_family)
         });
         let has_adapter = offered.get("build-environment").is_some_and(|providers| {
-            providers
-                .iter()
-                .any(|module| module.supports.iter().any(|family| family == base_family))
+            providers.iter().any(|module| {
+                module.supports.is_empty()
+                    || module.supports.iter().any(|family| family == base_family)
+            })
         });
         if needs_adapter && !has_adapter {
             issues.push(

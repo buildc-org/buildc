@@ -13,19 +13,24 @@ pub const REPO_ERROR: u8 = 2;
 pub enum Error {
     Invocation(String),
     Operation(String),
+    Cancelled,
 }
 
 impl Error {
     pub fn message(&self) -> &str {
         match self {
             Self::Invocation(message) | Self::Operation(message) => message,
+            Self::Cancelled => "cancelled",
         }
     }
 }
 
 impl From<String> for Error {
     fn from(message: String) -> Self {
-        Self::Operation(message)
+        match common::prompt::cancelled(&message) {
+            true => Self::Cancelled,
+            false => Self::Operation(message),
+        }
     }
 }
 
@@ -270,24 +275,56 @@ fn module_from_collection(
     place: crate::import::Place,
     prompt: &Prompt,
 ) -> Result<(), Error> {
-    crate::import::Module::collect(
+    let default_block = match list.sources.is_empty() {
+        true => Some(crate::init::sources(&crate::init::assets()?)),
+        false => None,
+    };
+    let default_sources = default_block
+        .as_deref()
+        .map(crate::parse::repo::sources_in)
+        .unwrap_or_default();
+    let sources = match list.sources.is_empty() {
+        true if default_sources.is_empty() => {
+            let message = "repo.kdl declares no `sources`, and this installation supplies no \
+                           default module collection";
+            return Err(message.to_string().into());
+        }
+        true => default_sources.as_slice(),
+        false => list.sources.as_slice(),
+    };
+    let module = crate::import::Module::collect(
         name,
         root,
-        &list.sources,
+        sources,
         list.audit_enforce,
         images,
         datastream,
         place,
         prompt,
-    )?
-    .apply(root, &list.sources)?;
+    )?;
+    let wrote = module.write_with_sources(root, sources, default_block.as_deref())?;
+    if default_block.is_some() && !wrote.is_empty() {
+        let named = default_sources
+            .iter()
+            .map(|source| format!("`{}`", source.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        eprintln!(
+            "buildc: repo.kdl declares no `sources`; using the default module collection {named} \
+             and adding it to repo.kdl"
+        );
+    }
+    if !wrote.is_empty() {
+        crate::create::report(root, &wrote);
+    }
     Ok(())
 }
 
-fn collection_repo(here: &Context) -> Result<Option<(PathBuf, crate::model::image::List)>, Error> {
+fn collection_repo(here: &Context) -> Result<(PathBuf, crate::model::image::List), Error> {
     let root = repo_root(here)?;
-    let (list, issues, context) = crate::declarations(&root);
-    Ok((!issues.report(&context)).then_some((root, list)))
+    let list = crate::model::image::List::editable(&root)
+        .map_err(|issues| Error::Operation(issues.plain()))?;
+    Ok((root, list))
 }
 
 pub fn dispatch(
@@ -433,9 +470,7 @@ pub fn dispatch(
         }
         Verb::ImportModule => {
             let name = one_name(rest, name)?;
-            let Some((root, list)) = collection_repo(here)? else {
-                return Ok(ExitCode::from(REPO_ERROR));
-            };
+            let (root, list) = collection_repo(here)?;
             module_from_collection(
                 name,
                 &root,
@@ -449,9 +484,7 @@ pub fn dispatch(
         }
         Verb::CopyModule => {
             let name = one_name(rest, name)?;
-            let Some((root, list)) = collection_repo(here)? else {
-                return Ok(ExitCode::from(REPO_ERROR));
-            };
+            let (root, list) = collection_repo(here)?;
             module_from_collection(
                 name,
                 &root,

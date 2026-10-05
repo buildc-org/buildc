@@ -11,7 +11,7 @@ clap = { version = "4.6.7", features = ["derive"] }
 kdl = "6.3.4"
 libc = "0.2"
 miette = { version = "7.6.0", features = ["fancy"] }
-common = { git = "https://github.com/buildc-org/common", rev = "4c11f1b1518bcbf13a592037bbf19b8e141a3b66" }
+common = { git = "https://github.com/buildc-org/common", rev = "d8bdd6ff1807296323a440e5909e857c41fb7543" }
 
 # A local release build uses this profile, so it favours compile time over runtime performance.
 [profile.release]

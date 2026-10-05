@@ -150,6 +150,7 @@ fn main() -> ExitCode {
 
     match run() {
         Ok(code) => code,
+        Err(Error::Cancelled) => ExitCode::SUCCESS,
         Err(error) => {
             banner(true);
             let message = error.message();

@@ -1,6 +1,0 @@
-Buildc v{version}
-
-
-example/
-└── ~ example.image.kdl  hardening/coredumps added to modules
-==== exit 0

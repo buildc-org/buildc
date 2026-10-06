@@ -1,6 +1,0 @@
-Buildc v{version}
-
-Error: nothing can be changed here; `.remote/one/sshd` is a fetched module; `buildc copy module one/sshd` makes a copy this repository owns.
-
-Run 'buildc --help' to list the commands
-==== exit 1

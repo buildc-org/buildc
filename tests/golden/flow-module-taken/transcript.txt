@@ -1,6 +1,0 @@
-Buildc v{version}
-
-Error: modules/my-editor is already there.
-
-Run 'buildc --help' to list the commands
-==== exit 1

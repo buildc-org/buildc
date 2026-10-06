@@ -1,8 +1,0 @@
-Buildc v{version}
-
-module name: Other
-
-Error: nothing left in BUILDC_ANSWERS to answer `description (optional) []` with.
-
-Run 'buildc --help' to list the commands
-==== exit 1

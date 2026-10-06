@@ -1,0 +1,10 @@
+---
+source: tests/golden.rs
+---
+Buildc v{version}
+
+Error: The one/signature-policy module must be imported before creating cosign keys.
+You can add it with `buildc import module one/signature-policy`
+
+Run 'buildc --help' to list the commands
+==== exit 1

@@ -1,0 +1,12 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+  1) secureboot
+key [1, 0 for none]: 0
+
+Error: `buildc create key <kind>` names which key; this repository declares secureboot.
+
+Run 'buildc --help' to list the commands
+==== exit 1

@@ -645,9 +645,7 @@ key "keylime-ca" {
 
     #[test]
     fn a_secure_boot_key_is_well_formed() {
-        if !have("openssl") {
-            return;
-        }
+        assert!(have("openssl"), "openssl is required by the key tests");
         let root = repo("buildc-secureboot-key-test", SECUREBOOT);
         let ask = || {
             Key::collect(
@@ -686,9 +684,7 @@ key "keylime-ca" {
 
     #[test]
     fn a_tls_ca_is_an_authority_a_client_can_anchor_on() {
-        if !have("openssl") {
-            return;
-        }
+        assert!(have("openssl"), "openssl is required by the key tests");
         let root = repo("buildc-tls-ca-key-test", TLS_CA);
         Key::collect(
             &root,
@@ -813,9 +809,10 @@ key "keylime-ca" {
 
     #[test]
     fn an_ssh_key_is_a_pair_openssh_reads() {
-        if !have("ssh-keygen") {
-            return;
-        }
+        assert!(
+            have("ssh-keygen"),
+            "ssh-keygen is required by the key tests"
+        );
         let root = repo("buildc-ssh-key-test", SSH);
         let err = Key::collect(
             &root,
@@ -933,9 +930,7 @@ key "keylime-ca" {
 
     #[test]
     fn a_pcr_signing_key_is_a_pair_openssl_reads() {
-        if !have("openssl") {
-            return;
-        }
+        assert!(have("openssl"), "openssl is required by the key tests");
         let root = repo("buildc-pcr-key-test", PCR);
         let err = Key::collect(
             &root,

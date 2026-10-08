@@ -1,6 +1,7 @@
 use crate::copy;
 use crate::diag::Issues;
 use crate::layout;
+use crate::model::remote::Kind as SourceKind;
 use common::prompt::Prompt;
 pub use common::ui::tree::Change;
 use common::ui::{Answer, Choice};
@@ -30,6 +31,7 @@ pub enum Field {
     Name,
     Provider,
     Remote,
+    Libraries,
     Image,
     Base,
     Workflows,
@@ -56,6 +58,7 @@ pub struct Repo {
     host: String,
     owner: Option<String>,
     assets: PathBuf,
+    libraries: Libraries,
     image: Option<Image>,
     workflows: Option<crate::set::Workflows>,
     scripts: Scripts,
@@ -99,7 +102,7 @@ impl Repo {
                 copy::CREATE,
                 copy::REVIEW_KEYS,
                 None,
-                0,
+                rows.len(),
             )? {
                 None => return Ok(None),
                 Some(at) if at == rows.len() => break,
@@ -215,6 +218,10 @@ impl Repo {
         let url = owner
             .as_deref()
             .map(|owner| format!("{}/{id}", origin(&host, owner)));
+        let libraries = match prev {
+            Some(prev) if from > Field::Libraries => prev.libraries.clone(),
+            _ => Libraries::collect(prev.map(|prev| &prev.libraries), prompt)?,
+        };
         let held = prev.and_then(|prev| prev.image.as_ref());
         let image = match prev {
             Some(prev) if from > Field::Base => prev.image.clone(),
@@ -238,6 +245,7 @@ impl Repo {
                         &name,
                         url,
                         "`--image`",
+                        &crate::init::sources_block(&libraries.chosen),
                         from,
                         held,
                         prompt,
@@ -279,6 +287,7 @@ impl Repo {
             host,
             owner,
             assets,
+            libraries,
             image,
             workflows,
             scripts,
@@ -310,6 +319,7 @@ impl Repo {
                 .to_string(),
             ));
         }
+        rows.push(self.libraries.row());
         match &self.image {
             Some(image) => {
                 rows.push((Field::Image, copy::ROW_IMAGE, image.name.clone()));
@@ -331,11 +341,15 @@ impl Repo {
     }
 
     pub fn apply(&self) -> Result<(), String> {
-        let mut wrote: Vec<(PathBuf, Change)> =
-            crate::init::write(&self.root, &self.name, &self.assets)?
-                .into_iter()
-                .map(|path| (path, Change::Created))
-                .collect();
+        let mut wrote: Vec<(PathBuf, Change)> = crate::init::write(
+            &self.root,
+            &self.name,
+            &self.assets,
+            &crate::init::sources_block(&self.libraries.chosen),
+        )?
+        .into_iter()
+        .map(|path| (path, Change::Created))
+        .collect();
         git_init(&self.root)?;
         println!("initialised a git repository in {}", self.root.display());
         if let Some(image) = &self.image {
@@ -377,6 +391,66 @@ impl Repo {
 }
 
 const SKELETON_FILE: &str = "Containerfile.skeleton";
+
+#[derive(Clone, Default)]
+pub struct Libraries {
+    pub(crate) chosen: Vec<&'static crate::base::DefaultLibrary>,
+}
+
+impl Libraries {
+    pub fn every() -> Vec<&'static crate::base::DefaultLibrary> {
+        crate::base::DEFAULT_LIBRARIES.iter().collect()
+    }
+
+    pub fn collect(held: Option<&Libraries>, prompt: &Prompt) -> Result<Self, String> {
+        let every = Self::every();
+        let options: Vec<Choice> = every
+            .iter()
+            .map(|library| {
+                Choice::new(
+                    format!("{} \"{}\"", library.kind.as_str(), library.alias),
+                    library.about,
+                )
+            })
+            .collect();
+        let on: Vec<usize> = match held {
+            Some(held) => every
+                .iter()
+                .enumerate()
+                .filter(|(_, library)| {
+                    held.chosen
+                        .iter()
+                        .any(|held| held.alias == library.alias && held.kind == library.kind)
+                })
+                .map(|(at, _)| at)
+                .collect(),
+            None => (0..every.len()).collect(),
+        };
+        let Answer::Chosen(chosen) = prompt.choose_many(copy::LIBRARIES, &options, &on)? else {
+            unreachable!("choose_many answers with a choice or fails")
+        };
+        Ok(Self {
+            chosen: chosen.into_iter().map(|at| every[at]).collect(),
+        })
+    }
+
+    fn row(&self) -> (Field, &'static str, String) {
+        let mut aliases: Vec<&str> = Vec::new();
+        for library in &self.chosen {
+            if !aliases.contains(&library.alias) {
+                aliases.push(library.alias);
+            }
+        }
+        (
+            Field::Libraries,
+            copy::ROW_LIBRARIES,
+            match aliases.is_empty() {
+                true => copy::NONE.to_string(),
+                false => aliases.join(", "),
+            },
+        )
+    }
+}
 
 fn offered() -> Vec<(&'static str, &'static str, &'static str)> {
     std::iter::once((
@@ -512,10 +586,7 @@ fn under(root: &Path, path: &Path) -> PathBuf {
 }
 
 fn choose_host(current: Option<&str>, prompt: &Prompt) -> Result<String, String> {
-    let options = [
-        Choice::new(HOST, copy::host_github()),
-        Choice::new("forgejo", copy::HOST_FORGEJO),
-    ];
+    let options = host_options();
     let at = current.map(|held| usize::from(held != HOST));
     match ask_one(prompt, copy::REPO_HOST, &options, at)? {
         Some(0) | None => Ok(HOST.to_string()),
@@ -527,6 +598,13 @@ fn choose_host(current: Option<&str>, prompt: &Prompt) -> Result<String, String>
             current.filter(|held| *held != HOST),
         ),
     }
+}
+
+fn host_options() -> [Choice; 2] {
+    [
+        Choice::new(HOST, copy::host_github()),
+        Choice::new("forgejo", copy::HOST_FORGEJO),
+    ]
 }
 
 fn ask_one(
@@ -561,6 +639,7 @@ impl Image {
         repo: &str,
         url: Option<String>,
         flag: &str,
+        sources_text: &str,
         from: Field,
         prev: Option<&Self>,
         prompt: &Prompt,
@@ -582,7 +661,7 @@ impl Image {
         if file.exists() {
             return Err(format!("{} is already there", file.display()));
         }
-        let (list, _) = crate::model::image::List::load(root);
+        let (mut list, _) = crate::model::image::List::load(root);
         let names_default = implicit_default(&list).filter(|was| *was != id);
         let url = url.or_else(|| {
             list.images
@@ -591,8 +670,34 @@ impl Image {
                 .map(|image| image.url.clone())
         });
 
+        if root.join(layout::REPO_FILE).is_file()
+            && !list
+                .sources
+                .iter()
+                .any(|source| source.kind == SourceKind::BaseImages)
+            && prompt.asks()
+            && prompt.confirm(copy::NO_BASE_LIBRARY, copy::YES, copy::NO)?
+        {
+            if let Some(set) = crate::set::Library::adding(SourceKind::BaseImages, prompt)? {
+                report(root, &set.apply(root)?);
+                list = crate::model::image::List::load(root).0;
+            }
+        }
+        // `create repo` collects the image before it writes `repo.kdl`.
+        // Until that file exists, the sources come from the block this run will write.
+        let scaffolded;
+        let sources = match list.sources.is_empty() && !root.join(layout::REPO_FILE).is_file() {
+            true => {
+                scaffolded = crate::parse::repo::sources_in(sources_text);
+                scaffolded.as_slice()
+            }
+            false => list.sources.as_slice(),
+        };
+        if let Err(why) = crate::base::fetch(root, sources) {
+            eprintln!("buildc: {why}; the catalog holds only what is already on this machine");
+        }
         let mut catalog_issues = Issues::default();
-        let (bases, _) = crate::base::catalog(root, &list.sources, &mut catalog_issues);
+        let bases = crate::base::catalog(root, sources, &mut catalog_issues);
         if !catalog_issues.is_empty() {
             return Err(catalog_issues.plain());
         }
@@ -600,6 +705,7 @@ impl Image {
             Some(given) => given,
             None => choose_base(&bases, prev.map(|prev| prev.base.as_str()), prompt)?,
         };
+        let base = catalogued(&bases, base);
         let family = match crate::base::find(&bases, &base) {
             Some(known) => known.family.clone(),
             None => prompt.text(
@@ -609,15 +715,6 @@ impl Image {
                 bases.first().map(|base| base.family.as_str()),
             )?,
         };
-        let scaffolded;
-        let sources = match list.sources.is_empty() && !root.join(layout::REPO_FILE).is_file() {
-            true => {
-                scaffolded =
-                    crate::parse::repo::sources_in(&crate::init::sources(&crate::init::assets()?));
-                scaffolded.as_slice()
-            }
-            false => list.sources.as_slice(),
-        };
         let disk = crate::parse::disk::Disk::scan(root);
         let known = crate::base::find(&bases, &base);
         let roles = roles(known);
@@ -625,25 +722,13 @@ impl Image {
         let mut wanted = wanted(&index, &family, &roles);
         let fetched;
         if wanted.len() < roles.len() && prompt.asks() && !index.unread().is_empty() {
-            let scratch = std::env::temp_dir().join(format!("buildc-bases.{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&scratch);
-            let _ = std::fs::create_dir_all(&scratch);
-            let _ = std::fs::set_permissions(
-                &scratch,
-                std::os::unix::fs::PermissionsExt::from_mode(0o700),
-            );
-            let cache = match root.join(layout::REPO_FILE).is_file() {
-                true => root,
-                false => scratch.as_path(),
-            };
-            fetched = crate::provider::Index::scan(cache, sources, &disk, true);
+            fetched = crate::provider::Index::scan(root, sources, &disk, true);
             if let Some(why) = fetched.unreached() {
                 eprintln!(
                     "buildc: {why}; what is offered below is only what is already on this machine"
                 );
             }
             wanted = self::wanted(&fetched, &family, &roles);
-            let _ = std::fs::remove_dir_all(&scratch);
         }
         let take_wanted = match wanted.is_empty() {
             true => true,
@@ -806,15 +891,16 @@ impl Flavour {
     }
 }
 
+fn catalogued(bases: &[crate::base::Base], base: String) -> String {
+    crate::base::find(bases, &base).map_or(base, |known| known.image.clone())
+}
+
 fn choose_base(
     bases: &[crate::base::Base],
     current: Option<&str>,
     prompt: &Prompt,
 ) -> Result<String, String> {
-    let mut options: Vec<Choice> = bases
-        .iter()
-        .map(|base| Choice::new(&base.image, &base.about))
-        .collect();
+    let mut options = base_options(bases);
     let at = current.and_then(|held| bases.iter().position(|base| base.image == held));
     if prompt.draws() && !options.is_empty() {
         options.push(Choice::new(copy::OTHER_BASE, copy::OTHER_BASE_ABOUT));
@@ -840,6 +926,13 @@ fn choose_base(
     }
 }
 
+fn base_options(bases: &[crate::base::Base]) -> Vec<Choice> {
+    bases
+        .iter()
+        .map(|base| Choice::new(&base.image, &base.about))
+        .collect()
+}
+
 // The base lists its default bootloader first.
 fn choose_bootloader(
     known: Option<&crate::base::Base>,
@@ -852,17 +945,21 @@ fn choose_bootloader(
     if offered.len() < 2 {
         return Ok(offered.first().cloned());
     }
-    let options: Vec<Choice> = offered
+    let options = bootloader_options(offered);
+    let at = held.and_then(|held| offered.iter().position(|name| name == held));
+    Ok(prompt
+        .choose_current(copy::IMAGE_BOOTLOADER, &options, at.unwrap_or(0))?
+        .map(|chosen| offered[chosen].clone()))
+}
+
+fn bootloader_options(offered: &[String]) -> Vec<Choice> {
+    offered
         .iter()
         .map(|name| match name.as_str() {
             "grub2" => Choice::new(name, copy::BOOTLOADER_GRUB2),
             _ => Choice::new(name, copy::BOOTLOADER_SYSTEMD),
         })
-        .collect();
-    let at = held.and_then(|held| offered.iter().position(|name| name == held));
-    Ok(prompt
-        .choose_current(copy::IMAGE_BOOTLOADER, &options, at.unwrap_or(0))?
-        .map(|chosen| offered[chosen].clone()))
+        .collect()
 }
 
 pub struct Module {
@@ -955,7 +1052,10 @@ fn module_kdl(
     pkgs: &[String],
     with: &[(String, String)],
 ) -> Result<String, String> {
-    let mut sections: Vec<String> = Vec::new();
+    let mut sections: Vec<String> = vec![format!(
+        "schema-version {}",
+        crate::model::image::SCHEMA_VERSION
+    )];
     if !description.is_empty() {
         sections.push(format!("description \"{}\"", quotable(description)?));
     }
@@ -982,10 +1082,7 @@ fn module_kdl(
             .join(" ");
         sections.push(format!("packages {listed}"));
     }
-    Ok(match sections.is_empty() {
-        true => String::new(),
-        false => format!("{}\n", sections.join("\n\n")),
-    })
+    Ok(format!("{}\n", sections.join("\n\n")))
 }
 
 fn quotable(value: &str) -> Result<&str, String> {
@@ -1420,7 +1517,12 @@ fn offer(
         }
         println!();
     }
-    prompt.confirm_current(copy::BRING_FOR_BASE, copy::YES, copy::NO, current)
+    let [yes, no] = yes_no_options();
+    prompt.confirm_current(copy::BRING_FOR_BASE, &yes.label, &no.label, current)
+}
+
+fn yes_no_options() -> [Choice; 2] {
+    [Choice::new(copy::YES, ""), Choice::new(copy::NO, "")]
 }
 
 fn seeded(wanted: &[&crate::provider::Provider]) -> String {
@@ -1485,7 +1587,9 @@ fn image_kdl(
         ships.push_str(&format!("\x20       signed #{}\n", known.signed));
     }
     format!(
-        "image {{\n\
+        "schema-version {}\n\
+         \n\
+         image {{\n\
          \x20   name \"{name}\"\n\
          {urls}\n\
          \x20   base \"{base}\" {{\n\
@@ -1497,7 +1601,8 @@ fn image_kdl(
          \x20   modules {{\n\
          {modules}\
          \x20   }}\n\
-         }}\n"
+         }}\n",
+        crate::model::image::SCHEMA_VERSION
     )
 }
 
@@ -1515,6 +1620,39 @@ fn refuse_nesting(root: &Path) -> Result<(), String> {
         )),
         None => Ok(()),
     }
+}
+
+pub fn git_control(root: &Path) -> Result<(), String> {
+    let full = match root.is_absolute() {
+        true => root.to_path_buf(),
+        false => std::env::current_dir().unwrap_or_default().join(root),
+    };
+    if let Some(outer) = enclosing_git(&full) {
+        return Err(match outer == full {
+            true => format!("{} is already a git repository", full.display()),
+            false => format!(
+                "{} is inside the git repository at {}; a repository does not nest",
+                full.display(),
+                outer.display()
+            ),
+        });
+    }
+    let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
+    let ignore = full.join(".gitignore");
+    if !ignore.exists() {
+        crate::init::put(&ignore, crate::init::GITIGNORE)?;
+        wrote.push((PathBuf::from(".gitignore"), Change::Created));
+    }
+    git_init(&full)?;
+    report(&full, &wrote);
+    println!("initialised a git repository in {}", full.display());
+    Ok(())
+}
+
+fn enclosing_git(from: &Path) -> Option<PathBuf> {
+    from.ancestors()
+        .find(|dir| dir.join(".git").exists())
+        .map(Path::to_path_buf)
 }
 
 fn git_init(root: &Path) -> Result<(), String> {
@@ -1623,7 +1761,9 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-listing-{}", std::process::id()));
         crate::init::put(
             &root.join("image.kdl"),
-            r#"image {
+            r#"schema-version 1
+
+image {
     name "Example"
     base "example" { family "fedora" }
     flavours {
@@ -1668,19 +1808,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    fn base(
+        name: &str,
+        image: &str,
+        family: &str,
+        provides: &[&str],
+        bootloaders: &[&str],
+    ) -> crate::base::Base {
+        crate::base::Base {
+            name: name.to_string(),
+            image: image.to_string(),
+            family: family.to_string(),
+            provides: provides.iter().map(|name| name.to_string()).collect(),
+            requires: Vec::new(),
+            about: format!("what {name} ships"),
+            signed: false,
+            scap_content: String::new(),
+            bootloaders: bootloaders.iter().map(|b| b.to_string()).collect(),
+            span: crate::diag::Span::default(),
+        }
+    }
+
     #[test]
     fn a_catalogued_base_writes_what_it_ships_and_an_unknown_one_writes_nothing() {
         let bazzite = "ghcr.io/ublue-os/bazzite:stable";
-        let seeded: Vec<crate::base::Base> =
-            crate::base::catalog(Path::new("."), &[], &mut crate::diag::Issues::default()).0;
+        let seeded = base(
+            "bazzite",
+            bazzite,
+            "fedora",
+            &["rechunking", "flatpak"],
+            &["grub2"],
+        );
         let known = image_kdl(
             "Bazzite",
             None,
             bazzite,
             "fedora",
-            crate::base::find(&seeded, bazzite),
+            crate::base::find(std::slice::from_ref(&seeded), bazzite),
             Some("grub2"),
             "",
+        );
+        assert!(
+            known.starts_with("schema-version 1\n\nimage {\n"),
+            "{known}"
         );
         assert!(
             known.contains("        provides \"rechunking\" \"flatpak\"\n"),
@@ -1708,6 +1878,7 @@ mod tests {
         );
 
         let row = |bootloaders: &[&str]| crate::base::Base {
+            name: "own".to_string(),
             image: "example.invalid/own:1".to_string(),
             family: "fedora".to_string(),
             provides: Vec::new(),
@@ -1742,6 +1913,8 @@ mod tests {
         assert!(!unknown.contains("provides"), "{unknown}");
         assert!(!unknown.contains("layout"), "{unknown}");
 
+        assert_eq!(module_kdl("", &[], &[], &[]).unwrap(), "schema-version 1\n");
+
         let one = row(&["grub2"]);
         assert_eq!(
             choose_bootloader(Some(&one), None, &Prompt::scripted(Vec::new())).unwrap(),
@@ -1771,18 +1944,46 @@ mod tests {
     }
 
     #[test]
-    fn every_catalogued_name_is_a_name() {
+    fn a_base_is_canonicalised_from_its_catalog_name() {
+        let seeded = base(
+            "bazzite",
+            "ghcr.io/ublue-os/bazzite:stable",
+            "fedora",
+            &[],
+            &["grub2"],
+        );
+        let bases = [seeded];
+        assert_eq!(
+            catalogued(&bases, "bazzite".to_string()),
+            "ghcr.io/ublue-os/bazzite:stable"
+        );
+        assert_eq!(
+            catalogued(&bases, "ghcr.io/other/unknown:1".to_string()),
+            "ghcr.io/other/unknown:1"
+        );
+    }
+
+    #[test]
+    fn every_library_name_is_a_name() {
         use crate::model::image::is_name;
-        let bases =
-            crate::base::catalog(Path::new("."), &[], &mut crate::diag::Issues::default()).0;
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/collections/upstream");
+        let mut issues = crate::diag::Issues::default();
+        let mut bases = Vec::new();
+        for path in crate::base::base_files(&dir) {
+            let (base, _) = crate::parse::bases::read_base(&path, &mut issues)
+                .unwrap_or_else(|| panic!("{} describes no base", path.display()));
+            bases.push(base);
+        }
+        let (rows, _) =
+            crate::parse::bases::read_capabilities(&dir.join("capabilities.kdl"), &mut issues)
+                .expect("the fixture library carries capabilities.kdl");
+        assert!(issues.is_empty(), "{}", issues.plain());
         for base in bases {
             assert!(is_name(&base.family), "{}", base.image);
             for name in &base.provides {
                 assert!(is_name(name), "{} provides {name}", base.image);
             }
         }
-        let rows =
-            crate::base::capabilities(Path::new("."), &[], &mut crate::diag::Issues::default());
         for row in rows {
             assert!(is_name(&row.name), "capability {}", row.name);
             assert!(
@@ -1790,6 +1991,9 @@ mod tests {
                 "{}",
                 row.name
             );
+            for (_, path) in &row.families {
+                assert!(path.starts_with('/'), "{} reads {path}", row.name);
+            }
         }
     }
 
@@ -1857,5 +2061,188 @@ mod tests {
         assert!(module.apply(&root).unwrap().is_empty());
         assert!(!module.file.exists());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn create_repo_and_image_screens_snapshot_production_copy() {
+        use crate::screen_tests::{assert_screen, screen};
+
+        assert_screen(
+            "create-repo-name",
+            screen().line(copy::REPO_NAME, "", "Example", Some("example")),
+        );
+        assert_screen(
+            "create-repo-owner",
+            screen().line(&copy::username(HOST), "github.com/", "someone", None),
+        );
+        let yes_no = yes_no_options();
+        assert_screen(
+            "create-repo-provider",
+            screen().picker(copy::SCHEDULED, &yes_no, None, "enter confirms", 0),
+        );
+        assert_screen(
+            "create-repo-host",
+            screen().picker(copy::REPO_HOST, &host_options(), None, "enter confirms", 0),
+        );
+        assert_screen(
+            "create-repo-image",
+            screen().picker(copy::IMAGES, &yes_no, None, "enter confirms", 1),
+        );
+        assert_screen(
+            "create-repo-remote",
+            screen().picker(copy::CREATE_REMOTE, &yes_no, None, "enter confirms", 1),
+        );
+        let scripts: Vec<Choice> = offered()
+            .into_iter()
+            .map(|(name, about, _)| Choice::new(name, about))
+            .collect();
+        assert_screen(
+            "create-repo-scripts",
+            screen().picker(copy::SCRIPTS, &scripts, Some(&[0]), "space toggles", 0),
+        );
+
+        assert_screen(
+            "create-image-name",
+            screen().line(copy::IMAGE_NAME, "", "Workstation", Some("Example")),
+        );
+        let libraries: Vec<Choice> = Libraries::every()
+            .iter()
+            .map(|library| {
+                Choice::new(
+                    format!("{} \"{}\"", library.kind.as_str(), library.alias),
+                    library.about,
+                )
+            })
+            .collect();
+        assert_screen(
+            "create-repo-libraries",
+            screen().picker(
+                copy::LIBRARIES,
+                &libraries,
+                Some(&[0, 1, 2]),
+                "space toggles",
+                0,
+            ),
+        );
+        let bases = vec![
+            base(
+                "fedora-bootc-44",
+                "quay.io/fedora/fedora-bootc:44",
+                "fedora",
+                &["rechunking", "bootc"],
+                &["grub2"],
+            ),
+            base(
+                "ubuntu-26-04",
+                "docker.io/library/ubuntu:26.04",
+                "ubuntu",
+                &[],
+                &["grub2", "systemd"],
+            ),
+        ];
+        let mut options = base_options(&bases);
+        options.push(Choice::new(copy::OTHER_BASE, copy::OTHER_BASE_ABOUT));
+        assert_screen(
+            "create-image-base",
+            screen().picker(copy::IMAGE_BASE, &options, None, "enter confirms", 0),
+        );
+        assert_screen(
+            "create-image-add-modules",
+            screen().picker(
+                copy::BRING_FOR_BASE,
+                &yes_no_options(),
+                None,
+                "enter confirms",
+                0,
+            ),
+        );
+        let dual = bases
+            .iter()
+            .find(|base| base.bootloaders.len() == 2)
+            .expect("the production catalog carries a two-bootloader base");
+        assert_screen(
+            "create-image-bootloader",
+            screen().picker(
+                copy::IMAGE_BOOTLOADER,
+                &bootloader_options(&dual.bootloaders),
+                None,
+                "enter confirms",
+                0,
+            ),
+        );
+        assert_screen(
+            "create-image-family",
+            screen().line(copy::BASE_FAMILY, "", "fedora", None),
+        );
+    }
+
+    #[test]
+    fn repository_review_screen_snapshots_collected_rows() {
+        use crate::screen_tests::{assert_screen, assert_style_at, screen};
+
+        let repo = Repo {
+            name: "Example".to_string(),
+            id: "example".to_string(),
+            root: PathBuf::from("example"),
+            host: HOST.to_string(),
+            owner: Some("someone".to_string()),
+            assets: PathBuf::from("assets"),
+            libraries: Libraries {
+                chosen: Libraries::every(),
+            },
+            image: None,
+            workflows: None,
+            scripts: Scripts {
+                chosen: vec![SKELETON_FILE],
+            },
+            remote: false,
+            install_gh: false,
+        };
+        let mut rows: Vec<Choice> = repo
+            .rows()
+            .into_iter()
+            .map(|(_, label, value)| Choice::new(format!("{label}  {value}"), ""))
+            .collect();
+        rows.push(Choice::new(copy::CREATE, ""));
+        let rendered = assert_screen(
+            "create-repo-review",
+            screen().picker(copy::REVIEW, &rows, None, copy::REVIEW_KEYS, rows.len() - 1),
+        );
+        assert_style_at(
+            &rendered,
+            0,
+            8,
+            "fg: Rgb(238, 111, 248), bg: Reset, underline: Reset, modifier: BOLD",
+            "the selected Create action",
+        );
+    }
+
+    #[test]
+    fn git_control_initialises_once_and_keeps_a_kept_ignore_file() {
+        let fresh = std::env::temp_dir().join(format!("buildc-git-{}", std::process::id()));
+        let kept = std::env::temp_dir().join(format!("buildc-git-kept-{}", std::process::id()));
+        for dir in [&fresh, &kept] {
+            let _ = std::fs::remove_dir_all(dir);
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(kept.join(".gitignore"), "mine\n").unwrap();
+
+        git_control(&fresh).unwrap();
+        assert!(fresh.join(".git").is_dir());
+        assert_eq!(
+            std::fs::read_to_string(fresh.join(".gitignore")).unwrap(),
+            crate::init::GITIGNORE
+        );
+        let refused = git_control(&fresh).unwrap_err();
+        assert!(refused.contains("already a git repository"), "{refused}");
+
+        git_control(&kept).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(kept.join(".gitignore")).unwrap(),
+            "mine\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&fresh);
+        let _ = std::fs::remove_dir_all(&kept);
     }
 }

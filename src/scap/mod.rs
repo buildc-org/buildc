@@ -425,7 +425,7 @@ fn datastream(root: &Path, list: &List, named: Option<&str>) -> Result<String, S
     }
     let base = image.base.as_ref();
     let mut issues = crate::diag::Issues::default();
-    let (bases, _) = crate::base::catalog(root, &list.sources, &mut issues);
+    let bases = crate::base::catalog(root, &list.sources, &mut issues);
     Ok(measured_by(
         CONTENT,
         &bases,
@@ -448,9 +448,8 @@ fn measured_by(
             Err(refusal) => Err(refusal),
             Ok(_) => Err(format!(
                 "`{}` names no `scap-content`, so nothing says which benchmark it is measured \
-                 against\n\nhelp: add `scap-content \"ssg-<os>-ds.xml\"` to its row. A row that \
-                 carries one in the source tree and not here is a stale installed catalog, which \
-                 `BUILDC_ASSETS=<tree>/assets` points past",
+                 against\n\nhelp: add `scap-content \"ssg-<os>-ds.xml\"` to its base file in the \
+                 base-images library",
                 base.image
             )),
         },
@@ -1233,6 +1232,7 @@ mod tests {
     #[test]
     fn a_base_row_names_content_the_family_cannot() {
         let row = |image: &str, family: &str, content: &str| crate::base::Base {
+            name: image.to_string(),
             image: image.to_string(),
             family: family.to_string(),
             provides: Vec::new(),
@@ -1282,7 +1282,7 @@ mod tests {
 
         let err = of("example.invalid/silent:1", "fedora").unwrap_err();
         assert!(err.contains("names no `scap-content`"), "{err}");
-        assert!(err.contains("stale installed catalog"), "{err}");
+        assert!(err.contains("add `scap-content"), "{err}");
 
         let err = of("example.invalid/silent:1", "debian").unwrap_err();
         assert!(err.contains("no content a `debian` image"), "{err}");

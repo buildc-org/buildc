@@ -464,6 +464,7 @@ pub(crate) fn contract_files(
     modules: &[&Module],
     rows: &[Capability],
 ) -> Vec<String> {
+    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
     let mut out: Vec<String> = Vec::new();
     let mut add = |paths: Vec<String>| {
         let token = paths.join("|");
@@ -475,21 +476,19 @@ pub(crate) fn contract_files(
         if !image.boot.is_empty() && decl.name == "bootupctl" {
             continue;
         }
-        if let Some(paths) = crate::base::witness(&decl.name, rows) {
+        if let Some(paths) = crate::base::witness(&decl.name, family, None, rows) {
             add(paths);
         }
     }
     for module in modules {
         for decl in &module.provides {
-            match module.files.iter().find(|f| f.name == decl.name) {
-                Some(file) if file.build_only => {}
-                Some(file) => add(vec![file.file.clone()]),
-                None => {
-                    let row = rows.iter().find(|row| row.name == decl.name);
-                    if let Some(path) = row.and_then(|row| row.path.clone()) {
-                        add(vec![path]);
-                    }
-                }
+            let own = module.files.iter().find(|f| f.name == decl.name);
+            if own.is_some_and(|file| file.build_only) {
+                continue;
+            }
+            let own = own.map(|file| file.file.as_str());
+            if let Some(paths) = crate::base::witness(&decl.name, family, own, rows) {
+                add(paths);
             }
         }
     }
@@ -511,9 +510,10 @@ pub(crate) fn provides(image: &Image, entries: &[&Entry], name: &str) -> bool {
 }
 
 fn witnesses(image: &Image, rows: &[Capability]) -> Json {
+    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
     let mut names: Vec<&str> = rows
         .iter()
-        .filter(|row| row.path.is_some())
+        .filter(|row| row.path.is_some() || !row.families.is_empty())
         .map(|row| row.name.as_str())
         .chain(
             image
@@ -533,7 +533,7 @@ fn witnesses(image: &Image, rows: &[Capability]) -> Json {
     names.sort_unstable();
     names.dedup();
     Json::map(names.into_iter().filter_map(|name| {
-        let paths = crate::base::witness(name, rows)?;
+        let paths = crate::base::probe(name, family, rows)?;
         Some((name.to_string(), Json::strings(paths)))
     }))
 }

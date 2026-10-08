@@ -228,7 +228,6 @@ fn repo_urls(root: &std::path::Path, dir: &str) -> Vec<String> {
     out
 }
 
-/// The names a repository declares, for a `why` that was given none of them.
 pub fn known(list: &List) -> Vec<String> {
     let mut out: Vec<String> = list
         .images
@@ -256,8 +255,8 @@ impl Why {
         }
 
         out.push(Part::Heading("Where it is built".into()));
-        // Suppressed somewhere is not suppressed everywhere, so the images
-        // that build it are said first and are never spoken for.
+        // Suppression in one image does not suppress the module everywhere, so
+        // built images remain separate from suppressed images.
         out.push(Part::Text(match self.suppressed.is_empty() {
             true => listed(&self.images),
             false => format!(
@@ -572,9 +571,8 @@ impl Why {
 const COLLECTION: &[&str] = &["Collection", "Locator", "Selector", "Verifier", "Tracker"];
 const ASSET: &[&str] = &["Asset", "Locator", "Selector", "Verifier", "Tracker"];
 
-/// The four evidence slots across a row in markdown, or down rows at a
-/// terminal, where five columns of hash and URL fold into a smear. `header`
-/// names what the rows are in its first cell, which is the terminal's title.
+/// Terminal evidence runs down rows because five columns of hashes and URLs
+/// would fold. Markdown keeps the same evidence across a row.
 fn evidence(header: &'static [&'static str], pins: &[(&str, &Fetch)], terminal: bool) -> Vec<Part> {
     let say = |value: &Option<String>| value.clone().unwrap_or_else(|| "not declared".into());
     if terminal {
@@ -615,8 +613,6 @@ fn evidence(header: &'static [&'static str], pins: &[(&str, &Fetch)], terminal: 
     })]
 }
 
-/// The directory `git clone <url>` makes, which the rest of the line has to
-/// change into.
 fn clone_dir(url: &str) -> &str {
     url.trim_end_matches('/')
         .rsplit('/')
@@ -632,8 +628,6 @@ fn hash(value: &Option<String>) -> String {
     }
 }
 
-// ---- on a live host ------------------------------------------------------
-
 fn pin_of(value: &Json, name: &str) -> Fetch {
     Fetch {
         name: name.to_string(),
@@ -644,7 +638,6 @@ fn pin_of(value: &Json, name: &str) -> Fetch {
     }
 }
 
-/// Every target in the baked manifest, as the target object and its name.
 fn targets(manifest: &Json) -> Vec<&Json> {
     items(manifest, "images")
         .iter()
@@ -652,17 +645,14 @@ fn targets(manifest: &Json) -> Vec<&Json> {
         .collect()
 }
 
-/// The targets a host answer is read across, and which case that is. The
-/// manifest is the whole repository's, so only the target the record names is
-/// running here; anything else describes an image that is not this one.
+/// Only the target named by the build record can describe the running image.
 pub fn built_as<'a>(manifest: &'a Json, record: Option<&Json>) -> (Vec<&'a Json>, Scope) {
     let every = targets(manifest);
     let at = match record.and_then(|record| text(record, "target")) {
         Some(name) => every
             .iter()
             .position(|target| text(target, "name").as_deref() == Some(name.as_str())),
-        // One target is the whole repository, so an image built before the
-        // record carried a target can only be that one, and nothing widens.
+        // One baked target remains unambiguous when the record omits its name.
         None if every.len() == 1 => Some(0),
         None => None,
     };
@@ -675,8 +665,6 @@ pub fn built_as<'a>(manifest: &'a Json, record: Option<&Json>) -> (Vec<&'a Json>
     }
 }
 
-/// The manifest entry for the image a target belongs to: `conforms` and the
-/// base family are the image's, where the modules are the target's.
 pub fn image_of<'a>(manifest: &'a Json, target: &Json) -> Option<&'a Json> {
     let id = text(target, "image")?;
     items(manifest, "images")
@@ -684,9 +672,9 @@ pub fn image_of<'a>(manifest: &'a Json, target: &Json) -> Option<&'a Json> {
         .find(|image| text(image, "id").as_deref() == Some(id.as_str()))
 }
 
-/// The same read-out with no repository at all: the manifest is what the image
-/// declares it is made of, the build record what the build resolved. Both are
-/// baked, so an image answers for itself.
+/// Without a repository, baked manifest and build evidence let the image
+/// answer only for itself. Repository-wide evidence could otherwise be
+/// mistaken for evidence about the running image.
 pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why> {
     let (targets, scope) = built_as(manifest, record);
     let mut why = Why {
@@ -697,7 +685,7 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
     let mut found = false;
 
     for target in &targets {
-        // By the whole path, as `of` is: `matching` already chose which module
+        // The whole path agrees with `of`. `matching` already chose which module
         // was meant, and a suffix match here could pick a different one.
         let Some(module) = items(target, "modules")
             .iter()
@@ -768,7 +756,7 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
 
         if let Some(provenance) = field(module, "provenance") {
             why.content = text(provenance, "content");
-            // A copy carries the record it was imported with; a reference
+            // A copy carries the record it was imported with. A reference
             // carries the collection it is fetched from, beside its pin.
             if let Some(imported) = field(provenance, "imported") {
                 if let (Some(collection), Some(pin)) =
@@ -785,7 +773,7 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
             }
             if matches!(field(provenance, "repo"), Some(Json::Bool(true))) {
                 // The module tree is not in the finished image, so the file
-                // itself cannot be read here; that it exists is the fact.
+                // itself cannot be read here. Only its existence is available.
                 why.repo = Some(Vec::new());
             }
         }
@@ -809,9 +797,8 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
         return None;
     }
 
-    // Where this machine came from. The seeding refusal forbids deriving
-    // declarations back out of resolved output; this fetches the real ones.
-    // No verb, so the line below is copy-pasteable where it is wanted.
+    // The seeding refusal forbids deriving declarations from resolved output,
+    // so this points to the real source. The command stays copy-pasteable.
     if let ([target], Some(record)) = (targets.as_slice(), record) {
         why.source = image_of(manifest, target)
             .and_then(|image| text(image, "url"))
@@ -819,7 +806,6 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
             .zip(text(record, "source_commit"));
     }
 
-    // What the build observed, where the manifest only says what was declared.
     if let Some(record) = record {
         why.built = items(record, "modules")
             .iter()
@@ -829,8 +815,8 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
     Some(why)
 }
 
-/// Every module this image carries, for a `why` given one it does not. Scoped
-/// the same way the read-out is, so a name it offers is one `on_host` answers.
+/// Matching the read-out's scope ensures every offered name is one `on_host`
+/// can answer.
 pub fn known_on_host(manifest: &Json, record: Option<&Json>) -> Vec<String> {
     let mut out: Vec<String> = built_as(manifest, record)
         .0
@@ -843,10 +829,8 @@ pub fn known_on_host(manifest: &Json, record: Option<&Json>) -> Vec<String> {
     out
 }
 
-/// Whether this binary knows the shape of a baked document. The binary in an
-/// image is pinned independently of the one that built it, so the two can be a
-/// schema apart, and a host has no repository to check an answer against. It
-/// refuses, naming both numbers.
+/// The running binary can differ from the one that built an image, and a host
+/// has no repository against which to check an unknown document shape.
 fn readable(document: &Json, at: &std::path::Path, reads: u32) -> Result<(), String> {
     let tool = env!("CARGO_PKG_VERSION");
     match common::json::declared(document, "schema_version") {
@@ -863,7 +847,7 @@ fn readable(document: &Json, at: &std::path::Path, reads: u32) -> Result<(), Str
              image with this release, or read it with the one that built it",
             at.display()
         )),
-        // Present and not a number is neither of the two above: saying it was
+        // A present non-number is malformed. Saying it was
         // built before the field existed would send the reader to rebuild an
         // image whose document is simply malformed.
         Some(_) => Err(format!(
@@ -875,8 +859,6 @@ fn readable(document: &Json, at: &std::path::Path, reads: u32) -> Result<(), Str
     }
 }
 
-/// The two documents an image carries, read from where the build put them, and
-/// refused unless this binary knows the schema each is written against.
 pub fn baked(
     manifest: &std::path::Path,
     record: &std::path::Path,
@@ -902,7 +884,7 @@ pub fn baked(
 
 #[cfg(test)]
 mod tests {
-    use super::{display, known_on_host, on_host, Fetch, Scope, Why};
+    use super::{display, known, known_on_host, on_host, Fetch, Scope, Why};
     use crate::emit::Part;
     use crate::resolve::name::matching;
 
@@ -932,12 +914,11 @@ mod tests {
         assert_eq!(known_on_host(&manifest, Some(&ungated)), ["apps/kde"]);
         let why = on_host(&manifest, Some(&ungated), "apps/kde").expect("the image carries it");
         assert_eq!(why.images, ["desktop"]);
-        // The other target's module wants it; this one has nobody to want it.
+        // The other target requires the capability. This target does not.
         assert_eq!(why.provides, [("desktop".to_string(), Vec::new())]);
         assert!(why.scope == Scope::Built("desktop".into()));
         assert!(on_host(&manifest, Some(&ungated), "apps/vscodium").is_none());
 
-        // The gated target is a different image and answers differently.
         let gated = record("desktop/dx");
         let why = on_host(&manifest, Some(&gated), "apps/kde").expect("the image carries it");
         assert_eq!(why.images, ["desktop-dx"]);
@@ -985,6 +966,26 @@ mod tests {
         assert_eq!(
             display(&paths),
             ["one/hardening/coredumps", "two/coredumps", "updates"]
+        );
+    }
+
+    #[test]
+    fn picker_snapshots_repository_modules() {
+        use crate::screen_tests::{assert_screen, screen};
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/enforced");
+        let (list, _) = crate::model::image::List::load(&root);
+        let modules = known(&list);
+        let options = crate::dispatch::picker_options(&display(&modules));
+        assert_screen(
+            "why-module-picker",
+            screen().picker(
+                crate::copy::WHICH_MODULE,
+                &options,
+                None,
+                "enter confirms",
+                0,
+            ),
         );
     }
 

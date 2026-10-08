@@ -1,7 +1,7 @@
 use crate::diag::{Issue, Source, Span};
 use crate::model::module::{Access, Coverage, Module, Refusal};
 use crate::model::options::Value;
-use crate::model::remote::{Collection, REMOTE_DIR};
+use crate::model::remote::{Collection, Kind as SourceKind, REMOTE_DIR};
 use crate::provenance::Evidence;
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -131,7 +131,11 @@ impl Entry {
         self.remote.as_ref().or_else(|| {
             self.source
                 .as_ref()
-                .and_then(|name| sources.iter().find(|source| &source.name == name))
+                .and_then(|name| {
+                    sources
+                        .iter()
+                        .find(|source| source.kind == SourceKind::Modules && &source.name == name)
+                })
                 .and_then(Collection::pin)
         })
     }

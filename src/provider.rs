@@ -1,4 +1,4 @@
-use crate::model::remote::{Collection, REMOTE_DIR};
+use crate::model::remote::{Collection, Kind as SourceKind, REMOTE_DIR};
 use crate::parse::disk::Disk;
 use crate::parse::module::Summary;
 use crate::{layout, parse};
@@ -77,11 +77,18 @@ impl Index {
                 true => Vec::new(),
                 false => sources
                     .iter()
-                    .filter(|collection| crate::import::cached(root, collection).is_none())
+                    .filter(|collection| collection.kind == SourceKind::Modules)
+                    .filter(|collection| {
+                        !crate::import::cached(root, collection).is_some_and(|dir| {
+                            dir.join(collection.subtree().unwrap_or("")).is_dir()
+                        })
+                    })
                     .map(|collection| collection.name.clone())
                     .collect(),
             },
-            sourced: !sources.is_empty(),
+            sourced: sources
+                .iter()
+                .any(|collection| collection.kind == SourceKind::Modules),
         }
     }
 

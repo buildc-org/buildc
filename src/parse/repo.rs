@@ -1,9 +1,10 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::layout;
 use crate::model::image::{List, NetRule, Network, Seed, Workflow, SCHEMA_VERSION, BUILDC_VERSION};
+use crate::model::remote::Kind as SourceKind;
 use crate::parse::image::IMAGE;
-use crate::parse::remote::{parse_collection, COLLECTION};
-use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
+use crate::parse::remote::{parse_source, SOURCES};
+use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say, FILE_SCHEMA_VERSION};
 use crate::parse::{
     bool_arg, check_sha256, child, int_arg, kids, prop, prop_span, string_arg, syntax_issue,
 };
@@ -196,12 +197,13 @@ pub const REPO: Node = Node::new("repo",
                 "The `conforms` of each image decides whether SCAP content exists to scan.",
             ]),
         Node::new("sources",
-            "The module collections that `buildc import module` and `buildc copy module` resolve \
-             against.").about("Lists the module collections that this repository takes modules from. A collection is a shared set of modules, which `buildc` fetches as a pinned archive or reads from a directory on this machine. `buildc import module` and `buildc copy module` look modules up here.").scaffolds(&[""])
+            "The module, base-image and capability libraries this repository reads.").about("Lists typed libraries that this repository reads from a local directory or fetches from an HTTPS Git repository. A `modules` source feeds imports and copies. A `base-images` source is the base catalog. A `capabilities` source locates the paths that witness a capability. Every source declares exactly one of `dir` and `url`: `dir` names a directory on this machine, and `url` names an HTTPS Git repository.").scaffolds(&["modules", "base-images", "capabilities"])
             .once("a second block would split one registry in two")
-            .empty(Say::new("`sources` has no collections in it", "empty block",
-                "omit the block entirely; a repository with nothing here references or copies from nothing"))
-            .children(&[COLLECTION], Say::NONE)
+            .empty(Say::new("`sources` has no sources in it", "empty block",
+                "omit the block entirely; a repository that reads no library declares nothing here"))
+            .children(&SOURCES, Say::new("unknown node `{}` in `sources`", "not part of the schema",
+                "a source is `modules`, `base-images` or `capabilities`, each named by the alias \
+                 its content uses"))
             .lists(&[
                 ("A module from a collection reaches the repository in one of two ways:", &[
                     "`buildc import module` references the module under the name of its \
@@ -295,9 +297,9 @@ fn network(node: &KdlNode) -> Network {
 
 #[rustfmt::skip]
 pub(crate) const IMAGE_FILE: Node = Node::new("image file",
-    "The images that a file named `image.kdl` or `<name>.image.kdl` holds.").about("An image file holds one or more images. Each image says what it is called, which base it builds on and which modules it is made of.").scaffolds(&["image"])
-    .children(&[IMAGE], Say::new("unknown top-level node `{}`", "not part of the schema",
-        "an image file holds `image` nodes and nothing else; `base`, `flavours` and `modules` are \
+    "The images that a file named `image.kdl` or `<name>.image.kdl` holds.").about("An image file holds its schema version and one or more images. Each image says what it is called, which base it builds on and which modules it is made of.").scaffolds(&["schema-version", "image"])
+    .children(&[FILE_SCHEMA_VERSION, IMAGE], Say::new("unknown top-level node `{}`", "not part of the schema",
+        "an image file holds `schema-version` and `image` nodes; `base`, `flavours` and `modules` are \
          declared inside one, because they are what the image is"))
     .notes(&[
         "A root `.kdl` file is an image file only if it is named `image.kdl` or ends in \
@@ -439,6 +441,15 @@ impl List {
         let mut issues = Issues::default();
         let mut list = List::empty(root);
 
+        if let Some(found) = pins(root) {
+            list.schema_version = found.schema.and_then(|(version, _)| {
+                u32::try_from(version)
+                    .ok()
+                    .filter(|version| *version == SCHEMA_VERSION)
+            });
+            list.repo_src = found.src;
+        }
+
         let mut names: Vec<String> = Vec::new();
         match std::fs::read_dir(root) {
             Ok(entries) => {
@@ -517,6 +528,15 @@ impl List {
         };
 
         check_doc(&doc, if is_repo { &REPO } else { &IMAGE_FILE }, src, issues);
+        if !is_repo {
+            crate::parse::check_file_version(
+                &doc,
+                self.schema_version,
+                &self.repo_src,
+                src,
+                issues,
+            );
+        }
 
         for node in doc.nodes() {
             match (is_repo, node.name().value()) {
@@ -583,10 +603,9 @@ impl List {
                 let Some(source) = &entry.source else {
                     continue;
                 };
-                let declared = self
-                    .sources
-                    .iter()
-                    .find(|declared| &declared.name == source);
+                let declared = self.sources.iter().find(|declared| {
+                    declared.kind == SourceKind::Modules && &declared.name == source
+                });
                 if declared.is_none() {
                     issues.push(
                         Issue::new(format!("`{source}` is not declared in `sources`"), &image.src)
@@ -704,7 +723,11 @@ impl List {
             return;
         };
 
-        let declared = |name: &str| self.sources.iter().any(|c| c.name == name);
+        let declared = |name: &str| {
+            self.sources
+                .iter()
+                .any(|c| c.kind == SourceKind::Modules && c.name == name)
+        };
         if !declared(&seed.collection) {
             issues.push(
                 Issue::new(
@@ -786,18 +809,26 @@ impl List {
 
     fn parse_sources(&mut self, block: &KdlNode, src: &Source, issues: &mut Issues) {
         for node in kids(block) {
-            let Some(collection) = parse_collection(node, src, issues) else {
+            let Some(collection) = parse_source(node, src, issues) else {
                 continue;
             };
-            if let Some(dup) = self.sources.iter().find(|c| c.name == collection.name) {
+            if let Some(dup) = self
+                .sources
+                .iter()
+                .find(|c| c.kind == collection.kind && c.name == collection.name)
+            {
                 issues.push(
                     Issue::new(
-                        format!("collection `{}` is declared twice", collection.name),
+                        format!(
+                            "{} source `{}` is declared twice",
+                            collection.kind.as_str(),
+                            collection.name
+                        ),
                         src,
                     )
                     .at(dup.span, "first here")
                     .at(collection.span, "and again here")
-                    .help("both would import into the same directory, so one of them would be shadowed silently"),
+                    .help("one kind and alias identify one source; merge the fields or rename one declaration"),
                 );
                 continue;
             }
@@ -819,6 +850,22 @@ pub fn workflows_span(text: &str) -> Option<Span> {
         .iter()
         .find(|n| n.name().value() == "workflows")?;
     Some(node.span().into())
+}
+
+pub fn source_span(text: &str, kind: &str, alias: &str) -> Option<Span> {
+    let doc: KdlDocument = text.parse().ok()?;
+    let sources = doc.nodes().iter().find(|n| n.name().value() == "sources")?;
+    let source = kids(sources)
+        .iter()
+        .find(|kid| kid.name().value() == kind && string_arg(kid) == Some(alias))?;
+    Some(source.span().into())
+}
+
+pub fn sources_insert(text: &str) -> Option<usize> {
+    let doc: KdlDocument = text.parse().ok()?;
+    let sources = doc.nodes().iter().find(|n| n.name().value() == "sources")?;
+    let span: Span = sources.span().into();
+    text[..span.offset + span.len].rfind('}')
 }
 
 pub fn at_text((hour, minute): (u32, u32)) -> String {
@@ -868,6 +915,43 @@ mod tests {
         let dir = root("open", "schema-version 1\nbuildc-version \"0.0.1\"\n");
         let issues = compatible(&dir);
         assert!(issues.is_empty(), "{}", issues.plain());
+    }
+
+    #[test]
+    fn every_declared_file_names_a_compatible_schema() {
+        let dir = root("file-schemas", "schema-version 1\n");
+        std::fs::write(
+            dir.join(layout::IMAGE_FILE),
+            "schema-version 2\n\nimage { name \"Example\"; base \"example\"; modules { module \"hello\" } }\n",
+        )
+        .unwrap();
+        let (_, issues) = List::load(&dir);
+        let image = issues.plain();
+        assert!(image.contains("image.kdl declares schema"), "{image}");
+        assert!(image.contains("version 2, but"), "{image}");
+        assert!(image.contains("repo.kdl declares 1"), "{image}");
+
+        std::fs::write(
+            dir.join(layout::IMAGE_FILE),
+            "schema-version 1\n\nimage { name \"Example\"; base \"example\"; modules { module \"hello\" } }\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("modules/hello")).unwrap();
+        let manifest = dir.join("modules/hello/module.kdl");
+        std::fs::write(&manifest, "packages \"hello\"\n").unwrap();
+        let missing = crate::load(&dir).issues.plain();
+        assert!(missing.contains("module.kdl"), "{missing}");
+        assert!(
+            missing.contains("this file declares no `schema-version`"),
+            "{missing}"
+        );
+
+        std::fs::write(&manifest, "schema-version 2\n\npackages \"hello\"\n").unwrap();
+        let module = crate::load(&dir).issues.plain();
+        assert!(module.contains("module.kdl declares schema"), "{module}");
+        assert!(module.contains("version 2, but"), "{module}");
+        assert!(module.contains("repo.kdl declares 1"), "{module}");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1045,12 +1129,12 @@ colour "blue"
 schema-version 1
 name "Buildc"
 sources {
-    owner branch="main" {
-        pin {
-            unpinned
-            version "v1"
-            version "v2"
-        }
+    collections "x" {}
+    modules "owner" branch="main" {
+        url "https://example.invalid/library"
+        unpinned
+        version "v1"
+        version "v2"
         subtree "modules"
     }
 }
@@ -1059,10 +1143,11 @@ sources {
         assert_eq!(
             found,
             [
-                "unknown collection property `branch`",
+                "unknown node `collections` in `sources`",
+                "unknown source property `branch`",
                 "`unpinned` needs a reason",
                 "`version` is declared twice",
-                "unknown node `subtree` in a collection",
+                "unknown node `subtree` in a source",
             ]
         );
     }

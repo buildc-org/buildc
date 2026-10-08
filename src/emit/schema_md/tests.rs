@@ -74,9 +74,10 @@ fn the_page_opens_on_the_file_and_its_scaffold() {
 #[test]
 fn a_shared_node_is_scaffolded_only_where_its_block_names_it() {
     let image = file(&SECTIONS[1], Show::Scaffold);
-    assert!(!image.contains("pin"), "{image}");
+    assert!(!image.contains("buildc-modules"), "{image}");
     let repo = file(&SECTIONS[0], Show::Scaffold);
-    assert!(repo.contains("pin {"), "{repo}");
+    assert!(repo.contains("modules \"buildc-modules\" {"), "{repo}");
+    assert!(repo.contains("        url "), "{repo}");
 }
 
 #[test]
@@ -141,7 +142,7 @@ fn a_nested_section_shows_the_blocks_that_hold_it() {
 #[test]
 fn a_shared_block_is_documented_on_each_page_that_holds_it() {
     assert!(page(Area::Module).contains("<a id=\"asset-pin\"></a>"));
-    assert!(page(Area::Repo).contains("<a id=\"sources-name-pin\"></a>"));
+    assert!(page(Area::Repo).contains("<a id=\"sources-modules-url\"></a>"));
     assert!(page(Area::Image).contains("<a id=\"image-modules-module-pin\"></a>"));
 }
 

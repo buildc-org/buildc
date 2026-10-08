@@ -26,7 +26,9 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | Command | Description | Schema |
 | --- | --- | --- |
 | [`buildc create repo [name]`](#buildc-create-repo) | start a repository of images | [repository&nbsp;layout](schema/repository.md) |
+| [`buildc create git`](#buildc-create-git) | initialise git and the ignore file in a directory |  |
 | [`buildc create scripts [name]...`](#buildc-create-scripts) | keep a copy of a script buildc supplies in scripts/ | [`scripts/`](schema/repository.md) |
+| [`buildc set library [kind]`](#buildc-set-library) | add a module, base-image or capability library | [`repo.kdl`&nbsp;›&nbsp;`sources`](schema/repo.md#sources) |
 
 ### Image
 
@@ -231,9 +233,9 @@ example/
 ```
 
 > [!WARNING]
-> The `buildc-org/modules` source that `repo.kdl` declares is `unpinned`. Each
+> The `buildc-modules` source that `repo.kdl` declares is `unpinned`. Each
 > fetch takes the head of its branch, and no hash checks what arrives. To pin
-> it, replace its `pin` with a tagged and hashed one.
+> it, add `version` and `sha256` beside its `url`.
 
 > [!NOTE]
 > It runs `git init` and does no other git step. It prints the commands for the
@@ -244,6 +246,23 @@ example/
 >
 > A repository cannot sit inside another repository, so it refuses such a
 > directory.
+
+## `buildc create git`
+
+Puts the directory under git control, so a hand-written repository is under
+version control before its first commit. It writes the `.gitignore` that
+ignores `keys/private/`, `out/` and `modules/.remote/`, unless one is already
+there.
+
+It refuses a directory that git already tracks, because a repository does not
+nest.
+
+**Usage:** `buildc create git`
+
+> [!NOTE]
+> `buildc create repo` already does this for a repository it scaffolds. This
+> command is for a directory written by hand or copied from somewhere, and it
+> leaves every file that is already there alone.
 
 ## `buildc create image`
 
@@ -331,6 +350,8 @@ example/
 `example.image.kdl` after it runs:
 
 ```kdl
+schema-version 1
+
 image {
     name "Example"
     url "https://github.com/someone/example"
@@ -633,6 +654,26 @@ example/
 >
 > Each schedule is an offset from the daily build time, so a new daily time
 > moves every schedule.
+
+## `buildc set library`
+
+Adds a library to the `sources` block in `repo.kdl`: the default library of
+that kind, or a source the user types. A source of the same kind and alias is
+replaced, so the declaration moves to what the user chose.
+
+It asks, in order:
+
+1. Choose the default library of that kind, or another source.
+2. For another source, give its alias, its HTTPS Git URL and the directory
+   inside the repository.
+
+**Usage:** `buildc set library [kind]`
+
+| Argument | Description |
+| --- | --- |
+| `<kind>` | the kind of library: `base-images`, `capabilities` or `modules` |
+
+**Schema:** [`repo.kdl`&nbsp;›&nbsp;`sources`](schema/repo.md#sources)
 
 ## `buildc set conforms`
 

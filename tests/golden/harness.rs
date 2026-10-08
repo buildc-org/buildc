@@ -79,6 +79,38 @@ pub(super) fn copy(from: &Path, to: &Path) {
     }
 }
 
+pub(super) fn seed_bases(root: &Path) {
+    let keyed = buildc::import::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
+        .expect("the default library URL hashes");
+    let collections = crate_dir().join("tests/collections/upstream");
+    let core = keyed.join("base-images/core");
+    std::fs::create_dir_all(&core).unwrap();
+    for entry in std::fs::read_dir(&collections).unwrap().flatten() {
+        let name = entry.file_name();
+        if name.to_string_lossy().ends_with(".base.kdl") {
+            std::fs::copy(entry.path(), core.join(name)).unwrap();
+        }
+    }
+    let capabilities = keyed.join("capabilities");
+    std::fs::create_dir_all(&capabilities).unwrap();
+    std::fs::copy(
+        collections.join("capabilities.kdl"),
+        capabilities.join("capabilities.kdl"),
+    )
+    .unwrap();
+}
+
+pub(super) fn seed_library(root: &Path) {
+    seed_bases(root);
+    let keyed = buildc::import::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
+        .expect("the default library URL hashes");
+    let collections = crate_dir().join("tests/collections/upstream");
+    copy(&collections, &keyed.join("modules"));
+    for stray in ["capabilities.kdl", "fedora.base.kdl", "collected.base.kdl"] {
+        let _ = std::fs::remove_file(keyed.join("modules").join(stray));
+    }
+}
+
 pub(super) fn walk(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {

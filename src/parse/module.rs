@@ -8,7 +8,7 @@ use crate::model::module::{
 use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
 use crate::parse::prop_span;
-use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say};
+use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say, FILE_SCHEMA_VERSION};
 use crate::parse::{asset, boolean, check_capability, check_path, child, flag, int_prop, kids};
 use crate::parse::{options, prop};
 use crate::parse::{string_arg, string_args, syntax_issue};
@@ -211,8 +211,9 @@ const FAMILY: Node = Node::new("family",
 
 #[rustfmt::skip]
 pub const MODULE: Node = Node::new("module",
-    "One module, which declares what it builds on, what it needs and what it installs.").about("A module is one reusable part of an image, such as a desktop, a kernel or a set of tools. `module.kdl` declares what the module needs and provides, what it installs and which families it supports, and the files beside it do the work.").scaffolds(&["description", "supports", "packages"])
+    "One module, which declares what it builds on, what it needs and what it installs.").about("A module is one reusable part of an image, such as a desktop, a kernel or a set of tools. `module.kdl` declares its schema version, what the module needs and provides, what it installs and which families it supports, and the files beside it do the work.").scaffolds(&["schema-version", "description", "supports", "packages"])
     .children(&[
+        FILE_SCHEMA_VERSION,
         Node::new("description", "One line that names the module in the resolved build summary.").example("\"Traditional CLI utilities\"")
             .arg(Arg::Str, Say::new("`description` needs a string", "no description given", ""))
             .once(""),
@@ -567,6 +568,8 @@ impl Module {
         image: &Image,
         root: &Path,
         disk: &Disk,
+        repo_version: Option<u32>,
+        repo_src: &Source,
         issues: &mut Issues,
     ) -> Option<Self> {
         if (entry.remote.is_some() || entry.source.is_some())
@@ -595,12 +598,14 @@ impl Module {
 
         let local = entry.source.is_none() && entry.remote.is_none();
         let mut module = match std::fs::read_to_string(&file) {
-            Ok(text) => Self::parse(
+            Ok(text) => Self::parse_against(
                 &entry.path,
                 &dir_rel,
                 root,
                 text,
                 image.base.as_ref().map(|base| base.family.as_str()),
+                repo_version,
+                repo_src,
                 issues,
             )?,
             Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
@@ -701,12 +706,14 @@ impl Module {
         }
     }
 
-    fn parse(
+    fn parse_against(
         path: &str,
         dir_rel: &str,
         root: &Path,
         text: String,
         family: Option<&str>,
+        repo_version: Option<u32>,
+        repo_src: &Source,
         issues: &mut Issues,
     ) -> Option<Self> {
         let dir = layout::module(root, dir_rel);
@@ -724,6 +731,7 @@ impl Module {
         let mut module = Self::empty(path, dir_rel, &dir, src, issues);
 
         check_doc(&doc, &MODULE, src, issues);
+        crate::parse::check_file_version(&doc, repo_version, repo_src, src, issues);
 
         let mut fragment_seen = false;
         let mut gated: Vec<(String, Span)> = Vec::new();
@@ -766,6 +774,27 @@ impl Module {
         );
 
         Self::rest(module, path, root, &dir, &gated, src, issues)
+    }
+
+    #[cfg(test)]
+    fn parse(
+        path: &str,
+        dir_rel: &str,
+        root: &Path,
+        text: String,
+        family: Option<&str>,
+        issues: &mut Issues,
+    ) -> Option<Self> {
+        Self::parse_against(
+            path,
+            dir_rel,
+            root,
+            text,
+            family,
+            Some(crate::model::image::SCHEMA_VERSION),
+            &Source::new("repo.kdl", "schema-version 1\n"),
+            issues,
+        )
     }
 
     fn take(
@@ -1656,6 +1685,36 @@ pub fn summary(file: &Path) -> Summary {
     }
 }
 
+pub(crate) fn validate_manifest(
+    file: &Path,
+    repo_version: Option<u32>,
+    repo_src: &Source,
+) -> Issues {
+    let mut issues = Issues::default();
+    let text = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(err) => {
+            let src = Source::new(file.display().to_string(), String::new());
+            issues.push(Issue::new(
+                format!("{} cannot be read: {err}", file.display()),
+                &src,
+            ));
+            return issues;
+        }
+    };
+    let src = Source::new(file.display().to_string(), text.clone());
+    let doc: KdlDocument = match text.parse() {
+        Ok(doc) => doc,
+        Err(err) => {
+            issues.push(syntax_issue(&err, src.name(), &src));
+            return issues;
+        }
+    };
+    check_doc(&doc, &MODULE, &src, &mut issues);
+    crate::parse::check_file_version(&doc, repo_version, repo_src, &src, &mut issues);
+    issues
+}
+
 pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues) {
     let listed: BTreeSet<String> = list
         .images
@@ -1670,7 +1729,16 @@ pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues
         }
         let file = layout::manifest(root, dir);
         if let Ok(text) = std::fs::read_to_string(&file) {
-            Module::parse(dir, dir, root, text, None, issues);
+            Module::parse_against(
+                dir,
+                dir,
+                root,
+                text,
+                None,
+                list.schema_version,
+                &list.repo_src,
+                issues,
+            );
         }
     }
 }
@@ -1680,8 +1748,9 @@ mod tests {
     use super::*;
 
     fn messages(text: &str) -> Vec<String> {
+        let text = format!("schema-version 1\n{text}");
         let doc: KdlDocument = text.parse().expect("valid KDL");
-        let src = Source::new("module.kdl", text);
+        let src = Source::new("module.kdl", text.clone());
         let mut issues = Issues::default();
         check_doc(&doc, &MODULE, &src, &mut issues);
         issues.findings()
@@ -1689,20 +1758,26 @@ mod tests {
 
     fn parsed(name: &str, text: &str) -> Vec<String> {
         let mut issues = Issues::default();
-        Module::parse(
-            name,
-            name,
-            Path::new("."),
-            text.to_string(),
-            None,
-            &mut issues,
-        );
+        let text = format!("schema-version 1\n{text}");
+        Module::parse(name, name, Path::new("."), text, None, &mut issues);
         issues.findings()
     }
 
     #[test]
+    fn a_manifest_declares_its_schema_version() {
+        let doc: KdlDocument = "packages \"nano\"\n".parse().expect("valid KDL");
+        let src = Source::new("module.kdl", "packages \"nano\"\n");
+        let mut issues = Issues::default();
+        check_doc(&doc, &MODULE, &src, &mut issues);
+        assert_eq!(
+            issues.findings(),
+            ["this file declares no `schema-version`"]
+        );
+    }
+
+    #[test]
     fn no_supports_declaration_means_every_family() {
-        let text = "packages \"nano\"\n";
+        let text = "schema-version 1\n\npackages \"nano\"\n";
         let mut issues = Issues::default();
         let module = Module::parse(
             "editor",
@@ -2105,7 +2180,8 @@ packages "thing" enablerepo="other/project"
 
     #[test]
     fn a_gate_is_taken_on_its_families_and_read_on_every_other() {
-        let manifest = r#"
+        let manifest = r#"schema-version 1
+
 description "gated"
 supports "fedora" "debian" "ubuntu"
 packages "curl"

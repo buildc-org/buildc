@@ -21,6 +21,8 @@ hooks:
 nav:
   - Home: index.md
   - CLI: cli.md
+  - Getting started:
+      - How to create an image: creating-an-image.md
   - Schema:
       - KDL: kdl.md
       - Repository:
@@ -32,7 +34,7 @@ nav:
           - module.kdl: schema/module.md
           - provenance.kdl: schema/provenance.md
       - Assets:
-          - bases.kdl: schema/bases.md
+          - Base images: schema/bases.md
   - Project:
       - Changelog: changelog.md
       - Contributing: contributing.md

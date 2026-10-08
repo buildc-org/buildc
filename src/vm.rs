@@ -365,13 +365,13 @@ mod tests {
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\nname \"Deb\"\n").unwrap();
         crate::init::put(
             &root.join("deb.image.kdl"),
-            "image {\n    name \"deb\"\n\n    base \"docker.io/library/debian:forky\" {\n\
+            "schema-version 1\n\nimage {\n    name \"deb\"\n\n    base \"docker.io/library/debian:forky\" {\n\
              \x20       family \"debian\"\n    }\n\n    modules {\n        module \"login\"\n    }\n}\n",
         )
         .unwrap();
         crate::init::put(
             &root.join("modules/login/module.kdl"),
-            "description \"login\"\nsupports \"debian\"\nkey \"ssh\" {\n    generator \"ssh-keygen\"\n    public \"/usr/lib/buildc/authorized_keys\"\n    private \"id_ed25519\"\n}\n",
+            "schema-version 1\n\ndescription \"login\"\nsupports \"debian\"\nkey \"ssh\" {\n    generator \"ssh-keygen\"\n    public \"/usr/lib/buildc/authorized_keys\"\n    private \"id_ed25519\"\n}\n",
         )
         .unwrap();
         let opts = |image: Option<&str>| Options {
@@ -444,7 +444,7 @@ mod tests {
 
         crate::init::put(
             &root.join("fed.image.kdl"),
-            "image {\n    name \"fed\"\n\n    base \"quay.io/fedora/fedora-bootc:44\" {\n\
+            "schema-version 1\n\nimage {\n    name \"fed\"\n\n    base \"quay.io/fedora/fedora-bootc:44\" {\n\
              \x20       family \"fedora\"\n    }\n\n    modules {\n    }\n}\n",
         )
         .unwrap();

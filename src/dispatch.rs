@@ -275,45 +275,17 @@ fn module_from_collection(
     place: crate::import::Place,
     prompt: &Prompt,
 ) -> Result<(), Error> {
-    let default_block = match list.sources.is_empty() {
-        true => Some(crate::init::sources(&crate::init::assets()?)),
-        false => None,
-    };
-    let default_sources = default_block
-        .as_deref()
-        .map(crate::parse::repo::sources_in)
-        .unwrap_or_default();
-    let sources = match list.sources.is_empty() {
-        true if default_sources.is_empty() => {
-            let message = "repo.kdl declares no `sources`, and this installation supplies no \
-                           default module collection";
-            return Err(message.to_string().into());
-        }
-        true => default_sources.as_slice(),
-        false => list.sources.as_slice(),
-    };
     let module = crate::import::Module::collect(
         name,
         root,
-        sources,
+        &list.sources,
         list.audit_enforce,
         images,
         datastream,
         place,
         prompt,
     )?;
-    let wrote = module.write_with_sources(root, sources, default_block.as_deref())?;
-    if default_block.is_some() && !wrote.is_empty() {
-        let named = default_sources
-            .iter()
-            .map(|source| format!("`{}`", source.name))
-            .collect::<Vec<_>>()
-            .join(", ");
-        eprintln!(
-            "buildc: repo.kdl declares no `sources`; using the default module collection {named} \
-             and adding it to repo.kdl"
-        );
-    }
+    let wrote = module.write(root, &list.sources)?;
     if !wrote.is_empty() {
         crate::create::report(root, &wrote);
     }
@@ -392,6 +364,12 @@ pub fn dispatch(
             }
             Ok(ExitCode::SUCCESS)
         }
+        Verb::CreateGit => {
+            let root = root_arg
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+            crate::create::git_control(&root)?;
+            Ok(ExitCode::SUCCESS)
+        }
         Verb::CreateImage => {
             let name = one_name(rest, name)?;
             let Some(root) = open(here)? else {
@@ -411,6 +389,7 @@ pub fn dispatch(
                 &repo,
                 url,
                 "a name argument",
+                "",
                 crate::create::Field::Image,
                 None,
                 prompt,
@@ -526,6 +505,46 @@ pub fn dispatch(
             let wrote = set.apply(&root)?;
             crate::create::report(&root, &wrote);
             println!("\nnext, in {}:\n\x20 buildc generate\n", root.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::SetLibrary => {
+            use crate::model::remote::Kind as SourceKind;
+            let kinds = [
+                SourceKind::Modules,
+                SourceKind::BaseImages,
+                SourceKind::Capabilities,
+            ];
+            let kind =
+                match one_name(rest, name)? {
+                    Some(kind) => SourceKind::parse(&kind).ok_or_else(|| {
+                        Error::Invocation(format!(
+                            "`{kind}` is not a library kind; `set library` takes `base-images`, \
+                         `capabilities` or `modules`"
+                        ))
+                    })?,
+                    None if prompt.asks() => {
+                        let options: Vec<common::ui::Choice> = kinds
+                            .iter()
+                            .map(|kind| common::ui::Choice::new(kind.as_str(), ""))
+                            .collect();
+                        match prompt.choose(copy::WHICH_KIND, &options)? {
+                            Some(at) => kinds[at],
+                            None => return Ok(ExitCode::SUCCESS),
+                        }
+                    }
+                    None => return Err(Error::Invocation(
+                        "`set library` takes a kind: `base-images`, `capabilities` or `modules`"
+                            .to_string(),
+                    )),
+                };
+            let Some(root) = open(here)? else {
+                return Ok(ExitCode::from(REPO_ERROR));
+            };
+            let Some(set) = crate::set::Library::adding(kind, prompt)? else {
+                return Ok(ExitCode::SUCCESS);
+            };
+            let wrote = set.apply(&root)?;
+            crate::create::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetConforms => {
@@ -879,10 +898,7 @@ fn reading(
         if known.is_empty() {
             crate::run_loaded(command, None, &root, loaded)
         } else {
-            let options = shown
-                .iter()
-                .map(|name| common::ui::Choice::new(name, ""))
-                .collect::<Vec<_>>();
+            let options = picker_options(&shown);
             let Some(at) = prompt.choose(question, &options)? else {
                 return Ok(ExitCode::SUCCESS);
             };
@@ -906,14 +922,6 @@ fn reading(
     }
     let problems = run.issues.report(&run.context);
     if command == Command::Check {
-        for shadow in &run.shadowed {
-            eprintln!(
-                "buildc: {}/{} replaces the tool's own entry for {}",
-                shadow.collection,
-                crate::base::BASES_FILE,
-                shadow.image
-            );
-        }
         for name in &run.unpinned {
             eprintln!(
                 "buildc: `{name}` is unpinned, so a fetch from it takes whatever its ref holds \
@@ -1019,6 +1027,13 @@ fn reading(
         );
     }
     Ok(ExitCode::SUCCESS)
+}
+
+pub(crate) fn picker_options(shown: &[String]) -> Vec<common::ui::Choice> {
+    shown
+        .iter()
+        .map(|name| common::ui::Choice::new(name, ""))
+        .collect()
 }
 
 fn fits(parts: &[Part]) -> bool {

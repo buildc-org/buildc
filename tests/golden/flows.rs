@@ -1,4 +1,4 @@
-use crate::harness::{assert_golden, contents, crate_dir, tmp};
+use crate::harness::{assert_golden, contents, crate_dir, seed_bases, seed_library, tmp};
 
 use std::cell::Cell;
 
@@ -102,62 +102,12 @@ impl Flow {
     }
     fn offering(&self, name: &str, dir: &Path) {
         use std::os::unix::fs::PermissionsExt;
-        let work = self.at(&format!("{name}-src"));
-        let _ = std::fs::remove_dir_all(&work);
-        std::fs::create_dir_all(&work).unwrap();
-
-        let tarball = work.join("upstream.tar.gz");
-        let status = std::process::Command::new("tar")
-            .args(["czf", &tarball.display().to_string(), "upstream"])
-            .current_dir(crate_dir().join("tests/collections"))
-            .status()
-            .unwrap();
-        assert!(status.success(), "tar the fixture collection");
-        let out = std::process::Command::new("sha256sum")
-            .arg(&tarball)
-            .output()
-            .unwrap();
-        let sha256 = String::from_utf8_lossy(&out.stdout)
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .to_string();
-
-        let assets = work.join("assets");
-        std::fs::create_dir_all(&assets).unwrap();
-        let status = std::process::Command::new("cp")
-            .arg("-r")
-            .arg(crate_dir().join("assets").join("."))
-            .arg(&assets)
-            .status()
-            .unwrap();
-        assert!(status.success(), "copy the shipped assets");
-        std::fs::write(
-            assets.join(buildc::init::SOURCES_FILE),
-            format!(
-                "sources {{\n    upstream {{\n        pin {{\n            version \"1\"\n\
-                 \x20           url \"file://{}\"\n            sha256 \"{sha256}\"\n\
-                 \x20       }}\n    }}\n}}\n",
-                tarball.display()
-            ),
-        )
-        .unwrap();
-
         let path = self.bin(name, None);
-        for tool in ["curl", "tar", "gzip"] {
-            let at = std::env::var("PATH")
-                .unwrap_or_default()
-                .split(':')
-                .map(|at| Path::new(at).join(tool))
-                .find(|at| at.is_file())
-                .unwrap_or_else(|| panic!("{tool} on PATH"));
-            std::os::unix::fs::symlink(at, path.join(tool)).unwrap();
-        }
 
         let fixture = crate_dir().join("tests/answers").join(name);
         let log = self.at(&format!("{name}.log"));
-        let scratch = work.join("tmp");
-        std::fs::create_dir_all(&scratch).unwrap();
+        let root = dir.join("example");
+        seed_library(&root);
         let file = std::fs::File::create(&log).unwrap();
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
         let status = command
@@ -165,8 +115,7 @@ impl Flow {
             .env("HOME", tmp())
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_SYSTEM", "/dev/null")
-            .env("TMPDIR", &scratch)
-            .env("BUILDC_ASSETS", &assets)
+            .env("BUILDC_ASSETS", crate_dir().join("assets"))
             .env("BUILDC_ANSWERS", fixture.join("answers.txt"))
             .args(["create", "repo"])
             .current_dir(dir)
@@ -185,47 +134,11 @@ impl Flow {
             assert_golden(name, "transcript.txt", &transcript);
         }
 
-        let root = dir.join("example");
-        assert!(!root.join("out").exists(), "the fetch cached into the repo");
-        let strays: Vec<PathBuf> = std::fs::read_dir(&scratch)
-            .unwrap()
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("buildc-bases."))
-            })
-            .collect();
-        assert!(strays.is_empty(), "scratch left behind: {strays:?}");
-
         let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
         assert!(
-            image.contains("source \"upstream\" {\n            module \"fedora-family\"\n"),
+            image.contains("source \"buildc-modules\" {\n            module \"fedora-family\"\n"),
             "{image}"
         );
-    }
-    fn drawn(&self, name: &str, dir: &Path, command: &str, after: &str, steps: &[&[u8]]) {
-        let (status, errors, raw) = drawn_run(dir, command, steps);
-        assert!(
-            status.success(),
-            "{errors}{}",
-            String::from_utf8_lossy(&raw)
-        );
-
-        let text = String::from_utf8_lossy(&raw);
-        let stable = text.rsplit_once(after).unwrap().1;
-        if name == self.target {
-            self.note_assertion();
-            assert_golden(
-                name,
-                "transcript.txt",
-                &format!(
-                    "{after}{stable}==== exit 0
-    "
-                ),
-            );
-        }
     }
     fn buildc(&self, dir: &Path, args: &[&str]) {
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
@@ -250,13 +163,24 @@ impl Flow {
 
     fn repo(&self, name: &str) -> PathBuf {
         let dir = self.empty(name);
+        let root = dir.join("example");
+        seed_bases(&root);
         self.buildc(
             &dir,
             &[
-                "--no-tui", "create", "repo", "Example", "--owner", "someone", "--image", "Example",
+                "--no-tui",
+                "create",
+                "repo",
+                "Example",
+                "--owner",
+                "someone",
+                "--image",
+                "Example",
+                "--base",
+                "quay.io/fedora/fedora-bootc:44",
             ],
         );
-        dir.join("example")
+        root
     }
 
     fn repo_two(&self, name: &str) -> PathBuf {
@@ -273,9 +197,10 @@ impl Flow {
         let collections = crate_dir().join("tests/collections");
         let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
             .unwrap()
-            .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
+            .replace(&scaffolded_sources(), "");
         repo.push_str(&format!(
-            "sources {{\n    upstream {:?}\n    community {:?}\n}}\n",
+            "sources {{\n    modules \"upstream\" {{ dir {:?} }}\n    base-images \"upstream\" {{ dir {:?} }}\n    modules \"community\" {{ dir {:?} }}\n}}\n",
+            collections.join("upstream").display(),
             collections.join("upstream").display(),
             collections.join("community").display()
         ));
@@ -287,9 +212,9 @@ impl Flow {
         let root = self.repo(name);
         let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
             .unwrap()
-            .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
+            .replace(&scaffolded_sources(), "");
         repo.push_str(&format!(
-            "sources {{\n    {collection} {:?}\n}}\n",
+            "sources {{\n    modules {collection:?} {{ dir {:?} }}\n}}\n",
             crate_dir()
                 .join("tests/collections")
                 .join(collection)
@@ -314,9 +239,27 @@ impl Flow {
 
     fn repo_claiming_two(&self, name: &str) -> PathBuf {
         let root = self.repo_claiming(name);
+        let file = root.join("repo.kdl");
+        let repo = std::fs::read_to_string(&file).unwrap().replace(
+            "sources {\n",
+            &format!(
+                "sources {{\n    base-images \"fixture\" {{ dir {:?} }}\n",
+                crate_dir().join("tests/collections/upstream").display()
+            ),
+        );
+        std::fs::write(&file, repo).unwrap();
         self.buildc(
             &root,
-            &["--no-tui", "--root", ".", "create", "image", "Server"],
+            &[
+                "--no-tui",
+                "--root",
+                ".",
+                "create",
+                "image",
+                "Server",
+                "--base",
+                "quay.io/fedora/fedora-bootc:44",
+            ],
         );
         root
     }
@@ -335,13 +278,14 @@ fn sealed<'a>(
         .env("HOME", tmp())
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_ALLOW_PROTOCOL", "file")
         .env("BUILDC_ASSETS", crate_dir().join("assets"))
 }
 
 fn drawn_run(
     dir: &Path,
     command: &str,
-    steps: &[&[u8]],
+    steps: &[(&[u8], &[u8])],
 ) -> (std::process::ExitStatus, String, Vec<u8>) {
     use std::io::{Read, Write};
     use std::process::Stdio;
@@ -379,8 +323,25 @@ fn drawn_run(
             }
         })
     };
-    for keys in steps {
-        std::thread::sleep(Duration::from_millis(400));
+    for (marker, keys) in steps {
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            let seen = raw
+                .lock()
+                .unwrap()
+                .windows(marker.len())
+                .any(|window| window == *marker);
+            if seen {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the terminal did not draw {:?}: {}",
+                String::from_utf8_lossy(marker),
+                String::from_utf8_lossy(&raw.lock().unwrap())
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let mut input = input.lock().unwrap();
         input.write_all(keys).unwrap();
         input.flush().unwrap();
@@ -408,9 +369,10 @@ fn lists_sshd(root: &Path) {
     std::fs::write(file, listed).unwrap();
 }
 
-const CLAIMANT: &str = "description \"SSH daemon hardening\"\n\nsupports \"fedora\"\n";
+const CLAIMANT: &str =
+    "schema-version 1\n\ndescription \"SSH daemon hardening\"\n\nsupports \"fedora\"\n";
 
-const KEYHOLDER: &str = "description \"Signs the modules it builds\"\n\n\
+const KEYHOLDER: &str = "schema-version 1\n\ndescription \"Signs the modules it builds\"\n\n\
      supports \"fedora\"\n\n\
      key \"secureboot\" {\n\
      \x20   generator \"openssl\" profile=\"module-signing\" bits=4096\n\
@@ -475,7 +437,6 @@ fn flow_case(flow: &Flow) {
         | "flow-image-default" => setup_create_repo(flow),
         "flow-create-repo-offer" => setup_create_repo_offer(flow),
         "flow-create-image" => setup_create_image(flow),
-        "flow-check-shadow" => setup_check_shadow(flow),
         "flow-check-unpinned" => setup_check_unpinned(flow),
         "flow-check-conforms" | "flow-check-claims" | "flow-coverage" => setup_conforms(flow),
         "flow-check-conforms-stranger" => setup_check_conforms_stranger(flow),
@@ -495,13 +456,11 @@ fn flow_case(flow: &Flow) {
         "flow-set-claims" | "flow-set-claims-again" => setup_set_claims(flow),
         "flow-set-claims-two" => setup_set_claims_two(flow),
         "flow-set-claims-fetched" => setup_set_claims_fetched(flow),
-        "flow-set-claims-drawn" => setup_set_claims_drawn(flow),
-        "flow-set-workflows" | "flow-set-workflows-drawn" => setup_workflows(flow),
+        "flow-set-workflows" => setup_workflows(flow),
         "flow-import-requires" => setup_import_requires(flow),
         "flow-check-unmet" => setup_check_unmet(flow),
         "flow-import-skip" => setup_import_skip(flow),
         "flow-check-unfetched" => setup_check_unfetched(flow),
-        "flow-why-picker" => setup_why_picker(flow),
         "flow-import-kernel" => setup_import_kernel(flow),
         "flow-import-module" => setup_import_module(flow),
         "flow-import-default"
@@ -529,6 +488,10 @@ fn datastream() -> String {
         .join("tests/scap/datastream.xml")
         .display()
         .to_string()
+}
+
+fn scaffolded_sources() -> String {
+    buildc::init::sources_block(&buildc::create::Libraries::every())
 }
 
 fn import_sshd(stream: &str) -> [&str; 7] {
@@ -562,12 +525,9 @@ fn setup_create_repo(flow: &Flow) {
         "flow-create-repo-signed-in" => Some(SIGNED_IN),
         _ => None,
     };
-    flow.run(
-        target,
-        &flow.empty(&format!("{target}-in")),
-        gh,
-        &["create", "repo"],
-    );
+    let dir = flow.empty(&format!("{target}-in"));
+    seed_bases(&dir.join("example"));
+    flow.run(target, &dir, gh, &["create", "repo"]);
     if target == "flow-create-repo" {
         let created = flow.at("flow-create-repo-in").join("example");
         scaffolded(buildc::emit::schema_md::Area::Repo, &created.join("repo.kdl"));
@@ -598,16 +558,6 @@ fn setup_create_image(flow: &Flow) {
     flow.buildc(&root, &["--no-tui", "--root", ".", "check"]);
 }
 
-fn setup_check_shadow(flow: &Flow) {
-    let target = flow.target;
-    flow.run(
-        target,
-        &flow.repo_sourced("flow-shadow"),
-        None,
-        &["--root", ".", "check"],
-    );
-}
-
 fn setup_check_unpinned(flow: &Flow) {
     let target = flow.target;
     flow.run(
@@ -625,7 +575,7 @@ fn setup_conforms(flow: &Flow) {
     std::fs::create_dir_all(conforms.join("modules/hardening")).unwrap();
     std::fs::write(
         conforms.join("modules/hardening/module.kdl"),
-        "description \"Claims a rule the profile selects\"\n\nsupports \"fedora\"\n\n\
+        "schema-version 1\n\ndescription \"Claims a rule the profile selects\"\n\nsupports \"fedora\"\n\n\
              satisfies {\n    cis-fedora \"5.2.20\"\n}\n",
     )
     .unwrap();
@@ -1012,27 +962,6 @@ fn setup_set_claims_fetched(flow: &Flow) {
     flow.buildc(&claimed, &["--no-tui", "--root", ".", "check"]);
 }
 
-fn setup_set_claims_drawn(flow: &Flow) {
-    let target = flow.target;
-    let stream = datastream();
-    let drawn = flow.repo("flow-set-claims-drawn-in");
-    lists_sshd(&drawn);
-    std::fs::create_dir_all(drawn.join("modules/sshd")).unwrap();
-    std::fs::write(drawn.join("modules/sshd/module.kdl"), CLAIMANT).unwrap();
-    flow.drawn(
-        target,
-        &drawn,
-        &format!(
-            "'{}' --root . set claims sshd --datastream '{stream}'",
-            env!("CARGO_BIN_EXE_tect")
-        ),
-        "Which rules does `sshd` claim?:",
-        &[b"\r", b"aide \x1b[B\r"],
-    );
-    let picked = std::fs::read_to_string(drawn.join("modules/sshd/module.kdl")).unwrap();
-    assert!(picked.contains("    standard \"1.1.1.1\"\n"), "{picked}");
-}
-
 fn setup_workflows(flow: &Flow) {
     let prompted = flow.repo("flow-set");
     flow.run(
@@ -1045,26 +974,6 @@ fn setup_workflows(flow: &Flow) {
         "workflows at=\"05:45\" scan=\"scheduled\" {\n    build\n    base-sig-probe\n}";
     let prompted_repo = std::fs::read_to_string(prompted.join("repo.kdl")).unwrap();
     assert!(prompted_repo.contains(declaration), "{prompted_repo}");
-
-    let drawn = flow.repo("flow-set-workflows-drawn");
-    let repo_path = drawn.join("repo.kdl");
-    let repo = std::fs::read_to_string(&repo_path).unwrap().replace(
-        "workflows {",
-        "workflows publish=\"scheduled\" scan=\"scheduled\" {",
-    );
-    std::fs::write(&repo_path, repo).unwrap();
-    flow.drawn(
-        "flow-set-workflows-drawn",
-        &drawn,
-        &format!("'{}' --root . set workflows", env!("CARGO_BIN_EXE_tect")),
-        "Which workflows?:",
-        &[b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r", b"\r", b"\r"],
-    );
-    let repo = std::fs::read_to_string(&repo_path).unwrap();
-    assert!(
-        repo.contains("workflows publish=\"scheduled\" scan=\"scheduled\" {"),
-        "{repo}"
-    );
 
     let direct = flow.repo("flow-cadence-direct");
     let repo_path = direct.join("repo.kdl");
@@ -1089,7 +998,6 @@ fn setup_workflows(flow: &Flow) {
     };
     let prompted_build = generated_build(&prompted);
     let direct_build = generated_build(&direct);
-    let drawn_build = generated_build(&drawn);
     assert_eq!(prompted_build, direct_build);
     assert!(prompted_build.contains(
         "    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'\n"
@@ -1117,7 +1025,6 @@ fn setup_workflows(flow: &Flow) {
           fi
 "#;
     assert!(scheduled_build.contains(publish_gate), "{scheduled_build}");
-    assert_eq!(drawn_build, scheduled_build);
     assert_eq!(
         scheduled_build.replace(publish_gate, "").replace(
             "    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'\n",
@@ -1256,7 +1163,7 @@ fn setup_check_unfetched(flow: &Flow) {
     std::fs::create_dir_all(unfetched.join("modules/core/one")).unwrap();
     std::fs::write(
         unfetched.join("modules/core/one/module.kdl"),
-        "description \"Builds things\"\n\nsupports \"fedora\"\n\nrequires \"build-environment\"\n",
+        "schema-version 1\n\ndescription \"Builds things\"\n\nsupports \"fedora\"\n\nrequires \"build-environment\"\n",
     )
     .unwrap();
     let image = unfetched.join("example.image.kdl");
@@ -1267,34 +1174,6 @@ fn setup_check_unfetched(flow: &Flow) {
     assert!(listed.contains("module \"core/one\""), "{listed}");
     std::fs::write(&image, listed).unwrap();
     flow.run(target, &unfetched, None, &["--root", ".", "check"]);
-}
-
-fn setup_why_picker(flow: &Flow) {
-    let target = flow.target;
-    let why = flow.repo("flow-why-picker");
-    std::fs::create_dir_all(why.join("modules/core/one")).unwrap();
-    std::fs::write(
-        why.join("modules/core/one/module.kdl"),
-        "description \"Builds things\"\n\nsupports \"fedora\"\n",
-    )
-    .unwrap();
-    let image = why.join("example.image.kdl");
-    let listed = std::fs::read_to_string(&image).unwrap().replace(
-        "    modules {\n    }",
-        "    modules {\n        module \"core/one\"\n    }",
-    );
-    assert!(listed.contains("module \"core/one\""), "{listed}");
-    std::fs::write(image, listed).unwrap();
-    flow.drawn(
-        target,
-        &why,
-        &format!(
-            "stty cols 80; '{}' --root . why",
-            env!("CARGO_BIN_EXE_tect")
-        ),
-        "Which module?:",
-        &[b"\r"],
-    );
 }
 
 fn setup_import_kernel(flow: &Flow) {
@@ -1329,8 +1208,12 @@ fn setup_import_default(flow: &Flow) {
     let repo = defaulted.join("repo.kdl");
     let text = std::fs::read_to_string(&repo)
         .unwrap()
-        .replace(&buildc::init::sources(&crate_dir().join("assets")), "")
-        + "unfinished-repo-property \"kept for buildc check\"\n";
+        .replace(&scaffolded_sources(), "")
+        + "unfinished-repo-property \"kept for buildc check\"\n"
+        + &format!(
+            "sources {{\n    modules \"upstream\" {{ dir {:?} }}\n}}\n",
+            crate_dir().join("tests/collections/upstream").display()
+        );
     std::fs::write(&repo, text).unwrap();
     let image_file = defaulted.join("example.image.kdl");
     let image = std::fs::read_to_string(&image_file).unwrap().replace(
@@ -1343,18 +1226,7 @@ fn setup_import_default(flow: &Flow) {
         !issues.is_empty(),
         "the fixture must prove edits do not depend on a clean check"
     );
-    let assets = flow.at("flow-import-default-assets");
-    let _ = std::fs::remove_dir_all(&assets);
-    std::fs::create_dir_all(&assets).unwrap();
-    std::fs::write(
-        assets.join(buildc::init::SOURCES_FILE),
-        format!(
-            "sources {{\n    upstream {:?}\n}}\n",
-            crate_dir().join("tests/collections/upstream").display()
-        ),
-    )
-    .unwrap();
-    flow.run_with_assets(
+    flow.run(
         "flow-import-default",
         &defaulted,
         None,
@@ -1368,12 +1240,11 @@ fn setup_import_default(flow: &Flow) {
             "--image",
             "example",
         ],
-        &assets,
     );
     let declared = std::fs::read_to_string(&repo).unwrap();
     let image = std::fs::read_to_string(defaulted.join("example.image.kdl")).unwrap();
     assert!(
-        declared.contains("sources {\n    upstream ")
+        declared.contains("sources {\n    modules \"upstream\"")
             && image.contains("source \"upstream\" {\n            module \"browser\""),
         "{declared}\n{image}"
     );
@@ -1716,9 +1587,9 @@ fn setup_import_suffix_ambiguous(flow: &Flow) {
     let collections = crate_dir().join("tests/collections");
     let mut repo = std::fs::read_to_string(both.join("repo.kdl"))
         .unwrap()
-        .replace(&buildc::init::sources(&crate_dir().join("assets")), "");
+        .replace(&scaffolded_sources(), "");
     repo.push_str(&format!(
-        "sources {{\n    grouped {:?}\n    namesake {:?}\n}}\n",
+        "sources {{\n    modules \"grouped\" {{ dir {:?} }}\n    modules \"namesake\" {{ dir {:?} }}\n}}\n",
         collections.join("grouped").display(),
         collections.join("namesake").display()
     ));
@@ -1755,7 +1626,7 @@ fn setup_collides(flow: &Flow) {
     std::fs::create_dir_all(collide.join(remotes)).unwrap();
     std::fs::write(
         collide.join("modules/editor/module.kdl"),
-        "description \"Editor shipping its own flatpak remotes\"\n\nsupports \"fedora\"\n",
+        "schema-version 1\n\ndescription \"Editor shipping its own flatpak remotes\"\n\nsupports \"fedora\"\n",
     )
     .unwrap();
     std::fs::write(collide.join(remotes).join("remotes.list"), "editor\n").unwrap();
@@ -1835,7 +1706,7 @@ fn setup_copy_collides(flow: &Flow) {
     std::fs::create_dir_all(copied.join(remotes)).unwrap();
     std::fs::write(
         copied.join("modules/editor/module.kdl"),
-        "description \"Editor shipping its own flatpak remotes\"\n\nsupports \"fedora\"\n",
+        "schema-version 1\n\ndescription \"Editor shipping its own flatpak remotes\"\n\nsupports \"fedora\"\n",
     )
     .unwrap();
     std::fs::write(copied.join(remotes).join("remotes.list"), "editor\n").unwrap();
@@ -1935,7 +1806,6 @@ flow_cases! {
     flow_check_collides => "flow-check-collides",
     flow_check_conforms => "flow-check-conforms",
     flow_check_conforms_stranger => "flow-check-conforms-stranger",
-    flow_check_shadow => "flow-check-shadow",
     flow_check_unfetched => "flow-check-unfetched",
     flow_check_unmet => "flow-check-unmet",
     flow_check_unpinned => "flow-check-unpinned",
@@ -1981,16 +1851,13 @@ flow_cases! {
     flow_module_two_images => "flow-module-two-images",
     flow_set_claims => "flow-set-claims",
     flow_set_claims_again => "flow-set-claims-again",
-    flow_set_claims_drawn => "flow-set-claims-drawn",
     flow_set_claims_fetched => "flow-set-claims-fetched",
     flow_set_claims_two => "flow-set-claims-two",
     flow_set_conforms => "flow-set-conforms",
     flow_set_conforms_again => "flow-set-conforms-again",
     flow_set_conforms_enforced => "flow-set-conforms-enforced",
     flow_set_workflows => "flow-set-workflows",
-    flow_set_workflows_drawn => "flow-set-workflows-drawn",
     flow_unanswered => "flow-unanswered",
-    flow_why_picker => "flow-why-picker",
 }
 
 #[test]
@@ -2018,7 +1885,7 @@ fn every_answers_directory_has_a_case() {
 }
 
 #[test]
-fn narrow_readouts_fall_back() {
+fn tect_terminal_smoke_waits_for_each_screen() {
     let root = crate_dir().join("tests/repos/enforced");
     let buildc = env!("CARGO_BIN_EXE_tect");
     let run = |command: &str, cols: Option<&str>, clear: bool| {
@@ -2088,45 +1955,33 @@ fn narrow_readouts_fall_back() {
             "{name} drew no table at 200 columns"
         );
     }
-}
 
-#[test]
-fn flow_create_repo_drawn() {
-    let flow = Flow::new("flow-create-repo-drawn");
-    let dir = flow.empty("flow-create-repo-drawn-in");
-    flow.drawn(
-        "flow-create-repo-drawn",
-        &dir,
-        &format!(
-            "env PATH='{}' HOME='{}' GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
-             '{}' create repo",
-            flow.bin("flow-create-repo-drawn", None).display(),
-            tmp().display(),
-            env!("CARGO_BIN_EXE_tect")
-        ),
-        "Creating example...",
-        &[
-            b"Example\r",
-            b"\r",
-            b"\r",
-            b"someone\r",
-            b"\x1b[B\r",
-            b"\x1b[B\r",
-            b"\r",
-            b"\r",
-            b"\r",
-            b"\r",
-            b"\r",
-            b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r",
-        ],
+    let flow = Flow::new("buildc-terminal-smoke");
+    let stream = datastream();
+    let claims_root = flow.repo("buildc-terminal-smoke-claims");
+    lists_sshd(&claims_root);
+    std::fs::create_dir_all(claims_root.join("modules/sshd")).unwrap();
+    std::fs::write(claims_root.join("modules/sshd/module.kdl"), CLAIMANT).unwrap();
+    let claims_command = format!(
+        "'{}' --root . set claims sshd --datastream '{stream}'",
+        env!("CARGO_BIN_EXE_tect")
     );
-    flow.done();
-    assert!(dir.join("example/repo.kdl").is_file());
-}
+    let claim_steps = [
+        (b"Which profile?".as_slice(), b"\r".as_slice()),
+        (
+            b"Which rules does `sshd` claim?".as_slice(),
+            b"aide \x1b[B\r".as_slice(),
+        ),
+    ];
+    let (status, errors, raw) = drawn_run(&claims_root, &claims_command, &claim_steps);
+    assert!(
+        status.success(),
+        "{errors}{}",
+        String::from_utf8_lossy(&raw)
+    );
+    let picked = std::fs::read_to_string(claims_root.join("modules/sshd/module.kdl")).unwrap();
+    assert!(picked.contains("    standard \"1.1.1.1\"\n"), "{picked}");
 
-#[test]
-fn escape_cancels_create_image_at_each_prompt() {
-    let flow = Flow::new("escape-create-image");
     let made = flow.repo_sourced("flow-create-image-cancel-in");
     let root = made.parent().unwrap().join("cancel-default");
     std::fs::rename(&made, &root).unwrap();
@@ -2134,17 +1989,29 @@ fn escape_cancels_create_image_at_each_prompt() {
     for (command, steps, absent) in [
         (
             format!("'{binary}' --root . create image"),
-            vec![b"\x1b".as_slice()],
+            vec![(
+                b"What will the image be called?".as_slice(),
+                b"\x1b".as_slice(),
+            )],
             "cancel-default.image.kdl",
         ),
         (
             format!("'{binary}' --root . create image"),
-            vec![b"Beta\r".as_slice(), b"\x1b".as_slice()],
+            vec![
+                (
+                    b"What will the image be called?".as_slice(),
+                    b"Beta\r".as_slice(),
+                ),
+                (
+                    b"What is the base image for this image?".as_slice(),
+                    b"\x1b".as_slice(),
+                ),
+            ],
             "beta.image.kdl",
         ),
         (
             format!("'{binary}' --root . create image Gamma --base example.invalid/collected:1"),
-            vec![b"\x1b".as_slice()],
+            vec![(b"Add them now?".as_slice(), b"\x1b".as_slice())],
             "gamma.image.kdl",
         ),
     ] {

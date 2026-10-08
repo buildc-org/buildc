@@ -2,6 +2,18 @@ use crate::diag::{Issue, Issues, Source, Span};
 use crate::parse::{bool_arg, int_arg, kids, string_arg, string_args};
 use kdl::{KdlDocument, KdlNode};
 
+#[rustfmt::skip]
+pub const FILE_SCHEMA_VERSION: Node = Node::new("schema-version",
+    "The schema release that this file is written against.").about("The schema version tells `buildc` which reader to use for this file. A file written against an earlier release keeps using that release's reader, while `repo.kdl` sets the newest schema the repository accepts.").example("1")
+    .arg(Arg::Int, Say::new("`{}` needs a number", "not a version", "`schema-version 1`"))
+    .missing(Say::new("this file declares no `{}`", "no schema version",
+        "`schema-version 1`, so the repository and every file state which reader they need"))
+    .once("")
+    .notes(&[
+        "A file cannot declare a schema newer than `repo.kdl`.",
+        "`buildc create repo`, `buildc create image` and `buildc create module` write the version, and `buildc` never changes it.",
+    ]);
+
 pub struct Say {
     pub text: &'static str,
     pub label: &'static str,

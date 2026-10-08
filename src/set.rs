@@ -46,6 +46,12 @@ fn splice(text: &str, was: Option<crate::diag::Span>, block: &str) -> String {
     out
 }
 
+fn line_indent(text: &str, at: usize) -> &str {
+    let start = text[..at].rfind('\n').map_or(0, |found| found + 1);
+    let line = &text[start..at];
+    &line[..line.len() - line.trim_start().len()]
+}
+
 pub struct Workflows {
     chosen: Vec<&'static str>,
     at: (u32, u32),
@@ -93,13 +99,7 @@ impl Workflows {
                 .filter(|shipped| on.contains(&shipped.stem))
                 .collect(),
             false => {
-                let options: Vec<Choice> = SHIPPED
-                    .iter()
-                    .map(|shipped| match shipped.met(basis) {
-                        true => Choice::new(shipped.stem, shipped.about),
-                        false => Choice::new(shipped.stem, shipped.needs.unmet()).unavailable(),
-                    })
-                    .collect();
+                let options = workflow_options(basis);
                 for shipped in SHIPPED
                     .iter()
                     .filter(|shipped| on.contains(&shipped.stem) && !shipped.met(basis))
@@ -270,6 +270,140 @@ impl Workflows {
     }
 }
 
+fn workflow_options(basis: &Basis) -> Vec<Choice> {
+    SHIPPED
+        .iter()
+        .map(|shipped| match shipped.met(basis) {
+            true => Choice::new(shipped.stem, shipped.about),
+            false => Choice::new(shipped.stem, shipped.needs.unmet()).unavailable(),
+        })
+        .collect()
+}
+
+pub struct Library {
+    kind: crate::model::remote::Kind,
+    alias: String,
+    at: LibraryAt,
+}
+
+enum LibraryAt {
+    Default(&'static crate::base::DefaultLibrary),
+    Typed { url: String, path: String },
+}
+
+impl Library {
+    pub fn adding(
+        kind: crate::model::remote::Kind,
+        prompt: &Prompt,
+    ) -> Result<Option<Self>, String> {
+        let default = crate::base::default_library(kind);
+        if !prompt.asks() {
+            return Ok(Some(Self {
+                kind,
+                alias: default.alias.to_string(),
+                at: LibraryAt::Default(default),
+            }));
+        }
+        let options = [
+            Choice::new(
+                format!("{} \"{}\"", kind.as_str(), default.alias),
+                format!(
+                    "{} ({}/{})",
+                    default.about,
+                    crate::base::LIBRARY_URL,
+                    default.path
+                ),
+            ),
+            Choice::new(copy::OTHER_SOURCE, copy::OTHER_SOURCE_ABOUT),
+        ];
+        let Some(chosen) = prompt.choose(copy::WHICH_LIBRARY, &options)? else {
+            return Ok(None);
+        };
+        if chosen == 0 {
+            return Ok(Some(Self {
+                kind,
+                alias: default.alias.to_string(),
+                at: LibraryAt::Default(default),
+            }));
+        }
+        let alias = prompt.line(None, copy::SOURCE_ALIAS, "a source alias", "", None)?;
+        if !crate::model::image::is_name(&alias) {
+            return Err(format!(
+                "`{alias}` is not a source name: lowercase, digits and dashes, starting with a \
+                 letter"
+            ));
+        }
+        let url = prompt.line(
+            None,
+            copy::SOURCE_URL,
+            "the repository URL",
+            "",
+            Some(crate::base::LIBRARY_URL),
+        )?;
+        let path = prompt.line(None, copy::SOURCE_PATH, "a directory inside it", "", None)?;
+        Ok(Some(Self {
+            kind,
+            alias,
+            at: LibraryAt::Typed { url, path },
+        }))
+    }
+
+    pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
+        let file = root.join(layout::REPO_FILE);
+        let text =
+            std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
+        let out = self.spliced(&text)?;
+        std::fs::write(&file, out).map_err(|err| format!("{}: {err}", file.display()))?;
+        Ok(vec![(
+            PathBuf::from(layout::REPO_FILE),
+            Change::Updated(format!(
+                "{} \"{}\" added to sources",
+                self.kind.as_str(),
+                self.alias
+            )),
+        )])
+    }
+
+    fn spliced(&self, text: &str) -> Result<String, String> {
+        if let Some(span) = parse::repo::source_span(text, self.kind.as_str(), &self.alias) {
+            let indent = line_indent(text, span.offset);
+            let mut out = text.to_string();
+            out.replace_range(span.offset..span.offset + span.len, &self.render(indent));
+            return Ok(out);
+        }
+        match parse::repo::sources_insert(text) {
+            Some(close) => {
+                let child = format!("{}    ", line_indent(text, close));
+                let block = self.render(&child);
+                let mut out = text.to_string();
+                let lead = match out[..close].ends_with('\n') {
+                    true => "",
+                    false => "\n",
+                };
+                out.insert_str(close, &format!("{lead}{child}{block}\n"));
+                Ok(out)
+            }
+            None => Ok(splice(
+                text,
+                None,
+                &format!("sources {{\n    {}\n}}", self.render("    ")),
+            )),
+        }
+    }
+
+    fn render(&self, indent: &str) -> String {
+        let (url, path) = match &self.at {
+            LibraryAt::Default(library) => (crate::base::LIBRARY_URL, library.path),
+            LibraryAt::Typed { url, path } => (url.as_str(), path.as_str()),
+        };
+        format!(
+            "{} \"{}\" {{\n{indent}    url \"{url}\"\n{indent}    path \"{path}\"\n{indent}}}",
+            self.kind.as_str(),
+            self.alias
+        )
+    }
+}
+
 pub(crate) fn cost(measured: &str, enforce: bool) -> String {
     match enforce {
         false => format!(
@@ -362,11 +496,7 @@ impl Conforms {
         }
 
         println!("{}\n", cost(&format!("`{}`", image.id), list.audit_enforce));
-        let options: Vec<Choice> = content
-            .profiles
-            .iter()
-            .map(|profile| Choice::new(profile.name(), &profile.title))
-            .collect();
+        let options = profile_options(&content);
         let Some(chosen) = prompt.choose(copy::WHICH_PROFILE, &options)? else {
             return Ok(None);
         };
@@ -439,6 +569,54 @@ fn group(number: &str) -> &str {
     number.rsplit_once('.').map_or("other", |(head, _)| head)
 }
 
+fn profile_options(content: &Content) -> Vec<Choice> {
+    content
+        .profiles
+        .iter()
+        .map(|profile| Choice::new(profile.name(), &profile.title))
+        .collect()
+}
+
+fn claimable_rules<'a>(
+    content: &'a Content,
+    selected: &'a BTreeSet<String>,
+) -> Vec<(&'a String, &'a BTreeSet<String>)> {
+    let mut rules: Vec<_> = selected
+        .iter()
+        .filter_map(|rule| content.numbers.get(rule).map(|numbers| (rule, numbers)))
+        .collect();
+    rules.sort_by_key(|(rule, numbers)| {
+        (
+            numbers
+                .iter()
+                .next()
+                .map(|number| ordinal(number))
+                .unwrap_or_default(),
+            (*rule).clone(),
+        )
+    });
+    rules
+}
+
+fn claim_options(content: &Content, rules: &[(&String, &BTreeSet<String>)]) -> Vec<Choice> {
+    rules
+        .iter()
+        .map(|(rule, numbers)| {
+            let first = numbers.iter().next().expect("a number reaches the rule");
+            Choice::new(
+                format!(
+                    "{}  {}  {}",
+                    first,
+                    content.titles.get(*rule).unwrap_or(*rule),
+                    rule_name(rule)
+                ),
+                content.descriptions.get(*rule).cloned().unwrap_or_default(),
+            )
+            .within(group(first))
+        })
+        .collect()
+}
+
 pub struct Claims {
     file: PathBuf,
     profile: String,
@@ -486,31 +664,14 @@ impl Claims {
             return Err(format!("{} carries no profile to claim against", path.display()).into());
         }
 
-        let options: Vec<Choice> = content
-            .profiles
-            .iter()
-            .map(|profile| Choice::new(profile.name(), &profile.title))
-            .collect();
+        let options = profile_options(&content);
         let Some(chosen) = prompt.choose(copy::WHICH_PROFILE, &options)? else {
             return Ok(None);
         };
         let profile = &content.profiles[chosen];
 
         let selected = content.selected(&profile.id);
-        let mut rules: Vec<(&String, &BTreeSet<String>)> = selected
-            .iter()
-            .filter_map(|rule| content.numbers.get(rule).map(|numbers| (rule, numbers)))
-            .collect();
-        rules.sort_by_key(|(rule, numbers)| {
-            (
-                numbers
-                    .iter()
-                    .next()
-                    .map(|n| ordinal(n))
-                    .unwrap_or_default(),
-                (*rule).clone(),
-            )
-        });
+        let rules = claimable_rules(&content, &selected);
         if rules.is_empty() {
             return Err(format!(
                 "no rule `{}` selects carries a number, so nothing can be claimed against it",
@@ -533,21 +694,7 @@ impl Claims {
         }
 
         let first = |at: usize| rules[at].1.iter().next().expect("a number reaches it");
-        let options: Vec<Choice> = (0..rules.len())
-            .map(|at| {
-                let (rule, _) = rules[at];
-                Choice::new(
-                    format!(
-                        "{}  {}  {}",
-                        first(at),
-                        content.titles.get(rule).unwrap_or(rule),
-                        rule_name(rule)
-                    ),
-                    content.descriptions.get(rule).cloned().unwrap_or_default(),
-                )
-                .within(group(first(at)))
-            })
-            .collect();
+        let options = claim_options(&content, &rules);
         let held = crate::scap::reached(&content, summary.satisfies.iter());
         let on: Vec<usize> = (0..rules.len())
             .filter(|at| held.contains(rules[*at].0))
@@ -655,6 +802,23 @@ mod tests {
     }
 
     #[test]
+    fn a_one_line_sources_block_takes_a_source() {
+        let library = Library {
+            kind: crate::model::remote::Kind::BaseImages,
+            alias: "core".to_string(),
+            at: LibraryAt::Default(crate::base::default_library(
+                crate::model::remote::Kind::BaseImages,
+            )),
+        };
+        let out = library
+            .spliced("schema-version 1\n\nsources { modules \"one\" { dir \"../one\" } }\n")
+            .expect("the splice is text");
+        let issues = crate::parse::schema::check_text(&out, &crate::parse::repo::REPO, false)
+            .unwrap_or_else(|err| panic!("{err}: {out:?}"));
+        assert!(issues.is_empty(), "{out}\n{}", issues.plain());
+    }
+
+    #[test]
     fn the_profile_replaces_the_one_that_was_there() {
         let text =
             "image {\n    name \"Example\"\n\n    conforms \"standard\"\n\n    base \"x\" {\n    }\n}\n";
@@ -695,7 +859,11 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-claims-any-{}", std::process::id()));
         let module = root.join("modules/editor");
         std::fs::create_dir_all(&module).unwrap();
-        std::fs::write(module.join(layout::MODULE_FILE), "packages \"nano\"\n").unwrap();
+        std::fs::write(
+            module.join(layout::MODULE_FILE),
+            "schema-version 1\n\npackages \"nano\"\n",
+        )
+        .unwrap();
 
         let result = Claims::collect(&root, "editor", None, &Prompt::silent());
         let Err(err) = result else {
@@ -908,5 +1076,101 @@ mod tests {
     fn choosing_nothing_takes_the_block_away() {
         let text = "name \"Example\"\n\nworkflows {\n    build\n}\n";
         assert_eq!(set(&[], DEFAULT_AT).spliced(text), "name \"Example\"\n");
+    }
+
+    #[test]
+    fn workflow_and_cadence_screens_snapshot_production_rows() {
+        use crate::screen_tests::{assert_screen, assert_style_at, screen};
+
+        let basis = Basis::scaffolding("");
+        let options = workflow_options(&basis);
+        let selected = [0, 2, 3, 5];
+        let rendered = assert_screen(
+            "workflow-picker",
+            screen().picker(
+                copy::WORKFLOWS,
+                &options,
+                Some(&selected),
+                "space toggles",
+                0,
+            ),
+        );
+        assert_style_at(
+            &rendered,
+            0,
+            2,
+            "modifier: DIM",
+            "the unavailable build-disk workflow",
+        );
+        let yes_no = [Choice::new(copy::YES, ""), Choice::new(copy::NO, "")];
+        assert_screen(
+            "workflow-publish-cadence",
+            screen().picker(copy::PUBLISH_SCHEDULED, &yes_no, None, "enter confirms", 1),
+        );
+        assert_screen(
+            "workflow-scan-cadence",
+            screen().picker(copy::SCAN_SCHEDULED, &yes_no, None, "enter confirms", 1),
+        );
+        assert_screen(
+            "workflow-daily-at",
+            screen().line(
+                copy::DAILY_AT,
+                "",
+                "",
+                Some(&parse::repo::at_text(DEFAULT_AT)),
+            ),
+        );
+
+        let mut workflows = set(&["build", "base-sig-probe"], DEFAULT_AT);
+        workflows.scans_scheduled = true;
+        let mut rows: Vec<Choice> = workflows
+            .rows()
+            .into_iter()
+            .map(|(_, label, value)| Choice::new(format!("{label}  {value}"), ""))
+            .collect();
+        rows.push(Choice::new(copy::CREATE, ""));
+        assert_screen(
+            "workflow-cadences",
+            screen().picker(copy::REVIEW, &rows, None, copy::REVIEW_KEYS, rows.len() - 1),
+        );
+    }
+
+    #[test]
+    fn profile_and_filtered_claim_screens_snapshot_datastream_content() {
+        use crate::screen_tests::{assert_screen, screen};
+
+        let content = crate::scap::content_of(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/scap/datastream.xml"),
+        )
+        .unwrap();
+        let profiles = profile_options(&content);
+        assert_screen(
+            "profile-picker",
+            screen().picker(copy::WHICH_PROFILE, &profiles, None, "enter confirms", 0),
+        );
+
+        let profile = content
+            .profiles
+            .iter()
+            .find(|profile| profile.name() == "standard")
+            .expect("the fixture carries the standard profile");
+        let selected = content.selected(&profile.id);
+        let rules = claimable_rules(&content, &selected);
+        let options = claim_options(&content, &rules);
+        let filtered: Vec<Choice> = options
+            .into_iter()
+            .filter(|option| option.label.contains("aide"))
+            .collect();
+        assert_eq!(filtered.len(), 1, "the aide filter identifies one rule");
+        assert_screen(
+            "claims-filtered-tree",
+            screen().picker(
+                &copy::claimed_rules("sshd"),
+                &filtered,
+                Some(&[0]),
+                "filter, space toggles, enter confirms",
+                0,
+            ),
+        );
     }
 }

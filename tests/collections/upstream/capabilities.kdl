@@ -1,0 +1,35 @@
+capability "ssh" {
+    path "/usr/sbin/sshd"
+}
+
+capability "initramfs-generation" {
+    path "/usr/bin/dracut"
+}
+
+capability "selinux-policy" {
+    path "/usr/sbin/semodule"
+}
+
+capability "flatpak" {
+    path "/usr/bin/flatpak"
+}
+
+capability "bootc" {
+    path "/usr/bin/bootc"
+}
+
+capability "bootupctl" {
+    path "/usr/bin/bootupctl"
+}
+
+capability "podman" {
+    path "/usr/bin/podman"
+}
+
+capability "crun" {
+    path "/usr/bin/crun"
+}
+
+capability "rechunking"
+
+capability "luks-initramfs"

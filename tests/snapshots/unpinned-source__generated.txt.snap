@@ -1,5 +1,5 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
 ==== generated/lib/apparmor-helpers.sh
 ==== generated/lib/dkms-helpers.sh
@@ -1152,12 +1152,10 @@ base "quay.io/fedora/fedora-bootc:44" {
 }
 
 sources {
-    buildc-org {
-        pin {
-            unpinned "the collection this tool is published alongside, followed at its branch head"
-            version "main"
-            url "https://github.com/buildc-org/modules/archive/refs/heads/{version}.tar.gz"
-        }
+    modules "buildc-org" {
+        unpinned "the library this tool is published alongside, followed at its branch head"
+        url "https://github.com/buildc-org/modules"
+        version "main"
     }
 }
 

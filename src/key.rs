@@ -583,7 +583,9 @@ mod tests {
     use super::*;
     use std::process::Stdio;
 
-    const SECUREBOOT: &str = r#"description "x"
+    const SECUREBOOT: &str = r#"schema-version 1
+
+description "x"
 
 supports "fedora"
 
@@ -594,7 +596,9 @@ key "secureboot" {
 }
 "#;
 
-    const SSH: &str = r#"description "x"
+    const SSH: &str = r#"schema-version 1
+
+description "x"
 
 supports "debian"
 
@@ -605,7 +609,9 @@ key "ssh" {
 }
 "#;
 
-    const PCR: &str = r#"description "x"
+    const PCR: &str = r#"schema-version 1
+
+description "x"
 
 supports "fedora"
 
@@ -616,7 +622,9 @@ key "pcr" {
 }
 "#;
 
-    const TLS_CA: &str = r#"description "x"
+    const TLS_CA: &str = r#"schema-version 1
+
+description "x"
 
 supports "fedora"
 

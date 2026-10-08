@@ -332,7 +332,7 @@ pub fn sha256_tree(dir: &Path, files: &[String]) -> Result<String, String> {
     sha256_stdin(&out.stdout)
 }
 
-fn sha256_stdin(bytes: &[u8]) -> Result<String, String> {
+pub(crate) fn sha256_stdin(bytes: &[u8]) -> Result<String, String> {
     use std::io::Write as _;
 
     let mut child = Command::new("sha256sum")
@@ -357,7 +357,7 @@ fn sha256_stdin(bytes: &[u8]) -> Result<String, String> {
         .ok_or_else(|| "sha256sum: no hash in its output".to_string())
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let out = Command::new("sha256sum")
         .arg(path)
         .output()

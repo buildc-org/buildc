@@ -4,11 +4,9 @@ name "Unpinned Source"
 seed "example" collection="buildc-org"
 
 sources {
-    buildc-org {
-        pin {
-            unpinned "the collection this tool is published alongside, followed at its branch head"
-            version "main"
-            url "https://github.com/buildc-org/modules/archive/refs/heads/{version}.tar.gz"
-        }
+    modules "buildc-org" {
+        url "https://github.com/buildc-org/modules"
+        version "main"
+        unpinned "the library this tool is published alongside, followed at its branch head"
     }
 }

@@ -8,10 +8,12 @@ const INSTALLED: [&str; 2] = [
     "/usr/share/buildc/assets",
 ];
 
+pub(crate) const GITIGNORE: &str = include_str!("../assets/.gitignore");
+
 const SCAFFOLDED: [(&str, &str); 6] = [
     (".dockerignore", include_str!("../assets/.dockerignore")),
     (".gitattributes", include_str!("../assets/.gitattributes")),
-    (".gitignore", include_str!("../assets/.gitignore")),
+    (".gitignore", GITIGNORE),
     (".shellcheckrc", include_str!("../assets/.shellcheckrc")),
     (
         ".github/renovate.json5",
@@ -64,10 +66,25 @@ pub fn drifted(root: &Path) -> Vec<String> {
         .collect()
 }
 
-pub const SOURCES_FILE: &str = "repo.sources.kdl";
-
-pub fn sources(assets: &Path) -> String {
-    fs::read_to_string(assets.join(SOURCES_FILE)).unwrap_or_default()
+pub fn sources_block(chosen: &[&crate::base::DefaultLibrary]) -> String {
+    if chosen.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("sources {\n");
+    for library in chosen {
+        let _ = std::fmt::Write::write_fmt(
+            &mut out,
+            format_args!(
+                "    {} \"{}\" {{\n        url \"{}\"\n        path \"{}\"\n    }}\n",
+                library.kind.as_str(),
+                library.alias,
+                crate::base::LIBRARY_URL,
+                library.path
+            ),
+        );
+    }
+    out.push('}');
+    out
 }
 
 pub fn assets() -> Result<PathBuf, String> {
@@ -118,7 +135,12 @@ pub fn id(name: &str) -> Result<String, String> {
     Ok(id)
 }
 
-pub fn write(root: &Path, name: &str, assets: &Path) -> Result<Vec<PathBuf>, String> {
+pub fn write(
+    root: &Path,
+    name: &str,
+    assets: &Path,
+    sources: &str,
+) -> Result<Vec<PathBuf>, String> {
     if root.join(layout::REPO_FILE).exists() {
         return Err(format!("{} is already a repository", root.display()));
     }
@@ -126,18 +148,12 @@ pub fn write(root: &Path, name: &str, assets: &Path) -> Result<Vec<PathBuf>, Str
     let mut wrote = copy_tree_except(
         assets,
         root,
-        &[
-            "lib",
-            layout::SCRIPTS,
-            layout::WORKFLOW_DIR,
-            SOURCES_FILE,
-            crate::base::BASES_FILE,
-        ],
+        &["lib", layout::SCRIPTS, layout::WORKFLOW_DIR],
     )?;
 
-    let sources = match sources(assets) {
-        block if block.is_empty() => block,
-        block => format!("\n{block}"),
+    let sources = match sources.is_empty() {
+        true => String::new(),
+        false => format!("\n{sources}"),
     };
     put(
         &root.join(layout::REPO_FILE),
@@ -201,7 +217,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-scaffold-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
-        let mut wrote: Vec<String> = write(&root, "Example", &assets)
+        let mut wrote: Vec<String> = write(&root, "Example", &assets, "")
             .unwrap()
             .iter()
             .map(|path| path.display().to_string())
@@ -232,13 +248,13 @@ mod tests {
         let mine = [
             "scripts/deploy.sh",
             ".github/workflows/mine.yml",
-            "bases.kdl",
+            "base-images/mine.base.kdl",
         ];
         for path in mine {
             put(&root.join(path), "mine\n").unwrap();
         }
         let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
-        write(&root, "Example", &assets).unwrap();
+        write(&root, "Example", &assets, "").unwrap();
         for path in mine {
             assert_eq!(
                 fs::read_to_string(root.join(path)).unwrap(),

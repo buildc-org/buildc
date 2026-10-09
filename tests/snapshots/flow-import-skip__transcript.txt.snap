@@ -1,9 +1,15 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-Bring what these modules require? (Yes/No)
+The selected modules have dependencies not currently provided by the images:
+
+  browser > collected:1
+    requires: flatpak
+    provider module: flatpak
+
+Add these provider modules now? (Yes/No)
 Yes
 
 

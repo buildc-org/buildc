@@ -767,6 +767,8 @@ pub enum ImportWhat {
         image: Vec<String>,
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
+        #[arg(long)]
+        dependencies: bool,
     },
 }
 
@@ -780,6 +782,8 @@ pub enum CopyWhat {
         image: Vec<String>,
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
+        #[arg(long)]
+        dependencies: bool,
     },
 }
 
@@ -1259,8 +1263,9 @@ impl Context {
 const HEAD: &str = "usage: buildc [--root <dir>] <command>\n";
 
 const RULE: &str = "\
-Every command takes a flag for everything it needs. What no flag gave is asked
-for, and `--no-tui` asks nothing, failing and naming the flag instead.
+Every answer a command may ask for has a matching flag. What no flag gave is
+asked for, and `--no-tui` asks nothing. An unattended question uses its default
+or fails and names the flag when it has no default.
 
 docs/cli.md is the reference. Data goes to stdout and diagnostics to
 stderr; exit 1 is the invocation, exit 2 the repository.
@@ -1505,6 +1510,16 @@ mod tests {
             .try_get_matches_from(["buildc", "check", "--cache-to"])
             .expect_err("check does not read the cache switches");
         assert_eq!(error.kind(), ErrorKind::UnknownArgument);
+    }
+
+    #[test]
+    fn import_and_copy_take_the_dependencies_switch() {
+        for verb in ["import", "copy"] {
+            let matches = Cli::command()
+                .try_get_matches_from(["buildc", verb, "module", "browser", "--dependencies"])
+                .unwrap_or_else(|error| panic!("{verb} module refused --dependencies: {error}"));
+            assert_eq!(flag::<bool>(&matches, "dependencies"), Some(true));
+        }
     }
 
     #[test]

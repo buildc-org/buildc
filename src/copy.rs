@@ -50,7 +50,9 @@ pub fn list_in(target: &str) -> String {
     format!("List it in {target}?")
 }
 
-pub const BRING_REQUIRED: &str = "Bring what these modules require?";
+pub const REQUIRED: &str =
+    "The selected modules have dependencies not currently provided by the images:";
+pub const BRING_REQUIRED: &str = "Add these provider modules now?";
 pub const BRING_FOR_BASE: &str = "Add them now?";
 pub const IMPORT_CLAIMING: &str = "Import the modules claiming these rules?";
 

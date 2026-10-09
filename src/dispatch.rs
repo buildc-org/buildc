@@ -59,6 +59,7 @@ pub struct Flags {
     pub cache_to: bool,
     pub no_cache_from: bool,
     pub rebuild: bool,
+    pub dependencies: bool,
 }
 
 fn one_name(rest: &[&str], name: &str) -> Result<Option<String>, Error> {
@@ -273,6 +274,7 @@ fn module_from_collection(
     images: Vec<String>,
     datastream: Option<&std::path::Path>,
     place: crate::import::Place,
+    dependencies: bool,
     prompt: &Prompt,
 ) -> Result<(), Error> {
     let module = crate::import::Module::collect(
@@ -283,6 +285,7 @@ fn module_from_collection(
         images,
         datastream,
         place,
+        dependencies,
         prompt,
     )?;
     let wrote = module.write(root, &list.sources)?;
@@ -332,6 +335,7 @@ pub fn dispatch(
         cache_to,
         no_cache_from,
         rebuild,
+        dependencies,
     } = flags;
     if *here == Context::Host && command::on_host(verb) {
         return on_host(
@@ -457,6 +461,7 @@ pub fn dispatch(
                 images,
                 datastream.as_deref(),
                 crate::import::Place::Reference,
+                dependencies,
                 prompt,
             )?;
             Ok(ExitCode::SUCCESS)
@@ -471,6 +476,7 @@ pub fn dispatch(
                 images,
                 datastream.as_deref(),
                 crate::import::Place::Vendored,
+                dependencies,
                 prompt,
             )?;
             Ok(ExitCode::SUCCESS)

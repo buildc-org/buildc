@@ -1,0 +1,5 @@
+test_tool = "nextest"
+
+output = "target"
+
+timeout_multiplier = 5.0

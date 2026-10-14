@@ -30,7 +30,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 pub fn build(list: &List, resolved: &[Resolved], workflows: &[Declared]) -> Json {
     Json::object([
-        ("schema_version", Json::Number(SCHEMA_VERSION)),
+        ("schema_version", Json::number(SCHEMA_VERSION)),
         (
             "default_image",
             Json::optional(list.default_image().map(|i| i.id.clone())),

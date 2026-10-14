@@ -11,7 +11,8 @@ clap = { version = "4.6.7", features = ["derive"] }
 kdl = "6.3.4"
 libc = "0.2"
 miette = { version = "7.6.0", features = ["fancy"] }
-common = { git = "https://github.com/buildc-org/common", rev = "a802eb753f1dadf87efa75e5f2375ff6105906d8" }
+quick-xml = "0.42.0"
+common = { git = "https://github.com/buildc-org/common", rev = "108da36985d0462233ee058738cca0b0d1a1e7d5" }
 
 # A local release build uses this profile, so it favours compile time over runtime performance.
 [profile.release]
@@ -29,5 +30,5 @@ codegen-units = 1
 
 [dev-dependencies]
 clap-markdown = "0.1.5"
-common = { git = "https://github.com/buildc-org/common", rev = "a802eb753f1dadf87efa75e5f2375ff6105906d8", features = ["test-support"] }
+common = { git = "https://github.com/buildc-org/common", rev = "108da36985d0462233ee058738cca0b0d1a1e7d5", features = ["test-support"] }
 insta = { version = "1.49.0", default-features = false, features = ["filters"] }

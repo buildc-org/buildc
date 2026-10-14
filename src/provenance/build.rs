@@ -69,7 +69,7 @@ fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
     let declared = env("BASE_DECLARED");
     let resolved = env("BASE");
     Json::object([
-        ("schema_version", Json::Number(SCHEMA_VERSION)),
+        ("schema_version", Json::number(SCHEMA_VERSION)),
         ("target", Json::optional(env("TARGET"))),
         ("image", Json::optional(env("IMAGE_ID"))),
         ("version", Json::optional(env("IMAGE_VERSION"))),

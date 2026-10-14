@@ -207,7 +207,7 @@ mod tests {
             (
                 "options",
                 Json::map([
-                    ("count".to_string(), Json::Number(3)),
+                    ("count".to_string(), Json::number(3)),
                     ("on".to_string(), Json::Bool(true)),
                     ("missing".to_string(), Json::Null),
                     ("names".to_string(), Json::strings(["a|b", "two  spaces"])),

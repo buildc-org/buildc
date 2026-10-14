@@ -485,7 +485,8 @@ pub fn content_path(family: &str, given: Option<&Path>) -> Result<PathBuf, Strin
 }
 
 pub fn content_of(path: &Path) -> Result<Content, String> {
-    let content = Content::read(&read(path)?);
+    let content =
+        Content::read(&read(path)?).map_err(|error| format!("{}: {error}", path.display()))?;
     if content.ids.is_empty() && content.profiles.is_empty() {
         return Err(format!(
             "{} carries no XCCDF rule and no profile, so it is not SCAP content\n\nhelp: use an \
@@ -535,7 +536,7 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
         },
     };
     let content = content_of(&datastream)?;
-    let measured = results(&read(arf)?);
+    let measured = results(&read(arf)?).map_err(|error| format!("{}: {error}", arf.display()))?;
     let base = match &opts.base {
         None => None,
         Some(path) => {
@@ -989,45 +990,63 @@ pub fn ordinal(number: &str) -> Vec<u64> {
 }
 
 impl Content {
-    pub fn read(text: &str) -> Self {
+    pub fn read(text: &str) -> Result<Self, String> {
         let mut content = Content::default();
         let mut rule = String::new();
-        let mut wanted: Option<&str> = None;
+        let mut wanted: Option<String> = None;
         let mut profile: Option<Profile> = None;
-        for event in xml::scan(text) {
+        xml::scan(text, |event| {
+            if matches!(&event, xml::Event::Text(text) if text.trim().is_empty()) {
+                return;
+            }
             let want = wanted.take();
             match event {
-                xml::Event::Open {
-                    name: "Rule",
-                    attrs,
-                } => {
-                    rule = xml::attr(attrs, "id").unwrap_or_default().to_string();
-                    content.ids.insert(rule.clone());
-                }
-                xml::Event::Close { name: "Rule" } => rule.clear(),
-                xml::Event::Open {
-                    name: "Group",
-                    attrs,
-                } => {
-                    content
-                        .groups
-                        .insert(xml::attr(attrs, "id").unwrap_or_default().to_string());
-                }
-                xml::Event::Open {
-                    name: name @ ("reference" | "ident" | "version" | "title" | "description"),
-                    ..
-                } => wanted = Some(name),
-                xml::Event::Text(text) => match want {
+                xml::Event::Open { name, attrs } => match xml::local(&name) {
+                    "Rule" => {
+                        rule = xml::attr(&attrs, "id").unwrap_or_default().to_string();
+                        content.ids.insert(rule.clone());
+                    }
+                    "Group" => {
+                        content
+                            .groups
+                            .insert(xml::attr(&attrs, "id").unwrap_or_default().to_string());
+                    }
+                    name @ ("reference" | "ident" | "version" | "title" | "description") => {
+                        wanted = Some(name.to_string());
+                    }
+                    "Profile" => {
+                        profile = Some(Profile {
+                            id: xml::attr(&attrs, "id").unwrap_or_default().to_string(),
+                            extends: xml::attr(&attrs, "extends").unwrap_or_default().to_string(),
+                            ..Profile::default()
+                        });
+                    }
+                    "select" => {
+                        if let (Some(profile), Some(idref)) =
+                            (profile.as_mut(), xml::attr(&attrs, "idref"))
+                        {
+                            let on = xml::attr(&attrs, "selected") != Some("false");
+                            profile.selects.push((idref.to_string(), on));
+                        }
+                    }
+                    _ => {}
+                },
+                xml::Event::Close { name } => match xml::local(&name) {
+                    "Rule" => rule.clear(),
+                    "Profile" => content.profiles.extend(profile.take()),
+                    _ => {}
+                },
+                xml::Event::Text(text) => match want.as_deref() {
                     Some("title") if !rule.is_empty() => {
                         content
                             .titles
                             .entry(rule.clone())
-                            .or_insert_with(|| text.to_string());
+                            .or_insert_with(|| text.trim().to_string());
                     }
                     Some("title") => {
                         if let Some(profile) = profile.as_mut() {
                             if profile.title.is_empty() {
-                                profile.title = text.to_string();
+                                profile.title = text.trim().to_string();
                             }
                         }
                     }
@@ -1035,43 +1054,18 @@ impl Content {
                         content
                             .descriptions
                             .entry(rule.clone())
-                            .or_insert_with(|| text.to_string());
+                            .or_insert_with(|| text.trim().to_string());
                     }
                     Some(_) if !rule.is_empty() => {
                         content
                             .rules
-                            .entry(text.to_string())
+                            .entry(text.trim().to_string())
                             .or_insert_with(|| rule.clone());
                     }
                     _ => {}
                 },
-                xml::Event::Open {
-                    name: "Profile",
-                    attrs,
-                } => {
-                    profile = Some(Profile {
-                        id: xml::attr(attrs, "id").unwrap_or_default().to_string(),
-                        extends: xml::attr(attrs, "extends").unwrap_or_default().to_string(),
-                        ..Profile::default()
-                    })
-                }
-                xml::Event::Close { name: "Profile" } => {
-                    content.profiles.extend(profile.take());
-                }
-                xml::Event::Open {
-                    name: "select",
-                    attrs,
-                } => {
-                    if let (Some(profile), Some(idref)) =
-                        (profile.as_mut(), xml::attr(attrs, "idref"))
-                    {
-                        let on = xml::attr(attrs, "selected") != Some("false");
-                        profile.selects.push((idref.to_string(), on));
-                    }
-                }
-                _ => {}
             }
-        }
+        })?;
         let mut numbers: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (number, rule) in &content.rules {
             numbers
@@ -1080,7 +1074,7 @@ impl Content {
                 .insert(number.clone());
         }
         content.numbers = numbers;
-        content
+        Ok(content)
     }
 
     pub fn numbering(&self, rules: &BTreeSet<String>) -> BTreeSet<String> {
@@ -1118,28 +1112,26 @@ impl Content {
     }
 }
 
-fn results(text: &str) -> BTreeMap<String, String> {
+fn results(text: &str) -> Result<BTreeMap<String, String>, String> {
     let mut out = BTreeMap::new();
     let mut rule = String::new();
     let mut wanted = false;
-    for event in xml::scan(text) {
-        match event {
-            xml::Event::Open {
-                name: "rule-result",
-                attrs,
-            } => rule = xml::attr(attrs, "idref").unwrap_or_default().to_string(),
-            xml::Event::Close {
-                name: "rule-result",
-            } => rule.clear(),
-            xml::Event::Open { name: "result", .. } => wanted = !rule.is_empty(),
-            xml::Event::Text(text) if wanted => {
-                out.entry(rule.clone()).or_insert_with(|| text.to_string());
-                wanted = false;
-            }
-            _ => wanted = false,
+    xml::scan(text, |event| match event {
+        xml::Event::Open { name, attrs } if xml::local(&name) == "rule-result" => {
+            rule = xml::attr(&attrs, "idref").unwrap_or_default().to_string();
         }
-    }
-    out
+        xml::Event::Close { name } if xml::local(&name) == "rule-result" => rule.clear(),
+        xml::Event::Open { name, .. } if xml::local(&name) == "result" => wanted = !rule.is_empty(),
+        xml::Event::Text(text) if wanted => {
+            let text = text.trim();
+            if !text.is_empty() {
+                out.entry(rule.clone()).or_insert_with(|| text.to_string());
+            }
+            wanted = false;
+        }
+        _ => wanted = false,
+    })?;
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1152,8 +1144,66 @@ mod tests {
     }
 
     #[test]
+    fn content_values_belong_only_to_the_rule_that_contains_them() {
+        let content = Content::read(
+            "<root xmlns:x='urn:test'><x:Rule id='one'><x:title> One </x:title><description>About one</description>\
+             <reference>1</reference></x:Rule><title>Outside</title><description>Outside</description>\
+             <reference>2</reference><Rule id='two'><title>Two</title>\
+             <reference>3</reference></Rule></root>",
+        )
+        .unwrap();
+
+        assert_eq!(content.rules.get("1").map(String::as_str), Some("one"));
+        assert!(!content.rules.contains_key("2"));
+        assert_eq!(content.rules.get("3").map(String::as_str), Some("two"));
+        assert_eq!(content.titles.get("one").map(String::as_str), Some("One"));
+        assert_eq!(content.titles.get("two").map(String::as_str), Some("Two"));
+        assert_eq!(
+            content.descriptions.get("one").map(String::as_str),
+            Some("About one")
+        );
+        assert!(!content.titles.contains_key(""));
+        assert!(!content.descriptions.contains_key(""));
+    }
+
+    #[test]
+    fn results_take_only_result_text_inside_its_rule_result() {
+        let measured = results(
+            "<root><result>before</result><rule-result idref='one'><wrapper/>\
+             <result> pass </result></rule-result><rule-result idref='lookalike'>\
+             <wrapper>wrong</wrapper></rule-result><rule-result idref='closed'></rule-result>\
+             <result>after</result><rule-result idref='two'><result>fail</result>\
+             </rule-result></root>",
+        )
+        .unwrap();
+
+        assert_eq!(
+            measured,
+            BTreeMap::from([
+                ("one".to_string(), "pass".to_string()),
+                ("two".to_string(), "fail".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn malformed_xml_never_supplies_scap_content_or_results() {
+        for text in [
+            "<root><rule-result idref='r'><result>pass</result></rule-result></root><!DOCTYPE later>",
+            "<![CDATA[ ]]><root/>",
+            "<1root/>",
+            "<root>&#1;</root>",
+            "<?xml version='1.1'?><root/>",
+            "<root/><?xml version='1.0'?>",
+        ] {
+            assert!(Content::read(text).is_err(), "content accepted {text:?}");
+            assert!(results(text).is_err(), "results accepted {text:?}");
+        }
+    }
+
+    #[test]
     fn the_index_answers_which_modules_claim_a_profile_s_rules() {
-        let content = Content::read(&read(&fixture("tests/scap/datastream.xml")).unwrap());
+        let content = Content::read(&read(&fixture("tests/scap/datastream.xml")).unwrap()).unwrap();
         let profile = content
             .profiles
             .iter()
@@ -1290,7 +1340,9 @@ mod tests {
 
     #[test]
     fn a_file_without_rules_or_profiles_is_not_scap_content() {
-        let path = fixture("tests/repos/enforced/example.image.kdl");
+        let path =
+            std::env::temp_dir().join(format!("buildc-not-scap-content.{}.xml", std::process::id()));
+        std::fs::write(&path, "<root/>").unwrap();
         assert_eq!(
             content_of(&path)
                 .err()
@@ -1301,6 +1353,7 @@ mod tests {
                 path.display()
             )
         );
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

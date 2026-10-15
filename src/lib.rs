@@ -7,6 +7,8 @@ pub mod diag;
 pub mod dispatch;
 pub mod emit;
 pub mod fetch;
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 pub mod import;
 pub mod init;
 pub mod key;

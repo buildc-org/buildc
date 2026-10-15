@@ -1478,6 +1478,11 @@ fn append(
     std::fs::write(file, text).map_err(|err| format!("{}: {err}", file.display()))
 }
 
+#[cfg(feature = "fuzzing")]
+pub fn fuzz_rewrite(file: &Path) {
+    let _ = append(file, "fuzz", &[("modules", None)], "module \"fuzz\"");
+}
+
 fn wanted<'a>(
     index: &'a crate::provider::Index,
     family: &str,

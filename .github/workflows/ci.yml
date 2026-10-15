@@ -27,6 +27,13 @@ jobs:
         with:
           arguments: --locked
 
+      # The fuzz crate declares its own workspace, so the root dependency policy does not cover the fuzz crate.
+      - name: Check fuzz dependencies
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25
+        with:
+          manifest-path: fuzz/Cargo.toml
+          arguments: --locked
+
   lint:
     runs-on: ubuntu-24.04
     steps:
@@ -70,6 +77,33 @@ jobs:
       - name: Test on rust-version
         run: |
           set -euo pipefail
-          msrv="$(cargo metadata --no-deps --format-version 1 | jq -er '.packages[0].rust_version')"
+          msrv="$(cargo metadata --no-deps --format-version 1 | jq -er '.packages[] | select(.name == "buildc") | .rust_version')"
           rustup toolchain install "$msrv" --profile minimal
           cargo "+${msrv}" nextest run --locked --profile ci
+
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Install fuzzing tools
+        run: |
+          rustup toolchain install nightly-2026-10-14 --profile minimal
+          cargo +nightly-2026-10-14 install --locked cargo-fuzz --version 0.13.2
+
+      - name: Fuzz every target
+        run: ./fuzz/run.sh 60
+
+      - name: Preserve fuzz failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: buildc-fuzz-failure
+          path: |
+            fuzz/artifacts
+            fuzz/target/*.log
+          # A failed fuzz build can leave no artifact, so the artifact upload ignores an empty path.
+          if-no-files-found: ignore

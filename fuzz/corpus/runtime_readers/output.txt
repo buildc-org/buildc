@@ -1,0 +1,3 @@
+NAME=Buildc
+enable fuzz.service
+Command 'man fuzz' failed with code 1

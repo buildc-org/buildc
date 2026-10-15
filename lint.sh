@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-mapfile -t scripts < <(find . \( -path ./target -o -path ./modules \) -prune -o \
+mapfile -t scripts < <(find . \( -path ./target -o -path ./fuzz/target -o -path ./modules \) -prune -o \
     -name '*.sh' -type f -print)
 shfmt=(shfmt -i 4 -ci -bn -sr)
 
@@ -36,7 +36,7 @@ if grep -nE 'kdl::|Kdl[A-Z]' src/provenance/mod.rs; then
     exit 1
 fi
 
-mapfile -t member_src < <(find . \( -path ./target -o -path ./modules \) -prune \
+mapfile -t member_src < <(find . \( -path ./target -o -path ./fuzz/target -o -path ./modules \) -prune \
     -o -path '*/src/*' -name '*.rs' -type f -print)
 
 if grep -n 'ratatui' "${member_src[@]}"; then
@@ -75,6 +75,11 @@ echo "lint: ${#scripts[@]} scripts and the source are clean"
 
 cargo deny --locked check bans licenses sources
 echo "lint: the dependency policy accepts the locked graph"
+
+# Only the scheduled fuzz job builds the fuzz targets, so this check keeps
+# their entry points compiling on every push.
+cargo check --locked --features fuzzing
+echo "lint: the fuzz entry points compile"
 
 cargo nextest run --locked
 echo "lint: the goldens match"

@@ -116,15 +116,6 @@ fn digest(url: &str) -> Result<String, String> {
     }
 }
 
-struct Staged(PathBuf);
-
-impl Drop for Staged {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-        let _ = fs::remove_file(&self.0);
-    }
-}
-
 pub fn run() -> Result<(), String> {
     let arch = std::env::consts::ARCH;
     if !PUBLISHED.contains(&arch) {
@@ -190,7 +181,7 @@ pub fn run() -> Result<(), String> {
             .map_err(|err| format!("{}: {err}\n\n{}", dir.display(), instead(euid)))?;
     }
 
-    let work = Staged(parent.join(format!(".upgrade.{}", std::process::id())));
+    let work = init::Scratch(parent.join(format!(".upgrade.{}", std::process::id())));
     fs::create_dir(&work.0)
         .map_err(|err| format!("{}: {err}\n\n{}", work.0.display(), instead(euid)))?;
     let sha256 = digest(&format!("{}.sha256", plan.url))?;
@@ -204,13 +195,13 @@ pub fn run() -> Result<(), String> {
         return Err(format!("{} holds no assets directory", plan.url));
     }
 
-    let ready = Staged(bindir.join(format!(".buildc.{}", std::process::id())));
+    let ready = init::Scratch(bindir.join(format!(".buildc.{}", std::process::id())));
     fs::copy(&came, &ready.0)
         .map_err(|err| format!("{}: {err}\n\n{}", ready.0.display(), instead(euid)))?;
     fs::set_permissions(&ready.0, fs::Permissions::from_mode(0o755))
         .map_err(|err| format!("{}: {err}", ready.0.display()))?;
 
-    let _ = fs::remove_dir_all(&plan.assets);
+    init::remove(&plan.assets)?;
     fs::rename(&assets, &plan.assets).map_err(|err| format!("{}: {err}", plan.assets.display()))?;
     fs::rename(&ready.0, &plan.bin).map_err(|err| format!("{}: {err}", plan.bin.display()))?;
 

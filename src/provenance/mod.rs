@@ -54,7 +54,7 @@ impl Tracker {
     pub fn reason(&self) -> Option<String> {
         match self {
             Self::Manual(why) | Self::Unpinned(why) => Some(why.clone()),
-            _ => None,
+            Self::Renovate { .. } | Self::None => None,
         }
     }
 }
@@ -71,7 +71,7 @@ pub struct Evidence {
 
 impl Evidence {
     pub fn new(span: Span) -> Self {
-        Evidence {
+        Self {
             url: None,
             version: None,
             sha256: None,
@@ -88,6 +88,10 @@ impl Evidence {
             Some(version) => url.replace("{version}", version),
             None => url.clone(),
         })
+    }
+
+    pub fn selector(&self) -> &str {
+        self.version.as_deref().unwrap_or("HEAD")
     }
 
     pub fn cloned(&self) -> bool {

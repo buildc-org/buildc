@@ -22,7 +22,7 @@ pub struct Base {
 }
 
 impl Base {
-    pub fn differs(&self, other: &Base) -> bool {
+    pub fn differs(&self, other: &Self) -> bool {
         self.family != other.family
             || self.provides != other.provides
             || self.requires != other.requires
@@ -49,7 +49,7 @@ impl Capability {
             .or(self.path.as_deref())
     }
 
-    fn same_as(&self, other: &Capability) -> bool {
+    fn same_as(&self, other: &Self) -> bool {
         self.path == other.path && self.families == other.families
     }
 }
@@ -192,25 +192,25 @@ fn load(root: &Path, sources: &[Collection], issues: &mut Issues) -> Loaded {
                 };
                 for row in read {
                     if let Some((_, first)) = named.iter().find(|(name, _)| *name == row.name) {
-                        if let Some(at) =
-                            capabilities.iter().position(|known| known.name == row.name)
+                        if capabilities
+                            .iter()
+                            .find(|known| known.name == row.name)
+                            .is_some_and(|known| !known.same_as(&row))
                         {
-                            if !capabilities[at].same_as(&row) {
-                                issues.push(
-                                    Issue::new(
-                                        format!(
-                                            "capability `{}` is described by two libraries",
-                                            row.name
-                                        ),
-                                        &src,
-                                    )
-                                    .at(row.span, format!("`{first}` reads it elsewhere"))
-                                    .help(
-                                        "one name is read at one path; which row won would depend \
-                                         on the order repo.kdl lists the sources in",
+                            issues.push(
+                                Issue::new(
+                                    format!(
+                                        "capability `{}` is described by two libraries",
+                                        row.name
                                     ),
-                                );
-                            }
+                                    &src,
+                                )
+                                .at(row.span, format!("`{first}` reads it elsewhere"))
+                                .help(
+                                    "one name is read at one path; which row won would depend \
+                                     on the order repo.kdl lists the sources in",
+                                ),
+                            );
                         }
                         continue;
                     }

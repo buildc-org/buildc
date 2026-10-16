@@ -458,10 +458,10 @@ mod tests {
         );
         for unit in ["bootc-anywhere.service", "bootc-anywhere-vt.service"] {
             let heredoc = format!("/usr/lib/systemd/system/{unit}\n");
-            let body = LIVE_ENV
-                .split_once(&heredoc)
-                .map(|(_, rest)| rest.split_once("\nUNIT\n").map_or(rest, |(body, _)| body))
-                .unwrap_or_else(|| panic!("{unit} is never written"));
+            let body = LIVE_ENV.split_once(&heredoc).map_or_else(
+                || panic!("{unit} is never written"),
+                |(_, rest)| rest.split_once("\nUNIT\n").map_or(rest, |(body, _)| body),
+            );
             let exec: Vec<&str> = body
                 .lines()
                 .filter_map(|line| line.strip_prefix("ExecStart="))

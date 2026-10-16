@@ -26,6 +26,10 @@ pub enum Stopped {
     Built,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "each build step reads the values the steps before it resolved"
+)]
 pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     let backend = match opts.backend.clone().or_else(|| env("BUILD_BACKEND")) {
         None => "buildah".to_string(),
@@ -110,6 +114,9 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         .collect();
 
     let namespace = crate::registry::namespace(root);
+    if let Err(err) = &namespace {
+        eprintln!("buildc: {err}; the image carries no IMAGE_REGISTRY");
+    }
 
     let conforms =
         crate::scap::profile_name(image.conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR)))
@@ -241,13 +248,15 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         }
         build_uki(
             root,
-            program,
-            &containerfile,
-            &build_args,
-            &secrets,
-            &target,
-            &tags,
-            &labels,
+            &Invocation {
+                program,
+                containerfile: &containerfile,
+                build_args: &build_args,
+                secrets: &secrets,
+                target: &target,
+                tags: &tags,
+                labels: &labels,
+            },
         )?;
         return Ok(Stopped::Built);
     }
@@ -349,16 +358,26 @@ fn scratch_tag(kind: &str, target: &str) -> String {
     format!("localhost/buildc-uki-{kind}:{tag}-{}", std::process::id())
 }
 
-fn build_uki(
-    root: &Path,
-    program: &str,
-    containerfile: &Path,
-    build_args: &[String],
-    secrets: &[(String, String)],
-    target: &str,
-    tags: &[String],
-    labels: &[String],
-) -> Result<(), String> {
+struct Invocation<'a> {
+    program: &'a str,
+    containerfile: &'a Path,
+    build_args: &'a [String],
+    secrets: &'a [(String, String)],
+    target: &'a str,
+    tags: &'a [String],
+    labels: &'a [String],
+}
+
+fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
+    let &Invocation {
+        program,
+        containerfile,
+        build_args,
+        secrets,
+        target,
+        tags,
+        labels,
+    } = invocation;
     let root = fs::canonicalize(root).map_err(|err| format!("{}: {err}", root.display()))?;
     let containerfile = root.join(containerfile);
     let root = root.as_path();
@@ -433,7 +452,7 @@ fn build_uki(
         )?;
         Ok(digest)
     })();
-    let _ = fs::remove_file(&seal_file);
+    crate::init::tidy(&seal_file);
     let digest = match sealed {
         Ok(digest) => {
             remove_image(program, &split_tag);
@@ -610,7 +629,21 @@ fn lower_hex(byte: u8) -> bool {
 }
 
 fn remove_image(program: &str, tag: &str) {
-    let _ = Command::new(program).args(["rmi", "--force", tag]).output();
+    match Command::new(program).args(["rmi", "--force", tag]).output() {
+        Ok(out) if out.status.success() || !image_exists(program, tag) => {}
+        Ok(out) => eprintln!(
+            "buildc: `{program} rmi --force {tag}` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(err) => eprintln!("buildc: `{program} rmi --force {tag}`: {err}"),
+    }
+}
+
+fn image_exists(program: &str, tag: &str) -> bool {
+    Command::new(program)
+        .args(["image", "inspect", tag])
+        .output()
+        .is_ok_and(|out| out.status.success())
 }
 
 fn carries_digest(cmdline: &str, digest: &str) -> bool {

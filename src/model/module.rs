@@ -132,6 +132,7 @@ pub struct Module {
     pub contributes: Vec<Contribution>,
     pub modes: Vec<FileMode>,
     pub keys: Vec<Key>,
+    pub refused_keys: Vec<String>,
     pub secrets: Vec<Decl>,
     pub args: Vec<Decl>,
     pub options: Vec<Opt>,
@@ -160,7 +161,7 @@ pub struct Access {
 }
 
 impl Access {
-    pub const OPEN: Access = Access {
+    pub const OPEN: Self = Self {
         packages: true,
         scripts: true,
     };

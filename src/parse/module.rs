@@ -46,6 +46,10 @@ const GENERATORS: [&str; 3] = ["cosign", "openssl", "ssh-keygen"];
 
 const BITS: u32 = 4096;
 
+const KEY_SIZES: (i128, i128) = (2048, 16384);
+
+const PRIORITIES: (i128, i128) = (0, 9999);
+
 const NEEDED: Say = Say::new("a `key` needs `{}`", "incomplete", "");
 
 const PRIORITY: Say = Say::new(
@@ -75,7 +79,7 @@ const KEY: Node = Node::new("key",
                     desc: "The purpose that the generator serves, if the generator has more than one purpose.",
                     say: Say::new("`profile` must be \"module-signing\", \"pcr-signing\" or \"tls-ca\"", "not a profile", ""),
                     missing: Say::NONE },
-                Prop { name: "bits", kind: Kind::Int(2048, 16384),
+                Prop { name: "bits", kind: Kind::Int(KEY_SIZES.0, KEY_SIZES.1),
                     desc: "The RSA key size, which is 4096 by default.",
                     say: Say::new("`bits` is a number from 2048 to 16384", "not a key size", ""),
                     missing: Say::NONE },
@@ -302,7 +306,7 @@ pub const MODULE: Node = Node::new("module",
                     desc: "The absolute path that receives the assembled file.",
                     say: Say::NONE,
                     missing: Say::NONE },
-                Prop { name: "priority", kind: Kind::Int(0, 9999),
+                Prop { name: "priority", kind: Kind::Int(PRIORITIES.0, PRIORITIES.1),
                     desc: "The position of a contribution that declares no priority.",
                     say: PRIORITY,
                     missing: Say::NONE },
@@ -318,7 +322,7 @@ pub const MODULE: Node = Node::new("module",
         Node::new("contributes", "A file that this module ships for another module to collect.").example("\"flatpaks.list\"")
             .arg(Arg::Str, Say::NONE)
             .props(&[
-                Prop { name: "priority", kind: Kind::Int(0, 9999),
+                Prop { name: "priority", kind: Kind::Int(PRIORITIES.0, PRIORITIES.1),
                     desc: "The position that this file takes in the assembled file.",
                     say: PRIORITY,
                     missing: Say::NONE },
@@ -529,6 +533,11 @@ fn gate_families(node: &KdlNode, src: &Source, issues: &mut Issues) -> Vec<Strin
     out
 }
 
+struct RepoSchema<'a> {
+    version: Option<u32>,
+    src: &'a Source,
+}
+
 struct Gated {
     coprs: usize,
     requires: usize,
@@ -536,8 +545,14 @@ struct Gated {
     satisfies: usize,
 }
 
+fn ranged(node: &KdlNode, key: &str, (low, high): (i128, i128)) -> Option<u32> {
+    int_prop(node, key)
+        .filter(|value| (low..=high).contains(value))
+        .and_then(|value| u32::try_from(value).ok())
+}
+
 fn priority(node: &KdlNode) -> Option<u32> {
-    int_prop(node, "priority").map(|value| value as u32)
+    ranged(node, "priority", PRIORITIES)
 }
 
 fn bad_priority(node: &KdlNode) -> bool {
@@ -604,8 +619,10 @@ impl Module {
                 root,
                 text,
                 image.base.as_ref().map(|base| base.family.as_str()),
-                repo_version,
-                repo_src,
+                RepoSchema {
+                    version: repo_version,
+                    src: repo_src,
+                },
                 issues,
             )?,
             Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
@@ -616,7 +633,7 @@ impl Module {
                 return None;
             }
             Err(_) if local && disk.is_module(&dir_rel) => {
-                Self::bare(&entry.path, &dir_rel, root, issues)?
+                Self::bare(&entry.path, &dir_rel, root, issues)
             }
             Err(_) if local => {
                 issues.push(
@@ -643,21 +660,26 @@ impl Module {
             }
         };
         module.flavour = entry.flavour.clone();
-        let src = &module.src.clone();
-        module.resolved =
-            resolve_options::resolve(&module.options, &module.variants, src, entry, image, issues);
+        module.resolved = resolve_options::resolve(
+            &module.options,
+            &module.variants,
+            &module.src,
+            entry,
+            image,
+            issues,
+        );
         Some(module)
     }
 
-    fn bare(path: &str, dir_rel: &str, root: &Path, issues: &mut Issues) -> Option<Self> {
+    fn bare(path: &str, dir_rel: &str, root: &Path, issues: &mut Issues) -> Self {
         let dir = layout::module(root, dir_rel);
         let src = Source::new(dir.display().to_string(), String::new());
         let module = Self::empty(path, dir_rel, &dir, &src, issues);
         Self::rest(module, path, root, &dir, &[], &src, issues)
     }
 
-    fn empty(path: &str, dir_rel: &str, dir: &Path, src: &Source, issues: &mut Issues) -> Module {
-        Module {
+    fn empty(path: &str, dir_rel: &str, dir: &Path, src: &Source, issues: &mut Issues) -> Self {
+        Self {
             path: path.to_string(),
             dir: dir_rel.to_string(),
             description: String::new(),
@@ -679,6 +701,7 @@ impl Module {
             contributes: Vec::new(),
             modes: Vec::new(),
             keys: Vec::new(),
+            refused_keys: Vec::new(),
             secrets: Vec::new(),
             args: Vec::new(),
             options: Vec::new(),
@@ -712,10 +735,13 @@ impl Module {
         root: &Path,
         text: String,
         family: Option<&str>,
-        repo_version: Option<u32>,
-        repo_src: &Source,
+        repo: RepoSchema,
         issues: &mut Issues,
     ) -> Option<Self> {
+        let RepoSchema {
+            version: repo_version,
+            src: repo_src,
+        } = repo;
         let dir = layout::module(root, dir_rel);
         let file = dir.join(layout::MODULE_FILE).display().to_string();
 
@@ -773,7 +799,7 @@ impl Module {
             issues,
         );
 
-        Self::rest(module, path, root, &dir, &gated, src, issues)
+        Some(Self::rest(module, path, root, &dir, &gated, src, issues))
     }
 
     #[cfg(test)]
@@ -791,8 +817,10 @@ impl Module {
             root,
             text,
             family,
-            Some(crate::model::image::SCHEMA_VERSION),
-            &Source::new("repo.kdl", "schema-version 1\n"),
+            RepoSchema {
+                version: Some(crate::model::image::SCHEMA_VERSION),
+                src: &Source::new("repo.kdl", "schema-version 1\n"),
+            },
             issues,
         )
     }
@@ -847,7 +875,7 @@ impl Module {
                     if module.fragment.is_none() {
                         issues.push(
                             Issue::new(
-                                format!("`{}` declares `fragment` but ships no Containerfile.inc", path),
+                                format!("`{path}` declares `fragment` but ships no Containerfile.inc"),
                                 src,
                             )
                             .at(node.name().span(), "nothing to place")
@@ -882,13 +910,16 @@ impl Module {
                         }
                     }
                 }
-                "key" => {
-                    if let Some(key) = parse_key(node, src, issues) {
+                "key" => match parse_key(node, src, issues) {
+                    Some(key) => {
                         if !module.keys.iter().any(|k| k.kind == key.kind) {
                             module.keys.push(key);
                         }
                     }
-                }
+                    None => module
+                        .refused_keys
+                        .extend(string_arg(node).map(key_capability)),
+                },
                 "packages" => module.parse_packages(node, gate, src, issues),
                 "package-groups" => module.parse_package_groups(node, gate, src, issues),
                 "copr" => module.parse_copr(node, gate, src, issues),
@@ -915,14 +946,14 @@ impl Module {
     }
 
     fn rest(
-        mut module: Module,
+        mut module: Self,
         path: &str,
         root: &Path,
         dir: &Path,
         gated: &[(String, Span)],
         src: &Source,
         issues: &mut Issues,
-    ) -> Option<Self> {
+    ) -> Self {
         for key in &module.keys {
             let name = key_capability(&key.kind);
             if !module.provides.iter().any(|d| d.name == name) {
@@ -1041,8 +1072,7 @@ impl Module {
                 issues.push(
                     Issue::new(
                         format!(
-                            "`{}` declares `{kind} \"{name}\"` with no standard layer to carry it",
-                            path
+                            "`{path}` declares `{kind} \"{name}\"` with no standard layer to carry it"
                         ),
                         src,
                     )
@@ -1094,7 +1124,7 @@ impl Module {
 
         crate::provenance::check_fetch(&module, dir, issues);
 
-        Some(module)
+        module
     }
 
     fn parse_supports(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
@@ -1604,13 +1634,17 @@ pub fn parse_key(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Ke
         return None;
     }
 
+    let bits = match prop_span(generator, "bits") {
+        Some(_) => ranged(generator, "bits", KEY_SIZES)?,
+        None => BITS,
+    };
     Some(Key {
         kind,
         generator: string_arg(generator)
             .filter(|g| GENERATORS.contains(g))?
             .to_string(),
         profile,
-        bits: int_prop(generator, "bits").unwrap_or(BITS as i128) as u32,
+        bits,
         public: path.to_string(),
         format,
         private: name.to_string(),
@@ -1735,8 +1769,10 @@ pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues
                 root,
                 text,
                 None,
-                list.schema_version,
-                &list.repo_src,
+                RepoSchema {
+                    version: list.schema_version,
+                    src: &list.repo_src,
+                },
                 issues,
             );
         }
@@ -1750,7 +1786,7 @@ mod tests {
     fn messages(text: &str) -> Vec<String> {
         let text = format!("schema-version 1\n{text}");
         let doc: KdlDocument = text.parse().expect("valid KDL");
-        let src = Source::new("module.kdl", text.clone());
+        let src = Source::new("module.kdl", text);
         let mut issues = Issues::default();
         check_doc(&doc, &MODULE, &src, &mut issues);
         issues.findings()
@@ -1799,6 +1835,33 @@ mod tests {
                 .collect::<Vec<_>>(),
             FAMILIES
         );
+    }
+
+    #[test]
+    fn an_out_of_range_priority_is_reported_once() {
+        let found = parsed("absent", "contributes \"other.inc\" priority=-1\n");
+        assert_eq!(found, ["`priority` is a number from 0 to 9999"]);
+    }
+
+    #[test]
+    fn an_out_of_range_key_size_drops_the_key() {
+        let text = "key \"secureboot\" {\n\
+                    generator \"openssl\" bits=-1\n\
+                    public \"/usr/share/secureboot/sb_cert.der\"\n\
+                    private \"MOK.priv\"\n\
+                    }\n";
+        let mut issues = Issues::default();
+        let module = Module::parse(
+            "keys",
+            "keys",
+            Path::new("."),
+            format!("schema-version 1\n{text}"),
+            None,
+            &mut issues,
+        )
+        .expect("a module");
+        assert!(module.keys.is_empty());
+        assert_eq!(issues.findings(), ["`bits` is a number from 2048 to 16384"]);
     }
 
     #[test]

@@ -8,6 +8,7 @@ use std::path::Path;
 #[derive(Default)]
 pub struct Disk {
     pub keys: BTreeMap<String, Vec<(String, Key)>>,
+    pub refused_keys: BTreeMap<String, (String, String)>,
     pub collectors: BTreeMap<String, String>,
     pub overlays: BTreeMap<String, Vec<String>>,
 }
@@ -33,7 +34,7 @@ impl Disk {
     }
 
     fn walk(root: &Path, collected: &[String]) -> Self {
-        let mut out = Disk::default();
+        let mut out = Self::default();
 
         let modules = layout::modules(root);
         let found = layout::module_dirs(
@@ -77,9 +78,10 @@ impl Disk {
                     }
                     "key" => {
                         let src = Source::new(manifest.display().to_string(), text.clone());
-                        let Some(key) =
-                            crate::parse::module::parse_key(node, &src, &mut Issues::default())
+                        let mut refused = Issues::default();
+                        let Some(key) = crate::parse::module::parse_key(node, &src, &mut refused)
                         else {
+                            out.refuse_key(args().next(), &name, &doc, &src, refused);
                             continue;
                         };
                         out.keys
@@ -92,6 +94,25 @@ impl Disk {
             }
         }
         out
+    }
+}
+
+impl Disk {
+    fn refuse_key(
+        &mut self,
+        kind: Option<&str>,
+        module: &str,
+        doc: &KdlDocument,
+        src: &Source,
+        mut refused: Issues,
+    ) {
+        let Some(kind) = kind else {
+            return;
+        };
+        crate::parse::schema::check_doc(doc, &crate::parse::module::MODULE, src, &mut refused);
+        self.refused_keys
+            .entry(kind.to_string())
+            .or_insert_with(|| (module.to_string(), refused.plain()));
     }
 }
 

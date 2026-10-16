@@ -95,6 +95,7 @@ pub fn resolve_collects(
                             into,
                         });
                 }
+                None if image.modules().any(|enabled| enabled.dir == *collector) => {}
                 None => issues.push(
                     Issue::new(
                         format!(

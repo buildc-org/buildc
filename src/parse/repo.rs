@@ -400,8 +400,8 @@ impl List {
     pub fn load(root: &Path) -> (Self, Issues) {
         let issues = compatible(root);
         match issues.is_empty() {
-            true => List::read(root),
-            false => (List::empty(root), issues),
+            true => Self::read(root),
+            false => (Self::empty(root), issues),
         }
     }
 
@@ -415,7 +415,7 @@ impl List {
     }
 
     pub(super) fn empty(root: &Path) -> Self {
-        List {
+        Self {
             name: String::new(),
             id: String::new(),
             images: Vec::new(),
@@ -439,7 +439,7 @@ impl List {
 
     fn read(root: &Path) -> (Self, Issues) {
         let mut issues = Issues::default();
-        let mut list = List::empty(root);
+        let mut list = Self::empty(root);
 
         if let Some(found) = pins(root) {
             list.schema_version = found.schema.and_then(|(version, _)| {

@@ -373,7 +373,7 @@ pub fn tailoring_for(
         return Ok(Verdict::Wrong);
     };
     let name = target(&list, named)?;
-    let (image, flavour, _) = of_target(&list, &name).ok_or(unknown(&name))?;
+    let (image, flavour, _) = of_target(&list, &name).ok_or_else(|| unknown(&name))?;
     let conforms = image.conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR));
     if conforms.is_empty() {
         return Ok(Verdict::Clean);
@@ -421,7 +421,7 @@ fn tailoring(content: &Content, profile: &Profile) -> String {
 
 fn datastream(root: &Path, list: &List, named: Option<&str>) -> Result<String, String> {
     let name = target(list, named)?;
-    let (image, flavour, _) = of_target(list, &name).ok_or(unknown(&name))?;
+    let (image, flavour, _) = of_target(list, &name).ok_or_else(|| unknown(&name))?;
     if image
         .conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR))
         .is_empty()
@@ -523,7 +523,7 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
         return Ok(Verdict::Wrong);
     };
     let name = target(&list, named)?;
-    let (image, flavour, entries) = of_target(&list, &name).ok_or(unknown(&name))?;
+    let (image, flavour, entries) = of_target(&list, &name).ok_or_else(|| unknown(&name))?;
     let at = list.images.iter().position(|have| have.id == image.id);
     let shipped = &resolved[at.unwrap_or_default()].shipped;
     let gate = flavour.as_deref().unwrap_or(NO_FLAVOUR);
@@ -755,10 +755,10 @@ fn regressed(image: &Image) -> String {
     format!(
         "{} alone passed this rule when the base scan was taken, so the image lost it rather \
          than never having had it: a base that moved, or a layer over it",
-        image
-            .base
-            .as_ref()
-            .map_or("the base".to_string(), |base| format!("`{}`", base.image))
+        image.base.as_ref().map_or_else(
+            || "the base".to_string(),
+            |base| format!("`{}`", base.image)
+        )
     )
 }
 
@@ -910,7 +910,9 @@ fn baseline(doc: &Json) -> Option<BTreeSet<String>> {
             .iter()
             .filter_map(|item| match item {
                 Json::String(rule) => Some(rule.clone()),
-                _ => None,
+                Json::Null | Json::Bool(_) | Json::Number(_) | Json::Array(_) | Json::Object(_) => {
+                    None
+                }
             })
             .collect(),
     )
@@ -996,7 +998,7 @@ pub fn ordinal(number: &str) -> Vec<u64> {
 
 impl Content {
     pub fn read(text: &str) -> Result<Self, String> {
-        let mut content = Content::default();
+        let mut content = Self::default();
         let mut rule = String::new();
         let mut wanted: Option<String> = None;
         let mut profile: Option<Profile> = None;
@@ -1134,7 +1136,7 @@ fn results(text: &str) -> Result<BTreeMap<String, String>, String> {
             }
             wanted = false;
         }
-        _ => wanted = false,
+        xml::Event::Open { .. } | xml::Event::Close { .. } | xml::Event::Text(_) => wanted = false,
     })?;
     Ok(out)
 }

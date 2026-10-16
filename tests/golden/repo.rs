@@ -107,13 +107,15 @@ fn create_into(name: &str, root: &Path) {
     let silent = common::prompt::Prompt::silent();
 
     buildc::create::Image::collect(
-        &here,
+        buildc::create::Home {
+            root: &here,
+            repo: "example",
+            url: None,
+            sources_text: "",
+        },
         Some("Server".into()),
         Some("quay.io/fedora/fedora-bootc:44".into()),
-        "example",
-        None,
         "a name argument",
-        "",
         buildc::create::Field::Image,
         None,
         &silent,
@@ -157,13 +159,15 @@ fn create_into(name: &str, root: &Path) {
     let (list, issues, _) = buildc::declarations(&here);
     assert!(issues.is_empty(), "{}", issues.plain());
     buildc::import::Module::collect(
-        Some("upstream/fedora-family".into()),
+        buildc::import::Request {
+            name: Some("upstream/fedora-family".into()),
+            images: vec!["example".into(), "server".into()],
+            datastream: None,
+            place: buildc::import::Place::Reference,
+            dependencies: false,
+        },
         &here,
         &list.sources,
-        false,
-        vec!["example".into(), "server".into()],
-        None,
-        buildc::import::Place::Reference,
         false,
         &silent,
     )
@@ -396,7 +400,7 @@ fn why_unbuilt(root: &Path) {
     .unwrap();
     out.push_str("==== and the same module in an image that does build it\n");
     out.push_str(
-        &buildc::run(Command::Why, Some("flatpak"), &here)
+        buildc::run(Command::Why, Some("flatpak"), &here)
             .stdout
             .split("## What it exchanges")
             .next()

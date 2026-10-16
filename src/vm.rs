@@ -64,12 +64,14 @@ pub fn run(
 
 const BOOTISO: &str = "out/bootiso";
 
+type Documents = Vec<(&'static str, String)>;
+
 fn documents(
     list: &crate::model::image::List,
     name: &str,
     image: &str,
     imgref: &str,
-) -> Result<Vec<(&'static str, String)>, String> {
+) -> Result<Documents, String> {
     use crate::emit::recipe;
     if imgref.starts_with("localhost/") {
         return Err(format!(
@@ -114,7 +116,7 @@ fn staged_list(root: &Path) -> crate::model::image::List {
     crate::load(root).list
 }
 
-fn staged(root: &Path, opts: &Options) -> Result<(String, Vec<(&'static str, String)>), String> {
+fn staged(root: &Path, opts: &Options) -> Result<(String, Documents), String> {
     let list = staged_list(root);
     let target = target(&list, opts)
         .ok_or("no target to build an installer iso for; name one with `--target`")?;

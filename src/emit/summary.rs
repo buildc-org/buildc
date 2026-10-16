@@ -27,7 +27,7 @@ pub fn render(list: &List, target: &str) -> Option<String> {
                 variant: entry.variant.clone(),
                 remote: entry
                     .pin(&list.sources)
-                    .map(|remote| remote.version.clone().unwrap_or_default()),
+                    .map(|remote| remote.selector().to_string()),
                 description: module.map(|m| m.description.clone()).unwrap_or_default(),
                 options: module
                     .map(|m| m.resolved.as_slice())
@@ -81,7 +81,11 @@ pub fn on_host(target: &Json) -> String {
                     .map(|(name, value)| {
                         let written = match value {
                             Json::String(value) => format!("\"{}\"", cell(value)),
-                            other => cell(
+                            other @ Json::Null
+                            | other @ Json::Bool(_)
+                            | other @ Json::Number(_)
+                            | other @ Json::Array(_)
+                            | other @ Json::Object(_) => cell(
                                 other
                                     .render()
                                     .lines()

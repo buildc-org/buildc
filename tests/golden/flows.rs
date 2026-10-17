@@ -109,7 +109,7 @@ impl Flow {
             .env("BUILDC_ASSETS", assets)
             .args(args)
             .current_dir(dir)
-            .env("BUILDC_ANSWERS", fixture.join("answers.txt"))
+            .env("BUILDC_ANSWERS", answers(&fixture))
             .stdout(std::process::Stdio::from(file.try_clone().unwrap()))
             .stderr(std::process::Stdio::from(file))
             .status()
@@ -140,7 +140,7 @@ impl Flow {
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_SYSTEM", "/dev/null")
             .env("BUILDC_ASSETS", crate_dir().join("assets"))
-            .env("BUILDC_ANSWERS", fixture.join("answers.txt"))
+            .env("BUILDC_ANSWERS", answers(&fixture))
             .args(["create", "repo"])
             .current_dir(dir)
             .stdout(std::process::Stdio::from(file.try_clone().unwrap()))
@@ -292,6 +292,14 @@ impl Flow {
 const SIGNED_OUT: &str = "#!/bin/sh\ntest \"$1\" = auth && exit 1\nexit 0\n";
 
 const SIGNED_IN: &str = "#!/bin/sh\nexit 0\n";
+
+fn answers(fixture: &Path) -> PathBuf {
+    let file = fixture.join("answers.txt");
+    match file.exists() {
+        true => file,
+        false => PathBuf::from("/dev/null"),
+    }
+}
 
 fn sealed<'a>(
     command: &'a mut std::process::Command,

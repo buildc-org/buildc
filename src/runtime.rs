@@ -247,14 +247,18 @@ fn verified(url: &str, sha256: Option<&str>, dest: &Path) -> Result<(), String> 
     let Some(sha256) = sha256 else {
         return Ok(());
     };
-    let got = sha256_file(dest)?;
-    if got != sha256.to_lowercase() {
-        crate::init::tidy(dest);
-        return Err(format!(
-            "{url}\n  expected sha256 {sha256}\n  got      sha256 {got}"
-        ));
+    // A payload that does not match its hash is removed, so no later step can mistake it for verified content.
+    match_sha256(dest, sha256, url).inspect_err(|_| crate::init::tidy(dest))
+}
+
+pub(crate) fn match_sha256(path: &Path, expected: &str, what: &str) -> Result<(), String> {
+    let got = sha256_file(path)?;
+    match got == expected.to_lowercase() {
+        true => Ok(()),
+        false => Err(format!(
+            "{what}\n  expected sha256 {expected}\n  got      sha256 {got}"
+        )),
     }
-    Ok(())
 }
 
 pub(crate) fn extract(

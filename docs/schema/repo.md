@@ -509,9 +509,10 @@ Accepts: *boolean*
 Each check runs in the command named before it:
 
 - `buildc import module` and `buildc copy module`: the collection is pinned to a tag and its hash.
-- `buildc check`: each imported module still matches its import record.
+- `buildc check`: each copied module still matches the record it was copied with.
 - `buildc build`: the base tag resolves to a manifest digest.
 - `buildc build`: the repository is at a commit.
+- `buildc build`: each cloned asset resolves to a commit.
 - `buildc scap`: the scan report passes every rule of the profile.
 
 | Value | Effect |

@@ -38,6 +38,7 @@ nav:
   - Project:
       - Changelog: changelog.md
       - Contributing: contributing.md
+      - Threat model: threat-model.md
 
 validation:
   nav:

@@ -276,6 +276,21 @@ build_iso() {
 
     load_rootful
 
+    local manifest image_id
+    manifest="$(sudoif podman image inspect --format '{{.ManifestType}}' "$ref")" \
+        || die "cannot read the manifest type of ${ref} from root's store"
+    if [ "$manifest" != "application/vnd.oci.image.manifest.v1+json" ]; then
+        sudoif skopeo copy --quiet --format oci \
+            "containers-storage:${ref}" "containers-storage:${ref}" \
+            || die "cannot store ${ref} as OCI in root's store"
+    fi
+    image_id="$(sudoif podman image inspect --format '{{.Id}}' "$ref")" \
+        || die "cannot read the image ID of ${ref} from root's store"
+    if ! [[ "$image_id" =~ ^[0-9a-f]{64}$ ]]; then
+        die "podman named no image ID for ${ref}: ${image_id}"
+    fi
+    printf '%s\n' "$image_id" > "${staged}/image-id"
+
     rm -f "${image_file}.part"
 
     sudoif env HOME=/root \

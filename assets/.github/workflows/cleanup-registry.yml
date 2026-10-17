@@ -66,6 +66,7 @@ jobs:
               map({id, name, created_at, tags: .metadata.container.tags})
               | map(. + {kind: (if (.tags | length) == 0 then "untagged"
                                 elif (.tags | all(is_sig)) then "sig"
+                                elif .tags == ["unverified"] then "unverified"
                                 else "image" end)})
               | (map(select(.kind == "image")) | sort_by(.created_at) | reverse) as $images
               | (($images[:$keep] + ($images | map(select(.tags | index("latest"))))) | unique_by(.id)) as $keepimg

@@ -379,9 +379,17 @@ pub fn enforce_build(
     enforce: bool,
     resolved_base: Option<&str>,
     source_commit: Option<&str>,
+    unresolved: &[String],
 ) -> Result<(), String> {
     if !enforce {
         return Ok(());
+    }
+    if !unresolved.is_empty() {
+        return Err(format!(
+            "{}, so the build record would not name what the layer clones; \
+             `audit {{ enforce #true }}` makes that an error",
+            unresolved.join("; ")
+        ));
     }
     if resolved_base.is_none() {
         return Err(
@@ -424,12 +432,16 @@ mod tests {
 
     #[test]
     fn enforcement_is_a_lever_over_a_record_that_always_exists() {
-        assert!(enforce_build(false, None, None).is_ok());
-        assert!(enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef")).is_ok());
+        let lost = ["`apps/xone` asset `xone` names no `version` to resolve".to_string()];
+        assert!(enforce_build(false, None, None, &lost).is_ok());
+        assert!(enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef"), &[]).is_ok());
 
-        let no_base = enforce_build(true, None, Some("deadbeef")).unwrap_err();
+        let no_base = enforce_build(true, None, Some("deadbeef"), &[]).unwrap_err();
         assert!(no_base.contains("did not resolve"), "{no_base}");
-        let no_commit = enforce_build(true, Some("repo@sha256:abc"), None).unwrap_err();
+        let no_commit = enforce_build(true, Some("repo@sha256:abc"), None, &[]).unwrap_err();
         assert!(no_commit.contains("no commit"), "{no_commit}");
+        let no_asset =
+            enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef"), &lost).unwrap_err();
+        assert!(no_asset.contains("`apps/xone` asset `xone`"), "{no_asset}");
     }
 }

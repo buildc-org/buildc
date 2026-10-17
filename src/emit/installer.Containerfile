@@ -33,7 +33,7 @@ RUN set -eux; \
     esac; \
     asset="bootc-anywhere-v${INSTALLER_VERSION}-${arch}-linux-gnu.tar.gz"; \
     curl --retry 3 -fsSLo /tmp/installer.tar.gz \
-        "https://github.com/buildc-org/installer/releases/download/v${INSTALLER_VERSION}/${asset}"; \
+        "https://github.com/buildc-org/bootc-anywhere/releases/download/v${INSTALLER_VERSION}/${asset}"; \
     echo "${sha}  /tmp/installer.tar.gz" | sha256sum -c -; \
     mkdir -p /out; \
     tar -xf /tmp/installer.tar.gz -C /out bootc-anywhere
@@ -97,6 +97,7 @@ RUN set -eux; \
     systemctl set-default multi-user.target
 
 COPY recipe.json /usr/share/buildc/install-recipe.json
+COPY image-id /usr/share/buildc/image-id
 
 COPY <<'MOUNT' /usr/lib/systemd/system/var-lib-buildc-store.mount
 [Unit]

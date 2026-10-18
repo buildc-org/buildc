@@ -50,6 +50,42 @@ pub fn list_in(target: &str) -> String {
     format!("List it in {target}?")
 }
 
+pub const TARGET_IMAGE: &str = "Which image is this for?";
+pub const TARGET_NONE: &str = "None, only add it to the repository";
+
+pub fn unsupported(supports: &[String], family: &str) -> String {
+    format!("supports {}; this image is {family}", supports.join(", "))
+}
+
+pub fn present(name: &str) -> String {
+    format!("`{name}` is already in this repository.")
+}
+
+pub fn add_local(name: &str, image: &str) -> String {
+    format!("Add the local `{name}` to `{image}`")
+}
+
+pub const ANOTHER_NAME: &str = "Import it under another name";
+
+pub fn exclusive_to(capability: &str, holder: &str) -> String {
+    format!("`{capability}` is exclusive to `{holder}`")
+}
+
+pub fn exclusive_clash(capability: &str, holder: &str, image: &str) -> String {
+    format!("`{capability}` is exclusive, and `{holder}` already provides it in `{image}`.")
+}
+
+pub fn replace(holder: &str) -> String {
+    format!("Replace `{holder}`")
+}
+
+pub const CANCEL: &str = "Cancel";
+pub const LOCAL_NAME: &str = "local name";
+
+pub fn track(named: &str) -> String {
+    format!("Track upstream for {named}?")
+}
+
 pub const REQUIRED: &str =
     "The selected modules have dependencies not currently provided by the images:";
 pub const BRING_REQUIRED: &str = "Add these provider modules now?";

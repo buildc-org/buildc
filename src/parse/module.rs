@@ -239,10 +239,18 @@ pub const MODULE: Node = Node::new("module",
                     desc: "Whether the `file` exists only while the build runs.",
                     say: Say::new("`build-only` takes #true or #false", "not a boolean", ""),
                     missing: Say::NONE },
+                Prop { name: "exclusive", kind: Kind::Bool,
+                    desc: "Whether a second enabled provider of the capabilities that the node \
+                        names conflicts with this one.",
+                    say: Say::new("`exclusive` takes #true or #false", "not a boolean", ""),
+                    missing: Say::NONE },
             ], Say::new("unknown `provides` property `{}`", "not part of the schema",
-                "`provides` accepts `file` and `build-only`"))
+                "`provides` accepts `file`, `build-only` and `exclusive`"))
             .notes(&[
                 "The build checks the finished image for the witness file.",
+                "Many enabled modules may provide one capability. If one of them declares it \
+                 `exclusive=#true`, then `buildc check` refuses a second provider, and `buildc \
+                 import module` asks whether to replace the first.",
                 "A capability name is lower-case letters, digits and dashes, and starts with a \
                  letter. The generated graph writes the name unquoted into a mermaid label and a \
                  markdown table cell.",
@@ -674,22 +682,24 @@ impl Module {
     fn bare(path: &str, dir_rel: &str, root: &Path, issues: &mut Issues) -> Self {
         let dir = layout::module(root, dir_rel);
         let src = Source::new(dir.display().to_string(), String::new());
-        let module = Self::empty(path, dir_rel, &dir, &src, issues);
+        let module = Self::empty(path, dir_rel, root, &src);
         Self::rest(module, path, root, &dir, &[], &src, issues)
     }
 
-    fn empty(path: &str, dir_rel: &str, dir: &Path, src: &Source, issues: &mut Issues) -> Self {
+    fn empty(path: &str, dir_rel: &str, root: &Path, src: &Source) -> Self {
+        let dir = layout::module(root, dir_rel);
         Self {
             path: path.to_string(),
             dir: dir_rel.to_string(),
             description: String::new(),
             supports: Vec::new(),
             provides: Vec::new(),
+            exclusive: Vec::new(),
             requires: Vec::new(),
             after: Vec::new(),
             policies: [layout::SELINUX, layout::APPARMOR]
                 .iter()
-                .filter(|policy| !policy.files(dir).is_empty())
+                .filter(|policy| !policy.files(&dir).is_empty())
                 .map(|policy| policy.capability)
                 .collect(),
             files: Vec::new(),
@@ -716,8 +726,8 @@ impl Module {
             fragment: std::fs::read_to_string(dir.join("Containerfile.inc")).ok(),
             fragment_position: Position::default(),
             standard_layer: true,
-            content: crate::provenance::record::hash(dir),
-            imported: crate::provenance::record::read(dir, issues),
+            content: crate::provenance::lock::hash(&dir),
+            imported: crate::provenance::lock::entry(root, dir_rel),
             repo: layout::FAMILY_DIRS
                 .iter()
                 .map(|(gated, _)| dir.join(gated).join("repo"))
@@ -754,7 +764,7 @@ impl Module {
             }
         };
 
-        let mut module = Self::empty(path, dir_rel, &dir, src, issues);
+        let mut module = Self::empty(path, dir_rel, root, src);
 
         check_doc(&doc, &MODULE, src, issues);
         crate::parse::check_file_version(&doc, repo_version, repo_src, src, issues);
@@ -1159,6 +1169,10 @@ impl Module {
         }
         if kind == "provides" {
             self.locate(node, &decls, src, issues);
+            if flag(node, "exclusive") {
+                self.exclusive
+                    .extend(decls.iter().map(|decl| decl.name.clone()));
+            }
         }
         match kind {
             "provides" => self.provides.extend(decls),
@@ -1665,6 +1679,7 @@ pub fn satisfies_span(kdl: &str) -> Option<Span> {
 pub struct Summary {
     pub description: String,
     pub provides: Vec<String>,
+    pub exclusive: Vec<String>,
     pub supports: Vec<String>,
     pub requires: Vec<String>,
     pub keys: Vec<String>,
@@ -1700,9 +1715,16 @@ pub fn summary(file: &Path) -> Summary {
     };
     let mut provides = strings("provides");
     provides.extend(strings("key").iter().map(|kind| key_capability(kind)));
+    let exclusive = nodes
+        .iter()
+        .filter(|node| node.name().value() == "provides" && flag(node, "exclusive"))
+        .flat_map(|node| string_args(node))
+        .map(str::to_string)
+        .collect();
     Summary {
         description: strings("description").join(" "),
         provides,
+        exclusive,
         supports: strings("supports"),
         requires: strings("requires"),
         keys: strings("key"),
@@ -1967,6 +1989,21 @@ refuses "grub2_nousb_argument" because="two"
             twice.iter().any(|m| m.contains("is refused twice")),
             "{twice:?}"
         );
+    }
+
+    #[test]
+    fn a_summary_names_only_the_capabilities_declared_exclusive() {
+        let dir = std::env::temp_dir().join(format!("buildc-exclusive-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(layout::MODULE_FILE);
+        std::fs::write(
+            &file,
+            "provides \"one\" exclusive=#true\nprovides \"two\"\nkey \"cosign\" { generator \"cosign\" }\n",
+        )
+        .unwrap();
+        let read = summary(&file);
+        assert_eq!(read.exclusive, ["one"]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

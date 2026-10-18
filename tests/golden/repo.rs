@@ -161,9 +161,8 @@ fn create_into(name: &str, root: &Path) {
     buildc::import::Module::collect(
         buildc::import::Request {
             name: Some("upstream/fedora-family".into()),
-            images: vec!["example".into(), "server".into()],
+            image: Some("example".into()),
             datastream: None,
-            place: buildc::import::Place::Reference,
             dependencies: false,
         },
         &here,
@@ -174,6 +173,13 @@ fn create_into(name: &str, root: &Path) {
     .unwrap_or_else(|err| panic!("{}", err.message()))
     .apply(&here, &list.sources)
     .unwrap();
+    let server = root.join("server.image.kdl");
+    let listed = std::fs::read_to_string(&server).unwrap().replace(
+        "        module \"my-editor\"\n",
+        "        module \"my-editor\"\n        module \"fedora-family\"\n",
+    );
+    assert!(listed.contains("module \"fedora-family\""), "{listed}");
+    std::fs::write(&server, listed).unwrap();
 
     let mut out = String::new();
     for file in [
@@ -229,22 +235,24 @@ fn copied(name: &str, root: &Path) {
         "upstream/nosuch",
         "flatpak",
     ] {
-        out.push_str(&format!("==== copy {wanted}\n"));
-        let module = buildc::import::split(wanted).1;
-        match buildc::import::find(&here, &sources, wanted, false) {
+        out.push_str(&format!("==== import {wanted}\n"));
+        let imported = buildc::import::Module::collect(
+            buildc::import::Request {
+                name: Some(wanted.to_string()),
+                image: None,
+                datastream: None,
+                dependencies: false,
+            },
+            &here,
+            &sources,
+            false,
+            &common::prompt::Prompt::silent(),
+        )
+        .map_err(|err| err.message().to_string())
+        .and_then(|module| module.apply(&here, &sources));
+        match imported {
+            Ok(()) => out.push_str("copied\n"),
             Err(message) => out.push_str(&format!("{message}\n")),
-            Ok(found) if found.len() > 1 => {
-                let owners: Vec<&str> = found.iter().map(|f| f.owner.as_str()).collect();
-                out.push_str(&format!("ambiguous: {}\n", owners.join(", ")));
-            }
-            Ok(found) => {
-                match buildc::import::destination(&here, &found[0], module).and_then(|dest| {
-                    buildc::import::vendor(&here, &sources, &found[0], &dest).map(|_| dest)
-                }) {
-                    Ok(dest) => out.push_str(&format!("copied {}\n", dest.display())),
-                    Err(message) => out.push_str(&format!("{message}\n")),
-                }
-            }
         }
     }
 
@@ -257,8 +265,8 @@ fn copied(name: &str, root: &Path) {
     out.extend(written);
 
     out.push_str(&format!(
-        "==== the record\n{}",
-        std::fs::read_to_string(root.join("modules/flatpak/provenance.kdl")).unwrap()
+        "==== the lock\n{}",
+        std::fs::read_to_string(root.join("modules/modules.lock.kdl")).unwrap()
     ));
     out.push_str(&format!(
         "==== check\n{}",
@@ -266,13 +274,13 @@ fn copied(name: &str, root: &Path) {
     ));
     out.push_str(&format!(
         "==== modified\n{:?}\n",
-        buildc::provenance::record::modified(&here)
+        buildc::provenance::lock::modified(&here)
     ));
 
     std::fs::write(root.join("modules/flatpak/module.sh"), "echo forked\n").unwrap();
     out.push_str(&format!(
         "==== modified after an edit\n{:?}\n{}",
-        buildc::provenance::record::modified(&here),
+        buildc::provenance::lock::modified(&here),
         buildc::run(Command::Check, None, &here).issues.plain()
     ));
     assert_golden(name, "import.txt", &out);

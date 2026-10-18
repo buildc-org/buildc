@@ -16,7 +16,7 @@ libc = "0.2"
 miette = { version = "7.6.0", features = ["fancy"] }
 quick-xml = "0.42.0"
 tempfile = { version = "3.27.0", optional = true }
-common = { git = "https://github.com/buildc-org/common", rev = "7956131e0c3ae5c6d4dadd187659240e44be7527" }
+common = { git = "https://github.com/buildc-org/common", rev = "8f16bad0fdaaded30dd9eb0cf0b835dabbe20d63" }
 
 [lints.clippy]
 allow_attributes = "deny"
@@ -49,5 +49,5 @@ codegen-units = 1
 
 [dev-dependencies]
 clap-markdown = "0.1.5"
-common = { git = "https://github.com/buildc-org/common", rev = "7956131e0c3ae5c6d4dadd187659240e44be7527", features = ["test-support"] }
+common = { git = "https://github.com/buildc-org/common", rev = "8f16bad0fdaaded30dd9eb0cf0b835dabbe20d63", features = ["test-support"] }
 insta = { version = "1.49.0", default-features = false, features = ["filters"] }

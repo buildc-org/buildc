@@ -241,13 +241,14 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
     let (unpinned, modified) = match command {
         Command::Check => {
             let _ = base::catalog(root, &list.sources, &mut issues);
+            provenance::lock::validate(root, &mut issues);
             (
                 list.sources
                     .iter()
                     .filter(|c| c.unpinned())
                     .map(|c| c.name.clone())
                     .collect(),
-                provenance::record::modified(root),
+                provenance::lock::modified(root),
             )
         }
         Command::Plan
@@ -267,12 +268,12 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         for name in &modified {
             issues.push(
                 Issue::new(
-                    format!("`{name}` no longer matches the record it was imported with"),
+                    format!("`{name}` no longer matches its entry in the module lock"),
                     &list.repo_src,
                 )
                 .help(
-                    "`audit { enforce #true }` makes a fork an error; re-import it, or drop the \
-                     `provenance.kdl` beside its manifest to own the module outright",
+                    "`audit { enforce #true }` makes a fork an error; re-import it, or drop its \
+                     entry from `modules/modules.lock.kdl` to own the module outright",
                 ),
             );
         }
@@ -627,6 +628,14 @@ fn difference(found: &str, generated: &str) -> (diag::Span, String) {
                 return (span, label);
             }
         }
+    }
+}
+
+pub(crate) fn said(items: &[String]) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
     }
 }
 

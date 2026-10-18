@@ -134,10 +134,7 @@ impl Index {
     pub fn fitting(&self, capability: &str, family: &str) -> Vec<&Provider> {
         self.of(capability)
             .into_iter()
-            .filter(|held| {
-                held.declares.supports.is_empty()
-                    || held.declares.supports.iter().any(|has| has == family)
-            })
+            .filter(|held| crate::resolve::supports(&held.declares.supports, family))
             .collect()
     }
 

@@ -2,9 +2,10 @@ use crate::copy;
 use crate::create::{report, Change, Listing};
 use crate::dispatch::Error;
 use crate::layout;
-use crate::model::remote::{At, Collection, Kind as SourceKind, REMOTE_DIR};
-use crate::provenance::record;
+use crate::model::remote::{At, Collection, Kind as SourceKind};
+use crate::provenance::lock;
 use crate::provider::Provider;
+use crate::said;
 use common::prompt::Prompt;
 use common::ui::Choice;
 use std::path::{Path, PathBuf};
@@ -48,17 +49,7 @@ pub fn find(
              with a dot"
         ));
     }
-    if !sources
-        .iter()
-        .any(|source| source.kind == SourceKind::Modules)
-    {
-        const NONE: &str = "repo.kdl declares no `sources`, so there is no collection to import \
-                            from";
-        let block = crate::init::sources_block(&crate::create::Libraries::every());
-        return Err(format!(
-            "{NONE}.\n\nThis is the block `buildc create repo` writes:\n\n{block}"
-        ));
-    }
+    no_library(sources)?;
 
     let (possible_owner, rest) = split(name);
     let owner = possible_owner.filter(|owner| {
@@ -125,6 +116,20 @@ pub fn find(
     Ok(found)
 }
 
+fn no_library(sources: &[Collection]) -> Result<(), String> {
+    if sources
+        .iter()
+        .any(|source| source.kind == SourceKind::Modules)
+    {
+        return Ok(());
+    }
+    const NONE: &str = "repo.kdl declares no `sources`, so there is no collection to import from";
+    let block = crate::init::sources_block(&crate::create::Libraries::every());
+    Err(format!(
+        "{NONE}.\n\nThis is the block `buildc create repo` writes:\n\n{block}"
+    ))
+}
+
 fn members(tree: &Path) -> Vec<String> {
     layout::module_dirs(
         tree,
@@ -176,7 +181,12 @@ pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<P
     Ok(listed)
 }
 
-fn offered(root: &Path, sources: &[Collection]) -> Result<(Vec<Provider>, Vec<Choice>), String> {
+fn offered(
+    root: &Path,
+    sources: &[Collection],
+    fit: Option<&Fit>,
+) -> Result<(Vec<Provider>, Vec<Choice>), String> {
+    no_library(sources)?;
     let listed = catalog(root, sources, true)?;
     if listed.is_empty() {
         return Err(format!("no module in {}", names(sources)));
@@ -185,29 +195,167 @@ fn offered(root: &Path, sources: &[Collection]) -> Result<(Vec<Provider>, Vec<Ch
         .iter()
         .map(|module| {
             let group = module.name.split_once('/').map_or("", |(group, _)| group);
-            Choice::new(module.qualified(), module.about()).within(group)
+            match fit.and_then(|fit| fit.unavailable(&module.declares)) {
+                Some(why) => Choice::new(module.qualified(), why).unavailable(),
+                None => Choice::new(module.qualified(), module.about()),
+            }
+            .within(group)
         })
         .collect();
     Ok((listed, options))
 }
 
-fn unchosen(command: &str) -> String {
-    format!("no module chosen; `buildc {command} module <name>` names one")
+struct Fit<'a> {
+    image: &'a crate::model::image::Image,
+    index: crate::provider::Index,
+}
+
+impl<'a> Fit<'a> {
+    fn of(
+        root: &Path,
+        sources: &[Collection],
+        list: &'a crate::model::image::List,
+        listing: &'a Listing,
+    ) -> Option<Self> {
+        let (named, _) = listing.targets().into_iter().next()?;
+        let image = list.images.iter().find(|image| image.name == named)?;
+        let disk = crate::parse::disk::Disk::scan(root);
+        Some(Self {
+            image,
+            index: crate::provider::Index::scan(root, sources, &disk, false),
+        })
+    }
+
+    fn unavailable(&self, declares: &crate::parse::module::Summary) -> Option<String> {
+        self.unsupported(declares).or_else(|| {
+            self.clash(declares)
+                .map(|(capability, held)| copy::exclusive_to(&capability, &held[0].path))
+        })
+    }
+
+    fn unsupported(&self, declares: &crate::parse::module::Summary) -> Option<String> {
+        let family = self
+            .image
+            .base
+            .as_ref()
+            .map(|base| base.family.as_str())
+            .filter(|family| !family.is_empty())?;
+        (!crate::resolve::supports(&declares.supports, family))
+            .then(|| copy::unsupported(&declares.supports, family))
+    }
+
+    fn clash(
+        &self,
+        declares: &crate::parse::module::Summary,
+    ) -> Option<(String, Vec<&'a crate::model::image::Entry>)> {
+        let base: Vec<&str> = self
+            .image
+            .base
+            .iter()
+            .flat_map(|base| base.provides.iter())
+            .map(|decl| decl.name.as_str())
+            .collect();
+        if declares
+            .provides
+            .iter()
+            .all(|capability| base.contains(&capability.as_str()))
+        {
+            return None;
+        }
+        for capability in &declares.provides {
+            let held: Vec<(&'a crate::model::image::Entry, bool)> = self
+                .image
+                .entries
+                .iter()
+                .filter_map(|entry| {
+                    let provider = self.index.at(&entry.dir())?;
+                    provider
+                        .declares
+                        .provides
+                        .contains(capability)
+                        .then(|| (entry, provider.declares.exclusive.contains(capability)))
+                })
+                .collect();
+            let mut flags: Vec<bool> = held.iter().map(|(_, exclusive)| *exclusive).collect();
+            flags.push(declares.exclusive.contains(capability));
+            if crate::resolve::exclusive(&flags) {
+                return Some((
+                    capability.clone(),
+                    held.into_iter().map(|(entry, _)| entry).collect(),
+                ));
+            }
+        }
+        None
+    }
+
+    fn settle(
+        &self,
+        capability: &str,
+        held: &[&crate::model::image::Entry],
+        prompt: &Prompt,
+    ) -> Result<Vec<Unlisted>, String> {
+        let named: Vec<String> = held.iter().map(|entry| entry.path.clone()).collect();
+        let holder = said(&named);
+        let options = [
+            Choice::new(copy::replace(&holder), ""),
+            Choice::new(copy::CANCEL, ""),
+        ];
+        let answer = match prompt.asks() {
+            true => prompt.choose(
+                &copy::exclusive_clash(capability, &holder, &self.image.name),
+                &options,
+            )?,
+            false => None,
+        };
+        match answer {
+            Some(0) => Ok(held
+                .iter()
+                .map(|entry| Unlisted {
+                    file: PathBuf::from(self.image.src.name()),
+                    image: self.image.name.clone(),
+                    flavour: entry.flavour.clone(),
+                    source: entry.source.clone(),
+                    name: entry.name().to_string(),
+                })
+                .collect()),
+            Some(_) => Err(format!(
+                "nothing imported: `{capability}` is exclusive to `{holder}` in `{}`",
+                self.image.name
+            )),
+            None => Err(format!(
+                "`{capability}` is exclusive, and `{holder}` already provides it in `{}`; run \
+                 `buildc import module` in a terminal to replace it",
+                self.image.name
+            )),
+        }
+    }
+}
+
+struct Unlisted {
+    file: PathBuf,
+    image: String,
+    flavour: Option<String>,
+    source: Option<String>,
+    name: String,
+}
+
+fn unchosen() -> String {
+    "no module chosen; `buildc import module <name>` names one".to_string()
 }
 
 fn choose_several(
     root: &Path,
     sources: &[Collection],
-    command: &str,
+    fit: Option<&Fit>,
     prompt: &Prompt,
 ) -> Result<Vec<String>, String> {
-    let (listed, options) = offered(root, sources)?;
+    let (listed, options) = offered(root, sources, fit)?;
     let chosen = match prompt.choose_many(copy::WHICH_MODULES, &options, &[])? {
         common::ui::Answer::Chosen(chosen) => chosen,
         common::ui::Answer::Cancelled => Vec::new(),
     };
     match chosen.is_empty() {
-        true => Err(unchosen(command)),
+        true => Err(unchosen()),
         false => Ok(chosen.iter().map(|at| listed[*at].qualified()).collect()),
     }
 }
@@ -385,55 +533,43 @@ fn fetch_git(remote: &crate::provenance::Evidence, work: &Path) -> Result<(), St
     Ok(())
 }
 
-pub fn destination(root: &Path, found: &Found, module: &str) -> Result<PathBuf, String> {
-    let dest = PathBuf::from(layout::MODULES).join(module);
-    let dir = root.join(&dest);
-    if !dir.exists() {
-        return Ok(dest);
-    }
-    let mut issues = crate::diag::Issues::default();
-    match record::read(&dir, &mut issues) {
-        Some(record) if record.collection == found.owner => Err(format!(
-            "`{module}` was already copied from `{}`",
-            found.owner
-        )),
-        Some(record) => Err(format!(
-            "`{module}` was copied from `{}`; refusing the namesake from `{}`",
-            record.collection, found.owner
-        )),
-        None => Err(format!(
-            "{} is already there; delete it to copy over it",
-            dest.display()
-        )),
-    }
-}
-
-pub fn vendor(
+fn vendor(
     root: &Path,
     sources: &[Collection],
-    found: &Found,
-    dest: &Path,
+    member: &Member,
+    tracked: bool,
 ) -> Result<Vec<PathBuf>, String> {
-    let content = record::hash(&found.dir).ok_or_else(|| {
+    let from = &member.from;
+    let content = lock::hash(&from.dir).ok_or_else(|| {
         format!(
             "{} cannot be hashed, so nothing can record what was copied",
-            found.dir.display()
+            from.dir.display()
         )
     })?;
-    let dir = root.join(dest);
-    let mut wrote: Vec<PathBuf> = crate::init::copy_tree(&found.dir, &dir)?
+    let mut pin = crate::provenance::Evidence::new(crate::diag::Span::default());
+    if let Some(library) = sources
+        .iter()
+        .find(|c| c.kind == SourceKind::Modules && c.name == from.owner)
+        .and_then(Collection::pin)
+    {
+        pin.url.clone_from(&library.url);
+        pin.version.clone_from(&library.version);
+    }
+    let record = lock::Record {
+        path: member.name.clone(),
+        library: from.owner.clone(),
+        upstream: from.name.clone(),
+        pin,
+        content,
+        tracked,
+    };
+    let locked = lock::with(root, record)?;
+    let dest = PathBuf::from(layout::MODULES).join(&member.name);
+    let wrote = crate::init::copy_tree(&from.dir, &root.join(&dest))?
         .into_iter()
         .map(|under| dest.join(under))
         .collect();
-    let pin = sources
-        .iter()
-        .find(|c| c.kind == SourceKind::Modules && c.name == found.owner)
-        .and_then(Collection::pin);
-    crate::init::put(
-        &dir.join(record::RECORD),
-        &record::write(&found.owner, pin, &content),
-    )?;
-    wrote.push(dest.join(record::RECORD));
+    crate::init::put(&layout::lock(root), &locked)?;
     Ok(wrote)
 }
 
@@ -443,7 +579,7 @@ fn resolve(
     sources: &[Collection],
     enforce: bool,
     prompt: &Prompt,
-) -> Result<(Found, String), Error> {
+) -> Result<Found, Error> {
     let mut found = find(root, sources, name, enforce)?;
     let module = split(name).1.to_string();
     let at = match found.as_slice() {
@@ -466,22 +602,29 @@ fn resolve(
                 })?
         }
     };
-    let found = found.swap_remove(at);
-    let name = found.name.clone();
-    Ok((found, name))
+    Ok(found.swap_remove(at))
 }
 
 struct Member {
     from: Found,
     name: String,
-    dest: PathBuf,
+    vendor: bool,
+}
+
+impl Member {
+    fn declares(&self, root: &Path) -> crate::parse::module::Summary {
+        let dir = match self.vendor {
+            true => self.from.dir.clone(),
+            false => layout::module(root, &self.name),
+        };
+        crate::parse::module::summary(&dir.join(layout::MODULE_FILE))
+    }
 }
 
 pub struct Request<'a> {
     pub name: Option<String>,
-    pub images: Vec<String>,
+    pub image: Option<String>,
     pub datastream: Option<&'a Path>,
-    pub place: Place,
     pub dependencies: bool,
 }
 
@@ -491,43 +634,11 @@ struct Listed<'a> {
     declares: &'a [crate::parse::module::Summary],
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum Place {
-    Reference,
-    Vendored,
-}
-
-impl Place {
-    fn word(self) -> &'static str {
-        match self {
-            Self::Reference => "import",
-            Self::Vendored => "copy",
-        }
-    }
-
-    fn dest(self, found: &Found) -> PathBuf {
-        let modules = PathBuf::from(layout::MODULES);
-        match self {
-            Self::Reference => modules
-                .join(REMOTE_DIR)
-                .join(&found.owner)
-                .join(&found.name),
-            Self::Vendored => modules.join(&found.name),
-        }
-    }
-
-    fn source(self, found: &Found) -> Option<&str> {
-        match self {
-            Self::Reference => Some(&found.owner),
-            Self::Vendored => None,
-        }
-    }
-}
-
 pub struct Module {
     members: Vec<Member>,
     listing: Listing,
-    place: Place,
+    tracked: bool,
+    unlisted: Vec<Unlisted>,
     workflows: Option<crate::set::Workflows>,
     conforms: Vec<crate::set::Conforms>,
 }
@@ -542,28 +653,22 @@ impl Module {
     ) -> Result<Self, Error> {
         let Request {
             name,
-            images,
+            image,
             datastream,
-            place,
             dependencies,
         } = request;
         let (list, _) = crate::model::image::List::load(root);
-        if place == Place::Reference && list.images.is_empty() {
-            return Err(
-                "`import module` needs an image; run `buildc create image <name>` first"
-                    .to_string()
-                    .into(),
-            );
-        }
+        let listing = Listing::target(root, image, prompt)?;
+        let fit = Fit::of(root, sources, &list, &listing);
         let asked = match name {
             Some(name) => vec![name],
-            None => choose_several(root, sources, place.word(), prompt)?,
+            None => choose_several(root, sources, fit.as_ref(), prompt)?,
         };
         let picked = asked
             .iter()
             .map(|name| resolve(name, root, sources, enforce, prompt))
-            .collect::<Result<Vec<(Found, String)>, Error>>()?;
-        for (from, _) in &picked {
+            .collect::<Result<Vec<Found>, Error>>()?;
+        for from in &picked {
             let issues = crate::parse::module::validate_manifest(
                 &from.dir.join(layout::MODULE_FILE),
                 list.schema_version,
@@ -575,18 +680,21 @@ impl Module {
         }
         let chosen = picked
             .iter()
-            .map(|(from, name)| member(root, from, name, place))
+            .map(|from| member(root, from, &listing, prompt))
             .collect::<Result<Vec<Member>, String>>()?;
-        let declares: Vec<crate::parse::module::Summary> = picked
-            .iter()
-            .map(|(from, _)| crate::parse::module::summary(&from.dir.join(layout::MODULE_FILE)))
-            .collect();
-
-        let listing = Listing::collect(root, images, prompt)?;
-        for member in &chosen {
-            listing.refuse_duplicate(&list, &member.name, place.source(&member.from))?;
+        let declares: Vec<crate::parse::module::Summary> =
+            chosen.iter().map(|member| member.declares(root)).collect();
+        if let Some(fit) = &fit {
+            for (member, declares) in chosen.iter().zip(&declares) {
+                if let Some(why) = fit.unsupported(declares) {
+                    return Err(format!("`{}` {why}", member.name).into());
+                }
+            }
         }
-        let named: Vec<String> = picked.iter().map(|(_, name)| name.clone()).collect();
+        for member in &chosen {
+            listing.refuse_duplicate(&list, &member.name, None)?;
+        }
+        let named: Vec<String> = chosen.iter().map(|member| member.name.clone()).collect();
 
         let also = short(
             root,
@@ -604,15 +712,25 @@ impl Module {
         .filter(|qualified| {
             !picked
                 .iter()
-                .any(|(from, name)| format!("{}/{name}", from.owner) == *qualified)
+                .any(|from| format!("{}/{}", from.owner, from.name) == *qualified)
         })
-        .map(|qualified| {
-            let mut found = find(root, sources, &qualified, enforce)?;
-            let from = found.swap_remove(0);
-            let name = from.name.clone();
-            member(root, &from, &name, place)
-        })
+        .map(|qualified| brought(root, sources, enforce, &qualified))
         .collect::<Result<Vec<Member>, String>>()?;
+        let mut unlisted: Vec<Unlisted> = Vec::new();
+        if let Some(fit) = &fit {
+            for member in also.iter().chain(&chosen) {
+                let Some((capability, held)) = fit.clash(&member.declares(root)) else {
+                    continue;
+                };
+                let held: Vec<&crate::model::image::Entry> = held
+                    .into_iter()
+                    .filter(|entry| !unlisted.iter().any(|gone| gone.name == entry.name()))
+                    .collect();
+                if !held.is_empty() {
+                    unlisted.extend(fit.settle(&capability, &held, prompt)?);
+                }
+            }
+        }
 
         let unlocked = match listing.images().is_empty() {
             true => Vec::new(),
@@ -642,10 +760,22 @@ impl Module {
         let conforms = measured(
             &list, &listing, &named, &declares, datastream, &brought, prompt,
         )?;
+        let copied: Vec<String> = members
+            .iter()
+            .filter(|member| member.vendor)
+            .map(|member| format!("`{}`", member.name))
+            .collect();
+        let tracked = match copied.is_empty() {
+            true => true,
+            false => {
+                prompt.confirm_current(&copy::track(&said(&copied)), copy::YES, copy::NO, true)?
+            }
+        };
         Ok(Self {
             members,
             listing,
-            place,
+            tracked,
+            unlisted,
             workflows,
             conforms,
         })
@@ -664,69 +794,59 @@ impl Module {
         root: &Path,
         sources: &[Collection],
     ) -> Result<Vec<(PathBuf, Change)>, String> {
-        match self.listing {
-            Listing::Cancelled => return Ok(Vec::new()),
-            _ if self.place == Place::Vendored => {}
-            Listing::NoImage => {
-                return Err(
-                    "`import module` needs an image; run `buildc create image <name>` first".into(),
-                )
-            }
-            Listing::Declined { asked: false } => {
-                return Err(
-                    "`import module` needs an image to list it in; name one with `--image`".into(),
-                )
-            }
-            Listing::Declined { asked: true } => {
-                return Err(
-                    "an import is a reference an image lists, so listing it in none imports \
-                     nothing"
-                        .into(),
-                )
-            }
-            Listing::In(_) => {}
-        }
         let mut wrote: Vec<(PathBuf, Change)> = Vec::new();
-        for member in &self.members {
-            match self.place {
-                Place::Reference => {
-                    let dir = root.join(&member.dest);
-                    crate::init::remove(&dir)?;
-                    crate::init::copy_tree(&member.from.dir, &dir)?;
-                }
-                Place::Vendored => wrote.extend(
-                    vendor(root, sources, &member.from, &member.dest)?
-                        .into_iter()
-                        .map(|path| (path, Change::Created)),
-                ),
-            }
+        let existed = layout::lock(root).exists();
+        let mut recorded: Vec<String> = Vec::new();
+        for member in self.members.iter().filter(|member| member.vendor) {
+            wrote.extend(
+                vendor(root, sources, member, self.tracked)?
+                    .into_iter()
+                    .map(|path| (path, Change::Created)),
+            );
+            recorded.push(member.name.clone());
+        }
+        if !recorded.is_empty() {
+            wrote.push((
+                PathBuf::from(layout::MODULES).join(layout::LOCK_FILE),
+                match existed {
+                    true => Change::Updated(format!("{} recorded", said(&recorded))),
+                    false => Change::Created,
+                },
+            ));
         }
         let listed: Vec<(&str, Option<&str>)> = self
             .members
             .iter()
-            .map(|member| (member.name.as_str(), self.place.source(&member.from)))
+            .map(|member| (member.name.as_str(), None))
             .collect();
+        for gone in &self.unlisted {
+            crate::create::unlist(
+                &root.join(&gone.file),
+                &gone.image,
+                gone.flavour.as_deref(),
+                gone.source.as_deref(),
+                &gone.name,
+            )?;
+        }
         let (list, _) = crate::model::image::List::load(root);
         wrote.extend(self.listing.apply_declaration(&list, &listed)?);
+        for gone in &self.unlisted {
+            let removed = format!("{} removed", gone.name);
+            match wrote.iter_mut().find(|(path, _)| *path == gone.file) {
+                Some((_, Change::Updated(said))) => {
+                    said.push_str(", and ");
+                    said.push_str(&removed);
+                }
+                _ => wrote.push((gone.file.clone(), Change::Updated(removed))),
+            }
+        }
         if let Some(workflows) = &self.workflows {
             wrote.extend(workflows.apply(root)?);
         }
         for conforms in &self.conforms {
             wrote.extend(conforms.apply(root)?);
         }
-        let brought: Vec<String> = self
-            .members
-            .iter()
-            .map(|member| {
-                member
-                    .dest
-                    .strip_prefix(layout::MODULES)
-                    .unwrap_or(&member.dest)
-                    .display()
-                    .to_string()
-            })
-            .collect();
-        collisions(root, &brought);
+        collisions(root, &self.brought());
         Ok(wrote)
     }
 
@@ -747,32 +867,90 @@ pub fn bring(
 ) -> Result<Module, String> {
     let members = named
         .iter()
-        .map(|qualified| {
-            let mut found = find(root, sources, qualified, enforce)?;
-            let from = found.swap_remove(0);
-            let name = from.name.clone();
-            member(root, &from, &name, Place::Reference)
-        })
+        .map(|qualified| brought(root, sources, enforce, qualified))
         .collect::<Result<Vec<Member>, String>>()?;
     Ok(Module {
         members,
         listing: Listing::collect(root, vec![image.to_string()], &Prompt::silent())?,
-        place: Place::Reference,
+        tracked: true,
+        unlisted: Vec::new(),
         workflows: None,
         conforms: Vec::new(),
     })
 }
 
-fn member(root: &Path, from: &Found, name: &str, place: Place) -> Result<Member, String> {
-    let dest = match place {
-        Place::Reference => place.dest(from),
-        Place::Vendored => destination(root, from, name)?,
-    };
+fn brought(
+    root: &Path,
+    sources: &[Collection],
+    enforce: bool,
+    qualified: &str,
+) -> Result<Member, String> {
+    let mut found = find(root, sources, qualified, enforce)?;
+    let from = found.swap_remove(0);
+    let name = from.name.clone();
     Ok(Member {
-        from: from.clone(),
-        name: name.to_string(),
-        dest,
+        vendor: !layout::module(root, &name).exists(),
+        from,
+        name,
     })
+}
+
+fn member(root: &Path, from: &Found, listing: &Listing, prompt: &Prompt) -> Result<Member, String> {
+    let name = from.name.clone();
+    if !layout::module(root, &name).exists() {
+        return Ok(Member {
+            from: from.clone(),
+            name,
+            vendor: true,
+        });
+    }
+    let image = listing.images().first().map(ToString::to_string);
+    let mut options = Vec::new();
+    if let Some(image) = &image {
+        options.push(Choice::new(copy::add_local(&name, image), ""));
+    }
+    options.push(Choice::new(copy::ANOTHER_NAME, ""));
+    let answer = match prompt.asks() {
+        true => prompt.choose(&copy::present(&name), &options)?,
+        false => None,
+    };
+    match (answer, &image) {
+        (Some(0), Some(_)) => Ok(Member {
+            from: from.clone(),
+            name,
+            vendor: false,
+        }),
+        (Some(_), _) => {
+            let suggested = free_name(root, &name);
+            let chosen =
+                prompt.line(None, copy::LOCAL_NAME, "a local name", "", Some(&suggested))?;
+            if !crate::model::image::is_local_path(&chosen) {
+                return Err(format!(
+                    "`{chosen}` is not a module path: each part is lowercase letters, digits and \
+                     dashes, starting with a letter, and the last part may end in one `@<tag>`"
+                ));
+            }
+            if layout::module(root, &chosen).exists() {
+                return Err(format!("`{chosen}` is already in this repository"));
+            }
+            Ok(Member {
+                from: from.clone(),
+                name: chosen,
+                vendor: true,
+            })
+        }
+        (None, _) => Err(format!(
+            "`{name}` is already in this repository; run `buildc import module` in a terminal to \
+             list the local `{name}` or import the library's under another name"
+        )),
+    }
+}
+
+fn free_name(root: &Path, name: &str) -> String {
+    (1..)
+        .map(|at| format!("{name}@{at}"))
+        .find(|candidate| !layout::module(root, candidate).exists())
+        .expect("an unbounded range holds a free name")
 }
 
 fn short(
@@ -993,14 +1171,6 @@ fn measured(
         .collect())
 }
 
-pub(crate) fn said(items: &[String]) -> String {
-    match items.split_last() {
-        None => String::new(),
-        Some((last, [])) => last.clone(),
-        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1045,7 +1215,7 @@ mod tests {
             collection("community", "tests/collections/community"),
             collection("grouped", "tests/collections/grouped"),
         ];
-        let (_, options) = offered(root, &sources).unwrap();
+        let (_, options) = offered(root, &sources, None).unwrap();
         let nested = options
             .iter()
             .find(|option| option.label == "grouped/hardening/coredumps")
@@ -1057,6 +1227,169 @@ mod tests {
 
         assert_eq!(nested.group, "hardening");
         assert!(root_level.group.is_empty());
+    }
+
+    fn targeted(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("buildc-{name}-{}", std::process::id()));
+        crate::init::put(
+            &root.join(layout::REPO_FILE),
+            "schema-version 1\nname \"Example\"\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join(layout::IMAGE_FILE),
+            "schema-version 1\n\nimage {\n    name \"example\"\n    base \"example\" { family \"fedora\" }\n    modules {\n        module \"flathub\"\n    }\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("modules/flathub/module.kdl"),
+            "schema-version 1\n\nprovides \"flatpak\" exclusive=#true\n",
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn a_member_that_would_clash_is_unavailable_with_its_reason() {
+        let root = targeted("clash-row");
+        let sources = [collection(
+            "upstream",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/collections/upstream"),
+        )];
+        let (list, _) = crate::model::image::List::load(&root);
+        let listing = Listing::target(&root, Some("example".into()), &Prompt::silent()).unwrap();
+        let fit = Fit::of(&root, &sources, &list, &listing).expect("the image is the target");
+        let (_, options) = offered(&root, &sources, Some(&fit)).unwrap();
+        let row = |label: &str| {
+            options
+                .iter()
+                .find(|option| option.label == label)
+                .unwrap_or_else(|| panic!("no row {label}"))
+        };
+
+        assert!(!row("upstream/flatpak").available);
+        assert_eq!(
+            row("upstream/flatpak").detail,
+            "`flatpak` is exclusive to `flathub`"
+        );
+        assert!(!row("upstream/debian-family").available);
+        assert!(row("upstream/browser").available);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn flavoured(name: &str, base: &str) -> PathBuf {
+        let root = targeted(name);
+        crate::init::put(
+            &root.join(layout::IMAGE_FILE),
+            &format!("schema-version 1\n\nimage {{\n    name \"example\"\n    {base}\n    flavours {{\n        dev\n        prod\n    }}\n    modules {{\n        flavour \"dev\" {{ module \"flathub\" }}\n    }}\n}}\n"),
+        )
+        .unwrap();
+        root
+    }
+
+    fn upstream_flatpak() -> crate::parse::module::Summary {
+        crate::parse::module::summary(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/collections/upstream/flatpak/module.kdl"
+        )))
+    }
+
+    #[test]
+    fn a_holder_in_another_flavour_clashes_as_check_counts_it() {
+        let root = flavoured("clash-flavour", "base \"example\" { family \"fedora\" }");
+        let (list, _) = crate::model::image::List::load(&root);
+        let listing =
+            Listing::target(&root, Some("example/prod".into()), &Prompt::silent()).unwrap();
+        let fit = Fit::of(&root, &[], &list, &listing).expect("the flavour is the target");
+        let (capability, held) = fit.clash(&upstream_flatpak()).expect("a clash");
+
+        assert_eq!(capability, "flatpak");
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].path, "flathub");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_member_the_base_covers_never_clashes() {
+        let root = flavoured(
+            "clash-base",
+            "base \"example\" {\n        family \"fedora\"\n        provides \"flatpak\"\n    }",
+        );
+        let (list, _) = crate::model::image::List::load(&root);
+        let listing = Listing::target(&root, Some("example".into()), &Prompt::silent()).unwrap();
+        let fit = Fit::of(&root, &[], &list, &listing).expect("the image is the target");
+
+        assert!(fit.clash(&upstream_flatpak()).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn no_library_is_refused_with_the_block_that_declares_one() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let named = find(root, &[], "browser", false)
+            .err()
+            .expect("no library is refused");
+        let picked = offered(root, &[], None)
+            .err()
+            .expect("no library is refused");
+
+        assert!(named.contains("declares no `sources`"), "{named}");
+        assert_eq!(picked, named);
+    }
+
+    #[test]
+    fn choosing_no_module_is_refused() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let sources = [collection("upstream", "tests/collections/upstream")];
+        let refused = choose_several(root, &sources, None, &Prompt::silent()).unwrap_err();
+
+        assert!(refused.starts_with("no module chosen"), "{refused}");
+    }
+
+    #[test]
+    fn a_copy_from_a_fetched_library_records_its_url_and_revision() {
+        let root = std::env::temp_dir().join(format!("buildc-vendor-pin-{}", std::process::id()));
+        crate::init::put(&root.join("library/hello/module.sh"), "true\n").unwrap();
+        let mut pin = crate::provenance::Evidence::new(crate::diag::Span::default());
+        pin.url = Some("https://host/owner/library.git".into());
+        pin.version = Some("v2.0.0".into());
+        let sources = [
+            collection("other", "elsewhere"),
+            Collection {
+                kind: SourceKind::Modules,
+                name: "one".into(),
+                at: At::Git(pin),
+                span: crate::diag::Span::default(),
+            },
+        ];
+        let member = Member {
+            from: Found {
+                owner: "one".into(),
+                name: "hello".into(),
+                dir: root.join("library/hello"),
+            },
+            name: "hello".into(),
+            vendor: true,
+        };
+        vendor(&root, &sources, &member, false).unwrap();
+        let entry = lock::entry(&root, "hello").expect("the copy is recorded");
+
+        assert_eq!(
+            entry.pin.url.as_deref(),
+            Some("https://host/owner/library.git")
+        );
+        assert_eq!(entry.pin.version.as_deref(), Some("v2.0.0"));
+        assert!(!entry.tracked);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn no_target_leaves_every_member_available() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let sources = [collection("upstream", "tests/collections/upstream")];
+        let (_, options) = offered(root, &sources, None).unwrap();
+
+        assert!(options.iter().all(|option| option.available));
     }
 
     #[test]
@@ -1099,85 +1432,29 @@ image {
     fn an_unhashable_copy_writes_nothing() {
         let root =
             std::env::temp_dir().join(format!("buildc-unhashable-copy-{}", std::process::id()));
-        let found = Found {
-            owner: "one".into(),
-            name: "missing".into(),
-            dir: root.join("missing"),
-        };
-        let dest = Path::new("modules/missing");
-
-        assert!(vendor(&root, &[], &found, dest).is_err());
-        assert!(!root.join(dest).exists());
-    }
-
-    #[test]
-    fn a_cancelled_listing_writes_nothing() {
-        let root = std::env::temp_dir().join(format!("buildc-cancel-import-{}", std::process::id()));
-        let from = root.join("collection/module");
-        crate::init::put(&root.join(layout::REPO_FILE), "schema-version 1\n").unwrap();
-        crate::init::put(
-            &from.join(layout::MODULE_FILE),
-            "schema-version 1\n\ndescription \"x\"\n",
-        )
-        .unwrap();
-
-        for place in [Place::Reference, Place::Vendored] {
-            let found = Found {
+        let member = Member {
+            from: Found {
                 owner: "one".into(),
-                name: "module".into(),
-                dir: from.clone(),
-            };
-            let dest = place.dest(&found);
-            Module {
-                members: vec![Member {
-                    from: found,
-                    name: "module".into(),
-                    dest: dest.clone(),
-                }],
-                listing: Listing::Cancelled,
-                place,
-                workflows: None,
-                conforms: Vec::new(),
-            }
-            .write(&root, &[])
-            .unwrap();
-            assert!(!root.join(&dest).exists());
-        }
-        assert_eq!(
-            std::fs::read_to_string(root.join(layout::REPO_FILE)).unwrap(),
-            "schema-version 1\n"
-        );
-        let _ = std::fs::remove_dir_all(root);
+                name: "missing".into(),
+                dir: root.join("missing"),
+            },
+            name: "missing".into(),
+            vendor: true,
+        };
+
+        assert!(vendor(&root, &[], &member, true).is_err());
+        assert!(!root.join("modules/missing").exists());
+        assert!(!layout::lock(&root).exists());
     }
 
     #[test]
-    fn no_image_is_refused_before_a_module_is_resolved() {
-        let root =
-            std::env::temp_dir().join(format!("buildc-no-import-image-{}", std::process::id()));
-        crate::init::put(
-            &root.join(layout::REPO_FILE),
-            "schema-version 1\nname \"Example\"\n",
-        )
-        .unwrap();
-        let result = Module::collect(
-            Request {
-                name: Some("nosuch".into()),
-                images: Vec::new(),
-                datastream: None,
-                place: Place::Reference,
-                dependencies: false,
-            },
-            &root,
-            &[],
-            false,
-            &Prompt::silent(),
-        );
-        let message = match result {
-            Err(err) => err.message().to_string(),
-            Ok(_) => panic!("an import with no image was accepted"),
-        };
-        assert!(message.contains("needs an image"), "{message}");
-        let _ = std::fs::remove_dir_all(root);
+    fn a_renamed_copy_takes_the_first_free_tag() {
+        let root = std::env::temp_dir().join(format!("buildc-free-name-{}", std::process::id()));
+        crate::init::put(&root.join("modules/browser/module.sh"), "true\n").unwrap();
+        crate::init::put(&root.join("modules/browser@1/module.sh"), "true\n").unwrap();
+
+        assert_eq!(free_name(&root, "browser"), "browser@2");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1203,9 +1480,8 @@ image {
         let result = Module::collect(
             Request {
                 name: Some("new".into()),
-                images: vec!["example".into()],
+                image: Some("example".into()),
                 datastream: None,
-                place: Place::Reference,
                 dependencies: false,
             },
             &root,
@@ -1220,7 +1496,7 @@ image {
         assert!(message.contains("module.kdl declares schema"), "{message}");
         assert!(message.contains("version 2, but"), "{message}");
         assert!(message.contains("repo.kdl declares 1"), "{message}");
-        assert!(!root.join("modules/.remote/one/new").exists());
+        assert!(!root.join("modules/new").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

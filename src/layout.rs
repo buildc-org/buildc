@@ -141,7 +141,7 @@ pub const REPO_FILE: &str = "repo.kdl";
 pub const IMAGE_FILE: &str = "image.kdl";
 pub const IMAGE_SUFFIX: &str = ".image.kdl";
 pub const MODULE_FILE: &str = "module.kdl";
-pub const RECORD_FILE: &str = "provenance.kdl";
+pub const LOCK_FILE: &str = "modules.lock.kdl";
 
 pub const MOUNTED: &str = "out/buildc";
 pub const SOURCES_CACHE: &str = "out/sources";
@@ -157,6 +157,10 @@ pub fn as_image_file(name: &str) -> String {
 
 pub fn modules(root: &Path) -> PathBuf {
     root.join(MODULES)
+}
+
+pub fn lock(root: &Path) -> PathBuf {
+    modules(root).join(LOCK_FILE)
 }
 
 pub fn module(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
@@ -225,8 +229,11 @@ pub const REPOSITORY: Tree = Tree {
             what: "The images of the repository. See [`image.kdl`](image.md)." },
         Place { path: &["<name>", IMAGE_SUFFIX], writer: "`buildc create image`, then the user", tracked: true,
             what: "More images. The name in front of the suffix is decorative." },
-        Place { path: &[MODULES, "/"], writer: "the user, `buildc create module` or `buildc copy module`", tracked: true,
+        Place { path: &[MODULES, "/"], writer: "the user, `buildc create module` or `buildc import module`", tracked: true,
             what: "The modules of the repository, one directory each. See [Modules](modules.md)." },
+        Place { path: &[MODULES, "/", LOCK_FILE], writer: "`buildc import module`", tracked: true,
+            what: "Where each imported module came from, and what its content hashed to. See \
+                [`modules.lock.kdl`](lock.md)." },
         Place { path: &[MODULES, "/", crate::model::remote::REMOTE_DIR, "/"], writer: "`buildc`", tracked: false,
             what: "The modules that an image pins from another repository, fetched and verified \
                 against their hash." },
@@ -245,7 +252,7 @@ pub const REPOSITORY: Tree = Tree {
         Place { path: &[OUT, "/"], writer: "`buildc`", tracked: false,
             what: "Local exports, caches and scratch. `buildc` reads nothing here as a declaration." },
         Place { path: &[SOURCES_CACHE, "/"], writer: "`buildc`", tracked: false,
-            what: "The collections that `buildc` fetches. An imported module is read from here." },
+            what: "The libraries that `buildc import module` fetches and copies a module from." },
         Place { path: &["disk_config/"], writer: "`buildc create repo`, then the user", tracked: true,
             what: "The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk \
                 image. `disk.toml` sets the smallest size of `/`." },
@@ -294,9 +301,6 @@ pub const MODULE_DIR: Tree = Tree {
         Place { path: &["<collected file>"], writer: "", tracked: true,
             what: "A part of a file that another module collects. The build stages it for that \
                 module." },
-        Place { path: &[RECORD_FILE], writer: "", tracked: true,
-            what: "Where a copied module came from, which `buildc copy module` writes. See \
-                [`provenance.kdl`](provenance.md)." },
     ],
     lists: &[
         ("A policy directory follows these rules:", &[

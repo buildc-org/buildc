@@ -17,7 +17,6 @@ pub enum Verb {
     CreateKey,
     CreateScripts,
     ImportModule,
-    CopyModule,
     SetWorkflows,
     SetLibrary,
     SetConforms,
@@ -66,12 +65,7 @@ impl Verb {
                 Some(("`module.kdl`&nbsp;›&nbsp;`key`", Area::Module, "key"))
             }
             Self::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
-            Self::ImportModule => Some((
-                "`image.kdl`&nbsp;›&nbsp;`source`",
-                Area::Image,
-                "image-modules-source",
-            )),
-            Self::CopyModule => Some(("`provenance.kdl`", Area::Provenance, "")),
+            Self::ImportModule => Some(("`modules.lock.kdl`", Area::Lock, "")),
             Self::SetWorkflows => Some((
                 "`repo.kdl`&nbsp;›&nbsp;`workflows`",
                 Area::Repo,
@@ -137,7 +131,6 @@ pub const ALL: &[Verb] = &[
     Verb::CreateKey,
     Verb::CreateScripts,
     Verb::ImportModule,
-    Verb::CopyModule,
     Verb::SetWorkflows,
     Verb::SetLibrary,
     Verb::SetConforms,
@@ -286,13 +279,6 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
     (
         "import module",
         Verb::ImportModule,
-        Family::Repo,
-        false,
-        Topic::Modules,
-    ),
-    (
-        "copy module",
-        Verb::CopyModule,
         Family::Repo,
         false,
         Topic::Modules,
@@ -480,10 +466,6 @@ pub enum Surface {
     Import {
         #[command(subcommand)]
         what: Option<ImportWhat>,
-    },
-    Copy {
-        #[command(subcommand)]
-        what: Option<CopyWhat>,
     },
     /// change a repository setting or record an existing key
     Set {
@@ -764,22 +746,7 @@ pub enum ImportWhat {
         #[arg(value_name = "name")]
         name: Option<String>,
         #[arg(long, value_name = "name")]
-        image: Vec<String>,
-        #[arg(long, value_name = "file")]
-        datastream: Option<PathBuf>,
-        #[arg(long)]
-        dependencies: bool,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum CopyWhat {
-    #[command(long_about = help::COPY_MODULE, after_long_help = help::COPY_MODULE_NOTES)]
-    Module {
-        #[arg(value_name = "name")]
-        name: Option<String>,
-        #[arg(long, value_name = "name")]
-        image: Vec<String>,
+        image: Option<String>,
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
         #[arg(long)]
@@ -1406,7 +1373,6 @@ impl Verb {
             | Self::CreateKey
             | Self::CreateScripts
             | Self::ImportModule
-            | Self::CopyModule
             | Self::SetWorkflows
             | Self::SetLibrary
             | Self::SetConforms
@@ -1463,7 +1429,7 @@ mod tests {
 
     #[test]
     fn a_word_whose_forms_all_take_a_noun_has_no_verb_of_its_own() {
-        for word in ["create", "import", "copy", "registry", "set", "vm"] {
+        for word in ["create", "import", "registry", "set", "vm"] {
             assert!(verb(word).is_none(), "{word}");
         }
         for word in ["scap", "fetch", "check", "build"] {
@@ -1515,13 +1481,19 @@ mod tests {
     }
 
     #[test]
-    fn import_and_copy_take_the_dependencies_switch() {
-        for verb in ["import", "copy"] {
-            let matches = Cli::command()
-                .try_get_matches_from(["buildc", verb, "module", "browser", "--dependencies"])
-                .unwrap_or_else(|error| panic!("{verb} module refused --dependencies: {error}"));
-            assert_eq!(flag::<bool>(&matches, "dependencies"), Some(true));
-        }
+    fn import_takes_the_dependencies_switch() {
+        let matches = Cli::command()
+            .try_get_matches_from(["buildc", "import", "module", "browser", "--dependencies"])
+            .expect("import module takes --dependencies");
+        assert_eq!(flag::<bool>(&matches, "dependencies"), Some(true));
+    }
+
+    #[test]
+    fn copy_is_not_a_command() {
+        let error = Cli::command()
+            .try_get_matches_from(["buildc", "copy", "module", "browser"])
+            .expect_err("copy is gone");
+        assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
     }
 
     #[test]

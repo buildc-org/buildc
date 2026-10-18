@@ -97,6 +97,26 @@ fn satisfied_by(index: &Index, image: &Image, name: &str) -> String {
     }
 }
 
+fn elsewhere(module: &Module, providers: &[&Module]) -> Option<String> {
+    let reaches = |provider: &&Module| {
+        provider.flavour.is_none() || provider.flavour.as_ref() == module.flavour.as_ref()
+    };
+    if providers.is_empty() || providers.iter().any(reaches) {
+        return None;
+    }
+    let named: Vec<String> = providers
+        .iter()
+        .map(|provider| {
+            format!(
+                "`{}` on the `{}` flavour",
+                provider.path,
+                provider.flavour.as_deref().unwrap_or_default()
+            )
+        })
+        .collect();
+    Some(crate::said(&named))
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "every graph check reads the provider maps the function builds first"
@@ -180,10 +200,9 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                     .any(|group| group.family == base_family)
         });
         let has_adapter = offered.get("build-environment").is_some_and(|providers| {
-            providers.iter().any(|module| {
-                module.supports.is_empty()
-                    || module.supports.iter().any(|family| family == base_family)
-            })
+            providers
+                .iter()
+                .any(|module| super::supports(&module.supports, base_family))
         });
         if needs_adapter && !has_adapter {
             issues.push(
@@ -202,7 +221,7 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
         let Some(base_family) = base_family else {
             break;
         };
-        if !module.supports.is_empty() && !module.supports.iter().any(|f| f == base_family) {
+        if !super::supports(&module.supports, base_family) {
             issues.push(
                 Issue::new(
                     format!(
@@ -220,7 +239,27 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
     }
 
     for (capability, providers) in &offered {
-        if providers.len() > 1 && !same_key(capability, providers) {
+        let keyed = capability.strip_suffix("-key").is_some_and(|kind| {
+            providers
+                .iter()
+                .any(|module| module.keys.iter().any(|key| key.kind == kind))
+        });
+        let declares = |module: &&Module| module.exclusive.iter().any(|name| name == capability);
+        let why = match keyed {
+            true => (providers.len() > 1 && !same_key(capability, providers)).then(|| {
+                "Enable one provider, so that the image holds one key of this kind".to_string()
+            }),
+            false => super::exclusive(&providers.iter().map(declares).collect::<Vec<bool>>()).then(
+                || {
+                    let holder = providers
+                        .iter()
+                        .find(|module| declares(module))
+                        .map_or("", |m| m.path.as_str());
+                    format!("`{holder}` declares it `exclusive`, so enable one provider")
+                },
+            ),
+        };
+        if let Some(why) = why {
             let names: Vec<&str> = providers.iter().map(|m| m.path.as_str()).collect();
             let first = providers[0];
             issues.push(
@@ -229,16 +268,15 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                     &first.src,
                 )
                 .at(
-                    first.provides.iter()
+                    first
+                        .provides
+                        .iter()
                         .find(|d| d.name == **capability)
                         .map(|d| d.span)
                         .unwrap_or_default(),
                     "also provided elsewhere",
                 )
-                .help(format!(
-                    "provided by: {}. Enable one provider, so that what satisfies a requirement is never ambiguous",
-                    names.join(", ")
-                )),
+                .help(format!("provided by: {}. {why}", names.join(", "))),
             );
         }
     }
@@ -319,22 +357,18 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                 continue;
             };
 
-            if let Some(provider) = providers.first() {
-                if let Some(provider_flavour) = &provider.flavour {
-                    if module.flavour.as_ref() != Some(provider_flavour) {
-                        issues.push(
-                            Issue::new(
-                                format!(
-                                    "`{}` requires `{}`, which only `{}` provides and only on the `{provider_flavour}` flavour",
-                                    module.path, decl.name, provider.path
-                                ),
-                                &module.src,
-                            )
-                            .at(decl.span, "unsatisfied on every other target")
-                            .help("either gate this module to the same flavour, or move the provider out of the flavour block"),
-                        );
-                    }
-                }
+            if let Some(gated) = elsewhere(module, providers) {
+                issues.push(
+                    Issue::new(
+                        format!(
+                            "`{}` requires `{}`, which only {gated} provides",
+                            module.path, decl.name
+                        ),
+                        &module.src,
+                    )
+                    .at(decl.span, "unsatisfied on every other target")
+                    .help("either gate this module to the same flavour, or move the provider out of the flavour block"),
+                );
             }
         }
     }
@@ -345,18 +379,12 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                 continue;
             }
             if let Some(providers) = offered.get(decl.name.as_str()) {
-                let gated = providers
-                    .first()
-                    .and_then(|provider| Some((provider, provider.flavour.as_ref()?)))
-                    .filter(|(_, provider_flavour)| {
-                        module.flavour.as_ref() != Some(provider_flavour)
-                    });
-                if let Some((provider, provider_flavour)) = gated {
+                if let Some(gated) = elsewhere(module, providers) {
                     issues.push(
                         Issue::new(
                             format!(
-                                "`{}` builds after `{}`, which only `{}` provides and only on the `{provider_flavour}` flavour",
-                                module.path, decl.name, provider.path
+                                "`{}` builds after `{}`, which only {gated} provides",
+                                module.path, decl.name
                             ),
                             &module.src,
                         )

@@ -555,7 +555,7 @@ impl Conforms {
                 false => format!(
                     "measured against `{}`, and {} added to modules",
                     self.profile,
-                    crate::import::said(&self.brought)
+                    crate::said(&self.brought)
                 ),
             }),
         ));
@@ -647,7 +647,7 @@ impl Claims {
         let remote = format!("{}/", crate::model::remote::REMOTE_DIR);
         if let Some(source) = named.strip_prefix(&remote) {
             return Err(Error::Invocation(format!(
-                "nothing can be changed here; `{named}` is a fetched module; `buildc copy module \
+                "nothing can be changed here; `{named}` is a fetched module; `buildc import module \
                  {source}` makes a copy this repository owns"
             )));
         }

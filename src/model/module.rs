@@ -1,7 +1,7 @@
 use crate::diag::{Source, Span};
 use crate::model::asset::Asset;
 use crate::model::options::{Opt, Variant};
-use crate::provenance::record::Record;
+use crate::provenance::lock::Record;
 
 #[derive(Debug)]
 pub struct PackageGroup {
@@ -120,6 +120,7 @@ pub struct Module {
     pub description: String,
     pub supports: Vec<String>,
     pub provides: Vec<Decl>,
+    pub exclusive: Vec<String>,
     pub requires: Vec<Decl>,
     pub after: Vec<Decl>,
     pub policies: Vec<&'static str>,

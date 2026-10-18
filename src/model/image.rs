@@ -19,6 +19,24 @@ pub fn is_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+pub fn is_local_path(path: &str) -> bool {
+    let (parents, last) = path.rsplit_once('/').unwrap_or(("", path));
+    let last = match last.split_once('@') {
+        Some((name, tag)) => {
+            let tagged = !tag.is_empty()
+                && tag
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            if !tagged {
+                return false;
+            }
+            name
+        }
+        None => last,
+    };
+    is_name(last) && (parents.is_empty() || parents.split('/').all(is_name))
+}
+
 #[derive(Clone)]
 pub struct Target {
     pub image: String,
@@ -147,12 +165,16 @@ impl Entry {
         if self.source.is_some() {
             return Some(self.path.clone());
         }
-        let owner = self
-            .module
-            .as_ref()
-            .and_then(|module| module.imported.as_ref())
-            .map_or(publishes_as, |record| record.collection.as_str());
-        Some(format!("{owner}/{}", self.path))
+        Some(
+            match self
+                .module
+                .as_ref()
+                .and_then(|module| module.imported.as_ref())
+            {
+                Some(record) => format!("{}/{}", record.library, record.upstream),
+                None => format!("{publishes_as}/{}", self.path),
+            },
+        )
     }
 }
 
@@ -347,5 +369,21 @@ impl List {
             image: image.id.clone(),
             flavour: image.pr_flavour().unwrap_or(NO_FLAVOUR).to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_local_path_admits_one_tag_on_its_last_part() {
+        assert!(is_local_path("browser"));
+        assert!(is_local_path("browser@1"));
+        assert!(is_local_path("desktop/kde@2"));
+        assert!(!is_local_path("browser@"));
+        assert!(!is_local_path("browser@1@2"));
+        assert!(!is_local_path("desktop@1/kde"));
+        assert!(!is_local_path("Browser"));
     }
 }

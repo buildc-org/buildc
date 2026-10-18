@@ -4,6 +4,18 @@ use crate::model::image::List;
 use crate::model::module::Module;
 use common::json::Json;
 
+fn spdx_id(module: &str, asset: &str) -> String {
+    format!("SPDXRef-Package-asset-{module}-{asset}")
+        .chars()
+        .map(
+            |c| match c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                true => c,
+                false => '-',
+            },
+        )
+        .collect()
+}
+
 pub fn build(list: &List, target: &str) -> Option<Json> {
     let (_, _, entries) = of_target(list, target)?;
     let modules: Vec<&Module> = entries.iter().filter_map(|e| e.module.as_ref()).collect();
@@ -11,11 +23,7 @@ pub fn build(list: &List, target: &str) -> Option<Json> {
         .into_iter()
         .filter_map(|(module, asset)| {
             let url = asset.pin.url_resolved()?;
-            let id = format!(
-                "SPDXRef-Package-asset-{}-{}",
-                module.path.replace('/', "-"),
-                asset.name
-            );
+            let id = spdx_id(&module.path, &asset.name);
             Some((id, module, asset, url))
         })
         .collect();
@@ -75,4 +83,15 @@ fn package(id: &str, module: &Module, asset: &Asset, url: &str) -> Json {
         fields.push(("versionInfo", Json::string(version)));
     }
     Json::object(fields)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_renamed_nested_module_names_a_valid_spdx_id() {
+        assert_eq!(
+            super::spdx_id("kernels/cachyos@1", "kernel.tar"),
+            "SPDXRef-Package-asset-kernels-cachyos-1-kernel.tar"
+        );
+    }
 }

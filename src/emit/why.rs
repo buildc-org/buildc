@@ -118,10 +118,7 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
     };
 
     if let Some(record) = &module.imported {
-        why.imported = Some((
-            record.collection.clone(),
-            Fetch::of("collection", &record.pin),
-        ));
+        why.imported = Some((record.library.clone(), Fetch::of("collection", &record.pin)));
     } else if let (Some(collection), Some(pin)) = (&entry.source, entry.pin(&list.sources)) {
         why.imported = Some((collection.clone(), Fetch::of("collection", pin)));
     }
@@ -423,7 +420,7 @@ impl Why {
                 out.extend(evidence(COLLECTION, &[(collection.as_str(), pin)], terminal));
                 out.push(Part::Text(match (self.copied, self.modified) {
                     (false, _) => "It is referenced rather than copied, so what a build reads is the collection's own tree at that pin.".into(),
-                    (true, true) => "**It has been edited since it was imported.** Forking a module is legitimate; what the record buys is that the fork is visible.".into(),
+                    (true, true) => "**It has been edited since it was imported.** Forking a module is legitimate; what the lock buys is that the fork is visible.".into(),
                     (true, false) => "Its content still matches what was imported.".into(),
                 }));
             }
@@ -761,11 +758,11 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
 
         if let Some(provenance) = field(module, "provenance") {
             why.content = text(provenance, "content");
-            // A copy carries the record it was imported with. A reference
-            // carries the collection it is fetched from, beside its pin.
+            // An imported module carries its lock entry. A reference carries
+            // the collection it is fetched from, beside its pin.
             if let Some(imported) = field(provenance, "imported") {
                 if let (Some(collection), Some(pin)) =
-                    (text(imported, "collection"), field(imported, "pin"))
+                    (text(imported, "library"), field(imported, "pin"))
                 {
                     why.copied = true;
                     why.modified = text(imported, "content") != why.content;

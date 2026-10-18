@@ -3,8 +3,8 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-  × `community/browser` requires `flatpak`, which nothing enabled provides
-   ╭─[./modules/.remote/community/browser/module.kdl:9:1]
+  × `browser` requires `flatpak`, which nothing enabled provides
+   ╭─[./modules/browser/module.kdl:9:1]
  8 │ 
  9 │ requires "flatpak"
    · ────┬───
@@ -13,5 +13,5 @@ Buildc v{version}
   help: upstream/flatpak would satisfy it; `buildc import module upstream/
         flatpak` brings it in and lists it
 
-buildc: 1 problem in ./modules/.remote/community/browser/module.kdl; none in ./example.image.kdl, ./repo.kdl
+buildc: 1 problem in ./modules/browser/module.kdl; none in ./example.image.kdl, ./repo.kdl
 ==== exit 2

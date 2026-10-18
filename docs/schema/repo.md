@@ -205,7 +205,7 @@ workflows at="12:30" {
 
 ## `sources` (optional)
 
-Lists typed libraries that this repository reads from a local directory or fetches from an HTTPS Git repository. A `modules` source feeds imports and copies. A `base-images` source is the base catalog. A `capabilities` source locates the paths that witness a capability. Every source declares exactly one of `dir` and `url`: `dir` names a directory on this machine, and `url` names an HTTPS Git repository.
+Lists typed libraries that this repository reads from a local directory or fetches from an HTTPS Git repository. A `modules` source feeds imports. A `base-images` source is the base catalog. A `capabilities` source locates the paths that witness a capability. Every source declares exactly one of `dir` and `url`: `dir` names a directory on this machine, and `url` names an HTTPS Git repository.
 
 ```kdl
 sources {
@@ -215,11 +215,6 @@ sources {
 
 Accepts: {&nbsp;[fields](#sources-fields)&nbsp;}
 
-A module from a collection reaches the repository in one of two ways:
-
-- `buildc import module` references the module under the name of its collection.
-- `buildc copy module` puts the module unqualified at `modules/<name>`, and `provenance.kdl` records the collection.
-
 <a id="sources-fields"></a>
 
 | Field | Accepts | Description |
@@ -227,6 +222,9 @@ A module from a collection reaches the repository in one of two ways:
 | [`modules`](#sources-modules) (optional,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#sources-modules-fields)&nbsp;} | A module library that imports and copies resolve against. |
 | [`base-images`](#sources-base-images) (optional,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#sources-base-images-fields)&nbsp;} | A base-image library that the base catalog is read out of. |
 | [`capabilities`](#sources-capabilities) (optional,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#sources-capabilities-fields)&nbsp;} | A capability library that locates capability witness paths. |
+
+> [!NOTE]
+> `buildc import module` copies a module from a `modules` source to `modules/<name>`, and `modules/modules.lock.kdl` records the source.
 
 <a id="sources-modules"></a>
 
@@ -508,8 +506,8 @@ Accepts: *boolean*
 
 Each check runs in the command named before it:
 
-- `buildc import module` and `buildc copy module`: the collection is pinned to a tag and its hash.
-- `buildc check`: each copied module still matches the record it was copied with.
+- `buildc import module`: the library is pinned to a tag and its hash.
+- `buildc check`: each imported module still matches its entry in the module lock.
 - `buildc build`: the base tag resolves to a manifest digest.
 - `buildc build`: the repository is at a commit.
 - `buildc build`: each cloned asset resolves to a commit.

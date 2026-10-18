@@ -8,6 +8,14 @@ pub mod workflow;
 
 use collect::Collection;
 
+pub fn supports(declared: &[String], family: &str) -> bool {
+    declared.is_empty() || declared.iter().any(|has| has == family)
+}
+
+pub fn exclusive(providers: &[bool]) -> bool {
+    providers.len() > 1 && providers.contains(&true)
+}
+
 pub struct Resolved {
     pub shipped: overlay::Index,
     pub collected: Collection,

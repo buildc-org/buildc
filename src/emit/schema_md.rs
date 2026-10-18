@@ -1,7 +1,7 @@
 use crate::layout;
 use crate::parse::schema::{Arg, Kind, Node, Prop};
 use crate::parse::{bases, module, repo};
-use crate::provenance::record;
+use crate::provenance::lock;
 use std::fmt::Write as _;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -11,7 +11,7 @@ pub enum Area {
     Image,
     Modules,
     Module,
-    Provenance,
+    Lock,
     Bases,
 }
 
@@ -24,7 +24,7 @@ impl Area {
             Area::Modules => "modules.md",
             Area::Module => "module.md",
             Area::Bases => "bases.md",
-            Area::Provenance => "provenance.md",
+            Area::Lock => "lock.md",
         }
     }
 
@@ -36,7 +36,7 @@ impl Area {
             Area::Modules => "Modules",
             Area::Module => "Module manifests",
             Area::Bases => "Base images and capabilities",
-            Area::Provenance => "The import record",
+            Area::Lock => "The module lock",
         }
     }
 }
@@ -61,8 +61,8 @@ const SECTIONS: &[Section] = &[
         at: "`capabilities.kdl`, at the root of a `capabilities` source." },
     Section { name: "module.kdl", node: &module::MODULE, declared: false, area: Area::Module,
         at: "`modules/<module-name>/module.kdl`, in the directory of the module." },
-    Section { name: "provenance.kdl", node: &record::RECORD_FILE, declared: false, area: Area::Provenance,
-        at: "`modules/<module-name>/provenance.kdl`, beside the `module.kdl` of a copied module." },
+    Section { name: "modules.lock.kdl", node: &lock::LOCK_FILE, declared: false, area: Area::Lock,
+        at: "`modules/modules.lock.kdl`, at the root of `modules/`." },
 ];
 
 fn section_of(node: &Node) -> Option<&'static Section> {
@@ -504,7 +504,7 @@ const AREAS: [Area; 7] = [
     Area::Image,
     Area::Modules,
     Area::Module,
-    Area::Provenance,
+    Area::Lock,
     Area::Bases,
 ];
 
@@ -600,7 +600,7 @@ pub fn page(area: Area) -> String {
     match area {
         Area::Repository => return tree_page(area.title(), &layout::REPOSITORY),
         Area::Modules => return tree_page(area.title(), &layout::MODULE_DIR),
-        Area::Repo | Area::Image | Area::Module | Area::Provenance | Area::Bases => {}
+        Area::Repo | Area::Image | Area::Module | Area::Lock | Area::Bases => {}
     }
     let schemas: Vec<&Section> = SECTIONS.iter().filter(|s| s.area == area).collect();
     let mut out = String::new();

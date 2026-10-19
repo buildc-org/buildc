@@ -218,7 +218,7 @@ impl<'a> Graph<'a> {
                                 self.plain(&cap.required_by),
                                 self.plain(&cap.after),
                             ],
-                            cap.provider.is_none(),
+                            cap.provider.is_none() && !cap.required_by.is_empty(),
                         )
                     })
                     .collect(),

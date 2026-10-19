@@ -68,6 +68,84 @@ image {
     let _ = std::fs::remove_dir_all(root);
 }
 
+fn unprovided(dir: &str, line: &str) -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(dir);
+    let _ = std::fs::remove_dir_all(&root);
+    for module in ["signed", "plain"] {
+        std::fs::create_dir_all(root.join("modules").join(module))
+            .expect("the test target directory is writable");
+    }
+    std::fs::write(root.join("repo.kdl"), "schema-version 1\nname \"After\"\n")
+        .expect("the test target directory is writable");
+    std::fs::write(
+        root.join("image.kdl"),
+        r#"schema-version 1
+
+image {
+    name "After"
+    base "example" { family "fedora" }
+    modules {
+        module "signed"
+        module "plain"
+    }
+}
+"#,
+    )
+    .expect("the test target directory is writable");
+    std::fs::write(
+        root.join("modules/signed/module.kdl"),
+        format!(
+            "schema-version 1\n\ndescription \"Signs when a key exists\"\nsupports \"fedora\"\n{line} \"secureboot-key\"\n"
+        ),
+    )
+    .expect("the test target directory is writable");
+    std::fs::write(
+        root.join("modules/plain/module.kdl"),
+        "schema-version 1\n\ndescription \"Orders nothing\"\nsupports \"fedora\"\n",
+    )
+    .expect("the test target directory is writable");
+    root
+}
+
+fn key_row_is_a_defect(root: &std::path::Path) -> bool {
+    buildc::run(Command::Graph, None, root)
+        .parts
+        .into_iter()
+        .find_map(|part| match part {
+            buildc::emit::Part::Table(table) if table.title == "Capabilities" => table
+                .rows
+                .into_iter()
+                .find(|(cells, _)| cells[0] == "secureboot-key")
+                .map(|(_, defect)| defect),
+            _ => None,
+        })
+        .expect("the capability table holds a secureboot-key row")
+}
+
+#[test]
+fn after_with_no_provider_orders_nothing() {
+    let root = unprovided("after-no-provider", "after");
+    assert_eq!(buildc::run(Command::Check, None, &root).issues.plain(), "");
+    let plan = buildc::run(Command::Plan, None, &root).stdout;
+    let at = |name: &str| plan.find(&format!("\"path\": \"{name}\"")).unwrap();
+    assert!(at("signed") < at("plain"), "{plan}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn graph_does_not_flag_an_after_with_no_provider() {
+    let root = unprovided("after-no-provider-graph", "after");
+    assert!(!key_row_is_a_defect(&root));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn graph_flags_a_requires_with_no_provider() {
+    let root = unprovided("requires-no-provider-graph", "requires");
+    assert!(key_row_is_a_defect(&root));
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn shipped_policy_orders_a_module_after_the_mac_that_installs_it() {
     std::env::set_var(

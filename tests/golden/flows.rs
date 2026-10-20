@@ -1637,14 +1637,24 @@ fn setup_import_edit_guards(flow: &Flow) {
     assert!(!image.contains("module \"flatpak\""), "{image}");
     assert!(root.join("modules/flatpak/module.kdl").is_file());
 
+    let fork = root.join("modules/flatpak/fork.sh");
+    std::fs::write(&fork, "true\n").unwrap();
     let held = import(Some("example"))
         .err()
         .map(|err| err.message().to_string())
         .unwrap_or_default();
     assert!(
-        held.starts_with("`flatpak` is already in this repository;"),
+        held.starts_with("`flatpak` is already in this repository and differs"),
         "{held}"
     );
+
+    std::fs::remove_file(&fork).unwrap();
+    import(Some("example"))
+        .unwrap_or_else(|err| panic!("{}", err.message()))
+        .apply(&root, &list.sources)
+        .unwrap();
+    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    assert!(image.contains("module \"flatpak\""), "{image}");
 }
 
 fn setup_import_several(flow: &Flow) {

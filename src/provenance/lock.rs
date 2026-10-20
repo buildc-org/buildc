@@ -156,9 +156,13 @@ fn quoted(value: &str) -> String {
 }
 
 pub fn hash(dir: &Path) -> Option<String> {
+    let held = layout::held_modules(dir);
     let mut listed: Vec<String> = Vec::new();
     for path in crate::tracked(dir) {
         let rel = path.strip_prefix(dir).ok()?;
+        if held.iter().any(|module| rel.starts_with(module)) {
+            continue;
+        }
         listed.push(rel.to_string_lossy().into_owned());
     }
     if listed.is_empty() {
@@ -261,6 +265,26 @@ mod tests {
 
         crate::init::put(&dir.join(layout::MODULE_FILE), "description \"y\"\n").unwrap();
         assert_eq!(modified(&root), ["modules/browser"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_held_module_stays_out_of_the_hash_and_the_overlay_does_not() {
+        let root = std::env::temp_dir().join(format!("buildc-lock-held-{}", std::process::id()));
+        let dir = layout::module(&root, "nvidia");
+        crate::init::put(&dir.join(layout::MODULE_FILE), "description \"x\"\n").unwrap();
+        let before = hash(&dir).unwrap();
+
+        crate::init::put(&dir.join("cuda").join(layout::MODULE_FILE), "").unwrap();
+        crate::init::put(&dir.join("cuda/module.sh"), "true\n").unwrap();
+        assert_eq!(hash(&dir).unwrap(), before);
+
+        let overlay = dir
+            .join(layout::OVERLAY)
+            .join("usr/share/x")
+            .join(layout::MODULE_FILE);
+        crate::init::put(&overlay, "").unwrap();
+        assert_ne!(hash(&dir).unwrap(), before);
         std::fs::remove_dir_all(root).unwrap();
     }
 

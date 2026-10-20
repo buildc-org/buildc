@@ -96,8 +96,17 @@ pub fn module_dirs(
     marks: impl Fn(&Path) -> bool,
     skip: impl Fn(&str) -> bool,
 ) -> Vec<PathBuf> {
+    walk_modules(tree, false, marks, skip)
+}
+
+fn walk_modules(
+    tree: &Path,
+    in_module: bool,
+    marks: impl Fn(&Path) -> bool,
+    skip: impl Fn(&str) -> bool,
+) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let mut dirs = vec![(tree.to_path_buf(), false)];
+    let mut dirs = vec![(tree.to_path_buf(), in_module)];
     while let Some((dir, in_module)) = dirs.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -117,6 +126,25 @@ pub fn module_dirs(
     }
     out.sort();
     out
+}
+
+pub fn member_dirs(tree: &Path) -> Vec<PathBuf> {
+    walk_modules(tree, false, is_member, is_dot)
+}
+
+pub fn held_modules(dir: &Path) -> Vec<PathBuf> {
+    walk_modules(dir, true, is_member, is_dot)
+        .into_iter()
+        .filter_map(|path| path.strip_prefix(dir).ok().map(Path::to_path_buf))
+        .collect()
+}
+
+fn is_member(path: &Path) -> bool {
+    path.join(MODULE_FILE).is_file()
+}
+
+fn is_dot(name: &str) -> bool {
+    name.starts_with('.')
 }
 
 pub const SCRIPTS: &str = "scripts";
@@ -335,6 +363,24 @@ pub const MODULE_DIR: Tree = Tree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_held_module_is_what_the_library_lists_inside_the_module() {
+        let root = std::env::temp_dir().join(format!("buildc-held-dirs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for dir in ["a", "a/b", "a/files/c", "a/group/files/d", "a/.x/e"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+            std::fs::write(root.join(dir).join(MODULE_FILE), "").unwrap();
+        }
+        let listed = member_dirs(&root);
+        let held = held_modules(&root.join("a"));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            listed,
+            ["a", "a/b", "a/group/files/d"].map(|dir| root.join(dir))
+        );
+        assert_eq!(held, [PathBuf::from("b"), PathBuf::from("group/files/d")]);
+    }
 
     #[test]
     fn the_walk_finds_nested_modules_and_passes_over_module_content() {

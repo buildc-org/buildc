@@ -263,8 +263,9 @@ pub const MODULE: Node = Node::new("module",
                  unlocks LUKS. `buildc build` then proves that the binary is present before the \
                  installer offers it.",
                 "Many enabled modules may provide one capability. If one of them declares it \
-                 `exclusive=#true`, then `buildc check` refuses a second provider, and `buildc \
-                 import module` asks whether to replace the first.",
+                 `exclusive=#true`, then `buildc check` refuses a second provider that builds \
+                 into the same image or flavour. `buildc import module` asks whether to replace \
+                 the first. Providers in sibling flavours never build together.",
                 "A capability name is lower-case letters, digits and dashes, and starts with a \
                  letter. The generated graph writes the name unquoted into a mermaid label and a \
                  markdown table cell.",

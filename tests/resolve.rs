@@ -310,6 +310,47 @@ fn a_lone_provider_that_declares_exclusive_is_no_conflict() {
 }
 
 #[test]
+fn exclusive_providers_in_sibling_flavours_never_conflict() {
+    let exclusive = "provides \"tool\" file=\"/usr/share/tool\" exclusive=#true";
+    let issues = checked(
+        "exclusive-siblings",
+        "        flavour \"dev\" { module \"one\" }\n        flavour \"prod\" { module \"two\" }",
+        &[("one", exclusive), ("two", exclusive)],
+    );
+    assert!(!issues.contains("more than one enabled module"), "{issues}");
+}
+
+#[test]
+fn every_flavour_that_holds_a_conflict_is_named_at_once() {
+    let provider = "provides \"tool\" file=\"/usr/share/tool\"";
+    let exclusive = "provides \"tool\" file=\"/usr/share/tool\" exclusive=#true";
+    let issues = checked(
+        "exclusive-both-flavours",
+        "        flavour \"dev\" {\n            module \"a\"\n            module \"b\"\n        }\n        flavour \"prod\" {\n            module \"c\"\n            module \"d\"\n        }",
+        &[("a", exclusive), ("b", provider), ("c", exclusive), ("d", provider)],
+    );
+    assert!(issues.contains("provided by: a, b, c, d."), "{issues}");
+}
+
+#[test]
+fn an_exclusive_provider_conflicts_with_an_ungated_one_in_its_flavour() {
+    let provider = "provides \"tool\" file=\"/usr/share/tool\"";
+    let issues = checked(
+        "exclusive-ungated",
+        "        module \"one\"\n        flavour \"dev\" { module \"two\" }\n        flavour \"prod\" { module \"three\" }",
+        &[
+            ("one", provider),
+            ("two", "provides \"tool\" file=\"/usr/share/tool\" exclusive=#true"),
+            ("three", provider),
+        ],
+    );
+    assert!(
+        issues.contains("provided by: one, two. `two` declares it `exclusive`"),
+        "{issues}"
+    );
+}
+
+#[test]
 fn two_keys_of_one_kind_conflict_unless_they_are_the_same_key() {
     let key = |bits: u32| {
         format!(

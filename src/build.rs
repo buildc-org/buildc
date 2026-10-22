@@ -136,7 +136,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
             .to_string();
     let scap_content = match conforms.is_empty() {
         true => String::new(),
-        false => crate::scap::content_for(root, &list, Some(&target))?,
+        false => crate::scap::datastream(&list, Some(&target))?,
     };
     let (scap_claimed, scap_refused) = crate::scap::exclusions(image);
     let mut build_args = vec![
@@ -145,7 +145,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         format!("IMAGE_REGISTRY={}", namespace.clone().unwrap_or_default()),
         format!(
             "CONTRACT_FILES={}",
-            contract_files(image, &modules, &list.capabilities).join(" ")
+            contract_files(image, &modules).join(" ")
         ),
         format!(
             "VERIFY_EXCEPTIONS={}",

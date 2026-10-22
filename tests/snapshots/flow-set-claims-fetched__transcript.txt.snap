@@ -1,9 +1,0 @@
----
-source: tests/golden/harness.rs
----
-Buildc v{version}
-
-Error: nothing can be changed here; `.remote/upstream/sshd` is a fetched module; `buildc import module upstream/sshd` makes a copy this repository owns.
-
-Run 'buildc --help' to list the commands
-==== exit 1

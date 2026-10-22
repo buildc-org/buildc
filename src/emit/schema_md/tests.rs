@@ -143,7 +143,6 @@ fn a_nested_section_shows_the_blocks_that_hold_it() {
 fn a_shared_block_is_documented_on_each_page_that_holds_it() {
     assert!(page(Area::Module).contains("<a id=\"asset-pin\"></a>"));
     assert!(page(Area::Repo).contains("<a id=\"sources-modules-url\"></a>"));
-    assert!(page(Area::Image).contains("<a id=\"image-modules-module-pin\"></a>"));
 }
 
 #[test]

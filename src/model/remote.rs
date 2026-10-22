@@ -1,13 +1,10 @@
 use crate::diag::Span;
 use crate::provenance::Evidence;
 
-pub const REMOTE_DIR: &str = ".remote";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Modules,
     BaseImages,
-    Capabilities,
 }
 
 impl Kind {
@@ -15,7 +12,6 @@ impl Kind {
         match name {
             "modules" => Some(Self::Modules),
             "base-images" => Some(Self::BaseImages),
-            "capabilities" => Some(Self::Capabilities),
             _ => None,
         }
     }
@@ -24,7 +20,6 @@ impl Kind {
         match self {
             Self::Modules => "modules",
             Self::BaseImages => "base-images",
-            Self::Capabilities => "capabilities",
         }
     }
 }

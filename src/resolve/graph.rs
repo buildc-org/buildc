@@ -59,17 +59,12 @@ fn same_key(capability: &str, providers: &[&Module]) -> bool {
 }
 
 fn nowhere(index: &Index, capability: &str, src: &str) -> String {
-    let (searched, unsearched) = match (index.unread().is_empty(), index.sourced()) {
-        (true, true) => ("the repository or its collections", String::new()),
-        (true, false) => (
-            "the repository",
-            ". repo.kdl declares no `sources`, so there is no collection to import one from"
-                .to_string(),
-        ),
-        (false, _) => ("the repository", format!(". {}", index.unsearched())),
+    let next = match index.sourced() {
+        true => "`buildc import module` lists what the declared libraries provide",
+        false => "repo.kdl declares no `sources`, so there is no collection to import one from",
     };
     format!(
-        "no module in {searched} declares `provides {capability:?}`, and neither does the `base` node in {src}{unsearched}"
+        "no module in the repository declares `provides {capability:?}`, and neither does the `base` node in {src}. {next}"
     )
 }
 

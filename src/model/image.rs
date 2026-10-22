@@ -1,8 +1,7 @@
 use crate::diag::{Issue, Source, Span};
 use crate::model::module::{Access, Coverage, Module, Refusal};
 use crate::model::options::Value;
-use crate::model::remote::{Collection, Kind as SourceKind, REMOTE_DIR};
-use crate::provenance::Evidence;
+use crate::model::remote::Collection;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -89,6 +88,7 @@ pub struct Base {
     pub requires: Vec<Decl>,
     pub satisfies: Vec<Coverage>,
     pub signed: bool,
+    pub scap_content: String,
     pub span: Span,
 }
 
@@ -117,64 +117,24 @@ pub struct Workflow {
 }
 
 pub struct Entry {
-    pub source: Option<String>,
     pub path: String,
     pub flavour: Option<String>,
     pub variant: Option<String>,
     pub options: Vec<(String, Vec<Value>, Span)>,
-    pub remote: Option<Evidence>,
     pub span: Span,
     pub module: Option<Module>,
 }
 
 impl Entry {
-    pub fn dir(&self) -> String {
-        match (&self.source, &self.remote) {
-            (Some(_), _) | (_, Some(_)) => format!("{REMOTE_DIR}/{}", self.path),
-            (None, None) => self.path.clone(),
+    pub fn qualified(&self, publishes_as: &str) -> String {
+        match self
+            .module
+            .as_ref()
+            .and_then(|module| module.imported.as_ref())
+        {
+            Some(record) => format!("{}/{}", record.library, record.upstream),
+            None => format!("{publishes_as}/{}", self.path),
         }
-    }
-
-    pub fn name(&self) -> &str {
-        match &self.source {
-            Some(_) => self
-                .path
-                .split_once('/')
-                .map_or(&self.path, |(_, name)| name),
-            None => &self.path,
-        }
-    }
-
-    pub fn pin<'a>(&'a self, sources: &'a [Collection]) -> Option<&'a Evidence> {
-        self.remote.as_ref().or_else(|| {
-            self.source
-                .as_ref()
-                .and_then(|name| {
-                    sources
-                        .iter()
-                        .find(|source| source.kind == SourceKind::Modules && &source.name == name)
-                })
-                .and_then(Collection::pin)
-        })
-    }
-
-    pub fn qualified(&self, publishes_as: &str) -> Option<String> {
-        if self.remote.is_some() {
-            return None;
-        }
-        if self.source.is_some() {
-            return Some(self.path.clone());
-        }
-        Some(
-            match self
-                .module
-                .as_ref()
-                .and_then(|module| module.imported.as_ref())
-            {
-                Some(record) => format!("{}/{}", record.library, record.upstream),
-                None => format!("{publishes_as}/{}", self.path),
-            },
-        )
     }
 }
 
@@ -198,7 +158,6 @@ pub struct List {
     pub manifest_label: bool,
     pub audit_enforce: bool,
     pub network: Network,
-    pub capabilities: Vec<crate::base::Capability>,
     pub schema_version: Option<u32>,
     pub repo_src: Source,
     pub files: Vec<String>,

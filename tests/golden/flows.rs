@@ -160,9 +160,10 @@ impl Flow {
 
         let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
         assert!(
-            image.contains("source \"buildc-modules\" {\n            module \"fedora-family\"\n"),
+            image.contains("    modules {\n        module \"fedora-family\"\n"),
             "{image}"
         );
+        assert!(root.join("modules/fedora-family/module.kdl").is_file());
     }
     fn buildc(&self, dir: &Path, args: &[&str]) {
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
@@ -459,7 +460,6 @@ fn flow_case(flow: &Flow) {
         "flow-import-family" => setup_import_family(flow),
         "flow-set-claims" | "flow-set-claims-again" => setup_set_claims(flow),
         "flow-set-claims-two" => setup_set_claims_two(flow),
-        "flow-set-claims-fetched" => setup_set_claims_fetched(flow),
         "flow-set-workflows" => setup_workflows(flow),
         "flow-import-requires" => setup_import_requires(flow),
         "flow-import-requires-no-tui" => setup_import_requires_no_tui(flow),
@@ -563,13 +563,29 @@ fn setup_create_image(flow: &Flow) {
     flow.run(target, &root, None, &["--root", ".", "create", "image"]);
     let image = std::fs::read_to_string(root.join("beta.image.kdl")).unwrap();
     assert!(
-            image.contains(
-                "    modules {\n        source \"upstream\" {\n            module \"fedora-family\"\n        }\n    }"
-            ),
-            "{image}"
-        );
-    flow.buildc(&root, &["--no-tui", "--root", ".", "fetch", "modules"]);
+        image.contains("    modules {\n        module \"fedora-family\"\n    }"),
+        "{image}"
+    );
+    assert!(root.join("modules/fedora-family/module.kdl").is_file());
     flow.buildc(&root, &["--no-tui", "--root", ".", "check"]);
+
+    let manifest = root.join("modules/fedora-family/module.kdl");
+    let fork = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("provides \"build-environment\"\n", "");
+    std::fs::write(&manifest, &fork).unwrap();
+    let lock = std::fs::read_to_string(root.join("modules/modules.lock.kdl")).unwrap();
+    flow.buildc(
+        &root,
+        &["--no-tui", "--root", ".", "create", "image", "Gamma"],
+    );
+    assert_eq!(std::fs::read_to_string(&manifest).unwrap(), fork);
+    assert_eq!(
+        std::fs::read_to_string(root.join("modules/modules.lock.kdl")).unwrap(),
+        lock
+    );
+    let gamma = std::fs::read_to_string(root.join("gamma.image.kdl")).unwrap();
+    assert!(gamma.contains("module \"fedora-family\""), "{gamma}");
 }
 
 fn setup_check_unpinned(flow: &Flow) {
@@ -714,7 +730,7 @@ fn setup_module_in_flavour(flow: &Flow) {
     let listed = |at: &str| {
         let (list, _, _) = buildc::declarations(&root);
         buildc::create::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
-            .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools", None))
+            .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools"))
             .err()
             .unwrap_or_default()
     };
@@ -892,50 +908,6 @@ fn setup_set_claims_two(flow: &Flow) {
         "both benchmark names collapse into the derived one: {merged}"
     );
     flow.buildc(&two, &["--no-tui", "--root", ".", "check"]);
-}
-
-fn setup_set_claims_fetched(flow: &Flow) {
-    let target = flow.target;
-    let stream = datastream();
-    let claimed = flow.repo("flow-set-claims-in");
-    lists_sshd(&claimed);
-    std::fs::create_dir_all(claimed.join("modules/sshd")).unwrap();
-    std::fs::write(
-        claimed.join("modules/sshd/module.kdl"),
-        format!("{CLAIMANT}\nsatisfies {{\n    cis-fedora \"5.5.2\"\n}}\n"),
-    )
-    .unwrap();
-    for name in ["flow-set-claims", "flow-set-claims-again"] {
-        flow.run(name, &claimed, None, &claims(&stream));
-    }
-    std::fs::create_dir_all(claimed.join("modules/.remote/upstream/sshd")).unwrap();
-    std::fs::write(
-        claimed.join("modules/.remote/upstream/sshd/module.kdl"),
-        CLAIMANT,
-    )
-    .unwrap();
-    flow.run(
-        target,
-        &claimed,
-        None,
-        &[
-            "--root",
-            ".",
-            "set",
-            "claims",
-            ".remote/upstream/sshd",
-            "--datastream",
-            stream.as_str(),
-        ],
-    );
-    let declared = std::fs::read_to_string(claimed.join("modules/sshd/module.kdl")).unwrap();
-    assert_eq!(declared.matches("satisfies ").count(), 1, "{declared}");
-    assert!(
-        declared
-            .contains("    standard \"1.1.1.1\" \\\n        \"5.2.20\" \\\n        \"5.5.2\"\n"),
-        "{declared}"
-    );
-    flow.buildc(&claimed, &["--no-tui", "--root", ".", "check"]);
 }
 
 fn setup_workflows(flow: &Flow) {
@@ -1221,7 +1193,6 @@ fn setup_import_skip(flow: &Flow) {
             "example",
         ],
     );
-    flow.buildc(&skip, &["--no-tui", "--root", ".", "fetch", "modules"]);
     flow.buildc(&skip, &["--no-tui", "--root", ".", "check"]);
 }
 
@@ -1973,7 +1944,6 @@ flow_cases! {
     flow_module_two_images => "flow-module-two-images",
     flow_set_claims => "flow-set-claims",
     flow_set_claims_again => "flow-set-claims-again",
-    flow_set_claims_fetched => "flow-set-claims-fetched",
     flow_set_claims_two => "flow-set-claims-two",
     flow_set_conforms => "flow-set-conforms",
     flow_set_conforms_again => "flow-set-conforms-again",

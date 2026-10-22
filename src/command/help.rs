@@ -83,7 +83,9 @@ It asks, in order:
 2. Choose the base from the catalog. If `--base` names a base outside the
    catalog, then choose its family.
 3. If the base needs modules that the image does not list, such as the family
-   adapter, choose whether to add them from the declared collections."#;
+   adapter, choose whether to add them from the declared collections. Each
+   one is copied into `modules/` and recorded in `modules/modules.lock.kdl`. A
+   module the repository already holds is listed as it is."#;
 
 pub(super) const CREATE_IMAGE_NOTES: &str = r#"> [!NOTE]
 > A base outside the catalog asks for its family and writes no `provides`.
@@ -194,8 +196,7 @@ pub(super) const IMPORT_MODULE_NOTES: &str = r#"> [!WARNING]
 
 pub(super) const CREATE_GIT: &str = r#"Puts the directory under git control, so a hand-written repository is under
 version control before its first commit. It writes the `.gitignore` that
-ignores `keys/private/`, `out/` and `modules/.remote/`, unless one is already
-there.
+ignores `keys/private/`, `out/` and `.cache/`, unless one is already there.
 
 It refuses a directory that git already tracks, because a repository does not
 nest."#;
@@ -429,8 +430,8 @@ default image. It runs `buildc verify` first, so it builds only from build files
 that are current."#;
 
 pub(super) const BUILD_NOTES: &str = r#"> [!NOTE]
-> It fetches nothing and writes no build file. Run `buildc fetch modules` and
-> `buildc generate` first, or `buildc vm run --rebuild` to run all three.
+> It fetches nothing and writes no build file. Run `buildc generate` first, or
+> `buildc vm run --rebuild` to run both.
 >
 > `$TAGS` adds tags and `$LABELS` adds OCI labels. `$IMAGE_VERSION` is stamped
 > into the image, and is today's date in UTC by default.
@@ -447,9 +448,9 @@ published. `<type>` is `qcow2`, `raw` or `iso`, and a terminal asks for it.
 missing. `spawn` boots it with systemd-vmspawn, which cannot boot an `iso`."#;
 
 pub(super) const VM_NOTES: &str = r#"> [!NOTE]
-> `--rebuild` runs `buildc fetch modules`, `buildc generate` and `buildc build` in
-> that order first. Without it, nothing is fetched, written or built, and the
-> existing disk boots.
+> `--rebuild` runs `buildc generate` and `buildc build` in that order first.
+> Without it, nothing is fetched, written or built, and the existing disk
+> boots.
 >
 > It runs `vm.sh`, from `scripts/` if the repository keeps a copy, else from
 > `generated/scripts/`. The script asks for sudo, because it reads the image out
@@ -511,17 +512,6 @@ build writes the table into its job summary."#;
 pub(super) const SBOM: &str = r#"Prints the pinned payloads of one target, as SPDX packages and their
 relationships. A scan of the built image cannot see where a downloaded asset
 came from, so CI merges this into the SBOM that the scan produces."#;
-
-pub(super) const FETCH_MODULES: &str = r#"Fetches every module that the images import, checks each one that has a hash,
-and puts it under `modules/.remote/`. `buildc generate` and the build read the
-modules from there."#;
-
-pub(super) const FETCH_MODULES_NOTES: &str = r#"> [!NOTE]
-> A module already at its pin stays. A module that no image references any more
-> is removed.
->
-> It reads the declarations, and not the resolved plan, so it runs before the
-> modules it fetches can be read."#;
 
 pub(super) const SCAP: &str = r#"Reads the report of one scan against the datastream that produced it, and
 prints what they say about the target as markdown. The report shows what each

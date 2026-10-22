@@ -6,8 +6,6 @@ use kdl::KdlNode;
 
 const DATASOURCES: [&str; 3] = ["github-releases", "github-tags", "git-refs"];
 
-const ARCHIVES: [&str; 5] = [".tar.gz", ".tgz", ".tar.xz", ".tar.zst", ".tar.bz2"];
-
 #[rustfmt::skip]
 const RENOVATE: Node = Node::new("renovate",
     "The Renovate custom manager that keeps `version` current.").example("datasource=\"github-tags\" depName=\"owner/repo\"").pick()
@@ -41,23 +39,10 @@ const MANUAL: Node = Node::new("manual", "Why nothing tracks this pin.").example
     .once("");
 
 #[rustfmt::skip]
-const UNPINNED: Node = Node::new("unpinned", "Why this pin follows a moving ref with no `sha256`.").example("\"followed at its branch head\"")
-    .arg(Arg::Str, Say::new("`{}` needs a reason", "no reason given",
-        "say why this is trusted enough to fetch unverified; with no `sha256` a mistaken or \
-         compromised commit lands with nothing to catch it"))
-    .once("")
-    .notes(&[
-        "Every fetch takes what the ref holds at that moment, and nothing checks what arrived.",
-        "Only a collection's pin takes `unpinned`. The build runs an out-of-tree module as \
-         root, so the pin of an out-of-tree module needs a `sha256`.",
-        "`unpinned` does not combine with `sha256`, because a moving ref breaks the hash.",
-    ]);
-
-#[rustfmt::skip]
 pub const PIN: Node = Node::new("pin",
     "Where content comes from, which version it is, what verifies it, and what keeps the \
-     version current.").about("A pin fixes where a download comes from and which version it is, and says how the version stays current. Unless the pin is `unpinned`, `buildc` verifies each download against the pinned hash, so a changed upstream file is caught.")
-    .scaffolds(&["unpinned", "version", "url"])
+     version current.").about("A pin fixes where a download comes from and which version it is, and says how the version stays current. `buildc` verifies each download against the pinned hash, so a changed upstream file is caught.")
+    .scaffolds(&["version", "url"])
     .arg(Arg::None, Say::new("`pin` takes no arguments", "unexpected value",
         "a pin carries its slots as child nodes: `pin { url \"...\"; version \"...\" }`"))
     .once("")
@@ -66,7 +51,6 @@ pub const PIN: Node = Node::new("pin",
     .children(&[
         RENOVATE,
         MANUAL,
-        UNPINNED,
         Node::new("version", "The version, tag or commit that `url` expands and Renovate rewrites.").example("\"v1.0.0\"").minimal()
             .arg(Arg::Str, NEEDS_VALUE).once(""),
         Node::new("url", "Where the content comes from.").example("\"https://github.com/owner/repo/archive/refs/tags/{version}.tar.gz\"").minimal()
@@ -85,50 +69,28 @@ pub const PIN: Node = Node::new("pin",
             ], Say::new("unknown sha256 property `{}`", "not part of the schema",
                 "`sha256` accepts `from`"))
             .notes(&[
-                "If a pin has no `sha256` and no `unpinned`, then `buildc check` reports an error.",
+                "If a pin names a download and no `sha256`, then `buildc check` reports an \
+                 error. A pin whose `url` is a Git repository is cloned at its `version` and \
+                 declares none.",
             ]),
-        Node::new("path", "The directory inside the archive that holds the content.").example("\"modules/example\"")
-            .arg(Arg::Str, NEEDS_VALUE).once(""),
     ], Say::new("unknown node `{}` in a pin", "not part of the schema",
-        "a pin holds one of `renovate`, `manual` and `unpinned`, then `url`, `version`, \
-         `sha256` and `path`"))
+        "a pin holds one of `renovate` and `manual`, then `url`, `version` and `sha256`"))
     .lists(&[
         ("A pin holds exactly one of these, so every pin says how it stays current:", &[
             "`renovate`, if Renovate keeps the version current;",
-            "`manual`, if nothing tracks the pin;",
-            "`unpinned`, if the pin follows a moving ref with no `sha256`.",
+            "`manual`, if nothing tracks the pin.",
         ]),
     ])
     .notes(&[
-        "An `asset`, an out-of-tree module and a collection each hold a `pin`.",
+        "An `asset` holds a `pin`. A library in `sources` declares its own `version`, \
+         `sha256` and `unpinned`.",
         "A base holds no `pin`. Its image reference holds the location and the version, and \
          `signed` records whether the base publishes a cosign signature.",
         "Renovate matches `renovate` together with the line directly below it. Put `version` on \
          that line.",
     ]);
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum Role {
-    Asset,
-    Module,
-    Collection,
-}
-
-impl Role {
-    fn word(self) -> &'static str {
-        match self {
-            Self::Asset => "an asset",
-            Self::Module => "a module pin",
-            Self::Collection => "a collection",
-        }
-    }
-
-    fn archive(self) -> bool {
-        matches!(self, Self::Module | Self::Collection)
-    }
-}
-
-pub fn read(node: &KdlNode, role: Role, src: &Source, issues: &mut Issues) -> Evidence {
+pub fn read(node: &KdlNode, src: &Source, issues: &mut Issues) -> Evidence {
     let span: Span = node.name().span().into();
     let mut pin = Evidence::new(span);
 
@@ -147,13 +109,6 @@ pub fn read(node: &KdlNode, role: Role, src: &Source, issues: &mut Issues) -> Ev
             "renovate" => {
                 answers.push(("renovate", at));
                 let datasource = prop(child, "datasource").unwrap_or_default();
-                if datasource == "git-refs" && role == Role::Module {
-                    issues.push(
-                        Issue::new("`git-refs` does not track a module pin", src)
-                            .at(at, "no custom manager matches it")
-                            .help("github-tags or github-releases, against the publishing repository's per-module tags; a repository with no tags is pinned `manual`"),
-                    );
-                }
                 pin.tracker = Tracker::Renovate {
                     datasource: datasource.to_string(),
                     dep_name: prop(child, "depName").unwrap_or_default().to_string(),
@@ -162,17 +117,6 @@ pub fn read(node: &KdlNode, role: Role, src: &Source, issues: &mut Issues) -> Ev
             "manual" => {
                 answers.push(("manual", at));
                 pin.tracker = Tracker::Manual(value.clone().unwrap_or_default());
-            }
-            "unpinned" => {
-                answers.push(("unpinned", at));
-                pin.tracker = Tracker::Unpinned(value.clone().unwrap_or_default());
-                if role != Role::Collection {
-                    issues.push(
-                        Issue::new(format!("{} cannot be `unpinned`", role.word()), src)
-                            .at(at, "nothing would verify what arrived")
-                            .help("only a module collection follows a moving ref: a fetched module is arbitrary shell running as root in the build, and an asset lands in the image"),
-                    );
-                }
             }
             "version" => {
                 version_span = Some(at);
@@ -192,46 +136,26 @@ pub fn read(node: &KdlNode, role: Role, src: &Source, issues: &mut Issues) -> Ev
                     pin.from = from;
                 }
             }
-            "path" => {
-                pin.path = value;
-                if !role.archive() {
-                    issues.push(
-                        Issue::new("`path` says nothing on an asset pin", src)
-                            .at(at, "nothing is unpacked")
-                            .help("a subtree path names a directory inside a fetched archive; an asset's URL already names the payload"),
-                    );
-                }
-            }
             _ => {}
         }
         previous = Some(kind);
     }
 
-    check_tracker(&answers, version_span, role, span, src, issues);
-    check_verifier(&pin, &answers, role, span, src, issues);
-    check_locator(&pin, role, src, issues);
-    check_path(&pin, src, issues);
+    check_tracker(&answers, version_span, span, src, issues);
+    check_verifier(&pin, span, src, issues);
+    check_locator(&pin, src, issues);
     pin
 }
 
 fn check_tracker(
     answers: &[(&str, Span)],
     version: Option<Span>,
-    role: Role,
     span: Span,
     src: &Source,
     issues: &mut Issues,
 ) {
-    let (needs, how) = match role {
-        Role::Collection => (
-            "needs `renovate`, `manual` or `unpinned`",
-            "`renovate datasource=\"github-tags\" depName=\"owner/repo\"`, `manual \"why nothing tracks it\"`, or `unpinned \"why a moving ref is trusted here\"`",
-        ),
-        Role::Asset | Role::Module => (
-            "needs `renovate` or `manual`",
-            "`renovate datasource=\"github-tags\" depName=\"owner/repo\"`, or `manual \"why nothing tracks it\"`",
-        ),
-    };
+    let needs = "needs `renovate` or `manual`";
+    let how = "`renovate datasource=\"github-tags\" depName=\"owner/repo\"`, or `manual \"why nothing tracks it\"`";
     match answers {
         [] => issues.push(
             Issue::new("the pin says nothing about how it is kept current", src)
@@ -254,38 +178,12 @@ fn check_tracker(
                 .help("a tracked pin needs a `version` line directly below `renovate` for Renovate to rewrite"),
         );
     }
-    if !tracked && version.is_none() && role.archive() {
-        issues.push(
-            Issue::new("the pin declares no `version`", src)
-                .at(span, "nothing pinned")
-                .help("an exact tag or commit; a moving ref would make the build depend on when it ran"),
-        );
-    }
 }
 
-fn check_verifier(
-    pin: &Evidence,
-    answers: &[(&str, Span)],
-    role: Role,
-    span: Span,
-    src: &Source,
-    issues: &mut Issues,
-) {
-    let unpinned = answers
-        .iter()
-        .find(|(w, _)| *w == "unpinned")
-        .map(|(_, at)| *at);
-
+fn check_verifier(pin: &Evidence, span: Span, src: &Source, issues: &mut Issues) {
     match &pin.sha256 {
         Some(sha256) => {
             check_sha256(sha256, "the pin", span, src, issues);
-            if let Some(at) = unpinned {
-                issues.push(
-                    Issue::new("the pin is declared `unpinned` but pins a `sha256`", src)
-                        .at(at, "one of the two is not true")
-                        .help("a moving ref does not hash the same twice, so the fetch would fail as soon as it moved; drop whichever of them is wrong"),
-                );
-            }
             if pin.url.is_none() {
                 issues.push(
                     Issue::new("the pin declares a `sha256` with no `url`", src)
@@ -301,36 +199,21 @@ fn check_verifier(
                         .at(span, "nothing to refresh"),
                 );
             }
-            if unpinned.is_some() {
-                return;
-            }
-            let cloned = pin.cloned();
-            let help = match role {
-                Role::Collection => "the content hash is what says the archive is the one that was reviewed; `unpinned \"why it is trusted\"` is how a collection following a moving ref says it has none on purpose",
-                Role::Module => "a remote module is arbitrary shell running as root in the build, so the content hash is required, not optional",
-                Role::Asset => "every downloaded asset is verified against its pin; one whose url is a git repository is cloned at the commit or tag its version names instead, and declares none",
-            };
-            if role.archive() || (pin.url.is_some() && !cloned) {
+            if pin.url.is_some() && !pin.cloned() {
                 issues.push(
                     Issue::new("the pin declares no `sha256`", src)
                         .at(span, "nothing to verify what arrived")
-                        .help(help),
+                        .help("every downloaded asset is verified against its pin; one whose url is a git repository is cloned at the commit or tag its version names instead, and declares none"),
                 );
             }
         }
     }
 }
 
-fn check_locator(pin: &Evidence, role: Role, src: &Source, issues: &mut Issues) {
+fn check_locator(pin: &Evidence, src: &Source, issues: &mut Issues) {
     let span = pin.span;
     let Some(url) = &pin.url else {
-        if role.archive() {
-            issues.push(
-                Issue::new("the pin declares no `url`", src)
-                    .at(span, "nothing to fetch")
-                    .help("`url \"https://host/owner/repo/archive/refs/tags/{version}.tar.gz\"`"),
-            );
-        } else if !matches!(pin.tracker, Tracker::None) {
+        if !matches!(pin.tracker, Tracker::None) {
             issues.push(
                 Issue::new("the pin declares no `url`", src)
                     .at(span, "where it comes from is not recorded")
@@ -356,42 +239,8 @@ fn check_locator(pin: &Evidence, role: Role, src: &Source, issues: &mut Issues) 
                 .at(span, "would fetch a URL with braces in it"),
         );
     }
-    if matches!(pin.tracker, Tracker::Renovate { .. })
-        && !url.contains("{version}")
-        && role.archive()
-    {
-        issues.push(
-            Issue::new("the URL does not expand `{version}`", src)
-                .at(span, "a bump would fetch the same archive")
-                .help("put `{version}` in the URL, or mark the pin `manual` if the URL genuinely does not follow the selector"),
-        );
-    }
-
     let resolved = pin.url_resolved().unwrap_or_default();
-    if role.archive() {
-        if !url.starts_with("https://") && !url.starts_with("file://") {
-            issues.push(
-                Issue::new("the URL is not https", src)
-                    .at(span, "unencrypted or unsupported scheme")
-                    .help("https://, or file:// for a local archive"),
-            );
-        }
-        if !ARCHIVES.iter().any(|ext| resolved.ends_with(ext)) {
-            issues.push(
-                Issue::new("the pin is not a tar archive", src)
-                    .at(span, "cannot be extracted")
-                    .help(format!(
-                        "one of {}; the fetch strips the archive's leading directory, which is a tar option",
-                        ARCHIVES.join(", ")
-                    )),
-            );
-        }
-    }
-
-    let bad = match role.archive() {
-        true => &['|', '"', '\'', '\\', '$', '`', ' ', '\n', '\t'][..],
-        false => &['"', '\\', '$', '`', '\n'][..],
-    };
+    let bad = &['"', '\\', '$', '`', '\n'][..];
     for (what, value) in [
         ("URL", resolved.as_str()),
         ("version", pin.version.as_deref().unwrap_or_default()),
@@ -403,30 +252,6 @@ fn check_locator(pin: &Evidence, role: Role, src: &Source, issues: &mut Issues) 
                     .help("a pin reaches the fetch as pipe-separated fields and a layer's env, so quotes, spaces, pipes and expansions are rejected"),
             );
         }
-    }
-}
-
-fn check_path(pin: &Evidence, src: &Source, issues: &mut Issues) {
-    let Some(path) = &pin.path else {
-        return;
-    };
-    let bad = if path.starts_with('/') {
-        Some("relative to the archive root, so it cannot start with /")
-    } else if path.split('/').any(|seg| seg == ".." || seg.is_empty()) {
-        Some("no empty or `..` segments: the subtree has to stay inside the archive")
-    } else if path.contains(['|', '"', '\'', '\\', '$', '`', ' ', '\n', '\t']) {
-        Some("not usable in the fetch")
-    } else {
-        None
-    };
-    if let Some(reason) = bad {
-        issues.push(
-            Issue::new(format!("invalid subtree path `{path}`"), src)
-                .at(pin.span, reason)
-                .help(
-                    "`path \"modules/module-name\"`, the module's directory inside the repository",
-                ),
-        );
     }
 }
 
@@ -444,7 +269,26 @@ mod tests {
         issues.findings()
     }
 
-    /// Every shape the golden corpus has no broken fixture for.
+    #[test]
+    fn a_pin_with_no_url_asks_for_the_url_alone() {
+        let text = "pin { manual \"vendored by hand\" }";
+        let doc: KdlDocument = text.parse().expect("valid KDL");
+        let src = Source::new("module.kdl", text);
+        let mut issues = Issues::default();
+        read(&doc.nodes()[0], &src, &mut issues);
+        let found = issues.findings();
+        assert!(
+            found.iter().any(|said| said.contains("declares no `url`")),
+            "{found:?}"
+        );
+        assert!(
+            !found
+                .iter()
+                .any(|said| said.contains("declares no `sha256`")),
+            "{found:?}"
+        );
+    }
+
     #[test]
     fn the_table_catches_what_the_corpus_does_not() {
         let found = messages(
@@ -476,7 +320,6 @@ pin "tag" at="tag" {
         );
     }
 
-    /// The annotation every holder of the table points at.
     #[test]
     fn a_renovate_annotation_says_what_tracks_the_pin() {
         let found = messages("pin { renovate }");

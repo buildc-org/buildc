@@ -91,13 +91,6 @@ pub(super) fn seed_bases(root: &Path) {
             std::fs::copy(entry.path(), core.join(name)).unwrap();
         }
     }
-    let capabilities = keyed.join("capabilities");
-    std::fs::create_dir_all(&capabilities).unwrap();
-    std::fs::copy(
-        collections.join("capabilities.kdl"),
-        capabilities.join("capabilities.kdl"),
-    )
-    .unwrap();
 }
 
 pub(super) fn seed_library(root: &Path) {
@@ -106,7 +99,7 @@ pub(super) fn seed_library(root: &Path) {
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
     copy(&collections, &keyed.join("modules"));
-    for stray in ["capabilities.kdl", "fedora.base.kdl", "collected.base.kdl"] {
+    for stray in ["fedora.base.kdl", "collected.base.kdl"] {
         let _ = std::fs::remove_file(keyed.join("modules").join(stray));
     }
 }

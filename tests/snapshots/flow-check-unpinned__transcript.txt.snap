@@ -5,7 +5,5 @@ Buildc v{version}
 
 buildc: `buildc-modules` is unpinned, so a fetch from it takes whatever its ref holds then, unverified
 buildc: `core` is unpinned, so a fetch from it takes whatever its ref holds then, unverified
-buildc: `core` is unpinned, so a fetch from it takes whatever its ref holds then, unverified
-buildc: The `buildc-modules` collection is declared but not on this machine, so nothing read it: `buildc fetch modules` downloads it
 buildc: 1 images, 0 modules, 0 flavours
 ==== exit 0

@@ -1,4 +1,4 @@
-use crate::model::remote::{Collection, Kind as SourceKind, REMOTE_DIR};
+use crate::model::remote::{Collection, Kind as SourceKind};
 use crate::parse::disk::Disk;
 use crate::parse::module::Summary;
 use crate::{layout, parse};
@@ -16,13 +16,6 @@ impl Provider {
     pub fn qualified(&self) -> String {
         match &self.owner {
             Some(owner) => format!("{owner}/{}", self.name),
-            None => self.name.clone(),
-        }
-    }
-
-    pub fn dir(&self) -> String {
-        match &self.owner {
-            Some(owner) => format!("{REMOTE_DIR}/{owner}/{}", self.name),
             None => self.name.clone(),
         }
     }
@@ -48,28 +41,26 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn scan(root: &Path, sources: &[Collection], disk: &Disk, fetch: bool) -> Self {
-        let mut out: Vec<Provider> = Vec::new();
-        for dir in disk.modules() {
-            let (owner, name) = split(dir);
-            out.push(Provider {
-                owner,
-                name,
-                here: true,
-                declares: parse::module::summary(&layout::manifest(root, dir)),
-            });
+    pub fn local(root: &Path, sources: &[Collection], disk: &Disk) -> Self {
+        Self {
+            held: own(root, disk),
+            unread: Vec::new(),
+            sourced: sources
+                .iter()
+                .any(|collection| collection.kind == SourceKind::Modules),
+            unreached: None,
         }
+    }
+
+    pub fn scan(root: &Path, sources: &[Collection], disk: &Disk, fetch: bool) -> Self {
+        let mut out = own(root, disk);
         let fetched = crate::import::catalog(root, sources, fetch);
         let unreached = fetched.as_ref().err().cloned();
         let reached = fetched.is_ok();
         let found = fetched
             .or_else(|_| crate::import::catalog(root, sources, false))
             .unwrap_or_default();
-        for module in found {
-            if !out.iter().any(|held| held.dir() == module.dir()) {
-                out.push(module);
-            }
-        }
+        out.extend(found);
         Self {
             held: out,
             unreached,
@@ -114,11 +105,11 @@ impl Index {
         match named.len() {
             0 => String::new(),
             1 => format!(
-                "The {} collection is declared but not on this machine, so nothing read it: `buildc fetch modules` downloads it",
+                "The {} collection is declared but not on this machine, so nothing read it: `buildc import module` fetches it",
                 named.join(", ")
             ),
             _ => format!(
-                "The {} collections are declared but not on this machine, so nothing read them: `buildc fetch modules` downloads them",
+                "The {} collections are declared but not on this machine, so nothing read them: `buildc import module` fetches them",
                 named.join(", ")
             ),
         }
@@ -169,30 +160,50 @@ impl Index {
     }
 
     pub fn at(&self, dir: &str) -> Option<&Provider> {
-        self.held.iter().find(|held| held.dir() == dir)
+        self.held
+            .iter()
+            .find(|held| held.owner.is_none() && held.name == dir)
     }
 }
 
-fn split(dir: &str) -> (Option<String>, String) {
-    match dir
-        .strip_prefix(REMOTE_DIR)
-        .and_then(|rest| rest.strip_prefix('/'))
-        .and_then(|rest| rest.split_once('/'))
-    {
-        Some((owner, name)) => (Some(owner.to_string()), name.to_string()),
-        None => (None, dir.to_string()),
-    }
+fn own(root: &Path, disk: &Disk) -> Vec<Provider> {
+    disk.modules()
+        .map(|dir| Provider {
+            owner: None,
+            name: dir.clone(),
+            here: true,
+            declares: parse::module::summary(&layout::manifest(root, dir)),
+        })
+        .collect()
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
+    pub(crate) fn two_providers(name: &str) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("buildc-providers-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("modules/both/module.kdl"),
+            "schema-version 1\n\nsupports \"fedora\"\n\nprovides \"x\" \"y\"\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("modules/other/module.kdl"),
+            "schema-version 1\n\nsupports \"fedora\"\n\nprovides \"y\"\n",
+        )
+        .unwrap();
+        root
+    }
+
     #[test]
-    fn a_fetched_module_is_the_collection_member_it_came_from() {
-        let (owner, name) = split(".remote/one/browser");
-        assert_eq!((owner.as_deref(), name.as_str()), (Some("one"), "browser"));
-        let (owner, name) = split("my/editor");
-        assert_eq!((owner, name.as_str()), (None, "my/editor"));
+    fn an_entry_finds_the_module_it_names() {
+        let root = two_providers("at");
+        let index = Index::local(&root, &[], &Disk::scan(&root));
+        let found = index.at("other").map(|held| held.name.as_str());
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(found, Some("other"));
     }
 }

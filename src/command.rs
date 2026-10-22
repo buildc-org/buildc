@@ -36,7 +36,6 @@ pub enum Verb {
     Verify,
     Summary,
     Sbom,
-    FetchModules,
     Scap,
     ScapContent,
     ScapRules,
@@ -83,11 +82,6 @@ impl Verb {
                 "satisfies",
             )),
             Self::Generate => Some(("`generated/`", Area::Repository, "")),
-            Self::FetchModules => Some((
-                "`image.kdl`&nbsp;›&nbsp;`pin`",
-                Area::Image,
-                "image-modules-module-pin",
-            )),
             Self::OsRelease => Some(("`image.kdl`&nbsp;›&nbsp;`image`", Area::Image, "image")),
             Self::Fetch => Some(("`module.kdl`&nbsp;›&nbsp;`asset`", Area::Module, "asset")),
             Self::ValidateImage => Some((
@@ -150,7 +144,6 @@ pub const ALL: &[Verb] = &[
     Verb::Verify,
     Verb::Summary,
     Verb::Sbom,
-    Verb::FetchModules,
     Verb::Scap,
     Verb::ScapContent,
     Verb::ScapRules,
@@ -350,13 +343,6 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Topic::Inspect,
     ),
     ("sbom", Verb::Sbom, Family::Script, false, Topic::Inspect),
-    (
-        "fetch modules",
-        Verb::FetchModules,
-        Family::Script,
-        false,
-        Topic::Modules,
-    ),
     (
         "scap content",
         Verb::ScapContent,
@@ -617,10 +603,8 @@ pub enum Surface {
         #[arg(long = "base-scan", value_name = "file")]
         base_scan: Option<PathBuf>,
     },
-    #[command(long_about = help::FETCH, subcommand_negates_reqs = true)]
+    #[command(long_about = help::FETCH)]
     Fetch {
-        #[command(subcommand)]
-        sub: Option<FetchWhat>,
         /// the payload kind: `file`, `tree`, `bin`, `rpm` or `deb`
         #[arg(value_name = "what", required = true)]
         what: Option<String>,
@@ -862,12 +846,6 @@ pub enum ScapWhat {
 }
 
 #[derive(Subcommand)]
-pub enum FetchWhat {
-    #[command(long_about = help::FETCH_MODULES, after_long_help = help::FETCH_MODULES_NOTES)]
-    Modules,
-}
-
-#[derive(Subcommand)]
 pub enum RegistryWhat {
     /// print the registry namespace that images publish to
     #[command(long_about = help::REGISTRY_NAMESPACE)]
@@ -1096,8 +1074,8 @@ into each image.
 
 - On the user's machine, it scaffolds the repository and its images, modules and keys. It \
 checks the KDL files, writes the build files, and builds and boots an image.
-- In CI, the generated workflows call it to fetch modules, write the build files, build and \
-publish each image, and scan it.
+- In CI, the generated workflows call it to write the build files, build and publish each \
+image, and scan it.
 - Inside a build, the generated Containerfile calls it to write the image identity, record \
 what the build resolved and check the finished image. A module script can call `buildc fetch` \
 to download a payload and check it against its hash.
@@ -1382,7 +1360,6 @@ impl Verb {
             | Self::VmBuild
             | Self::VmRun
             | Self::VmSpawn
-            | Self::FetchModules
             | Self::Scap
             | Self::ScapContent
             | Self::ScapRules
@@ -1497,10 +1474,7 @@ mod tests {
     }
 
     #[test]
-    fn fetch_takes_its_three_positionals_unless_a_noun_does() {
-        Cli::command()
-            .try_get_matches_from(["buildc", "fetch", "modules"])
-            .expect("the noun negates the required positionals");
+    fn fetch_takes_its_three_positionals() {
         let error = Cli::command()
             .try_get_matches_from(["buildc", "fetch", "file"])
             .expect_err("the bare form needs its url and sha256");

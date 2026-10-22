@@ -172,8 +172,7 @@ pub const MODULE_FILE: &str = "module.kdl";
 pub const LOCK_FILE: &str = "modules.lock.kdl";
 
 pub const MOUNTED: &str = "out/buildc";
-pub const SOURCES_CACHE: &str = "out/sources";
-pub const STAMPS: &str = "out/remote-modules";
+pub const SOURCES_CACHE: &str = ".cache/sources";
 
 pub fn is_image_file(name: &str) -> bool {
     name == IMAGE_FILE || name.ends_with(IMAGE_SUFFIX)
@@ -262,9 +261,6 @@ pub const REPOSITORY: Tree = Tree {
         Place { path: &[MODULES, "/", LOCK_FILE], writer: "`buildc import module`", tracked: true,
             what: "Where each imported module came from, and what its content hashed to. See \
                 [`modules.lock.kdl`](lock.md)." },
-        Place { path: &[MODULES, "/", crate::model::remote::REMOTE_DIR, "/"], writer: "`buildc`", tracked: false,
-            what: "The modules that an image pins from another repository, fetched and verified \
-                against their hash." },
         Place { path: &[KEYS, "/", PUBLIC_KEYS, "/"], writer: "`buildc create key` or `buildc set key`", tracked: true,
             what: "The public half of each key, at the path it has in the image." },
         Place { path: &[KEYS, "/", PRIVATE_KEYS, "/"], writer: "`buildc create key`", tracked: false,
@@ -280,7 +276,8 @@ pub const REPOSITORY: Tree = Tree {
         Place { path: &[OUT, "/"], writer: "`buildc`", tracked: false,
             what: "Local exports, caches and scratch. `buildc` reads nothing here as a declaration." },
         Place { path: &[SOURCES_CACHE, "/"], writer: "`buildc`", tracked: false,
-            what: "The libraries that `buildc import module` fetches and copies a module from." },
+            what: "The libraries that `buildc import module` fetches and copies a module from. \
+                `buildc check`, `buildc generate` and `buildc build` read nothing here." },
         Place { path: &["disk_config/"], writer: "`buildc create repo`, then the user", tracked: true,
             what: "The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk \
                 image. `disk.toml` sets the smallest size of `/`." },
@@ -288,7 +285,7 @@ pub const REPOSITORY: Tree = Tree {
             what: "The Renovate settings. Its custom managers keep the `buildc` release in `repo.kdl` \
                 and each pin that declares `renovate` current." },
         Place { path: &[".gitignore"], writer: "`buildc create repo`", tracked: true,
-            what: "Keeps `keys/private/`, `out/` and `modules/.remote/` out of git." },
+            what: "Keeps `keys/private/`, `out/` and `.cache/` out of git." },
     ],
     lists: &[],
     notes: &[],

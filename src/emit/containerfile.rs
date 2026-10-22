@@ -247,9 +247,9 @@ fn finalize_layer(image: &Image, identity_env: &str, root: &Path) -> String {
          --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    "
     );
 
-    let mut mounted: Vec<String> = Vec::new();
+    let mut mounted: Vec<&str> = Vec::new();
     for (entry, _) in hooks {
-        let dir = entry.dir();
+        let dir = entry.path.as_str();
         if mounted.contains(&dir) {
             continue;
         }
@@ -291,7 +291,7 @@ fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path, open: 
         env.insert_str(0, &format!("{name}=${{{name}}} "));
     }
 
-    let path = entry.dir();
+    let path = &entry.path;
     let script = script.display();
     let keys = match module.keys.is_empty() {
         true => String::new(),
@@ -334,7 +334,7 @@ fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path, open: 
 }
 
 fn fragment(entry: &Entry, body: &str) -> String {
-    let dir = entry.dir();
+    let dir = &entry.path;
     let mut out = String::new();
     let _ = write!(
         out,

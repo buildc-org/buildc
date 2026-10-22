@@ -24,7 +24,7 @@ usage: scripts/vm.sh <command> <qcow2|raw|iso> [options]
   --target <image/flavour>
                       what a rebuild builds and what an iso installs
                       (default: the plan's ungated target)
-  --rebuild           fetch modules, generate, then build the container image
+  --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
   --installer <which> what converts the image into a disk: `bib` for
@@ -398,7 +398,6 @@ run_qemu() {
 
 if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
     if [ "$rebuild" = 1 ]; then
-        ./scripts/buildc.sh fetch modules
         ./scripts/buildc.sh generate
         args=(--tag "$ref")
         [ -z "$target" ] || args+=(--target "$target")

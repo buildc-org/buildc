@@ -1,7 +1,6 @@
 use crate::copy;
 use crate::layout;
 use crate::model::module::Key as Declared;
-use crate::model::remote::REMOTE_DIR;
 use crate::parse::disk::Disk;
 use common::prompt::Prompt;
 use common::ui::Choice;
@@ -277,10 +276,7 @@ fn provider(
     given: Option<String>,
     prompt: &Prompt,
 ) -> Result<usize, String> {
-    let dirs: Vec<&str> = declaring
-        .iter()
-        .map(|(dir, _)| dir.strip_prefix(&format!("{REMOTE_DIR}/")).unwrap_or(dir))
-        .collect();
+    let dirs: Vec<&str> = declaring.iter().map(|(dir, _)| dir.as_str()).collect();
     if let Some(given) = given {
         return dirs
             .iter()
@@ -798,27 +794,28 @@ key "keylime-ca" {
     }
 
     #[test]
-    fn a_referenced_module_can_declare_a_repository_key() {
-        let root = std::env::temp_dir().join("buildc-remote-key-test");
+    fn the_named_module_of_two_declares_the_key() {
+        let root = std::env::temp_dir().join(format!("buildc-key-named-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(&root.join("modules/one/module.kdl"), SECUREBOOT).unwrap();
         crate::init::put(
-            &root.join("modules/.remote/one/keyholder/module.kdl"),
-            SECUREBOOT,
+            &root.join("modules/two/module.kdl"),
+            &SECUREBOOT.replace("sb_cert.der", "other.der"),
         )
         .unwrap();
         let key = Key::collect(
             &root,
             Some("secureboot".into()),
-            Some("one/keyholder".into()),
+            Some("two".into()),
             Some("Test Key".into()),
             &Prompt::silent(),
         )
         .unwrap();
         assert_eq!(
             key.public,
-            root.join("keys/public/usr/share/secureboot/sb_cert.der")
+            root.join("keys/public/usr/share/secureboot/other.der")
         );
-        let _ = std::fs::remove_dir_all(root);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

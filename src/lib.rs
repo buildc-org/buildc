@@ -6,7 +6,6 @@ pub mod create;
 pub mod diag;
 pub mod dispatch;
 pub mod emit;
-pub mod fetch;
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
 pub mod import;
@@ -155,7 +154,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
     let context = context(&list, root);
 
     let disk = parse::disk::Disk::scan(root);
-    let index = provider::Index::scan(root, &list.sources, &disk, false);
+    let index = provider::Index::local(root, &list.sources, &disk);
     parse::module::check_unlisted(&list, root, &disk, &mut issues);
 
     let network = list.network;
@@ -240,8 +239,8 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
 
     let (unpinned, modified) = match command {
         Command::Check => {
-            let _ = base::catalog(root, &list.sources, &mut issues);
             provenance::lock::validate(root, &mut issues);
+            scap::check_content(&list, &mut issues);
             (
                 list.sources
                     .iter()

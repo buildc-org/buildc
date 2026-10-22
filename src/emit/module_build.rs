@@ -47,7 +47,7 @@ fn split_packages(
     root: &Path,
 ) -> String {
     let mut out = package_step(entry, module, base_family, root);
-    let on_disk = layout::module(root, entry.dir());
+    let on_disk = layout::module(root, &entry.path);
     if has.contains(layout::SELINUX.capability) && !layout::SELINUX.files(&on_disk).is_empty() {
         out.push_str("\nsource /ctx/lib/selinux-helpers.sh\nensure_checkpolicy\n");
     }
@@ -114,7 +114,7 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
 }
 
 fn prelude(entry: &Entry, module: &Module, boot: &str) -> String {
-    let dir = format!("/ctx/modules/{}", entry.dir());
+    let dir = format!("/ctx/modules/{}", entry.path);
     let mut out = String::from(HEADER);
     let _ = write!(out, "\nMODDIR={dir}\nexport MODDIR\n");
     if !boot.is_empty() {
@@ -180,10 +180,10 @@ fn installs(module: &Module, base_family: &str) -> bool {
 }
 
 fn package_step(entry: &Entry, module: &Module, base_family: &str, root: &Path) -> String {
-    let dir = format!("/ctx/modules/{}", entry.dir());
+    let dir = format!("/ctx/modules/{}", entry.path);
     let mut out = String::new();
 
-    let on_disk = layout::module(root, entry.dir());
+    let on_disk = layout::module(root, &entry.path);
     if let Some(at) = layout::shipped(&on_disk, base_family, "repo") {
         match repo_id(&on_disk.join(&at)).filter(|_| crate::parse::module::rpm(base_family)) {
             Some(id) => {
@@ -242,8 +242,8 @@ fn rest(
     has: &BTreeSet<&str>,
     root: &Path,
 ) -> String {
-    let dir = format!("/ctx/modules/{}", entry.dir());
-    let on_disk = layout::module(root, entry.dir());
+    let dir = format!("/ctx/modules/{}", entry.path);
+    let on_disk = layout::module(root, &entry.path);
     let mut out = String::new();
 
     let mut roots = vec![(on_disk.clone(), dir.clone())];

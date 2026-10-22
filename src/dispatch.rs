@@ -474,34 +474,30 @@ pub fn dispatch(
         }
         Verb::SetLibrary => {
             use crate::model::remote::Kind as SourceKind;
-            let kinds = [
-                SourceKind::Modules,
-                SourceKind::BaseImages,
-                SourceKind::Capabilities,
-            ];
-            let kind =
-                match one_name(rest, name)? {
-                    Some(kind) => SourceKind::parse(&kind).ok_or_else(|| {
-                        Error::Invocation(format!(
-                            "`{kind}` is not a library kind; `set library` takes `base-images`, \
-                         `capabilities` or `modules`"
-                        ))
-                    })?,
-                    None if prompt.asks() => {
-                        let options: Vec<common::ui::Choice> = kinds
-                            .iter()
-                            .map(|kind| common::ui::Choice::new(kind.as_str(), ""))
-                            .collect();
-                        match prompt.choose(copy::WHICH_KIND, &options)? {
-                            Some(at) => kinds[at],
-                            None => return Ok(ExitCode::SUCCESS),
-                        }
+            let kinds = [SourceKind::Modules, SourceKind::BaseImages];
+            let kind = match one_name(rest, name)? {
+                Some(kind) => SourceKind::parse(&kind).ok_or_else(|| {
+                    Error::Invocation(format!(
+                        "`{kind}` is not a library kind; `set library` takes `base-images` or \
+                         `modules`"
+                    ))
+                })?,
+                None if prompt.asks() => {
+                    let options: Vec<common::ui::Choice> = kinds
+                        .iter()
+                        .map(|kind| common::ui::Choice::new(kind.as_str(), ""))
+                        .collect();
+                    match prompt.choose(copy::WHICH_KIND, &options)? {
+                        Some(at) => kinds[at],
+                        None => return Ok(ExitCode::SUCCESS),
                     }
-                    None => return Err(Error::Invocation(
-                        "`set library` takes a kind: `base-images`, `capabilities` or `modules`"
-                            .to_string(),
-                    )),
-                };
+                }
+                None => {
+                    return Err(Error::Invocation(
+                        "`set library` takes a kind: `base-images` or `modules`".to_string(),
+                    ))
+                }
+            };
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
@@ -542,17 +538,6 @@ pub fn dispatch(
             };
             let wrote = set.apply(&root)?;
             crate::create::report(&root, &wrote);
-            Ok(ExitCode::SUCCESS)
-        }
-        Verb::FetchModules => {
-            let root = repo_root(here)?;
-            let (list, issues, context) = crate::declarations(&root);
-            if issues.report(&context) {
-                return Ok(ExitCode::from(REPO_ERROR));
-            }
-            for line in crate::fetch::modules(&root, &list)? {
-                eprintln!("buildc: {line}");
-            }
             Ok(ExitCode::SUCCESS)
         }
         Verb::Build => {
@@ -786,10 +771,6 @@ fn coverage(
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "every reading command shares one load, report and exit sequence"
-)]
 fn reading(
     verb: Verb,
     name: &str,
@@ -841,15 +822,6 @@ fn reading(
         Command::Why | Command::WhyJson | Command::Coverage | Command::CoverageJson
     ) && arg.is_none()
         && prompt.draws();
-    if command == Command::Generate {
-        let (list, issues, _) = crate::declarations(&root);
-        if issues.is_empty() {
-            for line in crate::fetch::modules(&root, &list)? {
-                eprintln!("buildc: {line}");
-            }
-        }
-    }
-
     let mut chosen = None;
     let mut run = if picks {
         let loaded = crate::load(&root);
@@ -890,6 +862,8 @@ fn reading(
     let arg = chosen.as_deref().or(arg);
 
     if matches!(command, Command::Coverage | Command::CoverageJson) {
+        let disk = crate::parse::disk::Disk::scan(&root);
+        run.index = crate::provider::Index::scan(&root, &run.list.sources, &disk, false);
         coverage(
             &mut run,
             command == Command::CoverageJson,
@@ -924,10 +898,6 @@ fn reading(
         }
         for line in crate::init::drifted(&root) {
             eprintln!("buildc: {line}");
-        }
-        match run.index.unsearched() {
-            clause if clause.is_empty() => {}
-            clause => eprintln!("buildc: {clause}"),
         }
         for line in crate::scap::conformance(&run.list, &run.index, datastream.as_deref())? {
             eprintln!("buildc: {line}");

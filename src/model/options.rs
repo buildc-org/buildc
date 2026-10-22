@@ -48,6 +48,13 @@ pub struct Opt {
     pub ty: OptType,
     pub default: Vec<Value>,
     pub span: Span,
+    pub renovate: Option<VersionTracker>,
+}
+
+pub struct VersionTracker {
+    pub datasource: String,
+    pub dep_name: String,
+    pub extract_version: Option<String>,
 }
 
 pub struct Variant {

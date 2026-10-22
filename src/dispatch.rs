@@ -34,6 +34,7 @@ impl From<String> for Error {
     }
 }
 
+#[derive(Default)]
 pub struct Flags {
     pub root: Option<PathBuf>,
     pub owner: Option<String>,
@@ -60,6 +61,7 @@ pub struct Flags {
     pub no_cache_from: bool,
     pub rebuild: bool,
     pub dependencies: bool,
+    pub untracked: bool,
 }
 
 fn one_name(rest: &[&str], name: &str) -> Result<Option<String>, Error> {
@@ -312,6 +314,7 @@ pub fn dispatch(
         no_cache_from,
         rebuild,
         dependencies,
+        untracked,
     } = flags;
     if *here == Context::Host && command::on_host(verb) {
         return on_host(
@@ -441,6 +444,56 @@ pub fn dispatch(
                 prompt,
             )?;
             module.apply(&root, &list.sources)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::FetchModules => {
+            let root = repo_root(here)?;
+            let list = crate::model::image::List::editable(&root)
+                .map_err(|issues| Error::Operation(issues.plain()))?;
+            let wrote = crate::fetch::modules(&root, &list.sources, list.audit_enforce, rest)?;
+            let tracks = crate::provenance::lock::read(&root)
+                .iter()
+                .any(|record| record.tracked);
+            match (wrote.is_empty(), tracks) {
+                (false, _) => crate::create::report(&root, &wrote),
+                (true, true) => eprintln!("buildc: every tracked module matches its library"),
+                (true, false) => eprintln!("buildc: no module tracks its library"),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::SetModule => {
+            let path = one_name(rest, name)?.ok_or_else(|| {
+                Error::Invocation(format!(
+                    "`{name}` takes the module to make the repository's own"
+                ))
+            })?;
+            let Some(root) = open(here)? else {
+                return Ok(ExitCode::from(REPO_ERROR));
+            };
+            let key = crate::provenance::lock::key(&path);
+            if !untracked {
+                if !prompt.asks() {
+                    return Err(Error::Invocation(format!(
+                        "`{name}` asks before it stops tracking; pass `--untracked` to answer"
+                    )));
+                }
+                if !prompt.confirm(&copy::untrack(key), copy::YES, copy::NO)? {
+                    return Ok(ExitCode::SUCCESS);
+                }
+            }
+            match crate::provenance::lock::untrack(&root, key)? {
+                true => crate::create::report(
+                    &root,
+                    &[(
+                        PathBuf::from(crate::layout::MODULES).join(crate::layout::LOCK_FILE),
+                        crate::create::Change::Updated(format!("`{key}` untracked")),
+                    )],
+                ),
+                false => eprintln!(
+                    "buildc: `{}/{key}` is already the repository's own",
+                    crate::layout::MODULES
+                ),
+            }
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetWorkflows => {
@@ -1009,6 +1062,61 @@ fn rendered(parts: &[Part]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{dispatch, Context, Error, Flags, Verb};
+    use common::prompt::Prompt;
+
+    fn untracks(name: &str, untracked: bool, prompt: &Prompt) -> (bool, Result<(), String>) {
+        let root =
+            std::env::temp_dir().join(format!("buildc-set-module-{name}-{}", std::process::id()));
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(
+            &crate::layout::lock(&root),
+            "module \"browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
+        )
+        .unwrap();
+        let ran = dispatch(
+            Verb::SetModule,
+            "set module",
+            &["modules/browser"],
+            Flags {
+                untracked,
+                ..Flags::default()
+            },
+            prompt,
+            &Context::Repo(root.clone()),
+        )
+        .map(drop)
+        .map_err(|err| match err {
+            Error::Invocation(said) | Error::Operation(said) => said,
+            Error::Cancelled => "cancelled".to_string(),
+        });
+        let tracked = crate::provenance::lock::entry(&root, "browser")
+            .expect("the entry stays")
+            .tracked;
+        std::fs::remove_dir_all(root).unwrap();
+        (tracked, ran)
+    }
+
+    #[test]
+    fn set_module_untracks_with_the_flag_or_a_yes() {
+        assert_eq!(untracks("flag", true, &Prompt::silent()), (false, Ok(())));
+        assert_eq!(
+            untracks("yes", false, &Prompt::scripted(vec!["y".into()])),
+            (false, Ok(()))
+        );
+    }
+
+    #[test]
+    fn set_module_keeps_tracking_on_a_no_or_with_nobody_to_ask() {
+        assert_eq!(
+            untracks("no", false, &Prompt::scripted(vec!["n".into()])),
+            (true, Ok(()))
+        );
+        let (tracked, refused) = untracks("silent", false, &Prompt::silent());
+        assert!(tracked);
+        assert!(refused.unwrap_err().contains("--untracked"));
+    }
+
     #[test]
     fn the_host_sentence_names_each_command_and_agrees_in_number() {
         let labels = crate::command::host_labels();

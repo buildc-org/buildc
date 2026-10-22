@@ -86,6 +86,10 @@ pub fn track(named: &str) -> String {
     format!("Track upstream for {named}?")
 }
 
+pub fn untrack(key: &str) -> String {
+    format!("Stop tracking upstream for `modules/{key}`, so the copy is the repository's own?")
+}
+
 pub const REQUIRED: &str =
     "The selected modules have dependencies not currently provided by the images:";
 pub const BRING_REQUIRED: &str = "Add these provider modules now?";

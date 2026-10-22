@@ -114,6 +114,7 @@ pub struct Flavour {
 pub struct Workflow {
     pub name: String,
     pub span: Span,
+    pub schedule: Option<String>,
 }
 
 pub struct Entry {
@@ -156,6 +157,7 @@ pub struct List {
     pub pr_image_id: Option<String>,
     pub seed: Option<Seed>,
     pub manifest_label: bool,
+    pub renovate: Option<Vec<(String, common::json::Json)>>,
     pub audit_enforce: bool,
     pub network: Network,
     pub schema_version: Option<u32>,

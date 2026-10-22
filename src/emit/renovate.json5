@@ -1,28 +1,15 @@
+// `buildc generate` writes this file from the `renovate` block in repo.kdl.
+// `buildc verify` byte-compares it, so the policy is changed in repo.kdl.
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",
-  ],
 
-  "rebaseWhen": "never",
-
+  // `buildc generate` writes the workflows and `buildc verify` byte-compares
+  // them, so a bump inside one is reverted by the next regeneration.
   "ignorePaths": [".github/workflows/**"],
 
-  "timezone": "Etc/UTC",
-  "schedule": ["before 6am"],
-
-  "packageRules": [
-    {
-      "matchPackageNames": ["*"],
-      "groupName": "scheduled updates",
-      "automerge": true,
-    },
-    {
-      "matchPackageNames": ["quay.io/fedora/fedora-bootc"],
-      "pinDigests": false,
-    },
-  ],
-
+  // A generated Containerfile sits under its image's own directory, which the
+  // dockerfile manager does not recognise, and its FROM has to bump with the
+  // declaration below.
   "dockerfile": {
     "managerFilePatterns": ["/^generated/[^/]+/Containerfile$/"],
   },
@@ -30,11 +17,13 @@
   "customManagers": [
     {
       "customType": "regex",
+      // The tag carries the version, so the leading v comes back off.
       "description": "The pinned build tool release",
       "managerFilePatterns": ["/^repo\\.kdl$/"],
       "extractVersionTemplate": "^v(?<version>.+)$",
       "matchStrings": [
         "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nbuildc-version \"(?<currentValue>[^\"]+)\"",
+    // buildc:managers
       ],
     },
     {
@@ -48,10 +37,12 @@
     },
     {
       "customType": "regex",
+      // Every asset pin spells its tracker the same way, so one manager covers
+      // them all. RE2 has no negative lookahead. The leading-lowercase rule
+      // excludes an underscore-prefixed component directory.
       "description": "Version-tagged pins",
       "managerFilePatterns": [
         "/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/",
-        "/^[^/]+\\.kdl$/",
       ],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*version \"(?<currentValue>[^\"]+)\"",
@@ -64,6 +55,7 @@
       "matchStrings": [
         "renovate datasource=\"(?<datasource>git-refs)\" depName=\"(?<depName>[^\"]+)\"\\s*\\n\\s*version \"(?<currentDigest>[^\"]+)\"",
       ],
+      // The regex manager requires a currentValue even for a digest-only pin.
       "currentValueTemplate": "master",
     },
   ],

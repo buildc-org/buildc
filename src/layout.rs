@@ -258,7 +258,7 @@ pub const REPOSITORY: Tree = Tree {
             what: "More images. The name in front of the suffix is decorative." },
         Place { path: &[MODULES, "/"], writer: "the user, `buildc create module` or `buildc import module`", tracked: true,
             what: "The modules of the repository, one directory each. See [Modules](modules.md)." },
-        Place { path: &[MODULES, "/", LOCK_FILE], writer: "`buildc import module`", tracked: true,
+        Place { path: &[MODULES, "/", LOCK_FILE], writer: "`buildc import module`, `buildc fetch modules` and `buildc set module`", tracked: true,
             what: "Where each imported module came from, and what its content hashed to. See \
                 [`modules.lock.kdl`](lock.md)." },
         Place { path: &[KEYS, "/", PUBLIC_KEYS, "/"], writer: "`buildc create key` or `buildc set key`", tracked: true,
@@ -281,9 +281,10 @@ pub const REPOSITORY: Tree = Tree {
         Place { path: &["disk_config/"], writer: "`buildc create repo`, then the user", tracked: true,
             what: "The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk \
                 image. `disk.toml` sets the smallest size of `/`." },
-        Place { path: &[".github/renovate.json5"], writer: "`buildc create repo`, then the user", tracked: true,
-            what: "The Renovate settings. Its custom managers keep the `buildc` release in `repo.kdl` \
-                and each pin that declares `renovate` current." },
+        Place { path: &[".github/renovate.json5"], writer: "`buildc generate`", tracked: true,
+            what: "The Renovate settings, written from the `renovate` block in `repo.kdl`. Its custom \
+                managers keep the `buildc` release, the base images, each pin that declares \
+                `renovate` and each image entry's tracked `version` current." },
         Place { path: &[".gitignore"], writer: "`buildc create repo`", tracked: true,
             what: "Keeps `keys/private/`, `out/` and `.cache/` out of git." },
     ],

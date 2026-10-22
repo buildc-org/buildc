@@ -22,6 +22,7 @@ pub enum Verb {
     SetConforms,
     SetClaims,
     SetKey,
+    SetModule,
     Check,
     Generate,
     Build,
@@ -36,6 +37,7 @@ pub enum Verb {
     Verify,
     Summary,
     Sbom,
+    FetchModules,
     Scap,
     ScapContent,
     ScapRules,
@@ -64,7 +66,9 @@ impl Verb {
                 Some(("`module.kdl`&nbsp;›&nbsp;`key`", Area::Module, "key"))
             }
             Self::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
-            Self::ImportModule => Some(("`modules.lock.kdl`", Area::Lock, "")),
+            Self::ImportModule | Self::FetchModules | Self::SetModule => {
+                Some(("`modules.lock.kdl`", Area::Lock, ""))
+            }
             Self::SetWorkflows => Some((
                 "`repo.kdl`&nbsp;›&nbsp;`workflows`",
                 Area::Repo,
@@ -130,6 +134,7 @@ pub const ALL: &[Verb] = &[
     Verb::SetConforms,
     Verb::SetClaims,
     Verb::SetKey,
+    Verb::SetModule,
     Verb::Check,
     Verb::Generate,
     Verb::Build,
@@ -144,6 +149,7 @@ pub const ALL: &[Verb] = &[
     Verb::Verify,
     Verb::Summary,
     Verb::Sbom,
+    Verb::FetchModules,
     Verb::Scap,
     Verb::ScapContent,
     Verb::ScapRules,
@@ -305,6 +311,13 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Topic::Audit,
     ),
     ("set key", Verb::SetKey, Family::Repo, false, Topic::Keys),
+    (
+        "set module",
+        Verb::SetModule,
+        Family::Repo,
+        false,
+        Topic::Modules,
+    ),
     ("check", Verb::Check, Family::Repo, false, Topic::Check),
     (
         "generate",
@@ -343,6 +356,13 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Topic::Inspect,
     ),
     ("sbom", Verb::Sbom, Family::Script, false, Topic::Inspect),
+    (
+        "fetch modules",
+        Verb::FetchModules,
+        Family::Repo,
+        false,
+        Topic::Modules,
+    ),
     (
         "scap content",
         Verb::ScapContent,
@@ -603,8 +623,11 @@ pub enum Surface {
         #[arg(long = "base-scan", value_name = "file")]
         base_scan: Option<PathBuf>,
     },
-    #[command(long_about = help::FETCH)]
+    /// download one payload, verify it and place it
+    #[command(long_about = help::FETCH, subcommand_negates_reqs = true)]
     Fetch {
+        #[command(subcommand)]
+        sub: Option<FetchWhat>,
         /// the payload kind: `file`, `tree`, `bin`, `rpm` or `deb`
         #[arg(value_name = "what", required = true)]
         what: Option<String>,
@@ -776,6 +799,15 @@ pub enum SetWhat {
         #[arg(long, value_name = "path")]
         from: Option<String>,
     },
+    #[command(long_about = help::SET_MODULE, after_long_help = help::SET_MODULE_NOTES)]
+    Module {
+        /// the imported component to make the repository's own
+        /// the components to refresh; every tracked component if absent
+        #[arg(value_name = "path")]
+        path: Option<String>,
+        #[arg(long)]
+        untracked: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -842,6 +874,15 @@ pub enum ScapWhat {
         /// a benchmark rule number
         #[arg(num_args(0..), value_name = "number")]
         number: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum FetchWhat {
+    #[command(long_about = help::FETCH_MODULES, after_long_help = help::FETCH_MODULES_NOTES)]
+    Modules {
+        #[arg(value_name = "path")]
+        paths: Vec<String>,
     },
 }
 
@@ -1356,10 +1397,12 @@ impl Verb {
             | Self::SetConforms
             | Self::SetClaims
             | Self::SetKey
+            | Self::SetModule
             | Self::Build
             | Self::VmBuild
             | Self::VmRun
             | Self::VmSpawn
+            | Self::FetchModules
             | Self::Scap
             | Self::ScapContent
             | Self::ScapRules
@@ -1474,7 +1517,24 @@ mod tests {
     }
 
     #[test]
-    fn fetch_takes_its_three_positionals() {
+    fn fetch_takes_its_three_positionals_unless_a_noun_does() {
+        Cli::command()
+            .try_get_matches_from(["buildc", "fetch", "modules"])
+            .expect("the noun negates the required positionals");
+        let matches = Cli::command()
+            .try_get_matches_from(["buildc", "fetch", "file", "https://host/f", "abc", "/usr/f"])
+            .expect("the in-build form parses beside the noun");
+        let fetch = matches
+            .subcommand_matches("fetch")
+            .expect("fetch is the word");
+        assert_eq!(
+            fetch.get_one::<String>("what").map(String::as_str),
+            Some("file")
+        );
+        assert_eq!(
+            fetch.get_one::<String>("target").map(String::as_str),
+            Some("/usr/f")
+        );
         let error = Cli::command()
             .try_get_matches_from(["buildc", "fetch", "file"])
             .expect_err("the bare form needs its url and sha256");

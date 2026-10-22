@@ -21,6 +21,8 @@ module "browser" {
 > [!NOTE]
 > `buildc import module` writes the whole file. The user does not edit it, and every command that reads the images refuses an entry that does not read.
 >
+> `buildc fetch modules` copies each tracked module again from its library, and records the new `content` and `component-version`. `buildc set module <path> --untracked` drops `track` and keeps the rest of the entry.
+>
 > The entry is keyed by the local path, so one library module imported twice under two names has two entries.
 >
 > `plan.json` carries the same hash for each module, so `buildc verify` fails on a module edited without a new `buildc generate`.

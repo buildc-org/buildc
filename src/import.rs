@@ -109,7 +109,7 @@ pub fn find(
     Ok(found)
 }
 
-fn verified(collection: &Collection, enforce: bool) -> Result<(), String> {
+pub(crate) fn verified(collection: &Collection, enforce: bool) -> Result<(), String> {
     if enforce && collection.unpinned() {
         return Err(format!(
             "`{}` follows a moving ref with no `sha256`, so using it is verified against \

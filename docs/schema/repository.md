@@ -30,7 +30,7 @@ A repository is a git repository with `repo.kdl` at its root, which is how `buil
 | `image.kdl` | `buildc create image`, then the user | yes | The images of the repository. See [`image.kdl`](image.md). |
 | `<name>.image.kdl` | `buildc create image`, then the user | yes | More images. The name in front of the suffix is decorative. |
 | `modules/` | the user, `buildc create module` or `buildc import module` | yes | The modules of the repository, one directory each. See [Modules](modules.md). |
-| `modules/modules.lock.kdl` | `buildc import module` | yes | Where each imported module came from, and what its content hashed to. See [`modules.lock.kdl`](lock.md). |
+| `modules/modules.lock.kdl` | `buildc import module`, `buildc fetch modules` and `buildc set module` | yes | Where each imported module came from, and what its content hashed to. See [`modules.lock.kdl`](lock.md). |
 | `keys/public/` | `buildc create key` or `buildc set key` | yes | The public half of each key, at the path it has in the image. |
 | `keys/private/` | `buildc create key` | no | The private half of each key. The build never copies it into the image. |
 | `generated/` | `buildc generate` | yes | Everything that `buildc generate` writes. `buildc verify` compares it byte for byte, so the user does not edit it. |
@@ -39,5 +39,5 @@ A repository is a git repository with `repo.kdl` at its root, which is how `buil
 | `out/` | `buildc` | no | Local exports, caches and scratch. `buildc` reads nothing here as a declaration. |
 | `.cache/sources/` | `buildc` | no | The libraries that `buildc import module` fetches and copies a module from. `buildc check`, `buildc generate` and `buildc build` read nothing here. |
 | `disk_config/` | `buildc create repo`, then the user | yes | The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk image. `disk.toml` sets the smallest size of `/`. |
-| `.github/renovate.json5` | `buildc create repo`, then the user | yes | The Renovate settings. Its custom managers keep the `buildc` release in `repo.kdl` and each pin that declares `renovate` current. |
+| `.github/renovate.json5` | `buildc generate` | yes | The Renovate settings, written from the `renovate` block in `repo.kdl`. Its custom managers keep the `buildc` release, the base images, each pin that declares `renovate` and each image entry's tracked `version` current. |
 | `.gitignore` | `buildc create repo` | yes | Keeps `keys/private/`, `out/` and `.cache/` out of git. |

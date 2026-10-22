@@ -5,6 +5,7 @@ pub mod graph;
 pub mod module_build;
 pub mod plan;
 pub mod recipe;
+pub mod renovate;
 pub mod sbom;
 pub mod schema_md;
 pub mod seed;

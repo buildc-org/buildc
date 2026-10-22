@@ -356,6 +356,10 @@ fn scaffolded(parent: &Node, prefix: &str, out: &mut Vec<String>) {
         };
         match section_of(child) {
             Some(_) => out.push(format!("{path}/**")),
+            None if child.name.is_empty() && child.children.is_empty() => {
+                out.push(format!("{path}/**"));
+                out.push(path);
+            }
             None => {
                 scaffolded(child, &path, out);
                 out.push(path);

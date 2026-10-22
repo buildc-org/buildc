@@ -48,6 +48,9 @@ pub(crate) const LOCK_FILE: Node = Node::new("lock file",
     .notes(&[
         "`buildc import module` writes the whole file. The user does not edit it, and every command \
          that reads the images refuses an entry that does not read.",
+        "`buildc fetch modules` copies each tracked module again from its library, and records the \
+         new `content` and `component-version`. `buildc set module <path> --untracked` drops \
+         `track` and keeps the rest of the entry.",
         "The entry is keyed by the local path, so one library module imported twice under two \
          names has two entries.",
         "`plan.json` carries the same hash for each module, so `buildc verify` fails on a module \
@@ -101,16 +104,9 @@ pub fn entry(root: &Path, dir: &str) -> Option<Record> {
 }
 
 pub fn with(root: &Path, record: Record) -> Result<String, String> {
-    let path = layout::lock(root);
-    if let Ok(raw) = std::fs::read_to_string(&path) {
-        if let Err(err) = raw.parse::<KdlDocument>() {
-            return Err(format!(
-                "{} does not parse, so importing would drop its other entries: {err}; \
-                 resolve it, then import again",
-                path.display()
-            ));
-        }
-    }
+    parses(root).map_err(|err| {
+        format!("{err}; importing would drop its other entries, so resolve it, then import again")
+    })?;
     let mut records: Vec<Record> = read(root)
         .into_iter()
         .filter(|held| held.path != record.path)
@@ -118,6 +114,16 @@ pub fn with(root: &Path, record: Record) -> Result<String, String> {
     records.push(record);
     records.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(records.iter().map(render).collect::<Vec<_>>().join("\n"))
+}
+
+pub fn parses(root: &Path) -> Result<(), String> {
+    let path = layout::lock(root);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    raw.parse::<KdlDocument>()
+        .map(drop)
+        .map_err(|err| format!("{} does not parse: {err}", path.display()))
 }
 
 fn render(record: &Record) -> String {
@@ -203,8 +209,9 @@ pub fn check(root: &Path, issues: &mut Issues) {
                 &src,
             )
             .help(format!(
-                "undo the edit to `{module}`, or drop `track` from its entry to make the copy the \
-                 repository's own"
+                "undo the edit to `{module}`, or run `buildc set module {} --untracked` to make the \
+                 copy the repository's own",
+                record.path
             )),
             None if !dir.exists() => Issue::new(
                 format!("`{module}` tracks its library, and the directory is missing"),
@@ -224,7 +231,17 @@ pub fn check(root: &Path, issues: &mut Issues) {
     }
 }
 
-fn inside(key: &str) -> bool {
+pub fn key(path: &str) -> &str {
+    let mut key = path;
+    while let Some(rest) = key.strip_prefix("./") {
+        key = rest;
+    }
+    key.strip_prefix(&format!("{}/", layout::MODULES))
+        .unwrap_or(key)
+        .trim_end_matches('/')
+}
+
+pub(crate) fn inside(key: &str) -> bool {
     !key.is_empty()
         && Path::new(key)
             .components()
@@ -232,16 +249,33 @@ fn inside(key: &str) -> bool {
 }
 
 fn restore(module: &str, record: &Record) -> String {
-    match record.path == record.upstream {
-        true => format!(
-            "restore `{module}` from version control, or run `buildc import module {}/{}` to copy \
-             it again",
-            record.library, record.upstream
-        ),
-        false => {
-            format!("restore `{module}` from version control, or remove its entry from the lock")
-        }
+    format!(
+        "restore `{module}` from version control, or run `buildc fetch modules {}` to copy it \
+         again",
+        record.path
+    )
+}
+
+pub fn untrack(root: &Path, key: &str) -> Result<bool, String> {
+    parses(root)?;
+    let Some(record) = entry(root, key) else {
+        return Err(format!(
+            "`{}/{key}` has no entry in the lock, so it is already the repository's own",
+            layout::MODULES
+        ));
+    };
+    if !record.tracked {
+        return Ok(false);
     }
+    let locked = with(
+        root,
+        Record {
+            tracked: false,
+            ..record
+        },
+    )?;
+    crate::init::put(&layout::lock(root), &locked)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -386,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_renamed_module_is_not_sent_to_a_reimport() {
+    fn a_missing_renamed_module_is_restored_under_its_own_key() {
         let root = std::env::temp_dir().join(format!("buildc-lock-gone-{}", std::process::id()));
         crate::init::put(
             &layout::lock(&root),
@@ -397,8 +431,45 @@ mod tests {
         check(&root, &mut issues);
         let said = issues.plain();
         assert!(said.contains("the directory is missing"), "{said}");
-        assert!(!said.contains("buildc import module"), "{said}");
-        assert!(said.contains("remove its entry"), "{said}");
+        let said = said.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(said.contains("buildc fetch modules browser@1"), "{said}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_typed_path_names_its_key() {
+        assert_eq!(key("browser"), "browser");
+        assert_eq!(key("modules/core/browser/"), "core/browser");
+        assert_eq!(key("./modules/browser@1"), "browser@1");
+    }
+
+    #[test]
+    fn untracking_a_lock_that_does_not_parse_names_the_lock() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-lock-untrack-broken-{}", std::process::id()));
+        crate::init::put(&layout::lock(&root), "module \"browser\" {\n").unwrap();
+        let refused = untrack(&root, "browser").unwrap_err();
+        assert!(refused.contains("does not parse"), "{refused}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn untracking_keeps_the_origin_and_the_hash() {
+        let root = std::env::temp_dir().join(format!("buildc-lock-untrack-{}", std::process::id()));
+        crate::init::put(
+            &layout::lock(&root),
+            &with(&root, record("browser", true)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(untrack(&root, "browser"), Ok(true));
+        let held = entry(&root, "browser").expect("the entry stays");
+        assert!(!held.tracked);
+        assert_eq!(held.library, "buildc-org");
+        assert_eq!(held.upstream, "browser");
+        assert_eq!(held.content, "abc");
+        assert_eq!(held.pin.version.as_deref(), Some("v1.0.0"));
+        assert_eq!(untrack(&root, "browser"), Ok(false));
+        assert!(untrack(&root, "editor").is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 

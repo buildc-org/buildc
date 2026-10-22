@@ -245,8 +245,6 @@ pub const REPO: Node = Node::new("repo",
                             "`buildc import module`, `buildc create image` and `buildc set \
                              conforms`: the library a module is copied from is pinned to a \
                              tag and its hash.",
-                            "`buildc check`: each imported module still matches its entry in the \
-                             module lock.",
                             "`buildc build`: the base tag resolves to a manifest digest.",
                             "`buildc build`: the repository is at a commit.",
                             "`buildc build`: each cloned asset resolves to a commit.",
@@ -257,6 +255,9 @@ pub const REPO: Node = Node::new("repo",
                         "`buildc` also reports a `module.sh` or `finalize.sh` that reaches the \
                          network with no `asset` that declares the download. This report does \
                          not depend on `enforce`.",
+                        "`buildc` refuses a module that tracks its library and no longer \
+                         matches its entry in the module lock. This refusal does not depend on \
+                         `enforce`.",
                     ]),
             ], Say::new("unknown node `{}` in audit", "not part of the schema",
                 "an audit block holds `enforce`"))

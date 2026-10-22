@@ -36,7 +36,7 @@ Nothing. It declares no `satisfies`.
 | --- | --- | --- | --- | --- |
 | `buildc-org` | https://github.com/buildc-org/modules | v1.0.0 | not declared | none |
 
-Its content still matches what was imported.
+It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.
 
 ## What it pulls in
 
@@ -83,7 +83,8 @@ None. It declares no `copr` and ships no `repo` file.
       "selector": "v1.0.0",
       "verifier": null,
       "tracker": "none"
-    }
+    },
+    "tracked": true
   },
   "modified": false,
   "fetches": [],
@@ -130,7 +131,7 @@ Nothing. It declares no `satisfies`.
 | --- | --- | --- | --- | --- |
 | `buildc-org` | https://github.com/buildc-org/modules | v1.0.0 | not declared | none |
 
-Its content still matches what was imported.
+It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.
 
 ## What it pulls in
 
@@ -156,4 +157,4 @@ drivers, fedora-family, flatpak, hello
 | --- | --- | --- | --- | --- |
 | `buildc-org` | https://github.com/buildc-org/modules | v1.0.0 | not declared | none |
 
-Its content still matches what was imported.
+It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.

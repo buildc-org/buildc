@@ -4,7 +4,7 @@
 
 Location: `modules/modules.lock.kdl`, at the root of `modules/`.
 
-When `buildc import module` copies a module into this repository, it records the module here. The entry keeps where the module came from and what its content hashed to, so `buildc check` can show whether the copy has changed since.
+When `buildc import module` copies a module into this repository, it records the module here. The entry keeps where the module came from and what its content hashed to, so `buildc check`, `buildc generate` and `buildc build` can tell whether the copy has changed since.
 
 ```kdl
 module "browser" {
@@ -19,13 +19,15 @@ module "browser" {
 | [`module`](#module) (required,&nbsp;unique) | *string*, then {&nbsp;[fields](#module-fields)&nbsp;} | One imported module, by its path under `modules/`. |
 
 > [!NOTE]
-> `buildc import module` writes the whole file. The user does not edit it, and `buildc check` reports an entry that does not read.
+> `buildc import module` writes the whole file. The user does not edit it, and every command that reads the images refuses an entry that does not read.
 >
 > The entry is keyed by the local path, so one library module imported twice under two names has two entries.
 >
 > `plan.json` carries the same hash for each module, so `buildc verify` fails on a module edited without a new `buildc generate`.
 >
-> If a module's content no longer matches its entry, then `buildc check` names the module. The mismatch is an error only under `audit { enforce #true }`.
+> If a tracked module's content no longer matches its entry, or its directory is missing, then every command that reads the images refuses it, `buildc build` included. `audit` does not change this.
+>
+> If an untracked module's content no longer matches its entry, then `buildc why` reads the edit out. The copy is the repository's own, so no command refuses it.
 
 <a id="module"></a>
 

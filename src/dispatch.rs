@@ -887,9 +887,6 @@ fn reading(
                  is whatever the release holds, unverified"
             );
         }
-        for name in &run.modified {
-            eprintln!("buildc: `{name}` has been edited since it was imported");
-        }
         for name in &run.ungoverned {
             eprintln!(
                 "buildc: `{name}` ships a Containerfile fragment, and the script rule does not \

@@ -272,15 +272,10 @@ fn copied(name: &str, root: &Path) {
         "==== check\n{}",
         buildc::run(Command::Check, None, &here).issues.plain()
     ));
-    out.push_str(&format!(
-        "==== modified\n{:?}\n",
-        buildc::provenance::lock::modified(&here)
-    ));
 
     std::fs::write(root.join("modules/flatpak/module.sh"), "echo forked\n").unwrap();
     out.push_str(&format!(
-        "==== modified after an edit\n{:?}\n{}",
-        buildc::provenance::lock::modified(&here),
+        "==== check after an edit\n{}",
         buildc::run(Command::Check, None, &here).issues.plain()
     ));
     assert_golden(name, "import.txt", &out);
@@ -463,6 +458,16 @@ fn unpinned_import(root: &Path) {
     assert!(refused.contains("follows a moving ref"), "{refused}");
 }
 
+fn refused_everywhere(root: &Path) {
+    let here = given(root);
+    let checked = buildc::run(Command::Check, None, &here).issues.plain();
+    assert!(checked.contains("tracks its library"), "{checked}");
+    for command in [Command::Generate, Command::Verify] {
+        let said = buildc::run(command, None, &here).issues.plain();
+        assert!(said.starts_with(&checked), "{command:?}: {said}");
+    }
+}
+
 fn assert_no_default(root: &Path) {
     let here = given(root);
     for quiet in [Command::Check, Command::Generate] {
@@ -509,6 +514,7 @@ fn repo_case(name: &str) {
             buildc::base::catalog(&here, &list.sources, &mut issues);
             assert_golden(name, "catalog.txt", &issues.plain());
         }
+        "broken-lock" => refused_everywhere(&root),
         "no-default" => assert_no_default(&root),
         "seeding" => why(name, &root, "flatpak"),
         "suppressed" => {
@@ -546,6 +552,7 @@ repo_cases! {
     broken_image => "broken-image",
     broken_key => "broken-key",
     broken_layout => "broken-layout",
+    broken_lock => "broken-lock",
     broken_module => "broken-module",
     broken_network => "broken-network",
     broken_options => "broken-options",

@@ -28,10 +28,13 @@ the control for that code.
   lists each check and its command. `src/provenance/mod.rs` `enforce_build`
   refuses a build whose base did not resolve to a digest, and a build from a
   tree with no commit.
-- Under enforcement, `buildc check` refuses an imported module that no longer
-  matches its entry in `modules/modules.lock.kdl` (`src/lib.rs`). A module
-  whose entry is removed belongs to the repository and is not checked.
-  `buildc build` does not run this check. See *Known gaps*.
+- Every command that reads the resolved images refuses an imported module
+  that tracks its library and no longer matches its entry in
+  `modules/modules.lock.kdl` (`src/provenance/lock.rs` `check`, run by
+  `src/lib.rs` `load`). The refusal does not depend on `audit`, and `buildc
+  build` runs it through `buildc verify`. `buildc import`, `buildc create` and
+  `buildc set` do not refuse, so the user can still repair the repository.
+  An untracked module belongs to the repository and is not refused.
 - The `security-policy { network }` rule decides which generated module steps
   reach the network. `src/emit/containerfile.rs` runs a closed step with
   `--network=none`. If the repository declares no rule, then every step
@@ -202,9 +205,6 @@ reopen it.
 
 Each gap is current behaviour that a control does not yet cover.
 
-- `audit { enforce #true }` refuses a copied module edited since its copy only
-  in `buildc check`. `buildc build`, and so the generated workflow, does not run
-  that check.
 - Enforcement does not refuse an unpinned base-image library.
 - A repository with no `buildc-version` takes each new `buildc` release on its
   next build, with no warning from `buildc check`.

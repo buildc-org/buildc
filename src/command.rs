@@ -61,13 +61,13 @@ impl Verb {
                 Area::Image,
                 "image-flavours",
             )),
-            Self::CreateModule => Some(("`module.kdl`", Area::Module, "")),
+            Self::CreateModule => Some(("`manifest.kdl`", Area::Component, "")),
             Self::CreateKey | Self::SetKey => {
-                Some(("`module.kdl`&nbsp;›&nbsp;`key`", Area::Module, "key"))
+                Some(("`manifest.kdl`&nbsp;›&nbsp;`key`", Area::Component, "key"))
             }
             Self::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
             Self::ImportModule | Self::FetchModules | Self::SetModule => {
-                Some(("`modules.lock.kdl`", Area::Lock, ""))
+                Some(("`components.lock.kdl`", Area::Lock, ""))
             }
             Self::SetWorkflows => Some((
                 "`repo.kdl`&nbsp;›&nbsp;`workflows`",
@@ -81,16 +81,20 @@ impl Verb {
                 "image-conforms",
             )),
             Self::SetClaims => Some((
-                "`module.kdl`&nbsp;›&nbsp;`satisfies`",
-                Area::Module,
+                "`manifest.kdl`&nbsp;›&nbsp;`satisfies`",
+                Area::Component,
                 "satisfies",
             )),
             Self::Generate => Some(("`generated/`", Area::Repository, "")),
             Self::OsRelease => Some(("`image.kdl`&nbsp;›&nbsp;`image`", Area::Image, "image")),
-            Self::Fetch => Some(("`module.kdl`&nbsp;›&nbsp;`asset`", Area::Module, "asset")),
+            Self::Fetch => Some((
+                "`manifest.kdl`&nbsp;›&nbsp;`asset`",
+                Area::Component,
+                "asset",
+            )),
             Self::ValidateImage => Some((
-                "`module.kdl`&nbsp;›&nbsp;`allow-verify`",
-                Area::Module,
+                "`manifest.kdl`&nbsp;›&nbsp;`allow-verify`",
+                Area::Component,
                 "allow-verify",
             )),
             Self::Upgrade
@@ -176,7 +180,7 @@ pub enum Topic {
     Tool,
     Repository,
     Image,
-    Modules,
+    Components,
     Keys,
     Check,
     Build,
@@ -189,7 +193,7 @@ pub enum Topic {
 pub const TOPICS: [Topic; 11] = [
     Topic::Repository,
     Topic::Image,
-    Topic::Modules,
+    Topic::Components,
     Topic::Keys,
     Topic::Check,
     Topic::Build,
@@ -206,7 +210,7 @@ impl Topic {
             Self::Tool => "CLI tool",
             Self::Repository => "Repository",
             Self::Image => "Image",
-            Self::Modules => "Modules",
+            Self::Components => "Components",
             Self::Keys => "Keys",
             Self::Check => "Check and generate",
             Self::Build => "Build and boot",
@@ -255,11 +259,11 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Topic::Image,
     ),
     (
-        "create module",
+        "create component",
         Verb::CreateModule,
         Family::Repo,
         false,
-        Topic::Modules,
+        Topic::Components,
     ),
     (
         "create key",
@@ -276,11 +280,11 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Topic::Repository,
     ),
     (
-        "import module",
+        "import component",
         Verb::ImportModule,
         Family::Repo,
         false,
-        Topic::Modules,
+        Topic::Components,
     ),
     (
         "set workflows",
@@ -312,11 +316,11 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
     ),
     ("set key", Verb::SetKey, Family::Repo, false, Topic::Keys),
     (
-        "set module",
+        "set component",
         Verb::SetModule,
         Family::Repo,
         false,
-        Topic::Modules,
+        Topic::Components,
     ),
     ("check", Verb::Check, Family::Repo, false, Topic::Check),
     (
@@ -357,11 +361,11 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
     ),
     ("sbom", Verb::Sbom, Family::Script, false, Topic::Inspect),
     (
-        "fetch modules",
+        "fetch components",
         Verb::FetchModules,
         Family::Repo,
         false,
-        Topic::Modules,
+        Topic::Components,
     ),
     (
         "scap content",
@@ -566,8 +570,10 @@ pub enum Surface {
     /// print one component's provenance and contents
     #[command(long_about = help::WHY, after_long_help = help::WHY_NOTES)]
     Why {
-        #[arg(value_name = "module")]
-        module: Option<String>,
+        /// the component to explain
+        /// the component whose claims are written
+        #[arg(value_name = "component")]
+        component: Option<String>,
         #[arg(long, value_name = "md|json")]
         format: Option<String>,
     },
@@ -715,8 +721,9 @@ pub enum CreateWhat {
         #[arg(long, value_name = "name")]
         image: Vec<String>,
     },
-    #[command(long_about = help::CREATE_MODULE, after_long_help = help::CREATE_MODULE_NOTES)]
-    Module {
+    /// write a component and offer to list it in an image
+    #[command(long_about = help::CREATE_COMPONENT, after_long_help = help::CREATE_COMPONENT_NOTES)]
+    Component {
         #[arg(value_name = "name")]
         name: Option<String>,
         #[arg(long, value_name = "name")]
@@ -734,7 +741,7 @@ pub enum CreateWhat {
         #[arg(value_name = "kind")]
         kind: Option<String>,
         #[arg(long, value_name = "name")]
-        module: Option<String>,
+        component: Option<String>,
         #[arg(long, value_name = "name")]
         cn: Option<String>,
     },
@@ -748,8 +755,9 @@ pub enum CreateWhat {
 
 #[derive(Subcommand)]
 pub enum ImportWhat {
-    #[command(long_about = help::IMPORT_MODULE, after_long_help = help::IMPORT_MODULE_NOTES)]
-    Module {
+    /// copy a component from a declared library into this repository
+    #[command(long_about = help::IMPORT_COMPONENT, after_long_help = help::IMPORT_COMPONENT_NOTES)]
+    Component {
         #[arg(value_name = "name")]
         name: Option<String>,
         #[arg(long, value_name = "name")]
@@ -768,10 +776,7 @@ pub enum SetWhat {
     Workflows,
     /// add a component library to the repository
     #[command(long_about = help::SET_LIBRARY)]
-    Library {
-        #[arg(value_name = "kind")]
-        kind: Option<String>,
-    },
+    Library,
     /// choose the benchmark profile an image is measured against
     #[command(long_about = help::SET_CONFORMS, after_long_help = help::SET_CONFORMS_NOTES)]
     Conforms {
@@ -783,8 +788,8 @@ pub enum SetWhat {
     /// choose the benchmark rules that a component claims
     #[command(long_about = help::SET_CLAIMS, after_long_help = help::SET_CLAIMS_NOTES)]
     Claims {
-        #[arg(value_name = "module")]
-        module: Option<String>,
+        #[arg(value_name = "component")]
+        component: Option<String>,
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
     },
@@ -794,13 +799,14 @@ pub enum SetWhat {
         #[arg(value_name = "kind")]
         kind: Option<String>,
         #[arg(long, value_name = "name")]
-        module: Option<String>,
+        component: Option<String>,
         /// the file that holds the public half
         #[arg(long, value_name = "path")]
         from: Option<String>,
     },
-    #[command(long_about = help::SET_MODULE, after_long_help = help::SET_MODULE_NOTES)]
-    Module {
+    /// make an imported component the repository's own
+    #[command(long_about = help::SET_COMPONENT, after_long_help = help::SET_COMPONENT_NOTES)]
+    Component {
         /// the imported component to make the repository's own
         /// the components to refresh; every tracked component if absent
         #[arg(value_name = "path")]
@@ -879,8 +885,9 @@ pub enum ScapWhat {
 
 #[derive(Subcommand)]
 pub enum FetchWhat {
-    #[command(long_about = help::FETCH_MODULES, after_long_help = help::FETCH_MODULES_NOTES)]
-    Modules {
+    /// refresh each tracked component from its library
+    #[command(long_about = help::FETCH_COMPONENTS, after_long_help = help::FETCH_COMPONENTS_NOTES)]
+    Components {
         #[arg(value_name = "path")]
         paths: Vec<String>,
     },
@@ -1105,7 +1112,7 @@ const INTRO: &str = "\
 
 `buildc` is the one tool that manages a bootc image repository. The user describes each image \
 in KDL files, and `buildc` turns those files into the Containerfiles and the CI workflows that \
-build the image. `buildc` works out the module order, the options, the names and the tags in \
+build the image. `buildc` works out the component order, the options, the names and the tags in \
 one place, so the build scripts hold no logic of their own and the user can see what goes \
 into each image.
 
@@ -1113,12 +1120,12 @@ into each image.
 
 `buildc` runs in three places:
 
-- On the user's machine, it scaffolds the repository and its images, modules and keys. It \
+- On the user's machine, it scaffolds the repository and its images, components and keys. It \
 checks the KDL files, writes the build files, and builds and boots an image.
 - In CI, the generated workflows call it to write the build files, build and publish each \
 image, and scan it.
 - Inside a build, the generated Containerfile calls it to write the image identity, record \
-what the build resolved and check the finished image. A module script can call `buildc fetch` \
+what the build resolved and check the finished image. A component script can call `buildc fetch` \
 to download a payload and check it against its hash.
 
 ";
@@ -1351,7 +1358,7 @@ pub enum Command {
 pub enum Arg {
     Image,
     Target,
-    Module,
+    Component,
 }
 
 impl Command {
@@ -1365,7 +1372,7 @@ impl Command {
             | Self::GraphJson => None,
             Self::Section | Self::Coverage | Self::CoverageJson => Some(Arg::Image),
             Self::Summary | Self::Sbom => Some(Arg::Target),
-            Self::Why | Self::WhyJson => Some(Arg::Module),
+            Self::Why | Self::WhyJson => Some(Arg::Component),
         }
     }
 }
@@ -1503,15 +1510,15 @@ mod tests {
     #[test]
     fn import_takes_the_dependencies_switch() {
         let matches = Cli::command()
-            .try_get_matches_from(["buildc", "import", "module", "browser", "--dependencies"])
-            .expect("import module takes --dependencies");
+            .try_get_matches_from(["buildc", "import", "component", "browser", "--dependencies"])
+            .expect("import component takes --dependencies");
         assert_eq!(flag::<bool>(&matches, "dependencies"), Some(true));
     }
 
     #[test]
     fn copy_is_not_a_command() {
         let error = Cli::command()
-            .try_get_matches_from(["buildc", "copy", "module", "browser"])
+            .try_get_matches_from(["buildc", "copy", "component", "browser"])
             .expect_err("copy is gone");
         assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
     }
@@ -1519,7 +1526,7 @@ mod tests {
     #[test]
     fn fetch_takes_its_three_positionals_unless_a_noun_does() {
         Cli::command()
-            .try_get_matches_from(["buildc", "fetch", "modules"])
+            .try_get_matches_from(["buildc", "fetch", "components"])
             .expect("the noun negates the required positionals");
         let matches = Cli::command()
             .try_get_matches_from(["buildc", "fetch", "file", "https://host/f", "abc", "/usr/f"])
@@ -1586,7 +1593,7 @@ mod tests {
         let (answers, rest) = host
             .split_once("these read the source tree")
             .expect("the host help groups what it can answer");
-        assert!(answers.contains("  why [module]"), "{host}");
+        assert!(answers.contains("  why [component]"), "{host}");
         assert!(!answers.contains("  check "), "{host}");
         assert!(rest.contains("  check "), "{host}");
         for row in rows(None) {
@@ -1599,7 +1606,7 @@ mod tests {
     #[test]
     fn a_refusal_lists_the_tails_a_word_wanted() {
         assert_eq!(takes("registry"), "`namespace` or `ref`");
-        assert_eq!(takes("import"), "`module [name]`");
+        assert_eq!(takes("import"), "`component [name]`");
         assert!(takes("create").starts_with("`repo [name]`"));
     }
 
@@ -1628,7 +1635,7 @@ mod tests {
             .map(|choice| choice.label.as_str())
             .collect();
         assert_eq!(headings.last(), Some(&"CLI tool"), "{headings:?}");
-        assert!(headings.contains(&"Modules"), "{headings:?}");
+        assert!(headings.contains(&"Components"), "{headings:?}");
         let (_, drawn) = choices(&rows(Some("vm")), &repo);
         assert!(drawn.iter().all(|choice| !choice.heading));
     }
@@ -1653,7 +1660,7 @@ mod tests {
         assert_eq!(
             host_labels(),
             [
-                "why [module]",
+                "why [component]",
                 "plan",
                 "summary [target]",
                 "scap content",

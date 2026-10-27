@@ -7,58 +7,58 @@ use kdl::KdlDocument;
 use std::path::Path;
 
 #[rustfmt::skip]
-pub const LOCKED: Node = Node::new("module",
-    "One imported module, by its path under `modules/`.").example("\"browser\"").minimal()
-    .arg(Arg::Str, Say::new("`module` needs the path of the module", "no path given",
-        "`module \"browser\"`, the directory under `modules/`"))
+pub const LOCKED: Node = Node::new("component",
+    "One imported component, by its path under `components/`.").example("\"browser\"").minimal()
+    .arg(Arg::Str, Say::new("`component` needs the path of the component", "no path given",
+        "`component \"browser\"`, the directory under `components/`"))
     .unique(Say::new("`{}` is locked twice", "a second entry would disagree",
-        "the lock holds one entry for each module; run `buildc import module` again to rewrite it"))
+        "the lock holds one entry for each component; run `buildc import component` again to rewrite it"))
     .children(&[
-        Node::new("library", "The library the module was imported from, as `sources` in `repo.kdl` names it.").example("\"buildc-org\"")
+        Node::new("library", "The library the component was imported from, as `sources` in `repo.kdl` names it.").example("\"buildc-org\"")
             .arg(Arg::Str, NEEDS_VALUE).once("")
             .missing(Say::new("a lock entry records no `{}`", "origin unknown",
                 "the name the library is declared under in `sources`")),
-        Node::new("path", "The path of the module inside the library. It differs from the entry's own path when the module was imported under another name.").example("\"browser\"")
+        Node::new("path", "The path of the component inside the library. It differs from the entry's own path when the component was imported under another name.").example("\"browser\"")
             .arg(Arg::Str, NEEDS_VALUE).once("")
             .missing(Say::new("a lock entry records no `{}`", "origin unknown",
-                "the path of the module inside its library")),
+                "the path of the component inside its library")),
         Node::new("url", "The Git URL of the library, for a library that `buildc` fetched.").example("\"https://github.com/buildc-org/library.git\"")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
-        Node::new("component-version", "The revision of the library that the module was taken at, for a library that `buildc` fetched.").example("\"v0.6.51\"")
+        Node::new("component-version", "The revision of the library that the component was taken at, for a library that `buildc` fetched.").example("\"v0.6.51\"")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
-        Node::new("content", "The hash that the module directory had at import.").example("\"b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3\"")
+        Node::new("content", "The hash that the component directory had at import.").example("\"b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3\"")
             .arg(Arg::Str, NEEDS_VALUE).once("")
             .missing(Say::new("a lock entry records no `{}` hash", "nothing to compare against",
                 "the sha256 of the imported directory, which is what makes a later edit visible")),
         Node::new("track", "Marks a copy that tracks its library. An untracked copy is the repository's own.")
             .arg(Arg::None, Say::new("`track` takes no value", "unexpected value",
-                "write `track` alone, or leave it out for a module the repository owns"))
+                "write `track` alone, or leave it out for a component the repository owns"))
             .once(""),
     ], Say::new("unknown node `{}` in a lock entry", "not part of the schema",
         "a lock entry holds `library`, `path`, `url`, `component-version`, `content` and `track`"));
 
 #[rustfmt::skip]
 pub(crate) const LOCK_FILE: Node = Node::new("lock file",
-    "The record of every imported module, which `buildc import module` writes.")
-    .about("When `buildc import module` copies a module into this repository, it records the module \
-        here. The entry keeps where the module came from and what its content hashed to, so \
+    "The record of every imported component, which `buildc import component` writes.")
+    .about("When `buildc import component` copies a component into this repository, it records the component \
+        here. The entry keeps where the component came from and what its content hashed to, so \
         `buildc check`, `buildc generate` and `buildc build` can tell whether the copy has changed since.")
     .children(&[LOCKED], Say::new("unknown node `{}` in the lock", "not part of the schema",
-        "the lock holds one `module` entry for each imported module"))
+        "the lock holds one `component` entry for each imported component"))
     .notes(&[
-        "`buildc import module` writes the whole file. The user does not edit it, and every command \
+        "`buildc import component` writes the whole file. The user does not edit it, and every command \
          that reads the images refuses an entry that does not read.",
-        "`buildc fetch modules` copies each tracked module again from its library, and records the \
-         new `content` and `component-version`. `buildc set module <path> --untracked` drops \
+        "`buildc fetch components` copies each tracked component again from its library, and records the \
+         new `content` and `component-version`. `buildc set component <path> --untracked` drops \
          `track` and keeps the rest of the entry.",
-        "The entry is keyed by the local path, so one library module imported twice under two \
+        "The entry is keyed by the local path, so one library component imported twice under two \
          names has two entries.",
-        "`plan.json` carries the same hash for each module, so `buildc verify` fails on a module \
+        "`plan.json` carries the same hash for each component, so `buildc verify` fails on a component \
          edited without a new `buildc generate`.",
-        "If a tracked module's content no longer matches its entry, or its directory is missing, \
+        "If a tracked component's content no longer matches its entry, or its directory is missing, \
          then every command that reads the images refuses it, `buildc build` included. `audit` does \
          not change this.",
-        "If an untracked module's content no longer matches its entry, then `buildc why` reads the \
+        "If an untracked component's content no longer matches its entry, then `buildc why` reads the \
          edit out. The copy is the repository's own, so no command refuses it.",
     ]);
 
@@ -144,7 +144,7 @@ fn render(record: &Record) -> String {
     if record.tracked {
         body.push_str("    track\n");
     }
-    format!("module {} {{\n{body}}}\n", quoted(&record.path))
+    format!("component {} {{\n{body}}}\n", quoted(&record.path))
 }
 
 fn quoted(value: &str) -> String {
@@ -152,11 +152,11 @@ fn quoted(value: &str) -> String {
 }
 
 pub fn hash(dir: &Path) -> Option<String> {
-    let held = layout::held_modules(dir);
+    let held = layout::held_components(dir);
     let mut listed: Vec<String> = Vec::new();
     for path in crate::tracked(dir) {
         let rel = path.strip_prefix(dir).ok()?;
-        if held.iter().any(|module| rel.starts_with(module)) {
+        if held.iter().any(|component| rel.starts_with(component)) {
             continue;
         }
         listed.push(rel.to_string_lossy().into_owned());
@@ -186,13 +186,13 @@ pub fn check(root: &Path, issues: &mut Issues) {
         if !inside(&record.path) {
             issues.push(
                 Issue::new(
-                    format!("`{}` is not a path under `modules/`", record.path),
+                    format!("`{}` is not a path under `components/`", record.path),
                     &src,
                 )
                 .at(record.pin.span, "this entry")
                 .help(
-                    "a lock entry is keyed by a path under `modules/`; run `buildc import \
-                         module` again to rewrite it",
+                    "a lock entry is keyed by a path under `components/`; run `buildc import \
+                         component` again to rewrite it",
                 ),
             );
             continue;
@@ -200,30 +200,30 @@ pub fn check(root: &Path, issues: &mut Issues) {
         if !record.tracked || record.content.is_empty() {
             continue;
         }
-        let module = format!("{}/{}", layout::MODULES, record.path);
-        let dir = layout::module(root, &record.path);
+        let component = format!("{}/{}", layout::COMPONENTS, record.path);
+        let dir = layout::component(root, &record.path);
         let issue = match hash(&dir) {
             Some(found) if found == record.content => continue,
             Some(_) => Issue::new(
-                format!("`{module}` tracks its library, and its content no longer matches its lock entry"),
+                format!("`{component}` tracks its library, and its content no longer matches its lock entry"),
                 &src,
             )
             .help(format!(
-                "undo the edit to `{module}`, or run `buildc set module {} --untracked` to make the \
+                "undo the edit to `{component}`, or run `buildc set component {} --untracked` to make the \
                  copy the repository's own",
                 record.path
             )),
             None if !dir.exists() => Issue::new(
-                format!("`{module}` tracks its library, and the directory is missing"),
+                format!("`{component}` tracks its library, and the directory is missing"),
                 &src,
             )
-            .help(restore(&module, &record)),
+            .help(restore(&component, &record)),
             None => Issue::new(
-                format!("`{module}` tracks its library, and its content cannot be hashed"),
+                format!("`{component}` tracks its library, and its content cannot be hashed"),
                 &src,
             )
             .help(format!(
-                "`{module}` holds no file of its own, or a file in it cannot be read; restore its \
+                "`{component}` holds no file of its own, or a file in it cannot be read; restore its \
                  files from version control"
             )),
         };
@@ -236,7 +236,7 @@ pub fn key(path: &str) -> &str {
     while let Some(rest) = key.strip_prefix("./") {
         key = rest;
     }
-    key.strip_prefix(&format!("{}/", layout::MODULES))
+    key.strip_prefix(&format!("{}/", layout::COMPONENTS))
         .unwrap_or(key)
         .trim_end_matches('/')
 }
@@ -248,9 +248,9 @@ pub(crate) fn inside(key: &str) -> bool {
             .all(|part| matches!(part, std::path::Component::Normal(_)))
 }
 
-fn restore(module: &str, record: &Record) -> String {
+fn restore(component: &str, record: &Record) -> String {
     format!(
-        "restore `{module}` from version control, or run `buildc fetch modules {}` to copy it \
+        "restore `{component}` from version control, or run `buildc fetch components {}` to copy it \
          again",
         record.path
     )
@@ -261,7 +261,7 @@ pub fn untrack(root: &Path, key: &str) -> Result<bool, String> {
     let Some(record) = entry(root, key) else {
         return Err(format!(
             "`{}/{key}` has no entry in the lock, so it is already the repository's own",
-            layout::MODULES
+            layout::COMPONENTS
         ));
     };
     if !record.tracked {
@@ -299,8 +299,8 @@ mod tests {
     #[test]
     fn a_written_entry_reads_back_as_what_was_written() {
         let root = std::env::temp_dir().join(format!("buildc-lock-{}", std::process::id()));
-        let dir = layout::module(&root, "browser@1");
-        crate::init::put(&dir.join(layout::MODULE_FILE), "description \"x\"\n").unwrap();
+        let dir = layout::component(&root, "browser@1");
+        crate::init::put(&dir.join(layout::MANIFEST_FILE), "description \"x\"\n").unwrap();
         let mut held = record("browser@1", true);
         held.content = hash(&dir).unwrap();
         crate::init::put(&layout::lock(&root), &with(&root, held).unwrap()).unwrap();
@@ -349,11 +349,11 @@ mod tests {
     }
 
     #[test]
-    fn an_edited_tracked_module_is_refused_and_an_edited_untracked_one_is_not() {
+    fn an_edited_tracked_component_is_refused_and_an_edited_untracked_one_is_not() {
         let root = std::env::temp_dir().join(format!("buildc-lock-edit-{}", std::process::id()));
         for (name, tracked) in [("browser", true), ("editor", false)] {
-            let dir = layout::module(&root, name);
-            crate::init::put(&dir.join(layout::MODULE_FILE), "description \"x\"\n").unwrap();
+            let dir = layout::component(&root, name);
+            crate::init::put(&dir.join(layout::MANIFEST_FILE), "description \"x\"\n").unwrap();
             let mut held = record(name, tracked);
             held.content = hash(&dir).unwrap();
             crate::init::put(&layout::lock(&root), &with(&root, held).unwrap()).unwrap();
@@ -363,33 +363,33 @@ mod tests {
         assert!(issues.is_empty(), "{}", issues.plain());
 
         for name in ["browser", "editor"] {
-            let dir = layout::module(&root, name);
-            crate::init::put(&dir.join(layout::MODULE_FILE), "description \"y\"\n").unwrap();
+            let dir = layout::component(&root, name);
+            crate::init::put(&dir.join(layout::MANIFEST_FILE), "description \"y\"\n").unwrap();
         }
         let mut issues = Issues::default();
         check(&root, &mut issues);
         let said = issues.plain();
         assert!(
-            said.contains("`modules/browser` tracks its library"),
+            said.contains("`components/browser` tracks its library"),
             "{said}"
         );
-        assert!(!said.contains("modules/editor"), "{said}");
+        assert!(!said.contains("components/editor"), "{said}");
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn a_key_outside_modules_is_refused() {
+    fn a_key_outside_components_is_refused() {
         let root = std::env::temp_dir().join(format!("buildc-lock-climb-{}", std::process::id()));
         crate::init::put(
             &layout::lock(&root),
-            "module \"../..\" {\n    library \"x\"\n    path \"x\"\n    content \"0\"\n    track\n}\n",
+            "component \"../..\" {\n    library \"x\"\n    path \"x\"\n    content \"0\"\n    track\n}\n",
         )
         .unwrap();
         let mut issues = Issues::default();
         check(&root, &mut issues);
         let said = issues.plain();
         assert!(
-            said.contains("`../..` is not a path under `modules/`"),
+            said.contains("`../..` is not a path under `components/`"),
             "{said}"
         );
         assert!(!said.contains("tracks its library"), "{said}");
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn an_empty_tracked_directory_is_not_called_missing() {
         let root = std::env::temp_dir().join(format!("buildc-lock-empty-{}", std::process::id()));
-        std::fs::create_dir_all(layout::module(&root, "browser")).unwrap();
+        std::fs::create_dir_all(layout::component(&root, "browser")).unwrap();
         let held = record("browser", true);
         crate::init::put(&layout::lock(&root), &with(&root, held).unwrap()).unwrap();
         let mut issues = Issues::default();
@@ -420,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_renamed_module_is_restored_under_its_own_key() {
+    fn a_missing_renamed_component_is_restored_under_its_own_key() {
         let root = std::env::temp_dir().join(format!("buildc-lock-gone-{}", std::process::id()));
         crate::init::put(
             &layout::lock(&root),
@@ -432,22 +432,22 @@ mod tests {
         let said = issues.plain();
         assert!(said.contains("the directory is missing"), "{said}");
         let said = said.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(said.contains("buildc fetch modules browser@1"), "{said}");
+        assert!(said.contains("buildc fetch components browser@1"), "{said}");
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn a_typed_path_names_its_key() {
         assert_eq!(key("browser"), "browser");
-        assert_eq!(key("modules/core/browser/"), "core/browser");
-        assert_eq!(key("./modules/browser@1"), "browser@1");
+        assert_eq!(key("components/core/browser/"), "core/browser");
+        assert_eq!(key("./components/browser@1"), "browser@1");
     }
 
     #[test]
     fn untracking_a_lock_that_does_not_parse_names_the_lock() {
         let root =
             std::env::temp_dir().join(format!("buildc-lock-untrack-broken-{}", std::process::id()));
-        crate::init::put(&layout::lock(&root), "module \"browser\" {\n").unwrap();
+        crate::init::put(&layout::lock(&root), "component \"browser\" {\n").unwrap();
         let refused = untrack(&root, "browser").unwrap_err();
         assert!(refused.contains("does not parse"), "{refused}");
         std::fs::remove_dir_all(root).unwrap();
@@ -474,20 +474,20 @@ mod tests {
     }
 
     #[test]
-    fn a_held_module_stays_out_of_the_hash_and_the_overlay_does_not() {
+    fn a_held_component_stays_out_of_the_hash_and_the_overlay_does_not() {
         let root = std::env::temp_dir().join(format!("buildc-lock-held-{}", std::process::id()));
-        let dir = layout::module(&root, "nvidia");
-        crate::init::put(&dir.join(layout::MODULE_FILE), "description \"x\"\n").unwrap();
+        let dir = layout::component(&root, "nvidia");
+        crate::init::put(&dir.join(layout::MANIFEST_FILE), "description \"x\"\n").unwrap();
         let before = hash(&dir).unwrap();
 
-        crate::init::put(&dir.join("cuda").join(layout::MODULE_FILE), "").unwrap();
-        crate::init::put(&dir.join("cuda/module.sh"), "true\n").unwrap();
+        crate::init::put(&dir.join("cuda").join(layout::MANIFEST_FILE), "").unwrap();
+        crate::init::put(&dir.join("cuda/component.sh"), "true\n").unwrap();
         assert_eq!(hash(&dir).unwrap(), before);
 
         let overlay = dir
             .join(layout::OVERLAY)
             .join("usr/share/x")
-            .join(layout::MODULE_FILE);
+            .join(layout::MANIFEST_FILE);
         crate::init::put(&overlay, "").unwrap();
         assert_ne!(hash(&dir).unwrap(), before);
         std::fs::remove_dir_all(root).unwrap();
@@ -516,7 +516,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-lock-grammar-{}", std::process::id()));
         crate::init::put(
             &layout::lock(&root),
-            "module \"browser\" {\n    library \"one\"\n}\n",
+            "component \"browser\" {\n    library \"one\"\n}\n",
         )
         .unwrap();
         let mut issues = Issues::default();

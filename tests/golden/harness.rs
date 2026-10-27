@@ -83,25 +83,21 @@ pub(super) fn seed_bases(root: &Path) {
     let keyed = buildc::import::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
-    let core = keyed.join("base-images/core");
-    std::fs::create_dir_all(&core).unwrap();
-    for entry in std::fs::read_dir(&collections).unwrap().flatten() {
-        let name = entry.file_name();
-        if name.to_string_lossy().ends_with(".base.kdl") {
-            std::fs::copy(entry.path(), core.join(name)).unwrap();
-        }
-    }
+    copy(
+        &collections.join("base-image"),
+        &keyed.join("components/base-image"),
+    );
+    copy(
+        &collections.join("fedora-family"),
+        &keyed.join("components/fedora-family"),
+    );
 }
 
 pub(super) fn seed_library(root: &Path) {
-    seed_bases(root);
     let keyed = buildc::import::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
-    copy(&collections, &keyed.join("modules"));
-    for stray in ["fedora.base.kdl", "collected.base.kdl"] {
-        let _ = std::fs::remove_file(keyed.join("modules").join(stray));
-    }
+    copy(&collections, &keyed.join("components"));
 }
 
 pub(super) fn walk(dir: &Path) -> Vec<PathBuf> {

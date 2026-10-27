@@ -210,26 +210,13 @@ fn env(name: &str) -> Option<String> {
 }
 
 pub fn os_release() -> Result<(), String> {
-    let name = env("IMAGE_NAME").ok_or("IMAGE_NAME is unset: the image declares no name")?;
-    let version = env("IMAGE_VERSION").unwrap_or_else(|| "dev".to_string());
-    let pretty = env("IMAGE_PRETTY_NAME").unwrap_or_else(|| format!("{name} {version}"));
-    let hostname =
-        env("IMAGE_ID").ok_or("IMAGE_ID is unset: the generated Containerfile passes it")?;
-
-    let mut set: Vec<(&str, String)> = vec![
-        ("NAME", name),
-        ("PRETTY_NAME", pretty),
-        ("DEFAULT_HOSTNAME", hostname),
-        ("IMAGE_VERSION", version),
-    ];
-    if let Some(url) = env("IMAGE_URL") {
-        set.push(("HOME_URL", url.clone()));
-        set.push(("DOCUMENTATION_URL", url));
-    }
-    if let Some(url) = env("IMAGE_ISSUES_URL") {
-        set.push(("SUPPORT_URL", url.clone()));
-        set.push(("BUG_REPORT_URL", url));
-    }
+    let version = std::env::var("IMAGE_VERSION")
+        .ok()
+        .map(|version| match version.is_empty() {
+            true => "dev".to_string(),
+            false => version,
+        });
+    let set = release_fields(env, version)?;
 
     let text = fs::read_to_string(OS_RELEASE).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
     fs::remove_file(OS_RELEASE).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
@@ -239,6 +226,30 @@ pub fn os_release() -> Result<(), String> {
     let _ = fs::remove_file(link);
     std::os::unix::fs::symlink("../usr/lib/os-release", link)
         .map_err(|err| format!("{}: {err}", link.display()))
+}
+
+fn release_fields(
+    get: impl Fn(&str) -> Option<String>,
+    version: Option<String>,
+) -> Result<Vec<(&'static str, String)>, String> {
+    let name = get("IMAGE_NAME").ok_or("IMAGE_NAME is unset: the image declares no name")?;
+    let hostname =
+        get("IMAGE_ID").ok_or("IMAGE_ID is unset: the generated Containerfile passes it")?;
+    let pretty = get("IMAGE_PRETTY_NAME")
+        .or_else(|| version.as_ref().map(|version| format!("{name} {version}")));
+
+    let mut set: Vec<(&str, String)> = vec![("NAME", name), ("DEFAULT_HOSTNAME", hostname)];
+    set.extend(pretty.map(|pretty| ("PRETTY_NAME", pretty)));
+    set.extend(version.map(|version| ("IMAGE_VERSION", version)));
+    if let Some(url) = get("IMAGE_URL") {
+        set.push(("HOME_URL", url.clone()));
+        set.push(("DOCUMENTATION_URL", url));
+    }
+    if let Some(url) = get("IMAGE_ISSUES_URL") {
+        set.push(("SUPPORT_URL", url.clone()));
+        set.push(("BUG_REPORT_URL", url));
+    }
+    Ok(set)
 }
 
 fn assign(text: &str, set: &[(&str, String)]) -> String {
@@ -538,7 +549,7 @@ fn opens_luks(listing: &str) -> bool {
         .any(|line| BINARIES.iter().any(|path| line.ends_with(path)))
 }
 
-pub(crate) const MODULE_PRESET: &str = "45-module-";
+pub(crate) const COMPONENT_PRESET: &str = "45-component-";
 
 struct Report {
     failures: usize,
@@ -690,6 +701,31 @@ fn validate_boot_chain(report: &mut Report) {
 const SIGNED_MARKER: &str = "/usr/share/secureboot/signed";
 const PCR_POLICY: &str = "/usr/share/secureboot/pcr-policy.pem";
 
+fn check_contracts(contracts: &str, relocated: &[Link], report: &mut Report) {
+    if contracts.trim().is_empty() {
+        println!("    (none declared)");
+        return;
+    }
+    for token in contracts.split_whitespace() {
+        if let Some(removed) = token.strip_prefix('!') {
+            match found(removed, relocated) {
+                Some(path) => report.fail(format!(
+                    "{path}: a component removes this capability, and the image still holds its witness"
+                )),
+                None => println!("    {} absent ok", removed.replace('|', " and ")),
+            }
+            continue;
+        }
+        match found(token, relocated) {
+            Some(path) => println!("    {path} ok"),
+            None => report.fail(format!(
+                "{}: the manifest declares it, the image does not have it",
+                token.replace('|', " or ")
+            )),
+        }
+    }
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "the checks run and print in the order the build log shows them"
@@ -750,20 +786,11 @@ pub fn validate_image() -> Result<(), String> {
     }
 
     println!("==> contract files");
-    let contracts = env("CONTRACT_FILES").unwrap_or_default();
-    if contracts.trim().is_empty() {
-        println!("    (none declared)");
-    } else {
-        for token in contracts.split_whitespace() {
-            match found(token, &relocated) {
-                Some(path) => println!("    {path} ok"),
-                None => report.fail(format!(
-                    "{}: the manifest declares it, the image does not have it",
-                    token.replace('|', " or ")
-                )),
-            }
-        }
-    }
+    check_contracts(
+        &env("CONTRACT_FILES").unwrap_or_default(),
+        &relocated,
+        &mut report,
+    );
 
     let mut exceptions: Vec<(String, String)> = Vec::new();
     for token in env("VERIFY_EXCEPTIONS")
@@ -900,7 +927,7 @@ pub fn validate_image() -> Result<(), String> {
                             "            this is the known class '{class}'. If it is expected here,"
                         );
                         eprintln!(
-                            "            declare it in the module shipping {}:",
+                            "            declare it in the component shipping {}:",
                             preset.file_name().unwrap_or_default().to_string_lossy()
                         );
                         eprintln!("              allow-verify \"{class}\" unit=\"{unit}\"");
@@ -910,7 +937,7 @@ pub fn validate_image() -> Result<(), String> {
         }
     }
 
-    for message in missing_presets(&env("MODULE_PRESETS").unwrap_or_default(), &arrived) {
+    for message in missing_presets(&env("COMPONENT_PRESETS").unwrap_or_default(), &arrived) {
         report.fail(message);
     }
 
@@ -942,7 +969,7 @@ fn missing_presets(expected: &str, arrived: &[String]) -> Vec<String> {
     expected
         .split_whitespace()
         .filter(|path| !arrived.iter().any(|have| have == path))
-        .map(|path| format!("{path}: a module ships it, the image does not have it"))
+        .map(|path| format!("{path}: a component ships it, the image does not have it"))
         .collect()
 }
 
@@ -955,7 +982,7 @@ fn presets(scope: &str) -> Vec<PathBuf> {
         .map(|entry| entry.path())
         .filter(|path| {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            path.is_file() && name.starts_with(MODULE_PRESET) && name.ends_with(".preset")
+            path.is_file() && name.starts_with(COMPONENT_PRESET) && name.ends_with(".preset")
         })
         .collect();
     found.sort();
@@ -1043,6 +1070,46 @@ fn enablement_links(root: &Path, unit: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn os_release_writes_the_version_half_only_when_given_one() {
+        let get = |name: &str| match name {
+            "IMAGE_NAME" => Some("Example".to_string()),
+            "IMAGE_ID" => Some("example".to_string()),
+            _ => None,
+        };
+        let stable = release_fields(get, None).unwrap();
+        assert_eq!(
+            stable,
+            [
+                ("NAME", "Example".to_string()),
+                ("DEFAULT_HOSTNAME", "example".to_string())
+            ]
+        );
+        let last = release_fields(get, Some("44.1".to_string())).unwrap();
+        assert!(last.contains(&("PRETTY_NAME", "Example 44.1".to_string())));
+        assert!(last.contains(&("IMAGE_VERSION", "44.1".to_string())));
+    }
+
+    #[test]
+    fn a_removed_name_whose_witness_is_still_present_fails() {
+        let dir = std::env::temp_dir().join(format!("buildc-removed.{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let kept = dir.join("bootupctl");
+        fs::write(&kept, "").unwrap();
+        let gone = dir.join("gone");
+        let mut report = Report { failures: 0 };
+        check_contracts(
+            &format!("!{}|{}", gone.display(), kept.display()),
+            &[],
+            &mut report,
+        );
+        assert_eq!(report.failures, 1);
+        let mut report = Report { failures: 0 };
+        check_contracts(&format!("!{}", gone.display()), &[], &mut report);
+        assert_eq!(report.failures, 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_file_hashes_to_what_the_vector_says_or_fails() {
@@ -1263,8 +1330,8 @@ mod tests {
 
     #[test]
     fn a_preset_the_plan_expects_and_the_image_lacks_is_named() {
-        let one = "/usr/lib/systemd/system-preset/45-module-one.preset".to_string();
-        let two = "/usr/lib/systemd/user-preset/45-module-two.preset".to_string();
+        let one = "/usr/lib/systemd/system-preset/45-component-one.preset".to_string();
+        let two = "/usr/lib/systemd/user-preset/45-component-two.preset".to_string();
         let arrived = [one.clone()];
 
         assert!(missing_presets("", &[]).is_empty());

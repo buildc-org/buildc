@@ -1,12 +1,12 @@
-use crate::emit::{finalize, module_build};
+use crate::emit::{component_build, finalize};
 use crate::layout;
+use crate::model::component::{Component, Position};
 use crate::model::image::{Entry, Image};
-use crate::model::module::{Module, Position};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 pub const SKELETON: &str = "scripts/Containerfile.skeleton";
-pub const BEGIN: &str = "# ---- BEGIN GENERATED (module layers) ----";
+pub const BEGIN: &str = "# ---- BEGIN GENERATED (component layers) ----";
 pub const END: &str = "# ---- END GENERATED ----";
 pub const TAIL_BEGIN: &str = "# ---- BEGIN GENERATED (tail fragments) ----";
 pub const TAIL_END: &str = "# ---- END GENERATED (tail fragments) ----";
@@ -61,9 +61,11 @@ const FAMILY_ARG: &str = "\
 # ---- base family ----
 ARG FAMILY";
 
-const MODULE_DIR: &str = "@MODULE@";
+const COMPONENT_DIR: &str = "@COMPONENT@";
 
 const LINEAGE: &str = "rootfs";
+
+pub const OS_RELEASE: &str = "os-release";
 
 const BUILDC_MOUNT: &str = "--mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    ";
 
@@ -106,8 +108,8 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
     if image
         .entries
         .iter()
-        .filter_map(|entry| entry.module.as_ref())
-        .any(|module| !module.keys.is_empty())
+        .filter_map(|entry| entry.component.as_ref())
+        .any(|component| !component.keys.is_empty())
     {
         let _ = write!(
             out,
@@ -119,7 +121,19 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
         let _ = write!(out, "### Base Image\nFROM ${{BASE}} AS {LINEAGE}\n\n");
     }
 
-    let _ = write!(out, "## Module layers\n\n");
+    let identity = identity(image);
+    let mut identity_args = String::from("# ---- image identity ----\n");
+    for (name, value) in &identity {
+        let _ = writeln!(identity_args, "ARG {name}=\"{value}\"");
+    }
+    identity_args.push('\n');
+    let identity_env: String = identity
+        .iter()
+        .map(|(name, _)| format!("{name}=\"${{{name}}}\" "))
+        .collect();
+    let mut identity_declared = false;
+
+    let _ = write!(out, "## Component layers\n\n");
     let _ = write!(
         out,
         "# ---- /opt build root ----\nRUN mv /opt /opt.bak && mkdir /opt\n\n"
@@ -133,7 +147,7 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
     );
 
     for entry in &image.entries {
-        let Some(module) = &entry.module else {
+        let Some(component) = &entry.component else {
             continue;
         };
 
@@ -143,34 +157,34 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
         }
 
         let at = |want| {
-            module
+            component
                 .fragment
                 .as_ref()
-                .filter(|_| module.fragment_position == want)
+                .filter(|_| component.fragment_position == want)
         };
 
         let mut blocks: Vec<String> = Vec::new();
         if let Some(body) = at(Position::Before) {
             blocks.push(fragment(entry, body));
         }
-        if module.standard_layer {
-            if module_build::splits(image, entry, module, root) {
-                let packages = module_build::packages_path(image, entry);
+        if component.standard_layer {
+            if component_build::splits(image, entry, component, root) {
+                let packages = component_build::packages_path(image, entry);
                 blocks.push(standard(
                     entry,
-                    module,
+                    component,
                     image,
                     &packages,
-                    module.access.packages,
+                    component.access.packages,
                 ));
             }
-            let script = module_build::path(image, entry);
+            let script = component_build::path(image, entry);
             blocks.push(standard(
                 entry,
-                module,
+                component,
                 image,
                 &script,
-                module.access.scripts,
+                component.access.scripts,
             ));
         }
         if let Some(body) = at(Position::After) {
@@ -185,6 +199,19 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
         }
         let _ = writeln!(out, "# ---- {} ----", entry.path);
         let _ = write!(out, "{}\n\n", blocks.join("\n\n"));
+
+        if renders_os_release(image, component) {
+            if !identity_declared {
+                out.push_str(&identity_args);
+                identity_declared = true;
+            }
+            let render = format!("{identity_env}/ctx/buildc os-release");
+            let _ = write!(
+                out,
+                "# ---- os-release ----\nRUN {BUILDC_MOUNT}{}\n\n",
+                flavoured(entry.flavour.as_deref(), &render)
+            );
+        }
     }
 
     if !flavour_arg_emitted {
@@ -196,23 +223,9 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
     let _ = write!(out, "{CONFORMS_ARG}\n\n");
     let _ = write!(out, "{SCAP_ARGS}\n\n");
 
-    let identity = identity(image);
-    let _ = writeln!(out, "# ---- image identity ----");
-    for (name, value) in &identity {
-        let _ = writeln!(out, "ARG {name}=\"{value}\"");
+    if !identity_declared {
+        out.push_str(&identity_args);
     }
-    out.push('\n');
-
-    let identity_env: String = identity
-        .iter()
-        .map(|(name, _)| format!("{name}=\"${{{name}}}\" "))
-        .collect();
-
-    let _ = write!(
-        out,
-        "# ---- os-release ----\n\
-         RUN {BUILDC_MOUNT}IMAGE_VERSION=\"${{IMAGE_VERSION}}\" {identity_env}/ctx/buildc os-release\n\n"
-    );
 
     let _ = write!(out, "{}\n\n", finalize_layer(image, &identity_env, root));
 
@@ -222,6 +235,20 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
     }
 
     (out, tail_out)
+}
+
+pub fn renders_os_release(image: &Image, component: &Component) -> bool {
+    component.answers(OS_RELEASE)
+        && image
+            .remover(OS_RELEASE, component.flavour.as_deref())
+            .is_none()
+}
+
+pub fn flavoured(flavour: Option<&str>, line: &str) -> String {
+    match flavour {
+        None => line.to_string(),
+        Some(flavour) => format!("if [ \"${{FLAVOUR:-}}\" = \"{flavour}\" ]; then {line}; fi"),
+    }
 }
 
 pub fn section(image: &Image, root: &Path) -> String {
@@ -236,7 +263,7 @@ fn finalize_layer(image: &Image, identity_env: &str, root: &Path) -> String {
     let closed = !hooks.is_empty()
         && hooks
             .iter()
-            .all(|(entry, _)| entry.module.as_ref().is_some_and(|m| !m.access.scripts));
+            .all(|(entry, _)| entry.component.as_ref().is_some_and(|m| !m.access.scripts));
     let network = match closed {
         true => "--network=none ",
         false => "",
@@ -255,7 +282,7 @@ fn finalize_layer(image: &Image, identity_env: &str, root: &Path) -> String {
         }
         let _ = write!(
             out,
-            "--mount=type=bind,from=ctx,source=/modules/{dir},target=/ctx/modules/{dir} \\\n    "
+            "--mount=type=bind,from=ctx,source=/components/{dir},target=/ctx/components/{dir} \\\n    "
         );
         mounted.push(dir);
     }
@@ -275,32 +302,38 @@ fn finalize_layer(image: &Image, identity_env: &str, root: &Path) -> String {
     out
 }
 
-fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path, open: bool) -> String {
+fn standard(
+    entry: &Entry,
+    component: &Component,
+    image: &Image,
+    script: &Path,
+    open: bool,
+) -> String {
     let mut env = String::new();
 
     let mut secrets = String::new();
-    for decl in &module.secrets {
+    for decl in &component.secrets {
         let id = &decl.name;
         let _ = write!(
             secrets,
             "--mount=type=secret,id={id},target=/run/secrets/{id},required=false \\\n    "
         );
     }
-    for decl in module.args.iter().rev() {
+    for decl in component.args.iter().rev() {
         let name = &decl.name;
         env.insert_str(0, &format!("{name}=${{{name}}} "));
     }
 
     let path = &entry.path;
     let script = script.display();
-    let keys = match module.keys.is_empty() {
+    let keys = match component.keys.is_empty() {
         true => String::new(),
         false => "--mount=type=bind,from=public-keys,source=/public,target=/ctx/keys \\\n    "
             .to_string(),
     };
     let mut out = String::new();
     let helpers: String = image
-        .modules()
+        .components()
         .flat_map(|owner| owner.helpers.iter().map(move |helper| (owner, helper)))
         .map(|(owner, helper)| {
             let name = Path::new(&helper.name)
@@ -308,7 +341,7 @@ fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path, open: 
                 .unwrap_or_default()
                 .to_string_lossy();
             format!(
-                "--mount=type=bind,from=ctx,source=/modules/{}/{},target=/ctx/lib/{name} \\\n    ",
+                "--mount=type=bind,from=ctx,source=/components/{}/{},target=/ctx/lib/{name} \\\n    ",
                 owner.dir, helper.name
             )
         })
@@ -320,15 +353,15 @@ fn standard(entry: &Entry, module: &Module, image: &Image, script: &Path, open: 
     };
     let _ = write!(
         out,
-        "RUN {network}--mount=type=bind,from=ctx,source=/modules/{path},target=/ctx/modules/{path} \\\n    \
+        "RUN {network}--mount=type=bind,from=ctx,source=/components/{path},target=/ctx/components/{path} \\\n    \
          --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib{rw} \\\n    \
          {helpers}\
-         --mount=type=bind,from=ctx,source=/{script},target=/ctx/module.sh \\\n    \
+         --mount=type=bind,from=ctx,source=/{script},target=/ctx/component.sh \\\n    \
          {keys}{BUILDC_MOUNT}\
          --mount=type=cache,target=/var/cache \\\n    \
          --mount=type=cache,target=/var/log \\\n    \
          --mount=type=tmpfs,target=/tmp \\\n    \
-         {secrets}{env}bash /ctx/module.sh"
+         {secrets}{env}bash /ctx/component.sh"
     );
     out
 }
@@ -338,9 +371,9 @@ fn fragment(entry: &Entry, body: &str) -> String {
     let mut out = String::new();
     let _ = write!(
         out,
-        "# verbatim from modules/{dir}/Containerfile.inc:\n{}",
+        "# verbatim from components/{dir}/Containerfile.inc:\n{}",
         body.trim_end_matches('\n')
-            .replace(MODULE_DIR, &format!("/modules/{dir}"))
+            .replace(COMPONENT_DIR, &format!("/components/{dir}"))
     );
     out
 }

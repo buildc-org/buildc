@@ -1,8 +1,8 @@
+pub mod component_build;
 pub mod containerfile;
 pub mod coverage;
 pub mod finalize;
 pub mod graph;
-pub mod module_build;
 pub mod plan;
 pub mod recipe;
 pub mod renovate;
@@ -103,6 +103,6 @@ mod tests {
             .find(|script| script.name == "lint.sh")
             .unwrap()
             .body;
-        assert!(lint.contains("roots=(generated/lib modules)"));
+        assert!(lint.contains("roots=(generated/lib components)"));
     }
 }

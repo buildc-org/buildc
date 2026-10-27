@@ -3,50 +3,47 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-What will the repo be called?
+repo name
 Example
 
 Creating example...
 
-Sync this repo to a provider? (Yes/No)
+Host this repo on a provider? (Yes/No)
 Yes
 
-  1) github.com  Github, and the workflows Buildc ships
-  2) forgejo  a Forgejo instance, at an address asked next
-Where will the repo be hosted? [1-2, 0 for none]: 2
+  1) github.com  Github, with the workflows Buildc ships
+  2) forgejo  a Forgejo instance
+repo host [1-2, 0 for none]: 2
 
-What is the address of the Forgejo instance?
+Forgejo instance address
 forge.example.org
 
-Username on forge.example.org?
+username on forge.example.org
 forge.example.org/someone
 
 Added forge.example.org/someone/example as the origin repo
 
-  1) [x] modules "buildc-modules"  Feature modules for many use cases
-  2) [x] base-images "core"  Fedora, CentOS, RHEL, AlmaLinux, Rocky, Debian and Ubuntu
-Included libraries [1-2, several, 0 for none]: 
+  1) [x] components "buildc"  Feature components and base images for many use cases
+libraries [1, 0 for none]: 
 
-Define an image now? (Yes/No)
+Define an image? (Yes/No)
 Yes
 
-What will the image be called? [Example]
+image name [Example]
 Desktop
 
-  1) example.invalid/collected:1  A base only the collection knows about
-  2) quay.io/fedora/fedora-bootc:44  Fedora 44, as this collection describes it
-What is the base image for this image? [1-2, 0 for none]: 2
+  1) example.invalid/collected:1 (buildc/base-image/collected)  A base only the collection knows about
+  2) quay.io/fedora/fedora-bootc:44 (buildc/base-image/fedora)  Fedora, as this collection describes it
+base image [1-2, 0 for none]: 2
 
-buildc: `buildc-modules`: git -c protocol.version=2 fetch --quiet --depth=1 --no-tags -- https://github.com/buildc-org/library HEAD: exit status: 128
-fatal: transport 'https' not allowed; what is offered below is only what is already on this machine
   1) [x] build  builds, scans, signs and publishes every image
   2) [x] build-disk  builds a disk image with bootc-image-builder
   3) [x] base-sig-probe  measures what each base signs and ships, and fixes it
   4) [x] cleanup-registry  prunes old versions of the images off the registry
-  5) [ ] (unavailable) kernel-freshness  needs a module taking a KERNEL arg
+  5) [ ] (unavailable) kernel-freshness  needs a component taking a KERNEL arg
   6) [x] smoke-test  installs the image to a disk and boots it under qemu
-  7) [x] update-modules  refreshes tracked modules and opens a pull request
-Which workflows? [1-7, several, 0 for none]: 1
+  7) [x] update-components  refreshes tracked components and opens a pull request
+workflows [1-7, several, 0 for none]: 1
 
 Publish images only on scheduled builds? (Yes/No)
 No
@@ -54,22 +51,30 @@ No
 Run image scans only on scheduled builds? (Yes/No)
 No
 
-what time the daily build runs, UTC [12:30]: 03:15
+daily build time, UTC [12:30]: 03:15
 
-  1) [x] Containerfile.skeleton  the Containerfile around the generated module layers
+  1) [x] Containerfile.skeleton  the Containerfile around the generated component layers
   2) [ ] lint.sh  the repository's lint, as CI runs it
   3) [ ] buildc.sh  fetches and runs the buildc release that repo.kdl pins
   4) [ ] smoke.sh  boots a built image under qemu and waits for ssh
   5) [ ] vm.sh  builds a disk image and boots it
-Which files to keep in scripts/? [1-5, several, 0 for none]: 1
+files to keep in scripts/ [1-5, several, 0 for none]: 1
 
 initialised a git repository in example
 
 example/
+├── components/
+│   ├── base-image/
+│   │   └── fedora/
+│   │       └── + manifest.kdl
+│   ├── fedora-family/
+│   │   ├── lib/
+│   │   │   └── + family.sh
+│   │   └── + manifest.kdl
+│   ├── + .gitkeep
+│   └── + components.lock.kdl
 ├── disk_config/
 │   └── + disk.toml
-├── modules/
-│   └── + .gitkeep
 ├── scripts/
 │   └── + Containerfile.skeleton
 ├── + .dockerignore

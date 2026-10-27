@@ -86,7 +86,7 @@ pub fn conformance(
         }
         match &content {
             Some(content) => out.extend(unclaimed(image, content, index)),
-            None if image.modules().any(|m| !m.satisfies.is_empty())
+            None if image.components().any(|m| !m.satisfies.is_empty())
                 || image.base.iter().any(|base| !base.satisfies.is_empty()) => {}
             None => out.push(format!(
                 "`{}` conforms to `{}` and nothing it installs or builds on declares `satisfies`, \
@@ -106,7 +106,11 @@ pub fn exclusions(image: &Image) -> (Vec<String>, Vec<String>) {
             .base
             .iter()
             .flat_map(|base| base.satisfies.iter())
-            .chain(image.modules().flat_map(|module| module.satisfies.iter()))
+            .chain(
+                image
+                    .components()
+                    .flat_map(|component| component.satisfies.iter()),
+            )
             .flat_map(|coverage| coverage.rules.iter().cloned()),
     );
     let lifted: BTreeSet<&str> = image
@@ -116,8 +120,8 @@ pub fn exclusions(image: &Image) -> (Vec<String>, Vec<String>) {
         .collect();
     let refused = crate::emit::plan::distinct(
         image
-            .modules()
-            .flat_map(|module| module.refuses.iter().map(|r| rule_name(&r.rule)))
+            .components()
+            .flat_map(|component| component.refuses.iter().map(|r| rule_name(&r.rule)))
             .filter(|rule| !lifted.contains(rule))
             .map(str::to_string),
     );
@@ -127,21 +131,14 @@ pub fn exclusions(image: &Image) -> (Vec<String>, Vec<String>) {
 const REMEDIATION: &str = "scap-remediation";
 
 fn unremediated(image: &Image, index: &Index) -> Option<String> {
-    if index.providing(REMEDIATION).is_empty() {
+    if index.of(REMEDIATION).is_empty() {
         return None;
     }
-    let has = image
-        .modules()
-        .any(|m| m.provides.iter().any(|p| p.name == REMEDIATION))
-        || image
-            .base
-            .iter()
-            .any(|base| base.provides.iter().any(|p| p.name == REMEDIATION));
-    (!has).then(|| {
+    (!image.answers(REMEDIATION)).then(|| {
         format!(
             "`{}` conforms to `{}` and nothing it installs provides `{REMEDIATION}`, so the \
              profile is measured and nothing acts on it. That is a scan report rather than a \
-             hardened image; add a module providing `{REMEDIATION}`, or drop `conforms`",
+             hardened image; add a component providing `{REMEDIATION}`, or drop `conforms`",
             image.id, image.conforms
         )
     })
@@ -150,12 +147,12 @@ fn unremediated(image: &Image, index: &Index) -> Option<String> {
 fn refuses_nothing(image: &Image, content: &Content) -> Vec<String> {
     let known: BTreeSet<&str> = content.ids.iter().map(|id| rule_name(id)).collect();
     image
-        .modules()
-        .flat_map(|module| {
-            module
+        .components()
+        .flat_map(|component| {
+            component
                 .refuses
                 .iter()
-                .map(move |refusal| (module.path.as_str(), refusal))
+                .map(move |refusal| (component.path.as_str(), refusal))
         })
         .filter(|(_, refusal)| !known.contains(rule_name(&refusal.rule)))
         .map(|(path, refusal)| {
@@ -174,7 +171,7 @@ fn claims_nothing(image: &Image, content: &Content) -> Vec<String> {
         .base
         .iter()
         .map(|base| ("its base", &base.satisfies))
-        .chain(image.modules().map(|m| (m.path.as_str(), &m.satisfies)));
+        .chain(image.components().map(|m| (m.path.as_str(), &m.satisfies)));
     claimants
         .flat_map(|(who, satisfies)| satisfies.iter().map(move |coverage| (who, coverage)))
         .filter_map(|(who, coverage)| {
@@ -229,8 +226,8 @@ pub fn owed<'a>(image: &Image, content: &Content, profile: &Profile, index: &'a 
     let claimed = reached(
         content,
         image
-            .modules()
-            .flat_map(|module| module.satisfies.iter())
+            .components()
+            .flat_map(|component| component.satisfies.iter())
             .chain(image.base.iter().flat_map(|base| base.satisfies.iter()))
             .flat_map(|coverage| coverage.rules.iter()),
     );
@@ -319,8 +316,8 @@ fn unclaimed(image: &Image, content: &Content, index: &Index) -> Option<String> 
 
 fn allows_nothing(image: &Image) -> Vec<String> {
     let refused: BTreeSet<&str> = image
-        .modules()
-        .flat_map(|module| module.refuses.iter().map(|r| rule_name(&r.rule)))
+        .components()
+        .flat_map(|component| component.refuses.iter().map(|r| rule_name(&r.rule)))
         .collect();
     image
         .allows
@@ -329,7 +326,7 @@ fn allows_nothing(image: &Image) -> Vec<String> {
         .map(|allow| {
             format!(
                 "`{}` allows remediation of `{}` and nothing it installs refuses that rule, so \
-                 the allowance lifts nothing. A rule no module refuses is remediated already",
+                 the allowance lifts nothing. A rule no component refuses is remediated already",
                 image.id, allow.rule
             )
         })
@@ -453,8 +450,9 @@ pub(crate) fn check_content(list: &List, issues: &mut Issues) {
             .map_or(why.as_str(), |(said, _)| said);
         let help = match family {
             "rhel" => {
-                "give the `base` block the `scap-content` line that its base file in the \
-                 library names, such as `scap-content \"ssg-cs10-ds.xml\"`, or drop `conforms`"
+                "give the base component's manifest the `scap-content` line that the \
+                 library's base names, such as `scap-content \"ssg-cs10-ds.xml\"`, or drop \
+                 `conforms`"
             }
             _ => {
                 "drop `conforms` from this image, because the build has no datastream to \
@@ -493,8 +491,8 @@ fn installed(dir: &str, family: &str) -> Result<PathBuf, String> {
             }
             "rhel" => return Err(
                 "SSG writes one datastream per EL release, so the `rhel` family has no default\n\n\
-                 help: give the image's `base` block a `scap-content` line, or name content of \
-                 your own with `--datastream <file>`"
+                 help: give the base component's `base` block a `scap-content` line, or name \
+                 content of your own with `--datastream <file>`"
                     .to_string(),
             ),
             _ => return Err(format!("no SSG content is known for the `{family}` family")),
@@ -663,12 +661,12 @@ fn claims(out: &mut String, found: &mut Vec<Finding>, m: Measured) {
     let mut rows = String::new();
     let mut redundant: Vec<String> = Vec::new();
     for entry in m.entries {
-        let Some(module) = entry.module.as_ref() else {
+        let Some(component) = entry.component.as_ref() else {
             continue;
         };
-        for coverage in &module.satisfies {
+        for coverage in &component.satisfies {
             for rule in &coverage.rules {
-                let at = Some((module.src.clone(), coverage.span));
+                let at = Some((component.src.clone(), coverage.span));
                 let Some(id) = m.content.rules.get(rule) else {
                     let _ = writeln!(
                         rows,
@@ -728,15 +726,15 @@ fn claims(out: &mut String, found: &mut Vec<Finding>, m: Measured) {
         }
     }
     if rows.is_empty() {
-        let _ = writeln!(out, "No module here declares `satisfies`.\n");
+        let _ = writeln!(out, "No component here declares `satisfies`.\n");
         return;
     }
     let head = match m.base.is_some() {
         true => {
-            "| Module | Benchmark | Rule | Base alone | Result |\n| --- | --- | --- | --- | \
+            "| Component | Benchmark | Rule | Base alone | Result |\n| --- | --- | --- | --- | \
                  --- |\n"
         }
-        false => "| Module | Benchmark | Rule | Result |\n| --- | --- | --- | --- |\n",
+        false => "| Component | Benchmark | Rule | Result |\n| --- | --- | --- | --- |\n",
     };
     let _ = write!(out, "## Declared coverage, measured\n\n{head}{rows}\n");
     if m.base.is_none() {
@@ -752,7 +750,7 @@ fn claims(out: &mut String, found: &mut Vec<Finding>, m: Measured) {
         let _ = writeln!(
             out,
             "Not load-bearing: {}. The base alone already passes {}, so the image passes with \
-             the module and without it. Whether the module implements it too is not something \
+             the component and without it. Whether the component implements it too is not something \
              this scan can say, and it applies its settings either way.\n",
             redundant.join(", "),
             match redundant.len() {
@@ -944,11 +942,11 @@ fn overridden(
     image: &Image,
     shipped: &overlay::Index,
     gate: &str,
-    module: &str,
+    component: &str,
 ) -> Vec<(String, String)> {
     crate::emit::plan::overrides(image, shipped, gate)
         .into_iter()
-        .filter(|(_, loser, _)| loser == module)
+        .filter(|(_, loser, _)| loser == component)
         .map(|(path, _, by)| (path, by))
         .collect()
 }
@@ -1231,7 +1229,7 @@ mod tests {
     }
 
     #[test]
-    fn the_index_answers_which_modules_claim_a_profile_s_rules() {
+    fn the_index_answers_which_components_claim_a_profile_s_rules() {
         let content = Content::read(&read(&fixture("tests/scap/datastream.xml")).unwrap()).unwrap();
         let profile = content
             .profiles
@@ -1327,13 +1325,19 @@ mod tests {
             "schema-version 1\nname \"Example\"\n",
         )
         .unwrap();
-        let image = |content: &str| {
-            format!(
-                "schema-version 1\n\nimage {{\n    name \"Example\"\n    conforms \"standard\"\n    base \"quay.io/centos-bootc/centos-bootc:stream10\" {{\n        family \"rhel\"\n{content}    }}\n    modules {{}}\n}}\n"
+        let image = "schema-version 1\n\nimage {\n    name \"Example\"\n    conforms \"standard\"\n    base-image {\n        centos\n    }\n}\n";
+        crate::init::put(&root.join("image.kdl"), image).unwrap();
+        let base = |content: &str| {
+            crate::init::put(
+                &root.join("components/base-image/centos/manifest.kdl"),
+                &format!(
+                    "schema-version 1\n\nbase \"quay.io/centos-bootc/centos-bootc:stream10\" {{ family \"rhel\"; {content} }}\n"
+                ),
             )
+            .unwrap();
         };
         let checked = |content: &str| {
-            crate::init::put(&root.join("image.kdl"), &image(content)).unwrap();
+            base(content);
             let (list, _, _) = crate::declarations(&root);
             let mut issues = Issues::default();
             check_content(&list, &mut issues);
@@ -1346,8 +1350,9 @@ mod tests {
         );
         assert!(!refused.contains("--datastream"), "{refused}");
         assert!(refused.contains("`scap-content` line"), "{refused}");
-        assert_eq!(checked("        scap-content \"ssg-cs10-ds.xml\"\n"), "");
-        let flavoured = image("").replace(
+        assert_eq!(checked("scap-content \"ssg-cs10-ds.xml\";"), "");
+        base("");
+        let flavoured = image.replace(
             "    conforms \"standard\"\n",
             "    flavours { gpu conforms=\"standard\" }\n",
         );
@@ -1418,7 +1423,7 @@ mod tests {
         assert!(claimed.contains(&"1.1.1.1".to_string()), "{claimed:?}");
         assert!(
             claimed.contains(&"RHEL-09-232010".to_string()),
-            "a base claims the way a module does: {claimed:?}"
+            "a base claims the way a component does: {claimed:?}"
         );
         assert!(
             refused.contains(&"package_aide_installed".to_string()),
@@ -1464,7 +1469,7 @@ mod tests {
 
         assert!(
             said.iter()
-                .any(|m| m.contains("`no_module_here_refuses_this`")
+                .any(|m| m.contains("`no_component_here_refuses_this`")
                     && m.contains("the allowance lifts nothing")),
             "{said:#?}"
         );
@@ -1483,7 +1488,7 @@ mod tests {
         );
         assert!(
             refused.contains(&"package_aide_installed".to_string()),
-            "another module's refusal is untouched: {refused:?}"
+            "another component's refusal is untouched: {refused:?}"
         );
 
         let bare = fixture("tests/scap");
@@ -1498,7 +1503,7 @@ mod tests {
     }
 
     #[test]
-    fn the_notice_names_the_rules_no_listed_module_claims() {
+    fn the_notice_names_the_rules_no_listed_component_claims() {
         let root = fixture("tests/repos/enforced");
         let loaded = crate::load(&root);
         let said = conformance(
@@ -1540,11 +1545,14 @@ mod tests {
     }
 
     #[test]
-    fn a_module_the_base_suppressed_is_not_offered_back() {
+    fn a_component_the_base_suppressed_is_not_offered_back() {
         let root = fixture("tests/scap/suppressed-claimant");
         let loaded = crate::load(&root);
         let image = loaded.list.images.first().expect("one image");
-        assert!(image.entries.is_empty(), "the base covers the only module");
+        assert!(
+            image.entries.is_empty(),
+            "the base covers the only component"
+        );
         assert_eq!(
             image
                 .suppressed
@@ -1577,7 +1585,10 @@ mod tests {
             loaded.issues.plain()
         );
         let image = loaded.list.images.first().expect("one image");
-        assert!(image.entries.is_empty(), "the base covers the only module");
+        assert!(
+            image.entries.is_empty(),
+            "the base covers the only component"
+        );
         assert_eq!(
             image
                 .base
@@ -1631,7 +1642,7 @@ mod tests {
     }
 
     #[test]
-    fn a_module_the_image_lists_is_not_offered_as_one_that_would_help() {
+    fn a_component_the_image_lists_is_not_offered_as_one_that_would_help() {
         let root = fixture("tests/scap/listed-claimant");
         let loaded = crate::load(&root);
         assert_eq!(
@@ -1642,7 +1653,7 @@ mod tests {
                 .declares
                 .satisfies,
             ["4.1.3.1"],
-            "the index has the claim the resolved module dropped"
+            "the index has the claim the resolved component dropped"
         );
         assert_eq!(
             conformance(

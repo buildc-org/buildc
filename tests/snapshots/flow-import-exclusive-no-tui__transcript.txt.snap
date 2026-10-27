@@ -3,7 +3,7 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-Error: `flatpak` is exclusive, and `flathub` already provides it in `Example`; run `buildc import module` in a terminal to replace it.
+Error: `flatpak` is exclusive, and `flathub` already provides it in `Example`; run `buildc import component` in a terminal to replace it.
 
 Run 'buildc --help' to list the commands
 ==== exit 1

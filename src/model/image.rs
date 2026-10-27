@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Source, Span};
-use crate::model::module::{Access, Coverage, Module, Refusal};
+use crate::model::component::{Access, Component, Coverage, Refusal};
 use crate::model::options::Value;
 use crate::model::remote::Collection;
 
@@ -19,7 +19,10 @@ pub fn is_name(name: &str) -> bool {
 }
 
 pub fn is_local_path(path: &str) -> bool {
-    let (parents, last) = path.rsplit_once('/').unwrap_or(("", path));
+    let (parents, last) = match path.rsplit_once('/') {
+        Some((parents, last)) => (Some(parents), last),
+        None => (None, path),
+    };
     let last = match last.split_once('@') {
         Some((name, tag)) => {
             let tagged = !tag.is_empty()
@@ -33,7 +36,7 @@ pub fn is_local_path(path: &str) -> bool {
         }
         None => last,
     };
-    is_name(last) && (parents.is_empty() || parents.split('/').all(is_name))
+    is_name(last) && parents.is_none_or(|parents| parents.split('/').all(is_name))
 }
 
 #[derive(Clone)]
@@ -73,6 +76,8 @@ pub struct Image {
     pub conforms: String,
     pub boot: String,
     pub base: Option<Base>,
+    pub base_entry: Option<BaseEntry>,
+    pub defined: Vec<String>,
     pub layout: Option<Layout>,
     pub allows: Vec<Refusal>,
     pub flavours: Vec<Flavour>,
@@ -81,13 +86,47 @@ pub struct Image {
     pub span: Span,
 }
 
+impl Base {
+    pub fn shipped(&self) -> impl Iterator<Item = &Decl> {
+        self.provides
+            .iter()
+            .filter(|decl| decl.name != crate::parse::component::BASE_IMAGE)
+    }
+
+    pub fn answers(&self, required: &str) -> bool {
+        self.provides
+            .iter()
+            .any(|decl| crate::resolve::meets(&decl.name, required))
+    }
+
+    pub fn covers<'a>(&self, provides: impl IntoIterator<Item = &'a str>) -> bool {
+        // An empty set is not covered, so a component that declares no capability is not treated as one the base supplies.
+        let mut provides = provides.into_iter().peekable();
+        provides.peek().is_some()
+            && provides.all(|name| self.provides.iter().any(|decl| decl.name == name))
+    }
+}
+
+pub struct BaseEntry {
+    pub entry: Entry,
+    pub digest: Option<String>,
+    pub signed: bool,
+}
+
 pub struct Base {
+    pub path: String,
     pub image: String,
     pub family: String,
     pub provides: Vec<Decl>,
     pub requires: Vec<Decl>,
+    pub imports: Vec<crate::model::component::Import>,
+    pub src: Source,
     pub satisfies: Vec<Coverage>,
     pub signed: bool,
+    pub bootloaders: Vec<String>,
+    pub files: Vec<crate::model::component::Located>,
+    pub tracker: Option<crate::model::options::VersionTracker>,
+    pub imported: Option<crate::provenance::lock::Record>,
     pub scap_content: String,
     pub span: Span,
 }
@@ -101,7 +140,7 @@ pub struct Layout {
     pub span: Span,
 }
 
-pub use crate::model::module::Decl;
+pub use crate::model::component::Decl;
 
 pub struct Flavour {
     pub name: String,
@@ -123,15 +162,18 @@ pub struct Entry {
     pub variant: Option<String>,
     pub options: Vec<(String, Vec<Value>, Span)>,
     pub span: Span,
-    pub module: Option<Module>,
+    pub component: Option<Component>,
+    pub imported_by: Option<String>,
+    pub inline: Option<Vec<Span>>,
+    pub organises: bool,
 }
 
 impl Entry {
     pub fn qualified(&self, publishes_as: &str) -> String {
         match self
-            .module
+            .component
             .as_ref()
-            .and_then(|module| module.imported.as_ref())
+            .and_then(|component| component.imported.as_ref())
         {
             Some(record) => format!("{}/{}", record.library, record.upstream),
             None => format!("{publishes_as}/{}", self.path),
@@ -191,12 +233,12 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn access(&self, module: &Module) -> Access {
+    pub fn access(&self, component: &Component) -> Access {
         Access {
             packages: self.packages != NetRule::Deny,
             scripts: match self.scripts {
                 NetRule::Allow => true,
-                NetRule::Strict => module.network.is_some(),
+                NetRule::Strict => component.network.is_some(),
                 NetRule::Deny => false,
             },
         }
@@ -204,8 +246,68 @@ impl Network {
 }
 
 impl Image {
-    pub fn modules(&self) -> impl Iterator<Item = &Module> {
-        self.entries.iter().filter_map(|e| e.module.as_ref())
+    pub fn components(&self) -> impl Iterator<Item = &Component> {
+        self.entries.iter().filter_map(|e| e.component.as_ref())
+    }
+
+    pub fn base_answers(&self, required: &str) -> bool {
+        self.base
+            .as_ref()
+            .is_some_and(|base| base.answers(required))
+    }
+
+    pub fn answers(&self, required: &str) -> bool {
+        let kept = |name: &str| self.removing(name, |at| at.is_none()).is_none();
+        self.base.as_ref().is_some_and(|base| {
+            base.provides
+                .iter()
+                .any(|decl| crate::resolve::meets(&decl.name, required) && kept(&decl.name))
+        }) || self.components().any(|component| {
+            crate::resolve::answers(
+                &component.path,
+                component
+                    .provides
+                    .iter()
+                    .map(|decl| decl.name.as_str())
+                    .filter(|name| kept(name)),
+                required,
+            )
+        })
+    }
+
+    pub fn remover(&self, name: &str, flavour: Option<&str>) -> Option<&Component> {
+        self.removing(name, |at| crate::resolve::meet(at, flavour))
+    }
+
+    fn removing(&self, name: &str, reaches: impl Fn(Option<&str>) -> bool) -> Option<&Component> {
+        self.components()
+            .find(|component| component.withdraws(name) && reaches(component.flavour.as_deref()))
+    }
+
+    pub fn base_meets(&self, required: &str, flavour: Option<&str>) -> bool {
+        self.base.as_ref().is_some_and(|base| {
+            base.provides.iter().any(|decl| {
+                crate::resolve::meets(&decl.name, required)
+                    && self.remover(&decl.name, flavour).is_none()
+            })
+        })
+    }
+
+    pub fn component_meets(
+        &self,
+        component: &Component,
+        required: &str,
+        flavour: Option<&str>,
+    ) -> bool {
+        crate::resolve::answers(
+            &component.path,
+            component
+                .provides
+                .iter()
+                .map(|decl| decl.name.as_str())
+                .filter(|name| self.remover(name, flavour).is_none()),
+            required,
+        )
     }
 
     pub fn conforms_of(&self, flavour: &str) -> &str {
@@ -346,5 +448,6 @@ mod tests {
         assert!(!is_local_path("browser@1@2"));
         assert!(!is_local_path("desktop@1/kde"));
         assert!(!is_local_path("Browser"));
+        assert!(!is_local_path("/browser"));
     }
 }

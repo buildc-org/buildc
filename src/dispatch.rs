@@ -40,7 +40,7 @@ pub struct Flags {
     pub owner: Option<String>,
     pub host: Option<String>,
     pub images: Vec<String>,
-    pub module: Option<String>,
+    pub component: Option<String>,
     pub cn: Option<String>,
     pub from: Option<String>,
     pub base: Option<String>,
@@ -147,7 +147,7 @@ fn this_target(named: Option<&str>, scope: &crate::emit::why::Scope) -> Result<(
 fn unscoped(name: &str) -> String {
     format!(
         "the build record does not name a target and the baked manifest holds more than one, so \
-         `{name}` cannot say which of them is running\n\nhelp: `buildc why <module>` still answers, \
+         `{name}` cannot say which of them is running\n\nhelp: `buildc why <component>` still answers, \
          and says that it read across all of them"
     )
 }
@@ -228,7 +228,7 @@ fn why_on_host(
     };
     let [given] = rest else {
         return Err(Error::Invocation(
-            "`why` needs a module: `buildc why <module>`".into(),
+            "`why` needs a component: `buildc why <component>`".into(),
         ));
     };
 
@@ -237,19 +237,19 @@ fn why_on_host(
         [path] => path.clone(),
         [] => {
             return Err(Error::Invocation(format!(
-                "`{given}` is not a module this image carries\n\nmodules: {}",
+                "`{given}` is not a component this image carries\n\nmodules: {}",
                 crate::emit::why::display(&known).join(", ")
             )))
         }
         paths => {
             return Err(Error::Invocation(format!(
-                "`{given}` names more than one module\n\nmodules: {}",
+                "`{given}` names more than one component\n\nmodules: {}",
                 paths.join(", ")
             )))
         }
     };
     let why = crate::emit::why::on_host(manifest, record, &path)
-        .expect("the resolved module is one this image carries");
+        .expect("the resolved component is one this image carries");
     let parts = why.parts(true);
     print!(
         "{}",
@@ -293,7 +293,7 @@ pub fn dispatch(
         owner,
         host,
         images,
-        module: module_arg,
+        component: component_arg,
         cn,
         from,
         base,
@@ -395,7 +395,7 @@ pub fn dispatch(
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            let wrote = crate::create::Module::collect(&root, name, pkgs, with, images, prompt)?
+            let wrote = crate::create::Component::collect(&root, name, pkgs, with, images, prompt)?
                 .apply(&root)?;
             crate::create::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
@@ -405,7 +405,7 @@ pub fn dispatch(
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            crate::key::Key::collect(&root, kind, module_arg, cn, prompt)?.apply(&root)?;
+            crate::key::Key::collect(&root, kind, component_arg, cn, prompt)?.apply(&root)?;
             Ok(ExitCode::SUCCESS)
         }
         Verb::CreateScripts => {
@@ -425,13 +425,14 @@ pub fn dispatch(
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            crate::key::Recorded::collect(&root, kind, module_arg, from, prompt)?.apply(&root)?;
+            crate::key::Recorded::collect(&root, kind, component_arg, from, prompt)?
+                .apply(&root)?;
             Ok(ExitCode::SUCCESS)
         }
         Verb::ImportModule => {
             let name = one_name(rest, name)?;
             let (root, list) = collection_repo(here)?;
-            let module = crate::import::Module::collect(
+            let component = crate::import::Component::collect(
                 crate::import::Request {
                     name,
                     image: images.last().cloned(),
@@ -443,28 +444,28 @@ pub fn dispatch(
                 list.audit_enforce,
                 prompt,
             )?;
-            module.apply(&root, &list.sources)?;
+            component.apply(&root, &list.sources)?;
             Ok(ExitCode::SUCCESS)
         }
         Verb::FetchModules => {
             let root = repo_root(here)?;
             let list = crate::model::image::List::editable(&root)
                 .map_err(|issues| Error::Operation(issues.plain()))?;
-            let wrote = crate::fetch::modules(&root, &list.sources, list.audit_enforce, rest)?;
+            let wrote = crate::fetch::components(&root, &list.sources, list.audit_enforce, rest)?;
             let tracks = crate::provenance::lock::read(&root)
                 .iter()
                 .any(|record| record.tracked);
             match (wrote.is_empty(), tracks) {
                 (false, _) => crate::create::report(&root, &wrote),
-                (true, true) => eprintln!("buildc: every tracked module matches its library"),
-                (true, false) => eprintln!("buildc: no module tracks its library"),
+                (true, true) => eprintln!("buildc: every tracked component matches its library"),
+                (true, false) => eprintln!("buildc: no component tracks its library"),
             }
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetModule => {
             let path = one_name(rest, name)?.ok_or_else(|| {
                 Error::Invocation(format!(
-                    "`{name}` takes the module to make the repository's own"
+                    "`{name}` takes the component to make the repository's own"
                 ))
             })?;
             let Some(root) = open(here)? else {
@@ -485,13 +486,13 @@ pub fn dispatch(
                 true => crate::create::report(
                     &root,
                     &[(
-                        PathBuf::from(crate::layout::MODULES).join(crate::layout::LOCK_FILE),
+                        PathBuf::from(crate::layout::COMPONENTS).join(crate::layout::LOCK_FILE),
                         crate::create::Change::Updated(format!("`{key}` untracked")),
                     )],
                 ),
                 false => eprintln!(
                     "buildc: `{}/{key}` is already the repository's own",
-                    crate::layout::MODULES
+                    crate::layout::COMPONENTS
                 ),
             }
             Ok(ExitCode::SUCCESS)
@@ -526,31 +527,7 @@ pub fn dispatch(
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetLibrary => {
-            use crate::model::remote::Kind as SourceKind;
-            let kinds = [SourceKind::Modules, SourceKind::BaseImages];
-            let kind = match one_name(rest, name)? {
-                Some(kind) => SourceKind::parse(&kind).ok_or_else(|| {
-                    Error::Invocation(format!(
-                        "`{kind}` is not a library kind; `set library` takes `base-images` or \
-                         `modules`"
-                    ))
-                })?,
-                None if prompt.asks() => {
-                    let options: Vec<common::ui::Choice> = kinds
-                        .iter()
-                        .map(|kind| common::ui::Choice::new(kind.as_str(), ""))
-                        .collect();
-                    match prompt.choose(copy::WHICH_KIND, &options)? {
-                        Some(at) => kinds[at],
-                        None => return Ok(ExitCode::SUCCESS),
-                    }
-                }
-                None => {
-                    return Err(Error::Invocation(
-                        "`set library` takes a kind: `base-images` or `modules`".to_string(),
-                    ))
-                }
-            };
+            let kind = crate::model::remote::Kind::Components;
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
@@ -578,7 +555,7 @@ pub fn dispatch(
         }
         Verb::SetClaims => {
             let named = one_name(rest, name)?.ok_or_else(|| {
-                Error::Invocation(format!("`{name}` takes the module to claim for"))
+                Error::Invocation(format!("`{name}` takes the component to claim for"))
             })?;
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
@@ -896,7 +873,7 @@ fn reading(
             | Command::WhyJson => {
                 let known = crate::emit::why::known(&loaded.list);
                 let shown = crate::emit::why::display(&known);
-                (copy::WHICH_MODULE, known, shown)
+                (copy::WHICH_COMPONENT, known, shown)
             }
         };
         if known.is_empty() {
@@ -988,9 +965,9 @@ fn reading(
         match run.images {
             0 => eprintln!("buildc: no image yet; `buildc create image <name>` writes one"),
             _ => eprintln!(
-                "buildc: {} images, {} modules, {} flavours{}",
+                "buildc: {} images, {} components, {} flavours{}",
                 run.images,
-                run.modules,
+                run.components,
                 run.flavours,
                 match run.suppressed {
                     0 => String::new(),
@@ -1067,17 +1044,17 @@ mod tests {
 
     fn untracks(name: &str, untracked: bool, prompt: &Prompt) -> (bool, Result<(), String>) {
         let root =
-            std::env::temp_dir().join(format!("buildc-set-module-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("buildc-set-component-{name}-{}", std::process::id()));
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
         crate::init::put(
             &crate::layout::lock(&root),
-            "module \"browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
+            "component \"browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
         )
         .unwrap();
         let ran = dispatch(
             Verb::SetModule,
-            "set module",
-            &["modules/browser"],
+            "set component",
+            &["components/browser"],
             Flags {
                 untracked,
                 ..Flags::default()
@@ -1098,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn set_module_untracks_with_the_flag_or_a_yes() {
+    fn set_component_untracks_with_the_flag_or_a_yes() {
         assert_eq!(untracks("flag", true, &Prompt::silent()), (false, Ok(())));
         assert_eq!(
             untracks("yes", false, &Prompt::scripted(vec!["y".into()])),
@@ -1107,7 +1084,7 @@ mod tests {
     }
 
     #[test]
-    fn set_module_keeps_tracking_on_a_no_or_with_nobody_to_ask() {
+    fn set_component_keeps_tracking_on_a_no_or_with_nobody_to_ask() {
         assert_eq!(
             untracks("no", false, &Prompt::scripted(vec!["n".into()])),
             (true, Ok(()))

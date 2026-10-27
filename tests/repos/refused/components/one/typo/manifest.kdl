@@ -1,0 +1,13 @@
+schema-version 1
+
+description "Refuses a rule the content carries nothing by"
+
+targets "fedora"
+
+refuses "not_a_rule_this_content_has" because="a misspelling reads exactly like a rule left alone"
+
+refuses "sshd_disable_root_login" because="the fixture needs one refusal an image lifts"
+
+satisfies {
+    stig "CCI-000198"
+}

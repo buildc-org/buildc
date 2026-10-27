@@ -1,4 +1,3 @@
-# ---- tmpfiles helpers ----
 # systemd-tmpfiles decodes C escapes and `%` specifiers in a path, so a literal path must spell those bytes as escapes.
 tmpfiles_escape() {
     local s=$1
@@ -49,7 +48,6 @@ declare_dir() {
 
 shopt -s dotglob
 
-# ---- /opt relocation ----
 tmpfiles=/usr/lib/tmpfiles.d/zz-opt-symlinks.conf
 read_declared
 declare_dir /var/opt "$tmpfiles"
@@ -61,7 +59,6 @@ done
 rm -rf /opt
 mv /opt.bak /opt
 
-# ---- /usr/local relocation ----
 if [ -L /usr/local.bak ]; then
     tmpfiles=/usr/lib/tmpfiles.d/zz-usrlocal-symlinks.conf
     read_declared
@@ -86,11 +83,10 @@ if [ -L /usr/local.bak ]; then
 fi
 shopt -u dotglob
 
-# ---- module presets ----
-apply_module_presets() {
+apply_component_presets() {
     local scope="$1" dir="$2" flag=() f verb unit
     [ "$scope" = user ] && flag=(--global)
-    for f in "$dir"/45-module-*.preset; do
+    for f in "$dir"/45-component-*.preset; do
         [ -f "$f" ] || continue
         while read -r verb unit; do
             case "$verb" in
@@ -101,10 +97,9 @@ apply_module_presets() {
         done < "$f"
     done
 }
-apply_module_presets system /usr/lib/systemd/system-preset
-apply_module_presets user /usr/lib/systemd/user-preset
+apply_component_presets system /usr/lib/systemd/system-preset
+apply_component_presets user /usr/lib/systemd/user-preset
 
-# ---- /var to tmpfiles ----
 var_conf=/usr/lib/tmpfiles.d/zz-var-autogen.conf
 
 # `/var/cache`, `/var/log` and `/var/run` hold runtime state, so the tmpfiles conversion leaves them and the package database at `/var/lib/dpkg` alone.

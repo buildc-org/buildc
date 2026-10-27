@@ -4,14 +4,18 @@ use kdl::{KdlDocument, KdlNode};
 
 #[rustfmt::skip]
 pub const FILE_SCHEMA_VERSION: Node = Node::new("schema-version",
-    "The schema release that this file is written against.").about("The schema version tells `buildc` which reader to use for this file. A file written against an earlier release keeps using that release's reader, while `repo.kdl` sets the newest schema the repository accepts.").example("1")
+    "The schema release that this file is written against.")
+    .about("The number states the release the file is written against. `buildc` reports a file \
+        whose number differs from the one `repo.kdl` declares, and it reports a file that \
+        carries none.")
+    .example("1")
     .arg(Arg::Int, Say::new("`{}` needs a number", "not a version", "`schema-version 1`"))
     .missing(Say::new("this file declares no `{}`", "no schema version",
         "`schema-version 1`, so the repository and every file state which reader they need"))
     .once("")
     .notes(&[
         "A file cannot declare a schema newer than `repo.kdl`.",
-        "`buildc create repo`, `buildc create image` and `buildc create module` write the version, and `buildc` never changes it.",
+        "`buildc create repo`, `buildc create image` and `buildc create component` write the version, and `buildc` never changes it.",
     ]);
 
 pub struct Say {
@@ -51,6 +55,7 @@ pub enum Arg {
     Bool,
     Int,
     Strs,
+    Names,
     StrPair(&'static str, &'static str),
     One(&'static [&'static str]),
     MaybeOne(&'static [&'static str]),
@@ -223,6 +228,10 @@ pub fn check_doc(doc: &KdlDocument, schema: &Node, src: &Source, issues: &mut Is
     walk(doc.nodes(), schema, Span::default(), src, issues);
 }
 
+pub fn check_part(nodes: &[KdlNode], schema: &Node, src: &Source, issues: &mut Issues) {
+    visit(nodes, schema, src, issues);
+}
+
 pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
     let here: Span = node.name().span().into();
     let about = match schema.name.is_empty() {
@@ -231,7 +240,9 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
     };
     match schema.arg {
         Arg::None => {
-            if let Some(stray) = string_arg(node) {
+            if let Some(stray) = node.entries().iter().find(|e| e.name().is_none()) {
+                let shown = stray.value().to_string();
+                let stray = stray.value().as_string().unwrap_or(&shown);
                 schema.arg_say.raise(stray, here, src, issues);
             }
         }
@@ -253,6 +264,11 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
         Arg::Strs => {
             if string_args(node).is_empty() {
                 schema.arg_say.raise(about, here, src, issues);
+            }
+        }
+        Arg::Names => {
+            if !names_fit(node, about, schema, here, src, issues) {
+                return;
             }
         }
         Arg::StrPair(..) => {
@@ -287,7 +303,7 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
 
     for entry in node.entries() {
         let Some(key) = entry.name().map(|n| n.value()) else {
-            continue; 
+            continue;
         };
         match schema.props.iter().find(|p| p.name == key) {
             Some(prop) => {
@@ -327,11 +343,104 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
     walk(kids(node), schema, here, src, issues);
 }
 
+fn names_fit(
+    node: &KdlNode,
+    about: &str,
+    schema: &Node,
+    here: Span,
+    src: &Source,
+    issues: &mut Issues,
+) -> bool {
+    let positional: Vec<_> = node
+        .entries()
+        .iter()
+        .filter(|e| e.name().is_none())
+        .collect();
+    for entry in positional
+        .iter()
+        .filter(|e| e.value().as_string().is_none())
+    {
+        issues.push(
+            Issue::new(format!("a `{about}` name has to be a string"), src)
+                .at(entry.span(), "not a string")
+                .help(format!("quote it: `{about} \"{}\"`", entry.value())),
+        );
+    }
+    let line = positional.len();
+    let per_name = schema
+        .children
+        .iter()
+        .any(|entry| entry.name.is_empty() && !entry.props.is_empty());
+    let props: Vec<_> = node
+        .entries()
+        .iter()
+        .filter(|e| per_name && e.name().is_some())
+        .collect();
+    match (line, kids(node).is_empty()) {
+        (0, true) => {
+            schema.arg_say.raise(about, here, src, issues);
+            false
+        }
+        (0, false) => {
+            for entry in &props {
+                let key = entry.name().map_or("", |n| n.value());
+                issues.push(
+                    Issue::new(
+                        format!("`{key}` describes one name of the `{about}` block"),
+                        src,
+                    )
+                    .at(entry.span(), "on the block")
+                    .help(format!(
+                        "move `{key}=` onto the name it describes, inside the block"
+                    )),
+                );
+            }
+            props.is_empty()
+        }
+        (_, false) => {
+            issues.push(
+                Issue::new(format!("`{about}` writes names on its line and a block"), src)
+                    .at(here, "both forms")
+                    .help(format!(
+                        "write `{about} \"a\" \"b\"`, or `{about} {{ \"a\"; \"b\" }}` with one name on each line"
+                    )),
+            );
+            false
+        }
+        (1, true) => true,
+        (several, true) => {
+            for entry in &props {
+                let key = entry.name().map_or("", |n| n.value());
+                issues.push(
+                    Issue::new(
+                        format!("`{key}` describes one name, and this `{about}` writes {several}"),
+                        src,
+                    )
+                    .at(entry.span(), "several names")
+                    .help(format!(
+                        "write the names as a block, with `{key}=` on the name it describes"
+                    )),
+                );
+            }
+            true
+        }
+    }
+}
+
 fn walk(children: &[KdlNode], schema: &Node, here: Span, src: &Source, issues: &mut Issues) {
     if children.is_empty() {
         schema.empty.raise(schema.name, here, src, issues);
     }
+    visit(children, schema, src, issues);
+    for sub in schema.children {
+        if sub.missing.silent() || children.iter().any(|c| c.name().value() == sub.name) {
+            continue;
+        }
+        sub.missing.raise(sub.name, here, src, issues);
+    }
+}
 
+fn visit(children: &[KdlNode], schema: &Node, src: &Source, issues: &mut Issues) {
     let mut seen: Vec<(&str, &str, Span)> = Vec::new();
     for child in children {
         let name = child.name().value();
@@ -372,12 +481,5 @@ fn walk(children: &[KdlNode], schema: &Node, here: Span, src: &Source, issues: &
             seen.push((sub.name, key, span));
         }
         check(child, sub, src, issues);
-    }
-
-    for sub in schema.children {
-        if sub.missing.silent() || children.iter().any(|c| c.name().value() == sub.name) {
-            continue;
-        }
-        sub.missing.raise(sub.name, here, src, issues);
     }
 }

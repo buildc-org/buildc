@@ -15,9 +15,7 @@ pub fn username(host: &str) -> String {
 }
 
 pub const LIBRARIES: &str = "Included libraries:";
-pub const NO_BASE_LIBRARY: &str = "No base image library in repo, Add one now?";
 pub const WHICH_LIBRARY: &str = "Which library?";
-pub const WHICH_KIND: &str = "Which kind of library?";
 pub const OTHER_SOURCE: &str = "Another source";
 pub const OTHER_SOURCE_ABOUT: &str = "Type the alias, the Git URL and the directory";
 pub const SOURCE_ALIAS: &str = "source alias";
@@ -29,7 +27,8 @@ pub const IMAGE_NAME: &str = "What will the image be called?";
 pub const IMAGE_BASE: &str = "What is the base image for this image?";
 pub const BASE_IMAGE: &str = "base image";
 pub const OTHER_BASE: &str = "Another base image";
-pub const OTHER_BASE_ABOUT: &str = "Type an image reference that is not in this catalog";
+pub const IS_BASE: &str = "a base, which an image lists once as its base";
+pub const OTHER_BASE_ABOUT: &str = "Type an image reference that no base component names";
 pub const BASE_FAMILY: &str = "base family";
 pub const IMAGE_BOOTLOADER: &str = "Which bootloader does it install?";
 pub const BOOTLOADER_GRUB2: &str = "GRUB";
@@ -37,13 +36,13 @@ pub const BOOTLOADER_SYSTEMD: &str = "systemd-boot";
 pub const FLAVOUR_NAME: &str = "flavour name";
 pub const FLAVOUR_IMAGE: &str = "Which image publishes it?";
 
-pub const MODULE_NAME: &str = "module name";
-pub const MODULE_DESCRIPTION: &str = "description (optional)";
-pub const MODULE_SUPPORTS: &str = "supported base families, separated by spaces (optional)";
-pub const MODULE_PACKAGES: &str = "Does this module install packages?";
+pub const COMPONENT_NAME: &str = "component name";
+pub const COMPONENT_DESCRIPTION: &str = "description (optional)";
+pub const COMPONENT_SUPPORTS: &str = "supported base families, separated by spaces (optional)";
+pub const COMPONENT_PACKAGES: &str = "Does this component install packages?";
 pub const PACKAGE_NAMES: &str = "package names, separated by spaces";
-pub const WHICH_MODULE: &str = "Which module?";
-pub const WHICH_MODULES: &str = "Which modules?";
+pub const WHICH_COMPONENT: &str = "Which component?";
+pub const WHICH_COMPONENTS: &str = "Which components?";
 pub const LIST_IN_IMAGES: &str = "Which images list it?";
 
 pub fn list_in(target: &str) -> String {
@@ -53,8 +52,8 @@ pub fn list_in(target: &str) -> String {
 pub const TARGET_IMAGE: &str = "Which image is this for?";
 pub const TARGET_NONE: &str = "None, only add it to the repository";
 
-pub fn unsupported(supports: &[String], family: &str) -> String {
-    format!("supports {}; this image is {family}", supports.join(", "))
+pub fn unsupported(targets: &[String], family: &str) -> String {
+    format!("targets {}; this image is {family}", targets.join(", "))
 }
 
 pub fn present(name: &str) -> String {
@@ -87,14 +86,18 @@ pub fn track(named: &str) -> String {
 }
 
 pub fn untrack(key: &str) -> String {
-    format!("Stop tracking upstream for `modules/{key}`, so the copy is the repository's own?")
+    format!("Stop tracking upstream for `components/{key}`, so the copy is the repository's own?")
 }
 
 pub const REQUIRED: &str =
-    "The selected modules have dependencies not currently provided by the images:";
-pub const BRING_REQUIRED: &str = "Add these provider modules now?";
+    "The selected components have dependencies not currently provided by the images:";
+pub const BRING_REQUIRED: &str = "Add these provider components now?";
+
+pub fn which_provider(component: &str, capability: &str) -> String {
+    format!("`{component}` requires `{capability}`. Which component provides it?")
+}
 pub const BRING_FOR_BASE: &str = "Add them now?";
-pub const IMPORT_CLAIMING: &str = "Import the modules claiming these rules?";
+pub const IMPORT_CLAIMING: &str = "Import the components claiming these rules?";
 
 pub fn cleared(named: &str, unmet: &str) -> String {
     format!("{named} {unmet} and was cleared")
@@ -124,7 +127,7 @@ pub const KEY_CN: &str = "common name, which is what the enrolment prompt shows"
 pub const KEY_FROM: &str = "path to the public half already held";
 
 pub fn key_provider(kind: &str) -> String {
-    format!("Which module's {kind} key?")
+    format!("Which component's {kind} key?")
 }
 
 pub const WHICH_DISK: &str = "Which kind of disk image?";

@@ -7,13 +7,13 @@ use crate::provenance::{Evidence, ShaFrom, Tracker};
 use kdl::KdlNode;
 
 const DIR: Node = Node::new("dir", "The local directory that holds this source.")
-    .example("\"../library/modules\"")
+    .example("\"../library/components\"")
     .arg(
         Arg::Str,
         Say::new(
             "`dir` needs a path",
             "not a string",
-            "`dir \"../library/modules\"`",
+            "`dir \"../library/components\"`",
         ),
     )
     .once("");
@@ -44,15 +44,10 @@ const fn path(desc: &'static str, example: &'static str) -> Node {
         .once("")
 }
 
-const MODULES_PATH: Node = path(
-    "The directory inside the Git repository that holds this module library.",
-    "\"modules\"",
+const COMPONENTS_PATH: Node = path(
+    "The directory inside the Git repository that holds this component library.",
+    "\"components\"",
 );
-const BASE_IMAGES_PATH: Node = path(
-    "The directory inside the Git repository that holds this base-image library.",
-    "\"base-images/core\"",
-);
-
 const VERSION: Node = Node::new(
     "version",
     "The branch, tag or commit that selects the repository tree.",
@@ -132,23 +127,15 @@ const fn source(
         )
 }
 
-pub const MODULES: Node = source(
-    "modules",
-    "A module library that imports and copies resolve against.",
-    "\"buildc-modules\"",
-    &[DIR, URL, MODULES_PATH, VERSION, SHA256, UNPINNED],
+pub const COMPONENTS: Node = source(
+    "components",
+    "A component library that imports and `buildc create image` read components and bases from.",
+    "\"buildc\"",
+    &[DIR, URL, COMPONENTS_PATH, VERSION, SHA256, UNPINNED],
 )
 .scaffolds(&["url", "path"]);
 
-pub const BASE_IMAGES: Node = source(
-    "base-images",
-    "A base-image library that the base catalog is read out of.",
-    "\"core\"",
-    &[DIR, URL, BASE_IMAGES_PATH, VERSION, SHA256, UNPINNED],
-)
-.scaffolds(&["url", "path"]);
-
-pub const SOURCES: [Node; 2] = [MODULES, BASE_IMAGES];
+pub const SOURCES: [Node; 1] = [COMPONENTS];
 
 fn value<'a>(node: &'a KdlNode, name: &str) -> Option<(&'a str, Span)> {
     kids(node)

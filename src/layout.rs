@@ -1,13 +1,16 @@
 use std::path::{Path, PathBuf};
 
-pub const MODULES: &str = "modules";
+pub const COMPONENTS: &str = "components";
 pub const GENERATED: &str = "generated";
 pub const OUT: &str = "out";
 pub const KEYS: &str = "keys";
 const PUBLIC_KEYS: &str = "public";
 const PRIVATE_KEYS: &str = "private";
 
-pub const SCRIPT: &str = "module.sh";
+pub const SCRIPT: &str = "component.sh";
+pub const REPO_SCRIPT: &str = "repo.sh";
+pub const PACKAGES_SCRIPT: &str = "packages.sh";
+pub const FINALIZE_SCRIPT: &str = "finalize.sh";
 pub const FRAGMENT: &str = "Containerfile.inc";
 
 pub const OVERLAY: &str = "files";
@@ -31,8 +34,8 @@ pub const APPARMOR: Policy = Policy {
 };
 
 impl Policy {
-    pub fn files(&self, module_dir: &Path) -> Vec<String> {
-        let Ok(entries) = std::fs::read_dir(module_dir.join(self.dir)) else {
+    pub fn files(&self, component_dir: &Path) -> Vec<String> {
+        let Ok(entries) = std::fs::read_dir(component_dir.join(self.dir)) else {
             return Vec::new();
         };
         let mut out: Vec<String> = entries
@@ -59,8 +62,8 @@ pub const FAMILY_DIRS: [(&str, &[&str]); 6] = [
     ("ubuntu", &["ubuntu"]),
 ];
 
-pub fn family_first(module_dir: &Path, family: &str) -> Vec<String> {
-    family_dirs(module_dir, family)
+pub fn family_first(component_dir: &Path, family: &str) -> Vec<String> {
+    family_dirs(component_dir, family)
         .into_iter()
         .rev()
         .map(|gated| format!("{gated}/"))
@@ -68,59 +71,71 @@ pub fn family_first(module_dir: &Path, family: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn shipped(module_dir: &Path, family: &str, file: &str) -> Option<String> {
-    family_first(module_dir, family)
+pub fn shipped(component_dir: &Path, family: &str, file: &str) -> Option<String> {
+    family_first(component_dir, family)
         .into_iter()
         .map(|at| format!("{at}{file}"))
-        .find(|at| module_dir.join(at).is_file())
+        .find(|at| component_dir.join(at).is_file())
 }
 
-pub fn family_dirs(module_dir: &Path, family: &str) -> Vec<&'static str> {
+pub fn family_dirs(component_dir: &Path, family: &str) -> Vec<&'static str> {
     FAMILY_DIRS
         .iter()
         .filter(|(_, taken_on)| taken_on.contains(&family))
         .map(|(name, _)| *name)
-        .filter(|name| module_dir.join(name).is_dir())
+        .filter(|name| component_dir.join(name).is_dir())
         .collect()
 }
 
-pub fn module_owned(name: &str) -> bool {
+pub fn layered(on_disk: &Path, family: &str, file: &str) -> Vec<String> {
+    std::iter::once(String::new())
+        .chain(
+            family_dirs(on_disk, family)
+                .into_iter()
+                .map(|gated| format!("{gated}/")),
+        )
+        .map(|at| format!("{at}{file}"))
+        .filter(|at| on_disk.join(at).is_file())
+        .collect()
+}
+
+pub fn component_owned(name: &str) -> bool {
     name == OVERLAY
         || name == SELINUX.dir
         || name == APPARMOR.dir
         || FAMILY_DIRS.iter().any(|(dir, _)| *dir == name)
 }
 
-pub fn module_dirs(
+pub fn component_dirs(
     tree: &Path,
     marks: impl Fn(&Path) -> bool,
     skip: impl Fn(&str) -> bool,
 ) -> Vec<PathBuf> {
-    walk_modules(tree, false, marks, skip)
+    walk_components(tree, false, marks, skip)
 }
 
-fn walk_modules(
+fn walk_components(
     tree: &Path,
-    in_module: bool,
+    in_component: bool,
     marks: impl Fn(&Path) -> bool,
     skip: impl Fn(&str) -> bool,
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let mut dirs = vec![(tree.to_path_buf(), in_module)];
-    while let Some((dir, in_module)) = dirs.pop() {
+    let mut dirs = vec![(tree.to_path_buf(), in_component)];
+    while let Some((dir, in_component)) = dirs.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             let path = entry.path();
-            if !path.is_dir() || skip(&name) || (in_module && module_owned(&name)) {
+            if !path.is_dir() || skip(&name) || (in_component && component_owned(&name)) {
                 continue;
             }
-            let module = marks(&path);
-            if module {
+            let component = marks(&path);
+            if component {
                 out.push(path.clone());
             }
             // A symlinked directory is never entered, so a cycle through a link cannot repeat the walk.
             if !entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
-                dirs.push((path, module));
+                dirs.push((path, component));
             }
         }
     }
@@ -129,18 +144,18 @@ fn walk_modules(
 }
 
 pub fn member_dirs(tree: &Path) -> Vec<PathBuf> {
-    walk_modules(tree, false, is_member, is_dot)
+    walk_components(tree, false, is_member, is_dot)
 }
 
-pub fn held_modules(dir: &Path) -> Vec<PathBuf> {
-    walk_modules(dir, true, is_member, is_dot)
+pub fn held_components(dir: &Path) -> Vec<PathBuf> {
+    walk_components(dir, true, is_member, is_dot)
         .into_iter()
         .filter_map(|path| path.strip_prefix(dir).ok().map(Path::to_path_buf))
         .collect()
 }
 
 fn is_member(path: &Path) -> bool {
-    path.join(MODULE_FILE).is_file()
+    path.join(MANIFEST_FILE).is_file()
 }
 
 fn is_dot(name: &str) -> bool {
@@ -156,10 +171,17 @@ pub fn script(root: &Path, name: &str) -> String {
     }
 }
 
-pub fn is_module(dir: &Path) -> bool {
-    dir.join(MODULE_FILE).is_file()
-        || dir.join(SCRIPT).is_file()
-        || dir.join(FRAGMENT).is_file()
+pub fn is_component(dir: &Path) -> bool {
+    [
+        MANIFEST_FILE,
+        SCRIPT,
+        REPO_SCRIPT,
+        PACKAGES_SCRIPT,
+        FINALIZE_SCRIPT,
+        FRAGMENT,
+    ]
+    .iter()
+    .any(|file| dir.join(file).is_file())
         || dir.join(OVERLAY).is_dir()
 }
 
@@ -168,8 +190,8 @@ pub const WORKFLOW_DIR: &str = ".github/workflows";
 pub const REPO_FILE: &str = "repo.kdl";
 pub const IMAGE_FILE: &str = "image.kdl";
 pub const IMAGE_SUFFIX: &str = ".image.kdl";
-pub const MODULE_FILE: &str = "module.kdl";
-pub const LOCK_FILE: &str = "modules.lock.kdl";
+pub const MANIFEST_FILE: &str = "manifest.kdl";
+pub const LOCK_FILE: &str = "components.lock.kdl";
 
 pub const MOUNTED: &str = "out/buildc";
 pub const SOURCES_CACHE: &str = ".cache/sources";
@@ -182,16 +204,16 @@ pub fn as_image_file(name: &str) -> String {
     format!("{}{IMAGE_SUFFIX}", name.trim_end_matches(".kdl"))
 }
 
-pub fn modules(root: &Path) -> PathBuf {
-    root.join(MODULES)
+pub fn components(root: &Path) -> PathBuf {
+    root.join(COMPONENTS)
 }
 
 pub fn lock(root: &Path) -> PathBuf {
-    modules(root).join(LOCK_FILE)
+    components(root).join(LOCK_FILE)
 }
 
-pub fn module(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
-    modules(root).join(dir)
+pub fn component(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
+    components(root).join(dir)
 }
 
 pub fn public_key(root: &Path, path: &str) -> PathBuf {
@@ -209,7 +231,7 @@ pub fn nonempty(path: &Path) -> bool {
 }
 
 pub fn manifest(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
-    module(root, dir).join(MODULE_FILE)
+    component(root, dir).join(MANIFEST_FILE)
 }
 
 pub fn generated(root: &Path) -> PathBuf {
@@ -256,11 +278,11 @@ pub const REPOSITORY: Tree = Tree {
             what: "The images of the repository. See [`image.kdl`](image.md)." },
         Place { path: &["<name>", IMAGE_SUFFIX], writer: "`buildc create image`, then the user", tracked: true,
             what: "More images. The name in front of the suffix is decorative." },
-        Place { path: &[MODULES, "/"], writer: "the user, `buildc create module` or `buildc import module`", tracked: true,
-            what: "The modules of the repository, one directory each. See [Modules](modules.md)." },
-        Place { path: &[MODULES, "/", LOCK_FILE], writer: "`buildc import module`, `buildc fetch modules` and `buildc set module`", tracked: true,
-            what: "Where each imported module came from, and what its content hashed to. See \
-                [`modules.lock.kdl`](lock.md)." },
+        Place { path: &[COMPONENTS, "/"], writer: "the user, `buildc create component` or `buildc import component`", tracked: true,
+            what: "The components of the repository, one directory each. See [Components](components.md)." },
+        Place { path: &[COMPONENTS, "/", LOCK_FILE], writer: "`buildc import component`, `buildc fetch components` and `buildc set component`", tracked: true,
+            what: "Where each imported component came from, and what its content hashed to. See \
+                [`components.lock.kdl`](lock.md)." },
         Place { path: &[KEYS, "/", PUBLIC_KEYS, "/"], writer: "`buildc create key` or `buildc set key`", tracked: true,
             what: "The public half of each key, at the path it has in the image." },
         Place { path: &[KEYS, "/", PRIVATE_KEYS, "/"], writer: "`buildc create key`", tracked: false,
@@ -276,7 +298,7 @@ pub const REPOSITORY: Tree = Tree {
         Place { path: &[OUT, "/"], writer: "`buildc`", tracked: false,
             what: "Local exports, caches and scratch. `buildc` reads nothing here as a declaration." },
         Place { path: &[SOURCES_CACHE, "/"], writer: "`buildc`", tracked: false,
-            what: "The libraries that `buildc import module` fetches and copies a module from. \
+            what: "The libraries that `buildc import component` fetches and copies a component from. \
                 `buildc check`, `buildc generate` and `buildc build` read nothing here." },
         Place { path: &["disk_config/"], writer: "`buildc create repo`, then the user", tracked: true,
             what: "The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk \
@@ -293,29 +315,38 @@ pub const REPOSITORY: Tree = Tree {
 };
 
 #[rustfmt::skip]
-pub const MODULE_DIR: Tree = Tree {
-    root: "modules/<module-name>/",
-    intro: "A module is a directory under `modules/`, at whatever depth groups it, and its path \
-        names the module. The build reads the files below by convention, so a module can be as \
-        small as one `module.sh`. A module can also hold other modules. The walk that finds \
-        modules passes over the directories that the build of a module reads.",
+pub const COMPONENT_DIR: Tree = Tree {
+    root: "components/<component-name>/",
+    intro: "A component is a directory under `components/`, at whatever depth groups it, and its path \
+        names the component. The build reads the files below by convention, so a component can be as \
+        small as one `component.sh`. Any one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, \
+        `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component \
+        can also hold other components. An image that lists a nested component also gets the nearest \
+        component that holds it, and an image that lists the outer component gets none of the components \
+        inside it. The walk that finds \
+        components passes over the directories that the build of a component reads.",
     places: &[
-        Place { path: &[MODULE_FILE], writer: "", tracked: true,
-            what: "What the module declares about itself. A module with only a script and \
-                `files/` can leave it out. A module fetched from another repository needs one. \
-                See [`module.kdl`](module.md)." },
+        Place { path: &[MANIFEST_FILE], writer: "", tracked: true,
+            what: "What the component declares about itself. A component with only a script and \
+                `files/` can leave it out. A component fetched from another repository needs one. \
+                See [`manifest.kdl`](component.md)." },
         Place { path: &[SCRIPT], writer: "", tracked: true,
-            what: "The install logic. The build sources it in the layer of the module." },
-        Place { path: &["finalize.sh"], writer: "", tracked: true,
+            what: "The install logic. The build sources it in the layer of the component, after the \
+                keys and before the policies and `files/`." },
+        Place { path: &[PACKAGES_SCRIPT], writer: "", tracked: true,
+            what: "Package work that the declarations cannot express. The package step sources it \
+                after the declared packages, with the network that `packages` in `repo.kdl` \
+                allows. It can call the family's `install_packages`." },
+        Place { path: &[FINALIZE_SCRIPT], writer: "", tracked: true,
             what: "The finalize phase sources it, in resolved order." },
         Place { path: &[OVERLAY, "/"], writer: "", tracked: true,
             what: "An overlay that the build copies over `/`." },
-        Place { path: &["repo"], writer: "", tracked: true,
+        Place { path: &[REPO_SCRIPT], writer: "", tracked: true,
             what: "A package repository file. The build sources it first. On Fedora, if the \
-                `REPO_ID` of `repo` is already configured, then the build skips it." },
+                `REPO_ID` of `repo.sh` is already configured, then the build skips it." },
         Place { path: &[FRAGMENT], writer: "", tracked: true,
             what: "Containerfile lines that the build adds verbatim, for a need that the \
-                fields cannot express. `fragment` in `module.kdl` places them." },
+                fields cannot express. `fragment` in `manifest.kdl` places them." },
         Place { path: &[SELINUX.dir, "/*.te"], writer: "", tracked: true,
             what: "SELinux policy. If the image provides `selinux-policy`, then the build \
                 compiles and installs it." },
@@ -323,38 +354,39 @@ pub const MODULE_DIR: Tree = Tree {
             what: "AppArmor profiles. If the image provides `apparmor-policy`, then the build \
                 validates them and places them in `/etc/apparmor.d`." },
         Place { path: &["<family>/"], writer: "", tracked: true,
-            what: "The files of the module that apply to one base family." },
+            what: "The files of the component that apply to one base family." },
         Place { path: &["<collected file>"], writer: "", tracked: true,
-            what: "A part of a file that another module collects. The build stages it for that \
-                module." },
+            what: "A part of a file that another component collects. The build stages it for that \
+                component." },
     ],
     lists: &[
         ("A policy directory follows these rules:", &[
-            "A module that ships `selinux/` or `apparmor/` builds after the module that provides \
+            "A component that ships `selinux/` or `apparmor/` builds after the component that provides \
              that MAC, as if it declared `after`.",
-            "A module can ship both policy directories. The build takes each directory only where \
+            "A component can ship both policy directories. The build takes each directory only where \
              the image has that MAC. An image with no MAC installs no policy and needs no provider.",
-            "A policy directory declares no requirement. A module that needs a MAC declares \
+            "A policy directory declares no requirement. A component that needs a MAC declares \
              `requires \"selinux-policy\"` or `requires \"apparmor-policy\"`, and `buildc` refuses \
              it on an image without that MAC.",
         ]),
-        ("A `<family>/` directory gates `module.sh`, `finalize.sh`, `files/`, `repo` and a \
-          collected file:", &[
+        ("A `<family>/` directory gates `component.sh`, `packages.sh`, `finalize.sh`, `files/`, \
+          `repo.sh` and a collected file:", &[
             "The six directory names are `fedora/`, `rhel/`, `debian/`, `ubuntu/`, `rpm/` and \
-             `deb/`. The build reads no other directory in a module.",
+             `deb/`. The build reads no other directory in a component.",
             "The build takes `deb/` on Debian and Ubuntu, and `rpm/` on Fedora and RHEL. It takes \
              `debian/` on Debian only, after `deb/`.",
             "A gated half runs after the ungated half. The family `files/` is copied over the \
-             shared `files/`, and the family `module.sh` is sourced after the shared `module.sh`.",
-            "A family `repo` replaces the other copies. `debian/repo` wins over `deb/repo`, which \
-             wins over the `repo` at the module root, and the build sources only the winner.",
-            "If `supports` is declared and the directory names no supported family, then `buildc` \
-             refuses it. With no `supports` declaration, every family is supported.",
+             shared `files/`. The family `component.sh`, `packages.sh` and `finalize.sh` are each \
+             sourced after the shared copy, from `deb/` or `rpm/` to the single family.",
+            "A family `repo.sh` replaces the other copies. `debian/repo.sh` wins over `deb/repo.sh`, which \
+             wins over the `repo.sh` at the component root, and the build sources only the winner.",
+            "If `targets` is declared and the directory names no targeted family, then `buildc` \
+             refuses it. With no `targets` declaration, every family is targeted.",
         ]),
     ],
     notes: &[
-        "A module with no `<family>/` directory gates nothing. Its `module.sh` and `files/` run on \
-         every family it supports; with no `supports` declaration, that is every family.",
+        "A component with no `<family>/` directory gates nothing. Its `component.sh` and `files/` run on \
+         every family it targets; with no `targets` declaration, that is every family.",
     ],
 };
 
@@ -363,15 +395,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_held_module_is_what_the_library_lists_inside_the_module() {
+    fn a_held_component_is_what_the_library_lists_inside_the_component() {
         let root = std::env::temp_dir().join(format!("buildc-held-dirs-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for dir in ["a", "a/b", "a/files/c", "a/group/files/d", "a/.x/e"] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
-            std::fs::write(root.join(dir).join(MODULE_FILE), "").unwrap();
+            std::fs::write(root.join(dir).join(MANIFEST_FILE), "").unwrap();
         }
         let listed = member_dirs(&root);
-        let held = held_modules(&root.join("a"));
+        let held = held_components(&root.join("a"));
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             listed,
@@ -381,22 +413,22 @@ mod tests {
     }
 
     #[test]
-    fn the_walk_finds_nested_modules_and_passes_over_module_content() {
-        let root = std::env::temp_dir().join(format!("buildc-module-dirs-{}", std::process::id()));
+    fn the_walk_finds_nested_components_and_passes_over_component_content() {
+        let root = std::env::temp_dir().join(format!("buildc-component-dirs-{}", std::process::id()));
         if root.exists() {
             std::fs::remove_dir_all(&root).unwrap();
         }
         for dir in ["a/b", "a/files/c", "a/fedora/d", ".git/e", "group/f"] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
-            std::fs::write(root.join(dir).join(MODULE_FILE), "").unwrap();
+            std::fs::write(root.join(dir).join(MANIFEST_FILE), "").unwrap();
         }
-        std::fs::write(root.join("a").join(MODULE_FILE), "").unwrap();
+        std::fs::write(root.join("a").join(MANIFEST_FILE), "").unwrap();
         std::os::unix::fs::symlink(&root, root.join("a/b/loop")).unwrap();
         std::os::unix::fs::symlink(root.join("group/f"), root.join("linked")).unwrap();
 
-        let found: Vec<String> = module_dirs(
+        let found: Vec<String> = component_dirs(
             &root,
-            |path| path.join(MODULE_FILE).is_file(),
+            |path| path.join(MANIFEST_FILE).is_file(),
             |name| name.starts_with('.'),
         )
         .iter()

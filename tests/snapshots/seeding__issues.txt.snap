@@ -1,4 +1,13 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-
+  x `components/flatpak` tracks its library, and its content no longer matches
+  | its lock entry
+   ,-[tests/repos/seeding/components/components.lock.kdl:1:1]
+ 1 | component "flatpak" {
+   : ^^^^|^^^^
+   :     `-- this entry
+ 2 |     library "buildc-org"
+   `----
+  help: undo the edit to `components/flatpak`, or run `buildc set component
+        flatpak --untracked` to make the copy the repository's own

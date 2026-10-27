@@ -3,15 +3,15 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-Track upstream for `hardening/coredumps`? (Yes/No)
+Track `hardening/coredumps` upstream? (Yes/No)
 Yes
 
 
 example/
-├── modules/
+├── components/
 │   ├── hardening/
 │   │   └── coredumps/
-│   │       └── + module.kdl
-│   └── + modules.lock.kdl
-└── ~ example.image.kdl  hardening/coredumps added to modules
+│   │       └── + manifest.kdl
+│   └── ~ components.lock.kdl  hardening/coredumps recorded
+└── ~ example.image.kdl  hardening/coredumps added to components
 ==== exit 0

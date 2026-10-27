@@ -6,7 +6,12 @@ use kdl::{KdlNode, KdlValue};
 
 #[rustfmt::skip]
 pub const OPTION: Node = Node::new("option",
-    "One value that an image can set on this module.").about("Lets an image change how this module builds, such as which fonts it installs. The module declares the option with a type and a default, and each image can set its own value.").example("\"version\" type=\"string\"")
+    "One value that an image can set on this component.")
+    .about("The type decides the value the layer reads, and `buildc check` refuses a default that \
+        does not match it. A string value may hold none of `\"`, `\\`, `$`, a backtick or a \
+        newline, and a list value may hold no whitespace, because values reach the layer through \
+        a `RUN` env prefix.")
+    .example("\"version\" type=\"string\"")
     .arg(Arg::Str, Say::new("`option` needs a name", "no name given",
         "`option \"fonts\" type=\"list\" { ... }`"))
     .unique(Say::new("option `{}` is declared twice", "already declared above", ""))
@@ -22,12 +27,16 @@ pub const OPTION: Node = Node::new("option",
     .children(&[
         Node::new("description", "What the option does.").example("\"The Firefox release to install\"")
             .arg(Arg::Str, Say::NONE).once(""),
-        Node::new("default", "The value that the module builds with if no image sets one.").example("\"128.0\"")
+        Node::new("default", "The value that the component builds with if no image sets one.").example("\"128.0\"")
             .arg(Arg::Strs, Say::NONE)
             .once("")
             .missing(Say::new("this option declares no `{}`", "every option needs one",
                 "an option with no default is a required argument in disguise; express that as a `requires` instead")),
-        Node::new("renovate", "What keeps the value of a `version` option current.").about("Names where Renovate looks up new versions of the software that a `version` option installs. `buildc generate` writes one Renovate manager for each image entry that sets the option, so Renovate updates the value in the image file and the module stays as it is.").example("datasource=\"repology\" depName=\"fedora_rawhide/firefox\"")
+        Node::new("renovate", "What keeps the value of a `version` option current.")
+            .about("The block names the Renovate datasource and the dependency name that the \
+                datasource knows. Only an option named `version` of type `string` may carry it, \
+                because that is the value Renovate rewrites.")
+            .example("datasource=\"repology\" depName=\"fedora_rawhide/firefox\"")
             .arg(Arg::None, Say::new("`renovate` takes no arguments", "unexpected value",
                 "`renovate datasource=\"repology\" depName=\"fedora_rawhide/firefox\"`"))
             .once("")
@@ -51,15 +60,22 @@ pub const OPTION: Node = Node::new("option",
     ], Say::new("unknown node `{}` in an option", "not part of the schema",
         "an option holds `description`, `default` and `renovate`"))
     .notes(&[
-        "Every declared option reaches the layer of its module as `OPT_<NAME>`. `<NAME>` is the \
+        "Every declared option reaches the layer of its component as `OPT_<NAME>`. `<NAME>` is the \
          option name in upper case, and each dash becomes an underscore.",
-        "A default reaches the layer too, so `module.sh` reads a variable and does not test \
+        "A default reaches the layer too, so `component.sh` reads a variable and does not test \
          whether one is set.",
+        "A `string` option's value fills each `$<name>` that names it in a `packages`, \
+         `package-groups` or `provider` argument, as `packages \"firefox=$version\"` does. \
+         A `$<name>` that names a `bool` or a `list` option, or no option, fails `buildc check`.",
     ]);
 
 #[rustfmt::skip]
 pub const VARIANT: Node = Node::new("variant",
-    "A named set of option values that an image selects with `variant=`.").about("Bundles option values under one name, so an image takes a whole configuration of the module with `variant=` in place of setting each option.").example("\"wine-only\"")
+    "A named set of option values that an image selects with `variant=`.")
+    .about("An image selects the variant by name with `variant=` on the component entry. Every \
+        option that a `set` child names must be declared in the same manifest, and a variant \
+        name may appear once.")
+    .example("\"wine-only\"")
     .arg(Arg::Str, Say::new("`variant` needs a name", "no name given", ""))
     .unique(Say::new("variant `{}` is declared twice", "already declared above", ""))
     .props(&[], Say::new("unknown variant property `{}`", "not part of the schema",
@@ -184,7 +200,7 @@ mod tests {
         let mut issues = Issues::default();
         let opt = super::parse_option(
             &doc.nodes()[0],
-            &Source::new("module.kdl", text),
+            &Source::new("manifest.kdl", text),
             &mut issues,
         );
         (opt, issues.plain())

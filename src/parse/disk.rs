@@ -1,6 +1,6 @@
 use crate::diag::{Issues, Source};
 use crate::layout;
-use crate::model::module::Key;
+use crate::model::component::Key;
 use kdl::KdlDocument;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -14,11 +14,11 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn modules(&self) -> impl Iterator<Item = &String> {
+    pub fn components(&self) -> impl Iterator<Item = &String> {
         self.overlays.keys()
     }
 
-    pub fn is_module(&self, dir: &str) -> bool {
+    pub fn is_component(&self, dir: &str) -> bool {
         self.overlays.contains_key(dir)
     }
 
@@ -36,18 +36,18 @@ impl Disk {
     fn walk(root: &Path, collected: &[String]) -> Self {
         let mut out = Self::default();
 
-        let modules = layout::modules(root);
-        let found = layout::module_dirs(
-            &modules,
+        let components = layout::components(root);
+        let found = layout::component_dirs(
+            &components,
             |path| {
-                layout::is_module(path) || collected.iter().any(|file| path.join(file).is_file())
+                layout::is_component(path) || collected.iter().any(|file| path.join(file).is_file())
             },
             |name| name == "_template",
         );
         for path in found {
-            let manifest = path.join(layout::MODULE_FILE);
+            let manifest = path.join(layout::MANIFEST_FILE);
             let name = path
-                .strip_prefix(&modules)
+                .strip_prefix(&components)
                 .unwrap_or(&path)
                 .display()
                 .to_string();
@@ -79,7 +79,8 @@ impl Disk {
                     "key" => {
                         let src = Source::new(manifest.display().to_string(), text.clone());
                         let mut refused = Issues::default();
-                        let Some(key) = crate::parse::module::parse_key(node, &src, &mut refused)
+                        let Some(key) =
+                            crate::parse::component::parse_key(node, &src, &mut refused)
                         else {
                             out.refuse_key(args().next(), &name, &doc, &src, refused);
                             continue;
@@ -101,7 +102,7 @@ impl Disk {
     fn refuse_key(
         &mut self,
         kind: Option<&str>,
-        module: &str,
+        component: &str,
         doc: &KdlDocument,
         src: &Source,
         mut refused: Issues,
@@ -109,10 +110,15 @@ impl Disk {
         let Some(kind) = kind else {
             return;
         };
-        crate::parse::schema::check_doc(doc, &crate::parse::module::MODULE, src, &mut refused);
+        crate::parse::schema::check_doc(
+            doc,
+            &crate::parse::component::COMPONENT,
+            src,
+            &mut refused,
+        );
         self.refused_keys
             .entry(kind.to_string())
-            .or_insert_with(|| (module.to_string(), refused.plain()));
+            .or_insert_with(|| (component.to_string(), refused.plain()));
     }
 }
 

@@ -32,8 +32,8 @@ pub use command::{Arg, Command};
 use diag::Issue;
 use diag::Issues;
 use diag::Source;
-use model::image::{List, Target};
-use model::module::Module;
+use model::component::Component;
+use model::image::{Entry, Image, List, Target};
 pub use parse::repo::compatible;
 use resolve::Resolved;
 use std::path::{Path, PathBuf};
@@ -64,7 +64,7 @@ pub struct Run {
     pub issues: Issues,
     pub context: String,
     pub images: usize,
-    pub modules: usize,
+    pub components: usize,
     pub suppressed: usize,
     pub flavours: usize,
     pub unpinned: Vec<String>,
@@ -104,7 +104,7 @@ fn skeleton(
         if !text.lines().any(|line| line == *marker) {
             issues.push(
                 Issue::new(format!("`{SKELETON}` has no `{marker}` line"), &src)
-                    .help("the generated module layers go between the two markers"),
+                    .help("the generated component layers go between the two markers"),
             );
             found = false;
         }
@@ -155,7 +155,6 @@ pub(crate) fn load(root: &Path) -> Loaded {
 
     let disk = parse::disk::Disk::scan(root);
     let index = provider::Index::local(root, &list.sources, &disk);
-    parse::module::check_unlisted(&list, root, &disk, &mut issues);
     provenance::lock::check(root, &mut issues);
 
     let network = list.network;
@@ -163,9 +162,8 @@ pub(crate) fn load(root: &Path) -> Loaded {
     let repo_src = list.repo_src.clone();
     let mut resolved: Vec<Resolved> = Vec::new();
     for image in &mut list.images {
-        let mut entries = std::mem::take(&mut image.entries);
-        for entry in &mut entries {
-            entry.module = Module::load(
+        let mut load = |entry: &Entry, image: &Image| {
+            let mut component = Component::load(
                 entry,
                 image,
                 root,
@@ -173,12 +171,18 @@ pub(crate) fn load(root: &Path) -> Loaded {
                 schema_version,
                 &repo_src,
                 &mut issues,
-            );
-            if let Some(module) = entry.module.as_mut() {
-                module.access = network.access(module);
-            }
+            )?;
+            component.access = network.access(&component);
+            Some(component)
+        };
+        let mut entries = std::mem::take(&mut image.entries);
+        for entry in &mut entries {
+            entry.component = load(entry, image);
         }
         image.entries = entries;
+        for issue in resolve::imports::expand(image, &disk, load) {
+            issues.push(issue);
+        }
 
         resolve::graph::suppress(image);
         let order = resolve::order::sort(image, &mut issues);
@@ -193,6 +197,8 @@ pub(crate) fn load(root: &Path) -> Loaded {
 
         resolved.push(Resolved { shipped, collected });
     }
+
+    parse::component::check_unlisted(&list, root, &disk, &mut issues);
 
     ungoverned.sort();
     ungoverned.dedup();
@@ -222,9 +228,9 @@ pub fn run(command: Command, arg: Option<&str>, root: &Path) -> Run {
     reason = "every command reads the loaded declarations through one sequence"
 )]
 pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loaded: Loaded) -> Run {
-    let (target_arg, image_arg, module_arg) = match command.arg() {
+    let (target_arg, image_arg, component_arg) = match command.arg() {
         Some(Arg::Target) => (arg, None, None),
-        Some(Arg::Module) => (None, None, arg),
+        Some(Arg::Component) => (None, None, arg),
         Some(Arg::Image) | None => (None, arg, None),
     };
     let Loaded {
@@ -311,8 +317,8 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
     let needs_tail = list
         .images
         .iter()
-        .flat_map(|image| image.modules())
-        .any(|module| module.fragment_position == model::module::Position::Tail);
+        .flat_map(|image| image.components())
+        .any(|component| component.fragment_position == model::component::Position::Tail);
     let needs_luks = list.images.iter().any(|image| {
         let entries: Vec<_> = image.entries.iter().collect();
         emit::plan::provides(image, &entries, emit::recipe::LUKS_INITRAMFS)
@@ -350,7 +356,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
                     emit::containerfile::file(skeleton, image, &section, &tails),
                 ));
             }
-            files.extend(emit::module_build::scripts(
+            files.extend(emit::component_build::scripts(
                 image,
                 &resolved.collected,
                 root,
@@ -421,7 +427,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
             .iter()
             .map(|(path, _)| format!("{}\n", path.display()))
             .collect(),
-        Command::Why | Command::WhyJson => match module_arg {
+        Command::Why | Command::WhyJson => match component_arg {
             Some(given) => match emit::why::matching(&emit::why::known(&list), given).as_slice() {
                 [path] => match emit::why::of(&list, path, root) {
                     Some(why) => match command {
@@ -457,12 +463,12 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
                     let known = emit::why::display(&emit::why::known(&list));
                     issues.push(
                         Issue::new(
-                            format!("`{given}` is not a module this repository lists"),
+                            format!("`{given}` is not a component this repository lists"),
                             &list.repo_src,
                         )
                         .help(match known.is_empty() {
-                            true => "no image lists a module yet".to_string(),
-                            false => format!("modules: {}", known.join(", ")),
+                            true => "no image lists a component yet".to_string(),
+                            false => format!("components: {}", known.join(", ")),
                         }),
                     );
                     String::new()
@@ -470,18 +476,18 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
                 paths => {
                     issues.push(
                         Issue::new(
-                            format!("`{given}` names more than one module"),
+                            format!("`{given}` names more than one component"),
                             &list.repo_src,
                         )
-                        .help(format!("modules: {}", paths.join(", "))),
+                        .help(format!("components: {}", paths.join(", "))),
                     );
                     String::new()
                 }
             },
             None => {
                 issues.push(
-                    Issue::new("`why` needs a module", &list.repo_src)
-                        .help("`buildc why <module>`, the path an image lists it under"),
+                    Issue::new("`why` needs a component", &list.repo_src)
+                        .help("`buildc why <component>`, the path an image lists it under"),
                 );
                 String::new()
             }
@@ -498,7 +504,7 @@ pub(crate) fn run_loaded(command: Command, arg: Option<&str>, root: &Path, loade
         issues,
         context,
         images: list.images.len(),
-        modules: list.images.iter().map(|i| i.modules().count()).sum(),
+        components: list.images.iter().map(|i| i.components().count()).sum(),
         suppressed: list.images.iter().map(|i| i.suppressed.len()).sum(),
         flavours: list.images.iter().map(|i| i.flavours.len()).sum(),
         unpinned,

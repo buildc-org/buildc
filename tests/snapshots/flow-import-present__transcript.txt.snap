@@ -10,14 +10,14 @@ Buildc v{version}
 local name [browser@1]
 
 
-Track upstream for `browser@1`? (Yes/No)
+Track `browser@1` upstream? (Yes/No)
 Yes
 
 
 example/
-├── modules/
+├── components/
 │   ├── browser@1/
-│   │   └── + module.kdl
-│   └── + modules.lock.kdl
-└── ~ example.image.kdl  browser@1 added to modules
+│   │   └── + manifest.kdl
+│   └── ~ components.lock.kdl  browser@1 recorded
+└── ~ example.image.kdl  browser@1 added to components
 ==== exit 0

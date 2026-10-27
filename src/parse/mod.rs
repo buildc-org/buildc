@@ -1,8 +1,7 @@
 pub mod asset;
-pub mod bases;
+pub mod component;
 pub mod disk;
 pub mod image;
-pub mod module;
 pub mod options;
 pub mod remote;
 pub mod repo;
@@ -62,7 +61,7 @@ pub(crate) fn check_file_version(
 }
 
 pub(crate) fn check_capability(name: &str, span: Span, src: &Source, issues: &mut Issues) {
-    if is_name(name) {
+    if name.split('/').all(is_name) {
         return;
     }
     if name.starts_with('/') {
@@ -73,8 +72,8 @@ pub(crate) fn check_capability(name: &str, span: Span, src: &Source, issues: &mu
             )
             .at(span, "a name, such as `ssh` or `bootc`")
             .help(
-                "a capability is a name; a module that ships it at a path writes \
-                     `provides \"<name>\" file=\"<path>\"`, and the build checks that path",
+                "a capability is a name; a component that ships it at a path writes \
+                     `provides \"<name>\" witness=\"<path>\"`, and the build checks that path",
             ),
         );
         return;
@@ -83,8 +82,8 @@ pub(crate) fn check_capability(name: &str, span: Span, src: &Source, issues: &mu
         Issue::new(format!("invalid capability name `{name}`"), src)
             .at(span, "lowercase, digits and dashes, starting with a letter")
             .help(
-                "the name is written into the generated graph as a mermaid label and a markdown \
-                 table cell, neither of which quotes anything",
+                "a name is one or more segments joined by `/`, such as `rpm/dnf5`, and each \
+                 segment starts with a lowercase letter",
             ),
     );
 }
@@ -176,6 +175,41 @@ pub(crate) fn string_args(node: &KdlNode) -> Vec<&str> {
         .filter(|e| e.name().is_none())
         .filter_map(|e| e.value().as_string())
         .collect()
+}
+
+pub(crate) struct Named<'a> {
+    pub name: &'a str,
+    pub node: &'a KdlNode,
+    pub kids: &'a [KdlNode],
+    pub span: Span,
+}
+
+pub(crate) fn names(node: &KdlNode) -> Vec<Named<'_>> {
+    let line = string_args(node);
+    match line.is_empty() {
+        true => kids(node)
+            .iter()
+            .map(|kid| Named {
+                name: kid.name().value(),
+                node: kid,
+                kids: kids(kid),
+                span: kid.name().span().into(),
+            })
+            .collect(),
+        false => node
+            .entries()
+            .iter()
+            .filter(|entry| entry.name().is_none())
+            .filter_map(|entry| {
+                entry.value().as_string().map(|name| Named {
+                    name,
+                    node,
+                    kids: &[],
+                    span: entry.span().into(),
+                })
+            })
+            .collect(),
+    }
 }
 
 pub(crate) fn prop<'a>(node: &'a KdlNode, key: &str) -> Option<&'a str> {

@@ -3,23 +3,23 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-The selected modules have dependencies not currently provided by the images:
+Dependencies the images do not provide:
 
   browser > fedora-bootc:44
     requires: flatpak
-    provider module: flatpak
+    provider component: flatpak
 
-Add these provider modules now? (Yes/No)
+Add these provider components? (Yes/No)
 No
 
-Track upstream for `browser`? (Yes/No)
+Track `browser` upstream? (Yes/No)
 Yes
 
 
 example/
-├── modules/
+├── components/
 │   ├── browser/
-│   │   └── + module.kdl
-│   └── + modules.lock.kdl
-└── ~ example.image.kdl  browser added to modules
+│   │   └── + manifest.kdl
+│   └── ~ components.lock.kdl  browser recorded
+└── ~ example.image.kdl  browser added to components
 ==== exit 0

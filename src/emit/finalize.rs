@@ -19,18 +19,10 @@ pub fn hooks<'a>(image: &'a Image, root: &Path) -> Vec<(&'a Entry, Vec<String>)>
     image
         .entries
         .iter()
-        .filter(|entry| entry.module.is_some())
+        .filter(|entry| entry.component.is_some())
         .filter_map(|entry| {
-            let dir = layout::modules(root).join(&entry.path);
-            let found: Vec<String> = std::iter::once(String::new())
-                .chain(
-                    layout::family_dirs(&dir, family)
-                        .into_iter()
-                        .map(|gated| format!("{gated}/")),
-                )
-                .filter(|at| dir.join(at).join("finalize.sh").is_file())
-                .map(|at| format!("{at}finalize.sh"))
-                .collect();
+            let dir = layout::components(root).join(&entry.path);
+            let found = layout::layered(&dir, family, layout::FINALIZE_SCRIPT);
             (!found.is_empty()).then_some((entry, found))
         })
         .collect()
@@ -59,12 +51,12 @@ rm -rf {dest}.d
     }
 
     for (entry, scripts) in hooks {
-        let dir = format!("/ctx/modules/{}", entry.path);
+        let dir = format!("/ctx/components/{}", entry.path);
         let sourced: String = scripts
             .iter()
             .map(|script| format!("source {dir}/{script}\n"))
             .collect();
-        let mut body = format!("MODDIR={dir}\nexport MODDIR\n{sourced}");
+        let mut body = format!("COMPONENT_DIR={dir}\nexport COMPONENT_DIR\n{sourced}");
         if let Some(flavour) = &entry.flavour {
             body = body
                 .lines()
@@ -73,6 +65,20 @@ rm -rf {dest}.d
             body = format!("if [ \"${{FLAVOUR:-}}\" = \"{flavour}\" ]; then\n{body}fi\n");
         }
         let _ = write!(out, "\n# ---- {} ----\n{body}", entry.path);
+    }
+
+    for entry in &image.entries {
+        if entry
+            .component
+            .as_ref()
+            .is_some_and(|component| super::containerfile::renders_os_release(image, component))
+        {
+            let _ = write!(
+                out,
+                "\n# ---- os-release ----\n{}\n",
+                super::containerfile::flavoured(entry.flavour.as_deref(), "/ctx/buildc os-release")
+            );
+        }
     }
 
     out.push('\n');

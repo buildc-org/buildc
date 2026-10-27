@@ -1,0 +1,21 @@
+schema-version 1
+
+image {
+    name "Bare Component"
+
+    base-image {
+        fedora-bootc-44
+    }
+
+    layout {
+        bootloader "grub2"
+    }
+
+    // The build reads a component's files by convention, so a component directory needs no manifest.kdl.
+    hello
+    menu
+    apps
+    apps {
+        editor
+    }
+}

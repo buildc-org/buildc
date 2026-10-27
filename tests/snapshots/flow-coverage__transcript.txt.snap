@@ -12,5 +12,4 @@ source: tests/golden/harness.rs
 | `5.2.20`, `RHEL-09-232010` | Disable SSH Root Login |  | `hardening` |
 |  | Ensure gpgcheck Enabled In Main dnf Configuration |  |  |
 buildc: 4 of 4 rules are unclaimed
-buildc: The `buildc-modules` collection is declared but not on this machine, so nothing read it: `buildc import module` fetches it
 ==== exit 0

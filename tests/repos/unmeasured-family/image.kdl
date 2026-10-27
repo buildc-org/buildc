@@ -3,8 +3,8 @@ schema-version 1
 image {
     name "Arch"
 
-    base "ghcr.io/someone/arch-bootc:latest" {
-        family "arch"
+    base-image {
+        arch-bootc-latest
     }
 
     layout {
@@ -15,5 +15,4 @@ image {
         bootloader "systemd"
     }
 
-    modules {}
 }

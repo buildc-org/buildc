@@ -25,13 +25,16 @@ pub fn of<'a>(image: &'a Image, content: &'a Content, index: &Index) -> Option<C
     let selected = content.selected(&profile.id);
 
     let mut claimed: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for module in image.modules() {
-        let numbers = module
+    for component in image.components() {
+        let numbers = component
             .satisfies
             .iter()
             .flat_map(|coverage| coverage.rules.iter());
         for rule in reached(content, numbers) {
-            claimed.entry(rule).or_default().insert(module.path.clone());
+            claimed
+                .entry(rule)
+                .or_default()
+                .insert(component.path.clone());
         }
     }
     if let Some(base) = &image.base {
@@ -229,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn a_module_the_image_lists_is_not_offered_as_one_that_would_claim() {
+    fn a_component_the_image_lists_is_not_offered_as_one_that_would_claim() {
         let root = fixture("tests/scap/listed-claimant");
         let loaded = crate::load(&root);
         let content = crate::scap::content_of(&fixture("tests/scap/datastream.xml"))

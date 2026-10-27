@@ -123,7 +123,7 @@ fn create_into(name: &str, root: &Path) {
     .unwrap()
     .apply(&here)
     .unwrap();
-    buildc::create::Module::collect(
+    buildc::create::Component::collect(
         &here,
         Some("My Editor".into()),
         vec!["nano".into()],
@@ -134,7 +134,7 @@ fn create_into(name: &str, root: &Path) {
     .unwrap()
     .apply(&here)
     .unwrap();
-    buildc::create::Module::collect(
+    buildc::create::Component::collect(
         &here,
         Some("plain".into()),
         Vec::new(),
@@ -146,45 +146,10 @@ fn create_into(name: &str, root: &Path) {
     .apply(&here)
     .unwrap();
 
-    let repo = root.join("repo.kdl");
-    let collections = crate_dir().join("tests/collections");
-    let text = std::fs::read_to_string(&repo).unwrap().replace(
-        "sources {\n",
-        &format!(
-            "sources {{\n    modules \"upstream\" {{ dir {:?} }}\n",
-            collections.join("upstream").display()
-        ),
-    );
-    std::fs::write(&repo, text).unwrap();
-    let (list, issues, _) = buildc::declarations(&here);
-    assert!(issues.is_empty(), "{}", issues.plain());
-    buildc::import::Module::collect(
-        buildc::import::Request {
-            name: Some("upstream/fedora-family".into()),
-            image: Some("example".into()),
-            datastream: None,
-            dependencies: false,
-        },
-        &here,
-        &list.sources,
-        false,
-        &silent,
-    )
-    .unwrap_or_else(|err| panic!("{}", err.message()))
-    .apply(&here, &list.sources)
-    .unwrap();
-    let server = root.join("server.image.kdl");
-    let listed = std::fs::read_to_string(&server).unwrap().replace(
-        "        module \"my-editor\"\n",
-        "        module \"my-editor\"\n        module \"fedora-family\"\n",
-    );
-    assert!(listed.contains("module \"fedora-family\""), "{listed}");
-    std::fs::write(&server, listed).unwrap();
-
     let mut out = String::new();
     for file in [
-        "modules/my-editor/module.kdl",
-        "modules/plain/module.kdl",
+        "components/my-editor/manifest.kdl",
+        "components/plain/manifest.kdl",
         "example.image.kdl",
         "server.image.kdl",
     ] {
@@ -206,7 +171,7 @@ fn copied(name: &str, root: &Path) {
     std::fs::write(
         root.join("repo.kdl"),
         format!(
-            "schema-version 1\nname \"Imported\"\nsources {{\n    modules \"upstream\" {{ dir {:?} }}\n    modules \"community\" {{ dir {:?} }}\n}}\n",
+            "schema-version 1\nname \"Imported\"\nsources {{\n    components \"upstream\" {{ dir {:?} }}\n    components \"community\" {{ dir {:?} }}\n}}\n",
             collections.join("upstream").display(),
             collections.join("community").display()
         ),
@@ -222,8 +187,12 @@ fn copied(name: &str, root: &Path) {
     }
 
     out.push_str("==== the catalog\n");
-    for module in buildc::import::catalog(&here, &sources, true).unwrap() {
-        out.push_str(&format!("{}  {}\n", module.qualified(), module.about()));
+    for component in buildc::import::catalog(&here, &sources, true).unwrap() {
+        out.push_str(&format!(
+            "{}  {}\n",
+            component.qualified(),
+            component.about()
+        ));
     }
 
     for wanted in [
@@ -236,7 +205,7 @@ fn copied(name: &str, root: &Path) {
         "flatpak",
     ] {
         out.push_str(&format!("==== import {wanted}\n"));
-        let imported = buildc::import::Module::collect(
+        let imported = buildc::import::Component::collect(
             buildc::import::Request {
                 name: Some(wanted.to_string()),
                 image: None,
@@ -249,7 +218,7 @@ fn copied(name: &str, root: &Path) {
             &common::prompt::Prompt::silent(),
         )
         .map_err(|err| err.message().to_string())
-        .and_then(|module| module.apply(&here, &sources));
+        .and_then(|component| component.apply(&here, &sources));
         match imported {
             Ok(()) => out.push_str("copied\n"),
             Err(message) => out.push_str(&format!("{message}\n")),
@@ -257,7 +226,7 @@ fn copied(name: &str, root: &Path) {
     }
 
     out.push_str("==== the tree\n");
-    let mut written: Vec<String> = walk(&root.join("modules"))
+    let mut written: Vec<String> = walk(&root.join("components"))
         .iter()
         .map(|p| format!("{}\n", p.strip_prefix(root).unwrap().display()))
         .collect();
@@ -266,14 +235,18 @@ fn copied(name: &str, root: &Path) {
 
     out.push_str(&format!(
         "==== the lock\n{}",
-        std::fs::read_to_string(root.join("modules/modules.lock.kdl")).unwrap()
+        std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap()
     ));
     out.push_str(&format!(
         "==== check\n{}",
         buildc::run(Command::Check, None, &here).issues.plain()
     ));
 
-    std::fs::write(root.join("modules/flatpak/module.sh"), "echo forked\n").unwrap();
+    std::fs::write(
+        root.join("components/flatpak/component.sh"),
+        "echo forked\n",
+    )
+    .unwrap();
     out.push_str(&format!(
         "==== check after an edit\n{}",
         buildc::run(Command::Check, None, &here).issues.plain()
@@ -281,7 +254,7 @@ fn copied(name: &str, root: &Path) {
     assert_golden(name, "import.txt", &out);
 }
 
-fn edited_module(root: &Path) {
+fn edited_component(root: &Path) {
     let here = given(root);
     for (path, body) in &buildc::run(Command::Generate, None, &here).files {
         let path = root.join(path);
@@ -295,21 +268,25 @@ fn edited_module(root: &Path) {
         "verify was not green to begin with: {clean}"
     );
 
-    std::fs::write(root.join("modules/my-editor/module.sh"), "echo edited\n").unwrap();
+    std::fs::write(
+        root.join("components/my-editor/component.sh"),
+        "echo edited\n",
+    )
+    .unwrap();
     let dirty = issues();
     assert!(
         dirty.contains("generated/plan.json"),
-        "an edited module left plan.json current: {dirty}"
+        "an edited component left plan.json current: {dirty}"
     );
 }
 
-fn why(name: &str, root: &Path, module: &str) {
+fn why(name: &str, root: &Path, component: &str) {
     let here = given(root);
     let mut out = String::new();
 
     for (command, heading) in [(Command::Why, "markdown"), (Command::WhyJson, "json")] {
         out.push_str(&format!("==== {heading}\n"));
-        out.push_str(&buildc::run(command, module.rsplit('/').next(), &here).stdout);
+        out.push_str(&buildc::run(command, component.rsplit('/').next(), &here).stdout);
     }
 
     out.push_str("==== unknown\n");
@@ -321,7 +298,7 @@ fn why(name: &str, root: &Path, module: &str) {
 
     let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).stdout)
         .expect("the plan is a document");
-    let host = buildc::emit::why::on_host(&manifest, None, module).expect("the manifest names it");
+    let host = buildc::emit::why::on_host(&manifest, None, component).expect("the manifest names it");
     out.push_str("==== from the baked manifest, with no repository\n");
     out.push_str(&host.markdown());
     out.push_str(&format!(
@@ -330,11 +307,11 @@ fn why(name: &str, root: &Path, module: &str) {
     ));
 
     let record = common::json::Json::parse(&format!(
-        "{{\"modules\": [{{\"path\": {module:?}, \"content\": \"not what was declared\"}}]}}"
+        "{{\"components\": [{{\"path\": {component:?}, \"content\": \"not what was declared\"}}]}}"
     ))
     .expect("the record is a document");
-    let observed =
-        buildc::emit::why::on_host(&manifest, Some(&record), module).expect("the manifest names it");
+    let observed = buildc::emit::why::on_host(&manifest, Some(&record), component)
+        .expect("the manifest names it");
     out.push_str("==== against a build record that disagrees\n");
     out.push_str(
         observed
@@ -388,7 +365,7 @@ fn why_unbuilt(root: &Path) {
     let here = given(&temp);
     let mut out = String::new();
 
-    out.push_str("==== a module the base suppresses\n");
+    out.push_str("==== a component the base suppresses\n");
     let bare = buildc::run(Command::Why, Some("flatpak"), &here).stdout;
     out.push_str(&bare);
 
@@ -397,11 +374,10 @@ fn why_unbuilt(root: &Path) {
 
     std::fs::write(
         temp.join("also.image.kdl"),
-        "schema-version 1\n\nimage {\n    name \"Also\"\n\n    base \"ghcr.io/ublue-os/bazzite:stable\" {\n        \
-         family \"fedora\"\n    }\n\n    modules {\n        module \"apps/flatpak\"\n    }\n}\n",
+        "schema-version 1\n\nimage {\n    name \"Also\"\n\n    base-image {\n        base \"ghcr.io/ublue-os/bazzite:stable\" { family \"fedora\"; }\n    }\n\n    apps {\n        flatpak\n    }\n}\n",
     )
     .unwrap();
-    out.push_str("==== and the same module in an image that does build it\n");
+    out.push_str("==== and the same component in an image that does build it\n");
     out.push_str(
         buildc::run(Command::Why, Some("flatpak"), &here)
             .stdout
@@ -411,7 +387,7 @@ fn why_unbuilt(root: &Path) {
     );
     std::fs::remove_file(temp.join("also.image.kdl")).unwrap();
 
-    std::fs::remove_dir_all(temp.join("modules/apps/flatpak")).unwrap();
+    std::fs::remove_dir_all(temp.join("components/apps/flatpak")).unwrap();
     out.push_str("==== and one whose manifest never loaded\n");
     let run = buildc::run(Command::Why, Some("flatpak"), &here);
     out.push_str(
@@ -420,7 +396,7 @@ fn why_unbuilt(root: &Path) {
             .split("`apps/flatpak` is listed")
             .nth(1)
             .map(|rest| format!("`apps/flatpak` is listed{rest}"))
-            .expect("the unread module is reported")
+            .expect("the unread component is reported")
             .as_str(),
     );
 
@@ -507,13 +483,6 @@ fn repo_case(name: &str) {
             why(name, &root, "core/hello");
             summary_on_host(&root);
         }
-        "broken-bases" => {
-            let here = given(&root);
-            let (list, _, _) = buildc::declarations(&here);
-            let mut issues = buildc::diag::Issues::default();
-            buildc::base::catalog(&here, &list.sources, &mut issues);
-            assert_golden(name, "catalog.txt", &issues.plain());
-        }
         "broken-lock" => refused_everywhere(&root),
         "no-default" => assert_no_default(&root),
         "seeding" => why(name, &root, "flatpak"),
@@ -540,9 +509,8 @@ macro_rules! repo_cases {
 }
 
 repo_cases! {
-    bare_module => "bare-module",
+    bare_component => "bare-component",
     broken_asset => "broken-asset",
-    broken_bases => "broken-bases",
     broken_collect => "broken-collect",
     broken_cycle => "broken-cycle",
     broken_fetch => "broken-fetch",
@@ -553,7 +521,7 @@ repo_cases! {
     broken_key => "broken-key",
     broken_layout => "broken-layout",
     broken_lock => "broken-lock",
-    broken_module => "broken-module",
+    broken_component => "broken-component",
     broken_network => "broken-network",
     broken_options => "broken-options",
     broken_overlay => "broken-overlay",
@@ -640,11 +608,11 @@ fn init() {
 fn create() {
     let created = init_repo("create");
     create_into("create", &created);
-    edited_module(&created);
+    edited_component(&created);
 }
 
 #[test]
-fn copy_module() {
+fn copy_component() {
     copied("copy", &init_repo("copy"));
 }
 

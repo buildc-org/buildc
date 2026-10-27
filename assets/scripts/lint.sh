@@ -3,15 +3,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f repo.kdl ] || cd ..
 
-roots=(generated/lib modules)
+roots=(generated/lib components)
 for dir in generated/scripts scripts; do
     [ ! -d "$dir" ] || roots+=("$dir")
 done
 mapfile -t scripts < <(find "${roots[@]}" \
-    -name '*.sh' -type f ! \( -path '*/files/*' \
+    -name '*.sh' ! -name repo.sh -type f ! \( -path '*/files/*' \
     \( -path '*/libexec/*' -o -path '*/system-generators/*' \) \) -print)
-mapfile -t repos < <(find modules -name repo -type f -print)
-mapfile -t helpers < <(find modules -path '*/files/*' -type f \
+mapfile -t repos < <(find components -name repo.sh -type f -print)
+mapfile -t helpers < <(find components -path '*/files/*' -type f \
     \( -path '*/libexec/*' -o -path '*/system-generators/*' \) -print)
 shfmt=(shfmt -i 4 -ci -bn -sr)
 counted="${#scripts[@]} scripts, ${#repos[@]} repo files and ${#helpers[@]} helpers"

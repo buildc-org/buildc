@@ -4,7 +4,7 @@ use crate::model::remote::{Collection, Kind as SourceKind};
 use crate::provenance::lock::{self, Record};
 use std::path::{Path, PathBuf};
 
-pub fn modules(
+pub fn components(
     root: &Path,
     sources: &[Collection],
     enforce: bool,
@@ -19,11 +19,11 @@ pub fn modules(
     for record in chosen {
         let library = sources
             .iter()
-            .find(|source| source.kind == SourceKind::Modules && source.name == record.library)
+            .find(|source| source.kind == SourceKind::Components && source.name == record.library)
             .ok_or_else(|| {
                 format!(
                     "`{}` was imported from `{}`, and `sources` in repo.kdl no longer declares \
-                     it; declare the library again, or run `buildc set module {} --untracked`",
+                     it; declare the library again, or run `buildc set component {} --untracked`",
                     shown(&record.path),
                     record.library,
                     record.path
@@ -33,7 +33,7 @@ pub fn modules(
         let upstream = crate::import::tree(root, library)?
             .join(library.subtree().unwrap_or(""))
             .join(&record.upstream);
-        if !upstream.join(layout::MODULE_FILE).is_file() {
+        if !upstream.join(layout::MANIFEST_FILE).is_file() {
             return Err(format!(
                 "`{}` tracks `{}` in `{}`, and the library no longer has it",
                 shown(&record.path),
@@ -49,7 +49,7 @@ pub fn modules(
         })?;
         let url = library.pin().and_then(|pin| pin.url.clone());
         let version = library.pin().and_then(|pin| pin.version.clone());
-        let dir = layout::module(root, &record.path);
+        let dir = layout::component(root, &record.path);
         if content == record.content
             && url == record.pin.url
             && version == record.pin.version
@@ -58,7 +58,7 @@ pub fn modules(
             continue;
         }
         let line = (
-            PathBuf::from(layout::MODULES).join(&record.path),
+            PathBuf::from(layout::COMPONENTS).join(&record.path),
             Change::Updated(match &version {
                 Some(version) => format!("refreshed from {} at {version}", record.library),
                 None => format!("refreshed from {}", record.library),
@@ -82,7 +82,7 @@ pub fn modules(
     }
     if !refreshed.is_empty() {
         wrote.push((
-            PathBuf::from(layout::MODULES).join(layout::LOCK_FILE),
+            PathBuf::from(layout::COMPONENTS).join(layout::LOCK_FILE),
             Change::Updated(format!("{} recorded", crate::said(&refreshed))),
         ));
     }
@@ -127,16 +127,16 @@ fn refuse_edited(root: &Path, record: &Record) -> Result<(), String> {
         return Err(format!(
             "`{}` is not a path under `{}/`",
             record.path,
-            layout::MODULES
+            layout::COMPONENTS
         ));
     }
-    let dir = layout::module(root, &record.path);
+    let dir = layout::component(root, &record.path);
     if !dir.exists() || lock::hash(&dir).as_deref() == Some(record.content.as_str()) {
         return Ok(());
     }
     Err(format!(
         "`{}` tracks its library, and its content no longer matches its lock entry, so an \
-         update would overwrite the edit; undo the edit, or run `buildc set module {} \
+         update would overwrite the edit; undo the edit, or run `buildc set component {} \
          --untracked` to make the copy the repository's own",
         shown(&record.path),
         record.path
@@ -149,22 +149,22 @@ fn replace(root: &Path, upstream: &Path, dir: &Path) -> Result<(), String> {
             .join(format!("refresh.{}", std::process::id())),
     );
     crate::init::remove(&staged.0)?;
-    crate::init::copy_module(upstream, &staged.0)?;
-    let held = layout::held_modules(dir);
+    crate::init::copy_component(upstream, &staged.0)?;
+    let held = layout::held_components(dir);
     for file in crate::tracked(dir) {
         let own = file
             .strip_prefix(dir)
-            .is_ok_and(|rel| !held.iter().any(|module| rel.starts_with(module)));
+            .is_ok_and(|rel| !held.iter().any(|component| rel.starts_with(component)));
         if own {
             crate::init::remove(&file)?;
         }
     }
-    crate::init::copy_module(&staged.0, dir)?;
+    crate::init::copy_component(&staged.0, dir)?;
     Ok(())
 }
 
 fn shown(key: &str) -> String {
-    format!("{}/{key}", layout::MODULES)
+    format!("{}/{key}", layout::COMPONENTS)
 }
 
 #[cfg(test)]
@@ -175,7 +175,7 @@ mod tests {
 
     fn library() -> [Collection; 1] {
         [Collection {
-            kind: SourceKind::Modules,
+            kind: SourceKind::Components,
             name: "one".into(),
             at: At::Dir("library".into()),
             span: crate::diag::Span::default(),
@@ -211,14 +211,14 @@ mod tests {
     fn an_unmoved_library_leaves_the_tree_untouched() {
         let root = imported(
             "unmoved",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser")],
             true,
         );
-        let lock = read(&root, "modules/modules.lock.kdl");
-        let wrote = modules(&root, &library(), false, &[]).unwrap();
+        let lock = read(&root, "components/components.lock.kdl");
+        let wrote = components(&root, &library(), false, &[]).unwrap();
         assert!(wrote.is_empty());
-        assert_eq!(read(&root, "modules/modules.lock.kdl"), lock);
+        assert_eq!(read(&root, "components/components.lock.kdl"), lock);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -226,18 +226,18 @@ mod tests {
     fn a_moved_library_replaces_the_files_and_the_hash() {
         let root = imported(
             "moved",
-            &[("browser/module.kdl", ""), ("browser/old.sh", "true\n")],
+            &[("browser/manifest.kdl", ""), ("browser/old.sh", "true\n")],
             &[("browser", "browser")],
             true,
         );
         std::fs::remove_file(root.join("library/browser/old.sh")).unwrap();
         crate::init::put(&root.join("library/browser/new.sh"), "true\n").unwrap();
 
-        let wrote = modules(&root, &library(), false, &[]).unwrap();
+        let wrote = components(&root, &library(), false, &[]).unwrap();
         assert_eq!(wrote.len(), 2);
-        assert_eq!(read(&root, "modules/browser/old.sh"), None);
+        assert_eq!(read(&root, "components/browser/old.sh"), None);
         assert_eq!(
-            read(&root, "modules/browser/new.sh").as_deref(),
+            read(&root, "components/browser/new.sh").as_deref(),
             Some("true\n")
         );
         let entry = lock::entry(&root, "browser").unwrap();
@@ -250,48 +250,50 @@ mod tests {
     }
 
     #[test]
-    fn an_edited_tracked_module_refuses_the_update() {
+    fn an_edited_tracked_component_refuses_the_update() {
         let root = imported(
             "edited",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser")],
             true,
         );
-        crate::init::put(&root.join("modules/browser/mine.sh"), "true\n").unwrap();
+        crate::init::put(&root.join("components/browser/mine.sh"), "true\n").unwrap();
         crate::init::put(&root.join("library/browser/new.sh"), "true\n").unwrap();
 
-        let Err(refused) = modules(&root, &library(), false, &[]) else {
+        let Err(refused) = components(&root, &library(), false, &[]) else {
             panic!("the edit is refused");
         };
-        assert!(refused.contains("`modules/browser` tracks"), "{refused}");
+        assert!(refused.contains("`components/browser` tracks"), "{refused}");
         assert!(
-            refused.contains("buildc set module browser --untracked"),
+            refused.contains("buildc set component browser --untracked"),
             "{refused}"
         );
         assert_eq!(
-            read(&root, "modules/browser/mine.sh").as_deref(),
+            read(&root, "components/browser/mine.sh").as_deref(),
             Some("true\n")
         );
-        assert_eq!(read(&root, "modules/browser/new.sh"), None);
+        assert_eq!(read(&root, "components/browser/new.sh"), None);
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn an_untracked_module_is_passed_over_and_refused_by_name() {
+    fn an_untracked_component_is_passed_over_and_refused_by_name() {
         let root = imported(
             "untracked",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser")],
             false,
         );
         crate::init::put(&root.join("library/browser/new.sh"), "true\n").unwrap();
 
-        assert!(modules(&root, &library(), false, &[]).unwrap().is_empty());
-        let Err(refused) = modules(&root, &library(), false, &["modules/browser"]) else {
+        assert!(components(&root, &library(), false, &[])
+            .unwrap()
+            .is_empty());
+        let Err(refused) = components(&root, &library(), false, &["components/browser"]) else {
             panic!("an untracked copy is refused by name");
         };
         assert!(refused.contains("the repository's own copy"), "{refused}");
-        assert_eq!(read(&root, "modules/browser/new.sh"), None);
+        assert_eq!(read(&root, "components/browser/new.sh"), None);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -299,12 +301,12 @@ mod tests {
     fn a_lock_that_does_not_parse_refuses_the_update() {
         let root = imported(
             "broken",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser")],
             true,
         );
-        crate::init::put(&layout::lock(&root), "module \"browser\" {\n").unwrap();
-        let Err(refused) = modules(&root, &library(), false, &[]) else {
+        crate::init::put(&layout::lock(&root), "component \"browser\" {\n").unwrap();
+        let Err(refused) = components(&root, &library(), false, &[]) else {
             panic!("the lock is refused");
         };
         assert!(refused.contains("does not parse"), "{refused}");
@@ -312,14 +314,14 @@ mod tests {
     }
 
     #[test]
-    fn a_key_outside_modules_refuses_the_update() {
-        let root = imported("climb", &[("browser/module.kdl", "")], &[], true);
+    fn a_key_outside_components_refuses_the_update() {
+        let root = imported("climb", &[("browser/manifest.kdl", "")], &[], true);
         crate::init::put(
             &layout::lock(&root),
-            "module \"../library/browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
+            "component \"../library/browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
         )
         .unwrap();
-        let Err(refused) = modules(&root, &library(), false, &[]) else {
+        let Err(refused) = components(&root, &library(), false, &[]) else {
             panic!("the key is refused");
         };
         assert!(refused.contains("is not a path under"), "{refused}");
@@ -330,30 +332,30 @@ mod tests {
     fn the_refresh_reads_the_library_its_entry_names() {
         let root = imported(
             "two",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser")],
             true,
         );
-        crate::init::put(&root.join("other/browser/module.kdl"), "").unwrap();
+        crate::init::put(&root.join("other/browser/manifest.kdl"), "").unwrap();
         crate::init::put(&root.join("other/browser/wrong.sh"), "true\n").unwrap();
         crate::init::put(&root.join("library/browser/right.sh"), "true\n").unwrap();
         let mut sources = vec![Collection {
-            kind: SourceKind::Modules,
+            kind: SourceKind::Components,
             name: "other".into(),
             at: At::Dir("other".into()),
             span: crate::diag::Span::default(),
         }];
         sources.extend(library());
 
-        modules(&root, &sources, false, &[]).unwrap();
-        assert!(root.join("modules/browser/right.sh").is_file());
-        assert!(!root.join("modules/browser/wrong.sh").exists());
+        components(&root, &sources, false, &[]).unwrap();
+        assert!(root.join("components/browser/right.sh").is_file());
+        assert!(!root.join("components/browser/wrong.sh").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn a_refresh_records_the_pin_the_library_has_now() {
-        let root = imported("pin", &[("browser/module.kdl", "")], &[], true);
+        let root = imported("pin", &[("browser/manifest.kdl", "")], &[], true);
         let mut pin = crate::provenance::Evidence::new(crate::diag::Span::default());
         pin.url = Some("https://host/owner/library.git".into());
         pin.version = Some("v1".into());
@@ -374,10 +376,13 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        crate::init::copy_module(&root.join("library/browser"), &root.join("modules/browser"))
-            .unwrap();
+        crate::init::copy_component(
+            &root.join("library/browser"),
+            &root.join("components/browser"),
+        )
+        .unwrap();
 
-        assert_eq!(modules(&root, &library(), false, &[]).unwrap().len(), 2);
+        assert_eq!(components(&root, &library(), false, &[]).unwrap().len(), 2);
         let entry = lock::entry(&root, "browser").unwrap();
         assert_eq!(entry.pin.url, None);
         assert_eq!(entry.pin.version, None);
@@ -385,10 +390,10 @@ mod tests {
     }
 
     #[test]
-    fn a_library_link_refuses_the_update_and_leaves_the_module_whole() {
+    fn a_library_link_refuses_the_update_and_leaves_the_component_whole() {
         let root = imported(
             "link",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser")],
             true,
         );
@@ -396,47 +401,50 @@ mod tests {
         std::os::unix::fs::symlink(root.join("secret"), root.join("library/browser/notes"))
             .unwrap();
 
-        let Err(refused) = modules(&root, &library(), false, &[]) else {
+        let Err(refused) = components(&root, &library(), false, &[]) else {
             panic!("the link is refused");
         };
         assert!(refused.contains("is a symbolic link"), "{refused}");
-        assert!(root.join("modules/browser/module.kdl").is_file());
-        assert!(!root.join("modules/browser/notes").exists());
+        assert!(root.join("components/browser/manifest.kdl").is_file());
+        assert!(!root.join("components/browser/notes").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn a_held_module_survives_the_refresh_of_its_parent() {
+    fn a_held_component_survives_the_refresh_of_its_parent() {
         let root = imported(
             "held",
-            &[("nvidia/module.kdl", ""), ("nvidia/cuda/module.kdl", "")],
+            &[
+                ("nvidia/manifest.kdl", ""),
+                ("nvidia/cuda/manifest.kdl", ""),
+            ],
             &[("nvidia", "nvidia"), ("nvidia/cuda", "nvidia/cuda")],
             true,
         );
-        crate::init::put(&root.join("library/nvidia/module.sh"), "true\n").unwrap();
+        crate::init::put(&root.join("library/nvidia/component.sh"), "true\n").unwrap();
 
-        modules(&root, &library(), false, &["nvidia"]).unwrap();
+        components(&root, &library(), false, &["nvidia"]).unwrap();
         assert_eq!(
-            read(&root, "modules/nvidia/module.sh").as_deref(),
+            read(&root, "components/nvidia/component.sh").as_deref(),
             Some("true\n")
         );
-        assert!(root.join("modules/nvidia/cuda/module.kdl").is_file());
+        assert!(root.join("components/nvidia/cuda/manifest.kdl").is_file());
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn a_missing_tracked_module_is_copied_again_under_its_own_key() {
+    fn a_missing_tracked_component_is_copied_again_under_its_own_key() {
         let root = imported(
             "missing",
-            &[("browser/module.kdl", "")],
+            &[("browser/manifest.kdl", "")],
             &[("browser", "browser@1")],
             true,
         );
-        std::fs::remove_dir_all(root.join("modules/browser@1")).unwrap();
+        std::fs::remove_dir_all(root.join("components/browser@1")).unwrap();
 
-        modules(&root, &library(), false, &[]).unwrap();
-        assert!(root.join("modules/browser@1/module.kdl").is_file());
-        assert!(!root.join("modules/browser").exists());
+        components(&root, &library(), false, &[]).unwrap();
+        assert!(root.join("components/browser@1/manifest.kdl").is_file());
+        assert!(!root.join("components/browser").exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

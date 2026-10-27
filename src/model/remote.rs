@@ -3,23 +3,20 @@ use crate::provenance::Evidence;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    Modules,
-    BaseImages,
+    Components,
 }
 
 impl Kind {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
-            "modules" => Some(Self::Modules),
-            "base-images" => Some(Self::BaseImages),
+            "components" => Some(Self::Components),
             _ => None,
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Modules => "modules",
-            Self::BaseImages => "base-images",
+            Self::Components => "components",
         }
     }
 }

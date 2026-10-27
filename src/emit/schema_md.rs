@@ -1,6 +1,6 @@
 use crate::layout;
 use crate::parse::schema::{Arg, Kind, Node, Prop};
-use crate::parse::{bases, module, repo};
+use crate::parse::{component, repo};
 use crate::provenance::lock;
 use std::fmt::Write as _;
 
@@ -9,10 +9,9 @@ pub enum Area {
     Repository,
     Repo,
     Image,
-    Modules,
-    Module,
+    Components,
+    Component,
     Lock,
-    Bases,
 }
 
 impl Area {
@@ -21,9 +20,8 @@ impl Area {
             Area::Repository => "repository.md",
             Area::Repo => "repo.md",
             Area::Image => "image.md",
-            Area::Modules => "modules.md",
-            Area::Module => "module.md",
-            Area::Bases => "bases.md",
+            Area::Components => "components.md",
+            Area::Component => "component.md",
             Area::Lock => "lock.md",
         }
     }
@@ -33,10 +31,9 @@ impl Area {
             Area::Repository => "The repository",
             Area::Repo => "The repository file",
             Area::Image => "Image files",
-            Area::Modules => "Modules",
-            Area::Module => "Module manifests",
-            Area::Bases => "Base images",
-            Area::Lock => "The module lock",
+            Area::Components => "Components",
+            Area::Component => "Component manifests",
+            Area::Lock => "The component lock",
         }
     }
 }
@@ -55,12 +52,10 @@ const SECTIONS: &[Section] = &[
         at: "The root of the repository." },
     Section { name: "image.kdl", node: &repo::IMAGE_FILE, declared: false, area: Area::Image,
         at: "The root of the repository, as `image.kdl` or `<name>.image.kdl`." },
-    Section { name: "<name>.base.kdl", node: &bases::BASE_FILE, declared: false, area: Area::Bases,
-        at: "`base-images/<library>/<name>.base.kdl`, in a `base-images` source." },
-    Section { name: "module.kdl", node: &module::MODULE, declared: false, area: Area::Module,
-        at: "`modules/<module-name>/module.kdl`, in the directory of the module." },
-    Section { name: "modules.lock.kdl", node: &lock::LOCK_FILE, declared: false, area: Area::Lock,
-        at: "`modules/modules.lock.kdl`, at the root of `modules/`." },
+    Section { name: "manifest.kdl", node: &component::COMPONENT, declared: false, area: Area::Component,
+        at: "`components/<component-name>/manifest.kdl`, in the directory of the component." },
+    Section { name: "components.lock.kdl", node: &lock::LOCK_FILE, declared: false, area: Area::Lock,
+        at: "`components/components.lock.kdl`, at the root of `components/`." },
 ];
 
 fn section_of(node: &Node) -> Option<&'static Section> {
@@ -83,6 +78,11 @@ fn accepts(node: &Node, fields: &str) -> Option<String> {
         Arg::Bool => Some("*boolean*".to_string()),
         Arg::Int => Some("*number*".to_string()),
         Arg::Strs => Some("*list of strings*".to_string()),
+        Arg::Names => {
+            return Some(format!(
+                "*list of strings*, or {{&nbsp;[one name per line]({fields})&nbsp;}}"
+            ))
+        }
         Arg::StrPair(first, second) => Some(format!("*{first}*, then *{second}*")),
         Arg::One(set) => Some(closed(set)),
         Arg::MaybeOne(set) => Some(format!("optionally {}", closed(set))),
@@ -217,7 +217,7 @@ fn head(node: &Node) -> String {
         Arg::Str => " \"…\"".into(),
         Arg::Bool => " #true|#false".into(),
         Arg::Int => " <number>".into(),
-        Arg::Strs => " \"…\" …".into(),
+        Arg::Strs | Arg::Names => " \"…\" …".into(),
         Arg::StrPair(..) => " \"…\" \"…\"".into(),
         Arg::One(set) | Arg::MaybeOne(set) => format!(" {}", either(set)),
     };
@@ -250,6 +250,13 @@ fn example(node: &Node) -> String {
         (true, _) => head(node),
         (false, true) => node.example.to_string(),
         (false, false) => format!("{} {}", node.name, node.example),
+    }
+}
+
+fn opener(node: &Node) -> String {
+    match node.arg {
+        Arg::Names => node.name.to_string(),
+        _ => example(node),
     }
 }
 
@@ -297,7 +304,7 @@ fn kdl(
         let _ = writeln!(out, "{pad}{}{comment}", example(node));
         return;
     }
-    let _ = writeln!(out, "{pad}{} {{{comment}", example(node));
+    let _ = writeln!(out, "{pad}{} {{{comment}", opener(node));
     for child in shown {
         match section_of(child) {
             None => kdl(child, depth + 1, show, from, None, out),
@@ -371,7 +378,7 @@ fn scaffolded(parent: &Node, prefix: &str, out: &mut Vec<String>) {
 fn snippet(path: &[&Node], node: &Node, from: Area, out: &mut String) {
     out.push_str("```kdl\n");
     for (depth, outer) in path.iter().enumerate() {
-        let _ = writeln!(out, "{}{} {{", "    ".repeat(depth), example(outer));
+        let _ = writeln!(out, "{}{} {{", "    ".repeat(depth), opener(outer));
     }
     kdl(node, path.len(), Show::Minimal, from, None, out);
     for depth in (0..path.len()).rev() {
@@ -500,14 +507,13 @@ fn section(section: &Section, depth: usize, out: &mut String) {
     }
 }
 
-const AREAS: [Area; 7] = [
+const AREAS: [Area; 6] = [
     Area::Repository,
     Area::Repo,
     Area::Image,
-    Area::Modules,
-    Area::Module,
+    Area::Components,
+    Area::Component,
     Area::Lock,
-    Area::Bases,
 ];
 
 pub fn areas() -> Vec<Area> {
@@ -601,8 +607,8 @@ fn tree_page(title: &str, tree: &layout::Tree) -> String {
 pub fn page(area: Area) -> String {
     match area {
         Area::Repository => return tree_page(area.title(), &layout::REPOSITORY),
-        Area::Modules => return tree_page(area.title(), &layout::MODULE_DIR),
-        Area::Repo | Area::Image | Area::Module | Area::Lock | Area::Bases => {}
+        Area::Components => return tree_page(area.title(), &layout::COMPONENT_DIR),
+        Area::Repo | Area::Image | Area::Component | Area::Lock => {}
     }
     let schemas: Vec<&Section> = SECTIONS.iter().filter(|s| s.area == area).collect();
     let mut out = String::new();

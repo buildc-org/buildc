@@ -15,6 +15,10 @@ impl Source {
     pub fn name(&self) -> &str {
         self.0.name()
     }
+
+    pub fn text(&self) -> &str {
+        self.0.inner()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

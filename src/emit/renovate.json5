@@ -3,6 +3,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
 
+  // buildc:policy
+
   // `buildc generate` writes the workflows and `buildc verify` byte-compares
   // them, so a bump inside one is reverted by the next regeneration.
   "ignorePaths": [".github/workflows/**"],
@@ -23,16 +25,6 @@
       "extractVersionTemplate": "^v(?<version>.+)$",
       "matchStrings": [
         "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nbuildc-version \"(?<currentValue>[^\"]+)\"",
-    // buildc:managers
-      ],
-    },
-    {
-      "customType": "regex",
-      "description": "Base image reference in an image file",
-      "managerFilePatterns": ["/^[^/]+\\.kdl$/"],
-      "datasourceTemplate": "docker",
-      "matchStrings": [
-        "base \"(?<depName>[^\":]+):(?<currentValue>[^\"@]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?\"",
       ],
     },
     {
@@ -42,7 +34,7 @@
       // excludes an underscore-prefixed component directory.
       "description": "Version-tagged pins",
       "managerFilePatterns": [
-        "/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/",
+        "/^components/([a-z][^/]*/)?[a-z][^/]*/manifest\\.kdl$/",
       ],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*version \"(?<currentValue>[^\"]+)\"",
@@ -50,13 +42,14 @@
     },
     {
       "customType": "regex",
-      "description": "Commit-pinned asset pins in module.kdl",
-      "managerFilePatterns": ["/^modules/([a-z][^/]*/)?[a-z][^/]*/module\\.kdl$/"],
+      "description": "Commit-pinned asset pins in manifest.kdl",
+      "managerFilePatterns": ["/^components/([a-z][^/]*/)?[a-z][^/]*/manifest\\.kdl$/"],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>git-refs)\" depName=\"(?<depName>[^\"]+)\"\\s*\\n\\s*version \"(?<currentDigest>[^\"]+)\"",
       ],
       // The regex manager requires a currentValue even for a digest-only pin.
       "currentValueTemplate": "master",
     },
+    // buildc:managers
   ],
 }

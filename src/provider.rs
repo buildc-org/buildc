@@ -1,6 +1,6 @@
 use crate::model::remote::{Collection, Kind as SourceKind};
+use crate::parse::component::Summary;
 use crate::parse::disk::Disk;
-use crate::parse::module::Summary;
 use crate::{layout, parse};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -47,7 +47,7 @@ impl Index {
             unread: Vec::new(),
             sourced: sources
                 .iter()
-                .any(|collection| collection.kind == SourceKind::Modules),
+                .any(|collection| collection.kind == SourceKind::Components),
             unreached: None,
         }
     }
@@ -68,7 +68,7 @@ impl Index {
                 true => Vec::new(),
                 false => sources
                     .iter()
-                    .filter(|collection| collection.kind == SourceKind::Modules)
+                    .filter(|collection| collection.kind == SourceKind::Components)
                     .filter(|collection| {
                         !crate::import::cached(root, collection).is_some_and(|dir| {
                             dir.join(collection.subtree().unwrap_or("")).is_dir()
@@ -79,7 +79,7 @@ impl Index {
             },
             sourced: sources
                 .iter()
-                .any(|collection| collection.kind == SourceKind::Modules),
+                .any(|collection| collection.kind == SourceKind::Components),
         }
     }
 
@@ -105,11 +105,11 @@ impl Index {
         match named.len() {
             0 => String::new(),
             1 => format!(
-                "The {} collection is declared but not on this machine, so nothing read it: `buildc import module` fetches it",
+                "The {} collection is declared but not on this machine, so nothing read it: `buildc import component` fetches it",
                 named.join(", ")
             ),
             _ => format!(
-                "The {} collections are declared but not on this machine, so nothing read them: `buildc import module` fetches them",
+                "The {} collections are declared but not on this machine, so nothing read them: `buildc import component` fetches them",
                 named.join(", ")
             ),
         }
@@ -118,14 +118,28 @@ impl Index {
     pub fn of(&self, capability: &str) -> Vec<&Provider> {
         self.held
             .iter()
-            .filter(|held| held.declares.provides.iter().any(|has| has == capability))
+            // A provider that supplies `base-image` is a whole base, so its capabilities come with the image and it never fits as the component that adds one.
+            .filter(|held| {
+                crate::resolve::answers(
+                    &held.name,
+                    held.declares.provides.iter().map(String::as_str),
+                    capability,
+                )
+            })
             .collect()
     }
 
     pub fn fitting(&self, capability: &str, family: &str) -> Vec<&Provider> {
         self.of(capability)
             .into_iter()
-            .filter(|held| crate::resolve::supports(&held.declares.supports, family))
+            .filter(|held| crate::resolve::targets(&held.declares.targets, family))
+            .filter(|held| {
+                !held
+                    .declares
+                    .provides
+                    .iter()
+                    .any(|name| name == crate::parse::component::BASE_IMAGE)
+            })
             .collect()
     }
 
@@ -152,13 +166,6 @@ impl Index {
             .collect()
     }
 
-    pub fn providing(&self, capability: &str) -> Vec<&Provider> {
-        self.held
-            .iter()
-            .filter(|held| held.declares.provides.iter().any(|p| p == capability))
-            .collect()
-    }
-
     pub fn at(&self, dir: &str) -> Option<&Provider> {
         self.held
             .iter()
@@ -167,12 +174,12 @@ impl Index {
 }
 
 fn own(root: &Path, disk: &Disk) -> Vec<Provider> {
-    disk.modules()
+    disk.components()
         .map(|dir| Provider {
             owner: None,
             name: dir.clone(),
             here: true,
-            declares: parse::module::summary(&layout::manifest(root, dir)),
+            declares: parse::component::summary(&layout::manifest(root, dir)),
         })
         .collect()
 }
@@ -186,20 +193,20 @@ pub(crate) mod tests {
             std::env::temp_dir().join(format!("buildc-providers-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::init::put(
-            &root.join("modules/both/module.kdl"),
-            "schema-version 1\n\nsupports \"fedora\"\n\nprovides \"x\" \"y\"\n",
+            &root.join("components/both/manifest.kdl"),
+            "schema-version 1\n\ntargets \"fedora\"\n\nprovides \"x\" \"y\"\n",
         )
         .unwrap();
         crate::init::put(
-            &root.join("modules/other/module.kdl"),
-            "schema-version 1\n\nsupports \"fedora\"\n\nprovides \"y\"\n",
+            &root.join("components/other/manifest.kdl"),
+            "schema-version 1\n\ntargets \"fedora\"\n\nprovides \"y\"\n",
         )
         .unwrap();
         root
     }
 
     #[test]
-    fn an_entry_finds_the_module_it_names() {
+    fn an_entry_finds_the_component_it_names() {
         let root = two_providers("at");
         let index = Index::local(&root, &[], &Disk::scan(&root));
         let found = index.at("other").map(|held| held.name.as_str());

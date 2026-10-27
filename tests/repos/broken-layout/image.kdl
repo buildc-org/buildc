@@ -3,8 +3,8 @@ schema-version 1
 image {
     name "Sealed"
 
-    base "docker.io/library/debian:forky" {
-        family "debian"
+    base-image {
+        debian-forky
     }
 
     layout {
@@ -12,14 +12,13 @@ image {
         var-disk "sdb"
     }
 
-    modules {}
 }
 
 image {
     name "Halfway"
 
-    base "ghcr.io/someone/arch-bootc:latest" {
-        family "arch"
+    base-image {
+        arch-bootc-latest
     }
 
     layout {
@@ -27,5 +26,4 @@ image {
         composefs #true
     }
 
-    modules {}
 }

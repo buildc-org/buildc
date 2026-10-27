@@ -8,7 +8,11 @@ use kdl::KdlNode;
 
 #[rustfmt::skip]
 pub const ASSET: Node = Node::new("asset",
-    "A pinned upstream payload that the module fetches during its own layer.").about("Downloads a pinned file from upstream, such as a release binary, while this module builds. The pin fixes the version and the hash, so every build gets the same bytes and Renovate can keep the version current.").example("\"starship\"")
+    "A pinned upstream payload that the component fetches during its own layer.")
+    .about("The name becomes the `ASSET_<NAME>` prefix of the environment that the component \
+        layer reads. It takes lowercase letters, digits and dashes, and one component may hold \
+        one asset of each name.")
+    .example("\"starship\"")
     .arg(Arg::Str, Say::new("`asset` needs a name", "no name given",
         "`asset \"starship\" { ... }`; the name becomes the ASSET_* env prefix"))
     .unique(Say::new("asset `{}` is declared twice", "already declared above",
@@ -19,7 +23,7 @@ pub const ASSET: Node = Node::new("asset",
         Say::new("unknown node `{}` in an asset", "not part of the schema",
             "an asset holds one `pin`, which is where it comes from and what verifies it"))
     .lists(&[
-        ("The layer of the module gets three variables, where `<NAME>` is the asset name in upper \
+        ("The layer of the component gets three variables, where `<NAME>` is the asset name in upper \
           case with each dash turned into an underscore:", &[
             "`ASSET_<NAME>_VERSION`;",
             "`ASSET_<NAME>_URL`, with `{version}` already expanded, so no shell code builds a URL;",

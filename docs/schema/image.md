@@ -4,7 +4,7 @@
 
 Location: The root of the repository, as `image.kdl` or `<name>.image.kdl`.
 
-An image file holds its schema version and one or more images. Each image says what it is called, which base it builds on and which modules it is made of.
+A file at the repository root holds one or more `image` blocks, and `buildc` reads no other root `.kdl` file. It must declare `schema-version`, and it holds no node besides `schema-version` and `image`.
 
 ```kdl
 schema-version 1
@@ -12,25 +12,17 @@ image {
     name "Workstation"
     url "https://github.com/owner/workstation"
     issues-url "https://github.com/owner/workstation/issues"
-    base "quay.io/fedora/fedora-bootc:44" {
-        family "fedora"
-        provides "rechunking" "bootc"
-        signed #true
-        scap-content "ssg-cs10-ds.xml"
-    }
     layout {
         bootloader "grub2"
     }
-    modules {
-        module "core/bootloader"
-    }
+    desktop-environment
 }
 ```
 
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this file is written against. |
-| [`image`](#image) (required,&nbsp;repeatable) | {&nbsp;[fields](#image-fields)&nbsp;} | One image, which declares its names, its base and every module that it is made of. |
+| [`image`](#image) (required,&nbsp;repeatable) | {&nbsp;[fields](#image-fields)&nbsp;} | One image, which declares its names and every component that it is made of, its base among them. |
 
 > [!NOTE]
 > A root `.kdl` file is an image file only if it is named `image.kdl` or ends in `.image.kdl`. `buildc` reports each other root `.kdl` file and does not read it.
@@ -41,7 +33,7 @@ image {
 
 ## `schema-version` (required)
 
-The schema version tells `buildc` which reader to use for this file. A file written against an earlier release keeps using that release's reader, while `repo.kdl` sets the newest schema the repository accepts.
+The number states the release the file is written against. `buildc` reports a file whose number differs from the one `repo.kdl` declares, and it reports a file that carries none.
 
 ```kdl
 schema-version 1
@@ -52,21 +44,17 @@ Accepts: *number*
 > [!NOTE]
 > A file cannot declare a schema newer than `repo.kdl`.
 >
-> `buildc create repo`, `buildc create image` and `buildc create module` write the version, and `buildc` never changes it.
+> `buildc create repo`, `buildc create image` and `buildc create component` write the version, and `buildc` never changes it.
 
 <a id="image"></a>
 
 ## `image` (required, repeatable)
 
-Declares one bootable operating system image: its names, the base it builds on, how the installer lays it down and the modules that make it up. The build publishes the image under its `id`.
+The block is the whole declaration of one published image. `buildc` reports two images with one `id`, and a flavour name that publishes as another image's `id`.
 
 ```kdl
 image {
     name "Workstation"
-    base "quay.io/fedora/fedora-bootc:44"
-    modules {
-        module "core/bootloader"
-    }
 }
 ```
 
@@ -85,12 +73,12 @@ Accepts: {&nbsp;[fields](#image-fields)&nbsp;}
 | [`keywords`](#image-keywords) (optional,&nbsp;repeatable) | *list of strings* | OCI label `io.artifacthub.package.keywords`. The keywords of the image, which the build joins with commas. |
 | [`logo-url`](#image-logo-url) (optional) | *string* | OCI label `io.artifacthub.package.logo-url`. The URL that points at the logo of the image. |
 | [`conforms`](#image-conforms) (optional) | *string* | The benchmark profile that a scan measures the ungated target against. |
-| [`boot`](#image-boot) (optional) | `uki-shim` or `uki-db` | The UKI boot chain, which is owner-signed through shim or enrolled directly into Secure Boot. |
-| [`base`](#image-base) (required) | *string*, then optionally {&nbsp;[fields](#image-base-fields)&nbsp;} | The Linux image that every layer builds on. Its block declares what a build on the base can assume. |
+| [`boot-chain`](#image-boot-chain) (optional) | `uki-shim` or `uki-db` | The UKI boot chain, which is owner-signed through shim or enrolled directly into Secure Boot. |
 | [`layout`](#image-layout) (optional) | {&nbsp;[fields](#image-layout-fields)&nbsp;} | What the installer lays down if the answer of the base family is not the one that the image wants. |
-| [`allow-remediation`](#image-allow-remediation) (optional,&nbsp;unique) | *string* | One rule an installed module refuses that this image lets remediation set anyway. |
+| [`allow-remediation`](#image-allow-remediation) (optional,&nbsp;unique) | *string* | One rule an installed component refuses that this image lets remediation set anyway. |
 | [`flavours`](#image-flavours) (optional) | {&nbsp;[fields](#image-flavours-fields)&nbsp;} | The flavours that this image publishes beside its ungated build. |
-| [`modules`](#image-modules) (required) | {&nbsp;[fields](#image-modules-fields)&nbsp;} | Every module that the image is made of, whether a flavour gates it or not. |
+| [`flavour`](#image-flavour) (optional,&nbsp;repeatable) | *string* | The components one flavour adds, which build only for that flavour. |
+| [`<name>`](#image-name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
 
 <a id="image-id"></a>
 
@@ -221,7 +209,7 @@ Accepts: *string*
 
 ### `conforms` (optional)
 
-Names the benchmark profile that a scan measures the image against. Setting it turns the scan on: every build measures the image against the profile and publishes the score.
+The name selects a profile in the SSG datastream that the base pins, and `buildc scap` measures the target against its rules. `buildc scap` refuses a name the datastream does not carry.
 
 ```kdl
 image {
@@ -234,189 +222,25 @@ Accepts: *string*
 > [!NOTE]
 > A scan reports the result. A failed rule fails `buildc scap` only if `audit { enforce #true }` is set.
 
-<a id="image-boot"></a>
+<a id="image-boot-chain"></a>
 
-### `boot` (optional)
+### `boot-chain` (optional)
 
-Builds the image to boot as a unified kernel image (UKI) under Secure Boot. `uki-shim` boots through shim with a key the owner signs, and `uki-db` enrolls the key directly into the firmware key database.
+A declared chain builds a UKI and settles the install layout, so `buildc check` refuses a `layout` row that contradicts it. A `buildx` backend cannot build the image, because `buildc build` reads the sealed composefs digest from the local buildah store.
 
 ```kdl
 image {
-    boot "uki-shim"
+    boot-chain "uki-shim"
 }
 ```
 
 Accepts: `uki-shim` or `uki-db`
 
-<a id="image-base"></a>
-
-### `base` (required)
-
-The base is the upstream bootc image that the custom image starts from. Its block tells `buildc` what the base already has, so `buildc` checks each module against it and skips a module that the base already covers.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44"
-}
-```
-
-Accepts: *string*, then optionally {&nbsp;[fields](#image-base-fields)&nbsp;}
-
-The reference can carry a digest after its tag:
-
-- `buildc` strips the digest before it looks up the catalog, so a pinned base is still the base of the catalog.
-- `buildc create image --base` writes the same `family`, `provides` and `requires` for a tag with a digest and for a tag without one. Renovate bumps the half that the image file writes.
-- `buildc build` records a declared digest verbatim. It records a bare tag as the digest that the registry answers with.
-- If the base is `signed #false`, then the digest is the strongest trust root on offer.
-
-<a id="image-base-fields"></a>
-
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`family`](#image-base-family) (optional) | *string* | The optional family used for family-specific module content and compatibility checks. |
-| [`provides`](#image-base-provides) (optional,&nbsp;repeatable) | *list of strings* | The capabilities that the upstream image already ships, which the build checks the finished image for. |
-| [`requires`](#image-base-requires) (optional,&nbsp;repeatable) | *list of strings* | The capabilities that an enabled module must provide before the base is usable. |
-| [`satisfies`](#image-base-satisfies) (optional) | optionally {&nbsp;[fields](#image-base-satisfies-fields)&nbsp;} | An audit declaration of the benchmarks and rules that the base image already satisfies. `buildc` records it and certifies nothing. |
-| [`signed`](#image-base-signed) (optional) | *boolean* | Whether the base publishes a cosign signature. |
-| [`scap-content`](#image-base-scap-content) (optional) | *string* | The SSG datastream file that a scan of an image on this base reads. |
-
-> [!NOTE]
-> The build record says what one build got. Only a digest in the image file says what the next build gets.
-
-<a id="image-base-family"></a>
-
-#### `family` (optional)
-
-The family, such as `fedora` or `debian`, selects family-specific module content and is checked against every module that restricts its supported families. When it is omitted, `buildc` takes only ungated module content and skips family compatibility checks.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        family "fedora"
-    }
-}
-```
-
-Accepts: *string*
-
-<a id="image-base-provides"></a>
-
-#### `provides` (optional, repeatable)
-
-Lists what the base image already ships, such as `bootc`. `buildc` skips a module that provides only what the base already has, and the build checks the finished image for each name.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        provides "rechunking" "bootc"
-    }
-}
-```
-
-Accepts: *list of strings*
-
-If the base provides every capability that a listed module provides, then `buildc` suppresses the module:
-
-- The module is not ordered or built, and nothing it ships reaches the image.
-- The generated graph lists the module, and `plan.json` carries it beside the modules that did build.
-- The options and variants of the module still resolve. `buildc` checks a value set on one and puts it in the plan, but the value reaches no layer.
-
-> [!NOTE]
-> A module that the base covers only in part still builds. If that module declares a capability that the base already provides, then `buildc` reports an error.
-
-<a id="image-base-requires"></a>
-
-#### `requires` (optional, repeatable)
-
-The capabilities that an enabled module must provide before the base is usable.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        requires "bootc-base"
-    }
-}
-```
-
-Accepts: *list of strings*
-
-<a id="image-base-satisfies"></a>
-
-#### `satisfies` (optional)
-
-An audit declaration of the benchmarks and rules that the base image already satisfies. `buildc` records it and certifies nothing.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        satisfies
-    }
-}
-```
-
-Accepts: optionally {&nbsp;[fields](#image-base-satisfies-fields)&nbsp;}
-
-<a id="image-base-satisfies-fields"></a>
-
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`<name>`](#image-base-satisfies-name) (optional,&nbsp;unique) | *list of strings* | One benchmark, which the node name names, with the rule numbers that it covers. The set of benchmarks is open. |
-
-<a id="image-base-satisfies-name"></a>
-
-##### `<name>` (optional, unique)
-
-One benchmark, which the node name names, with the rule numbers that it covers. The set of benchmarks is open.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        satisfies {
-            stig "RHEL-09-232010"
-        }
-    }
-}
-```
-
-Accepts: *list of strings*
-
-<a id="image-base-signed"></a>
-
-#### `signed` (optional)
-
-Records whether the publisher of the base signs it with cosign. The build does not verify the signature. The `base-sig-probe` workflow keeps the value current.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        signed #true
-    }
-}
-```
-
-Accepts: *boolean*
-
-<a id="image-base-scap-content"></a>
-
-#### `scap-content` (optional)
-
-Names the SCAP content file that measures an image on this base, as a filename in the content directory. Each EL release publishes its own datastream, so the `rhel` family has no default and a scan of a `rhel` image needs this line. `buildc create image` copies it from the base file of the library.
-
-```kdl
-image {
-    base "quay.io/fedora/fedora-bootc:44" {
-        scap-content "ssg-cs10-ds.xml"
-    }
-}
-```
-
-Accepts: *string*
-
 <a id="image-layout"></a>
 
 ### `layout` (optional)
 
-Each base family comes with installer defaults for the filesystem, composefs, the generic image and the administrator group. This block replaces those defaults for this image, so the installer lays the image down the way it needs. No family supplies a bootloader, so a declared `layout` names `bootloader`.
+A layout answers the install questions that the base family leaves open. If the family and a `boot-chain` both leave an answer open, then the image builds no install media unless the block gives it.
 
 ```kdl
 image {
@@ -506,7 +330,7 @@ Accepts: *string*
 
 #### `bootloader` (optional)
 
-The bootloader that the installer writes to the disk. No base family supplies a default, so `buildc check` fails a `layout` without one. If `boot` is set, then the bootloader is `systemd`. If neither is set, then the image builds no install media.
+No family answers this row, so a layout declares a bootloader unless a `boot-chain` settles it as `systemd`.
 
 ```kdl
 image {
@@ -522,7 +346,7 @@ Accepts: `grub2` or `systemd`
 
 ### `allow-remediation` (optional, unique)
 
-A module can refuse a hardening rule because the rule breaks what the module does. This lets one image accept that rule anyway, for a machine where the reason of the module does not apply. `because=` records why.
+The rule must be one that a component the image installs refuses, or the allowance lifts nothing and `buildc scap` reports it.
 
 ```kdl
 image {
@@ -534,13 +358,13 @@ Accepts: *string*
 
 | Property | Accepts | Description |
 | --- | --- | --- |
-| `because=` (optional) | *string* | Why this image overrides the module's judgement. |
+| `because=` (optional) | *string* | Why this image overrides the component's judgement. |
 
 <a id="image-flavours"></a>
 
 ### `flavours` (optional)
 
-A flavour builds a variant of the same image with extra modules, such as a `dev` build with developer tools, and publishes it as `<id>-<flavour>`. Flavours suit two builds that share almost every module.
+The block publishes each child as `<id>-<flavour>`, and it reserves `none` for the ungated build. One flavour at most carries `default=#true`, and one flavour at most carries `pr-build=#true`.
 
 ```kdl
 image {
@@ -556,12 +380,12 @@ Accepts: {&nbsp;[fields](#image-flavours-fields)&nbsp;}
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`<name>`](#image-flavours-name) (optional,&nbsp;repeatable) |  | One flavour that publishes a gated module set as `<id>-<flavour>`, where `<flavour>` is the node name. |
+| [`<name>`](#image-flavours-name) (optional,&nbsp;repeatable) |  | One flavour that publishes a gated component set as `<id>-<flavour>`, where `<flavour>` is the node name. |
 
 > [!NOTE]
-> An image builds one target for its ungated module set and one more for each flavour. The targets publish as `<id>` and `<id>-<flavour>`.
+> An image builds one target for its ungated component set and one more for each flavour. The targets publish as `<id>` and `<id>-<flavour>`.
 >
-> A flavour gates modules inside one image. A module listed inside `flavour "dev"` builds only for that target, and each other module builds for every target.
+> A flavour gates components inside one image. A component listed inside `flavour "dev"` builds only for that target, and each other component builds for every target.
 >
 > The `conforms=` of a flavour measures that flavour. The `conforms` of the image measures the ungated target only.
 
@@ -569,7 +393,7 @@ Accepts: {&nbsp;[fields](#image-flavours-fields)&nbsp;}
 
 #### `<name>` (optional, repeatable)
 
-One flavour that publishes a gated module set as `<id>-<flavour>`, where `<flavour>` is the node name.
+One flavour that publishes a gated component set as `<id>-<flavour>`, where `<flavour>` is the node name.
 
 ```kdl
 image {
@@ -585,96 +409,35 @@ image {
 | `pr-build=` (optional) | *boolean* | Whether a pull request builds this flavour in place of the default. |
 | `conforms=` (optional) | *string* | The benchmark profile that a scan measures this flavour against. |
 
-<a id="image-modules"></a>
+<a id="image-flavour"></a>
 
-### `modules` (required)
+### `flavour` (optional, repeatable)
 
-Lists every module that the image is made of. Each module is a directory under `modules/` in this repository.
-
-```kdl
-image {
-    modules {
-        module "core/bootloader"
-    }
-}
-```
-
-Accepts: {&nbsp;[fields](#image-modules-fields)&nbsp;}
-
-<a id="image-modules-fields"></a>
-
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`module`](#image-modules-module) (required,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#image-modules-module-fields)&nbsp;} | One module of the image, which the list entry names by its path under `modules/`. |
-| [`flavour`](#image-modules-flavour) (optional,&nbsp;repeatable) | *string*, then {&nbsp;[fields](#image-modules-flavour-fields)&nbsp;} | The modules one flavour adds, which build only for that flavour. |
-
-<a id="image-modules-module"></a>
-
-#### `module` (required, repeatable)
-
-Adds one module to the image. The entry can also set the options that the module declares, or select one of its variants.
+The argument names one flavour of the `flavours` block, and every component below the node is gated to that target. `buildc check` refuses a name that no flavour declares.
 
 ```kdl
 image {
-    modules {
-        module "core/bootloader"
-    }
+    flavour "dev"
 }
 ```
 
-Accepts: *string*, then optionally {&nbsp;[fields](#image-modules-module-fields)&nbsp;}
+Accepts: *string*
 
-| Property | Accepts | Description |
-| --- | --- | --- |
-| `variant=` (optional) | *string* | Which of the module's declared variants this image builds. |
+<a id="image-name"></a>
 
-<a id="image-modules-module-fields"></a>
+### `<name>` (optional, repeatable)
 
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`<name>`](#image-modules-module-name) (optional,&nbsp;repeatable) |  | An option that the module declares, which this image sets in a child node named after the option. |
+A segment takes no argument, and its name takes lowercase letters, digits and dashes, with one `@<tag>` allowed on the last part. `variant=` is its only property, and every other setting is a child node.
+
+```kdl
+image {
+    desktop-environment
+}
+```
 
 > [!NOTE]
-> A nested name such as `hardening/coredumps` names the directories that the module is grouped in under `modules/`. Each part of the name is a name in its own right.
+> A component that the image file defines inline must not also be a component under `components/`. `buildc check` refuses the pair and names both.
 >
-> An entry names a module under `modules/` only. `buildc import module` copies a module from a library into `modules/` and records where it came from in `modules/modules.lock.kdl`.
-
-<a id="image-modules-module-name"></a>
-
-##### `<name>` (optional, repeatable)
-
-An option that the module declares, which this image sets in a child node named after the option.
-
-```kdl
-image {
-    modules {
-        module "core/bootloader" {
-            fonts "JetBrainsMono" "FiraCode"
-        }
-    }
-}
-```
-
-<a id="image-modules-flavour"></a>
-
-#### `flavour` (optional, repeatable)
-
-Lists the modules that build only for one flavour. Every module outside a `flavour` block builds for every target.
-
-```kdl
-image {
-    modules {
-        flavour "dev" {
-            module "core/bootloader"
-        }
-    }
-}
-```
-
-Accepts: *string*, then {&nbsp;[fields](#image-modules-flavour-fields)&nbsp;}
-
-<a id="image-modules-flavour-fields"></a>
-
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`module`](#image-modules-module) (required,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#image-modules-module-fields)&nbsp;} | One module of the image, which the list entry names by its path under `modules/`. |
+> `buildc import component` copies a component from a library into `components/` and records where it came from in `components/components.lock.kdl`.
+>
+> The base is the listed component that declares `base`. Its segment also takes `digest` and `signed`, which record the digest and the signature state of its reference.

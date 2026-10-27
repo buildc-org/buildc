@@ -1,6 +1,6 @@
 use crate::copy;
 use crate::layout;
-use crate::model::module::Key as Declared;
+use crate::model::component::Key as Declared;
 use crate::parse::disk::Disk;
 use common::prompt::Prompt;
 use common::ui::Choice;
@@ -19,7 +19,7 @@ fn declared(
     command: &str,
     root: &Path,
     kind: Option<String>,
-    module: Option<String>,
+    component: Option<String>,
     prompt: &Prompt,
 ) -> Result<Declared, String> {
     let mut disk = Disk::scan(root);
@@ -35,7 +35,7 @@ fn declared(
     if declaring.is_empty() {
         return Err(absent(root, &kind, &disk));
     }
-    let at = provider(&declaring, &kind, module, prompt)?;
+    let at = provider(&declaring, &kind, component, prompt)?;
     Ok(declaring.swap_remove(at).1)
 }
 
@@ -43,11 +43,11 @@ impl Key {
     pub fn collect(
         root: &Path,
         kind: Option<String>,
-        module: Option<String>,
+        component: Option<String>,
         cn: Option<String>,
         prompt: &Prompt,
     ) -> Result<Self, String> {
-        let declared = declared("create key", root, kind, module, prompt)?;
+        let declared = declared("create key", root, kind, component, prompt)?;
         let kind = declared.kind.clone();
 
         let public = layout::public_key(root, &declared.public);
@@ -170,7 +170,7 @@ impl Key {
                  \x20 MOK_KEY_PATH={private} is what a local build reads it from\n\
                  \n\
                  every machine that boots this image enrols the certificate once, and\n\
-                 until it does the modules signed with it will not load:\n\
+                 until it does the components signed with it will not load:\n\
                  \x20 sudo mokutil --import {public}\n\
                  \x20 it asks for a one-time password; reboot, choose Enroll MOK, and\n\
                  \x20 give the same password\n"
@@ -188,11 +188,11 @@ impl Recorded {
     pub fn collect(
         root: &Path,
         kind: Option<String>,
-        module: Option<String>,
+        component: Option<String>,
         from: Option<String>,
         prompt: &Prompt,
     ) -> Result<Self, String> {
-        let declared = declared("set key", root, kind, module, prompt)?;
+        let declared = declared("set key", root, kind, component, prompt)?;
         let public = layout::public_key(root, &declared.public);
         unwritten(&public)?;
         let from = PathBuf::from(prompt.text(from, copy::KEY_FROM, "`--from`", None)?);
@@ -281,7 +281,7 @@ fn provider(
         return dirs
             .iter()
             .position(|dir| *dir == given)
-            .ok_or_else(|| format!("`modules/{given}` does not declare `key \"{kind}\"`"));
+            .ok_or_else(|| format!("`components/{given}` does not declare `key \"{kind}\"`"));
     }
     match dirs.as_slice() {
         [_] => Ok(0),
@@ -291,15 +291,15 @@ fn provider(
             prompt
                 .choose(&copy::key_provider(kind), &options)?
                 .ok_or_else(|| {
-                    format!("the {kind} key is declared by {listed}; name one with `--module`")
+                    format!("the {kind} key is declared by {listed}; name one with `--component`")
                 })
         }
     }
 }
 
-fn refused(kind: &str, (module, refusals): &(String, String)) -> String {
+fn refused(kind: &str, (component, refusals): &(String, String)) -> String {
     format!(
-        "The {module} module declares the {kind} key, and its manifest refuses it.\n\n{}",
+        "The {component} component declares the {kind} key, and its manifest refuses it.\n\n{}",
         refusals.trim_end()
     )
 }
@@ -310,12 +310,12 @@ fn absent(root: &Path, kind: &str, disk: &Disk) -> String {
     let found: Vec<String> = index
         .declaring_key(kind)
         .iter()
-        .map(|module| module.qualified())
+        .map(|component| component.qualified())
         .collect();
     match found.first() {
         Some(first) => format!(
-            "The {} module must be imported before creating {kind} keys.\n\
-             You can add it with `buildc import module {first}`",
+            "The {} component must be imported before creating {kind} keys.\n\
+             You can add it with `buildc import component {first}`",
             found.join(" or ")
         ),
         None => match index.unsearched() {
@@ -332,14 +332,14 @@ fn undeclared(kind: &str, disk: &Disk) -> String {
     };
     match disk.keys.is_empty() {
         true => format!(
-            "no module in this repository declares {noun}.\n\n\
-             Keys come from modules: image signing from a module carrying the cosign public \
+            "no component in this repository declares {noun}.\n\n\
+             Keys come from components: image signing from a component carrying the cosign public \
              key, Secure Boot from a kernel module carrying a MOK certificate. Import one and \
              run this again."
         ),
         false => format!(
-            "no module in this repository declares {noun}.\n\n\
-             The keys declared here are {}. Import a module carrying one and run this again.",
+            "no component in this repository declares {noun}.\n\n\
+             The keys declared here are {}. Import a component carrying one and run this again.",
             listed(disk)
         ),
     }
@@ -589,7 +589,7 @@ mod tests {
 
 description "x"
 
-supports "fedora"
+targets "fedora"
 
 key "secureboot" {
     generator "openssl" profile="module-signing" bits=4096
@@ -602,7 +602,7 @@ key "secureboot" {
 
 description "x"
 
-supports "debian"
+targets "debian"
 
 key "ssh" {
     generator "ssh-keygen"
@@ -615,7 +615,7 @@ key "ssh" {
 
 description "x"
 
-supports "fedora"
+targets "fedora"
 
 key "pcr" {
     generator "openssl" profile="pcr-signing" bits=4096
@@ -628,7 +628,7 @@ key "pcr" {
 
 description "x"
 
-supports "fedora"
+targets "fedora"
 
 key "keylime-ca" {
     generator "openssl" profile="tls-ca" bits=2048
@@ -649,7 +649,7 @@ key "keylime-ca" {
     fn repo(name: &str, manifest: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("{name}.{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        crate::init::put(&root.join("modules/keyholder/module.kdl"), manifest).unwrap();
+        crate::init::put(&root.join("components/keyholder/manifest.kdl"), manifest).unwrap();
         root
     }
 
@@ -780,26 +780,26 @@ key "keylime-ca" {
     }
 
     #[test]
-    fn a_module_has_to_declare_the_key() {
+    fn a_component_has_to_declare_the_key() {
         let root = repo("buildc-no-key-test", SECUREBOOT);
         let message = Key::collect(&root, Some("cosign".into()), None, None, &Prompt::silent())
             .map(|_| ())
             .unwrap_err();
         assert_eq!(
             message,
-            "no module in this repository declares a cosign key.\n\n\
-             The keys declared here are secureboot. Import a module carrying one and run this again."
+            "no component in this repository declares a cosign key.\n\n\
+             The keys declared here are secureboot. Import a component carrying one and run this again."
         );
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn the_named_module_of_two_declares_the_key() {
+    fn the_named_component_of_two_declares_the_key() {
         let root = std::env::temp_dir().join(format!("buildc-key-named-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        crate::init::put(&root.join("modules/one/module.kdl"), SECUREBOOT).unwrap();
+        crate::init::put(&root.join("components/one/manifest.kdl"), SECUREBOOT).unwrap();
         crate::init::put(
-            &root.join("modules/two/module.kdl"),
+            &root.join("components/two/manifest.kdl"),
             &SECUREBOOT.replace("sb_cert.der", "other.der"),
         )
         .unwrap();
@@ -858,7 +858,7 @@ key "keylime-ca" {
     }
 
     #[test]
-    fn a_recorded_key_lands_where_the_module_says_and_is_read_before_it_does() {
+    fn a_recorded_key_lands_where_the_component_says_and_is_read_before_it_does() {
         let root = repo("buildc-set-key-test", SSH);
         let held = root.join("held.pub");
         let record = |from: &Path| {

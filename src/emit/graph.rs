@@ -1,7 +1,7 @@
 use crate::emit::{Part, Table};
 use crate::layout;
+use crate::model::component::Component;
 use crate::model::image::Image;
-use crate::model::module::Module;
 use common::json::Json;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -29,6 +29,7 @@ pub struct Graph<'a> {
     nodes: Vec<Node>,
     caps: BTreeMap<&'a str, Cap>,
     overrides: Vec<(&'a str, &'a str)>,
+    imports: Vec<(&'a str, &'a str)>,
     suppressed: Vec<(&'a str, Vec<&'a str>)>,
 }
 
@@ -38,6 +39,7 @@ pub fn of(image: &Image) -> Graph<'_> {
         nodes: Vec::new(),
         caps: BTreeMap::new(),
         overrides: Vec::new(),
+        imports: Vec::new(),
         suppressed: Vec::new(),
     };
 
@@ -47,15 +49,15 @@ pub fn of(image: &Image) -> Graph<'_> {
             name: BASE.to_string(),
             label: base.image.clone(),
         });
-        for decl in &base.provides {
+        for decl in base.shipped() {
             graph.cap(&decl.name).provider.get_or_insert(0);
         }
     }
 
-    for module in image.modules() {
-        let node = graph.node(module);
-        for decl in &module.provides {
-            let located = module.files.iter().find(|f| f.name == decl.name);
+    for component in image.components() {
+        let node = graph.node(component);
+        for decl in &component.provides {
+            let located = component.files.iter().find(|f| f.name == decl.name);
             let cap = graph.cap(&decl.name);
             if cap.provider.is_none() {
                 cap.provider = Some(node);
@@ -63,29 +65,63 @@ pub fn of(image: &Image) -> Graph<'_> {
                 cap.build_only = located.is_some_and(|f| f.build_only);
             }
         }
-        for decl in &module.requires {
+        for decl in &component.requires {
             graph.cap(&decl.name).required_by.push(node);
         }
-        let after = module
+        let after = component
             .after
             .iter()
             .map(|decl| decl.name.as_str())
-            .chain(module.policies.iter().copied());
+            .chain(component.policies.iter().copied());
         for name in after {
             let held = &mut graph.cap(name).after;
             if !held.contains(&node) {
                 held.push(node);
             }
         }
-        for decl in &module.overrides {
-            graph.overrides.push((&module.path, &decl.name));
+        for decl in &component.overrides {
+            graph.overrides.push((&component.path, &decl.name));
         }
     }
 
-    for module in image.suppressed.iter().filter_map(|e| e.module.as_ref()) {
+    let unmet: Vec<&str> = graph
+        .caps
+        .iter()
+        .filter(|(_, cap)| cap.provider.is_none())
+        .map(|(name, _)| *name)
+        .collect();
+    for name in unmet {
+        let provider = match image.base_answers(name) {
+            true => Some(0),
+            false => image.components().find(|m| m.answers(name)).and_then(|m| {
+                graph
+                    .nodes
+                    .iter()
+                    .position(|node| node.id != BASE && node.name == m.path)
+            }),
+        };
+        graph.cap(name).provider = provider;
+    }
+
+    let importers = image
+        .base
+        .iter()
+        .map(|base| (base.path.as_str(), &base.imports))
+        .chain(image.components().map(|m| (m.path.as_str(), &m.imports)));
+    for (by, imports) in importers {
+        for import in imports {
+            let edge = (import.path.as_str(), by);
+            let built = image.entries.iter().any(|entry| entry.path == import.path);
+            if built && !graph.imports.contains(&edge) {
+                graph.imports.push(edge);
+            }
+        }
+    }
+
+    for component in image.suppressed.iter().filter_map(|e| e.component.as_ref()) {
         graph.suppressed.push((
-            &module.path,
-            module
+            &component.path,
+            component
                 .provides
                 .iter()
                 .map(|decl| decl.name.as_str())
@@ -113,11 +149,11 @@ impl<'a> Graph<'a> {
         self.caps.entry(name).or_default()
     }
 
-    fn node(&mut self, module: &'a Module) -> usize {
+    fn node(&mut self, component: &'a Component) -> usize {
         if let Some(index) = self
             .nodes
             .iter()
-            .position(|n| n.id != BASE && n.name == module.path)
+            .position(|n| n.id != BASE && n.name == component.path)
         {
             return index;
         }
@@ -126,10 +162,10 @@ impl<'a> Graph<'a> {
                 "m{}",
                 self.nodes.len() - usize::from(self.image.base.is_some())
             ),
-            name: module.path.clone(),
-            label: match &module.flavour {
-                Some(flavour) => format!("{} [{flavour}]", module.path),
-                None => module.path.clone(),
+            name: component.path.clone(),
+            label: match &component.flavour {
+                Some(flavour) => format!("{} [{flavour}]", component.path),
+                None => component.path.clone(),
             },
         });
         self.nodes.len() - 1
@@ -175,18 +211,27 @@ impl<'a> Graph<'a> {
             ),
             (
                 "overrides",
-                Json::array(self.overrides.iter().map(|(module, path)| {
+                Json::array(self.overrides.iter().map(|(component, path)| {
                     Json::object([
-                        ("module", Json::string(*module)),
+                        ("component", Json::string(*component)),
                         ("path", Json::string(*path)),
                     ])
                 })),
             ),
             (
-                "suppressed",
-                Json::array(self.suppressed.iter().map(|(module, provides)| {
+                "imports",
+                Json::array(self.imports.iter().map(|(component, by)| {
                     Json::object([
-                        ("module", Json::string(*module)),
+                        ("component", Json::string(*component)),
+                        ("by", Json::string(*by)),
+                    ])
+                })),
+            ),
+            (
+                "suppressed",
+                Json::array(self.suppressed.iter().map(|(component, provides)| {
+                    Json::object([
+                        ("component", Json::string(*component)),
                         ("provides", Json::strings(provides.iter().copied())),
                     ])
                 })),
@@ -224,15 +269,28 @@ impl<'a> Graph<'a> {
                     .collect(),
             }));
         }
+        if !self.imports.is_empty() {
+            tables.push(Part::Table(Table {
+                title: "Imports".to_string(),
+                header: &["Component", "Imported by"],
+                rows: self
+                    .imports
+                    .iter()
+                    .map(|(component, by)| {
+                        (vec![(*component).to_string(), (*by).to_string()], false)
+                    })
+                    .collect(),
+            }));
+        }
         if !self.suppressed.is_empty() {
             tables.push(Part::Table(Table {
                 title: "Suppressed".to_string(),
-                header: &["Module", "Provides"],
+                header: &["Component", "Provides"],
                 rows: self
                     .suppressed
                     .iter()
-                    .map(|(module, provides)| {
-                        (vec![(*module).to_string(), provides.join(", ")], false)
+                    .map(|(component, provides)| {
+                        (vec![(*component).to_string(), provides.join(", ")], false)
                     })
                     .collect(),
             }));
@@ -240,11 +298,13 @@ impl<'a> Graph<'a> {
         if !self.overrides.is_empty() {
             tables.push(Part::Table(Table {
                 title: "Overrides".to_string(),
-                header: &["Module", "Path"],
+                header: &["Component", "Path"],
                 rows: self
                     .overrides
                     .iter()
-                    .map(|(module, path)| (vec![(*module).to_string(), (*path).to_string()], false))
+                    .map(|(component, path)| {
+                        (vec![(*component).to_string(), (*path).to_string()], false)
+                    })
                     .collect(),
             }));
         }
@@ -252,12 +312,16 @@ impl<'a> Graph<'a> {
     }
 
     pub fn markdown(&self) -> String {
+        let imports = match self.imports.is_empty() {
+            true => "",
+            false => "A thick arrow points from a component to what it imports.\n",
+        };
         let mut out = format!(
             "# {} capability graph\n\n\
              GENERATED FILE, do not edit.\n\n\
              An arrow points from a provider to what needs it, dotted for `after`,\n\
              which orders the build without requiring anything. Layers build left to\n\
-             right.\n\n\
+             right.\n{imports}\n\
              ```mermaid\ngraph LR\n",
             self.image.name
         );
@@ -272,6 +336,16 @@ impl<'a> Graph<'a> {
                 if soft { "-.->" } else { "-->" },
                 caps.join(", "),
                 self.nodes[to].id
+            );
+        }
+        for (component, by) in &self.imports {
+            let (Some(from), Some(to)) = (self.at(by), self.at(component)) else {
+                continue;
+            };
+            let _ = writeln!(
+                out,
+                "    {} ==>|\"imports\"| {}",
+                self.nodes[from].id, self.nodes[to].id
             );
         }
         out.push_str("```\n");
@@ -301,22 +375,43 @@ impl<'a> Graph<'a> {
                 "\n## Suppressed\n\n\
                  The base already provides everything these declare, so nothing builds\n\
                  them.\n\n\
-                 | Module | Provides |\n|---|---|\n",
+                 | Component | Provides |\n|---|---|\n",
             );
-            for (module, provides) in &self.suppressed {
+            for (component, provides) in &self.suppressed {
                 let provides: Vec<String> = provides.iter().map(|name| code(name)).collect();
-                let _ = writeln!(out, "| {} | {} |", code(module), provides.join(", "));
+                let _ = writeln!(out, "| {} | {} |", code(component), provides.join(", "));
+            }
+        }
+
+        if !self.imports.is_empty() {
+            out.push_str("\n## Imports\n\n| Component | Imported by |\n|---|---|\n");
+            for (component, by) in &self.imports {
+                let _ = writeln!(out, "| {} | {} |", code(component), code(by));
             }
         }
 
         if !self.overrides.is_empty() {
-            out.push_str("\n## Overrides\n\n| Module | Path |\n|---|---|\n");
-            for (module, path) in &self.overrides {
-                let _ = writeln!(out, "| {} | {} |", code(module), code(path));
+            out.push_str("\n## Overrides\n\n| Component | Path |\n|---|---|\n");
+            for (component, path) in &self.overrides {
+                let _ = writeln!(out, "| {} | {} |", code(component), code(path));
             }
         }
 
         out
+    }
+
+    fn at(&self, path: &str) -> Option<usize> {
+        if self
+            .image
+            .base
+            .as_ref()
+            .is_some_and(|base| base.path == path)
+        {
+            return Some(0);
+        }
+        self.nodes
+            .iter()
+            .position(|node| node.id != BASE && node.name == path)
     }
 
     fn plain(&self, nodes: &[usize]) -> String {

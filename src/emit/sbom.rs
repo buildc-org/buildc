@@ -1,11 +1,11 @@
 use crate::emit::plan::{of_target, pinned};
 use crate::model::asset::Asset;
+use crate::model::component::Component;
 use crate::model::image::List;
-use crate::model::module::Module;
 use common::json::Json;
 
-fn spdx_id(module: &str, asset: &str) -> String {
-    format!("SPDXRef-Package-asset-{module}-{asset}")
+fn spdx_id(component: &str, asset: &str) -> String {
+    format!("SPDXRef-Package-asset-{component}-{asset}")
         .chars()
         .map(
             |c| match c.is_ascii_alphanumeric() || c == '.' || c == '-' {
@@ -18,13 +18,16 @@ fn spdx_id(module: &str, asset: &str) -> String {
 
 pub fn build(list: &List, target: &str) -> Option<Json> {
     let (_, _, entries) = of_target(list, target)?;
-    let modules: Vec<&Module> = entries.iter().filter_map(|e| e.module.as_ref()).collect();
-    let assets: Vec<(String, &Module, &Asset, String)> = pinned(&modules)
+    let components: Vec<&Component> = entries
+        .iter()
+        .filter_map(|e| e.component.as_ref())
+        .collect();
+    let assets: Vec<(String, &Component, &Asset, String)> = pinned(&components)
         .into_iter()
-        .filter_map(|(module, asset)| {
+        .filter_map(|(component, asset)| {
             let url = asset.pin.url_resolved()?;
-            let id = spdx_id(&module.path, &asset.name);
-            Some((id, module, asset, url))
+            let id = spdx_id(&component.path, &asset.name);
+            Some((id, component, asset, url))
         })
         .collect();
 
@@ -34,7 +37,7 @@ pub fn build(list: &List, target: &str) -> Option<Json> {
             Json::array(
                 assets
                     .iter()
-                    .map(|(id, module, asset, url)| package(id, module, asset, url)),
+                    .map(|(id, component, asset, url)| package(id, component, asset, url)),
             ),
         ),
         (
@@ -50,7 +53,7 @@ pub fn build(list: &List, target: &str) -> Option<Json> {
     ]))
 }
 
-fn package(id: &str, module: &Module, asset: &Asset, url: &str) -> Json {
+fn package(id: &str, component: &Component, asset: &Asset, url: &str) -> Json {
     let mut fields = vec![
         ("SPDXID", Json::string(id)),
         ("name", Json::string(&asset.name)),
@@ -74,8 +77,8 @@ fn package(id: &str, module: &Module, asset: &Asset, url: &str) -> Json {
         (
             "comment",
             Json::string(format!(
-                "Pinned build input, declared by the {} module",
-                module.path
+                "Pinned build input, declared by the {} component",
+                component.path
             )),
         ),
     ]);
@@ -88,7 +91,7 @@ fn package(id: &str, module: &Module, asset: &Asset, url: &str) -> Json {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn a_renamed_nested_module_names_a_valid_spdx_id() {
+    fn a_renamed_nested_component_names_a_valid_spdx_id() {
         assert_eq!(
             super::spdx_id("kernels/cachyos@1", "kernel.tar"),
             "SPDXRef-Package-asset-kernels-cachyos-1-kernel.tar"

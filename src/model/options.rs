@@ -1,6 +1,6 @@
 use crate::diag::{Issue, Issues, Source, Span};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Value {
     String(String),
     Bool(bool),
@@ -14,6 +14,16 @@ impl Value {
         match self {
             Self::String(s) => Some(s),
             Self::Bool(_) | Self::Integer(_) | Self::Float(_) | Self::Null => None,
+        }
+    }
+
+    pub fn kdl(&self) -> String {
+        match self {
+            Self::String(s) => format!("{s:?}"),
+            Self::Bool(b) => format!("#{b}"),
+            Self::Integer(i) => i.to_string(),
+            Self::Float(f) => f.to_string(),
+            Self::Null => "#null".to_string(),
         }
     }
 
@@ -155,4 +165,15 @@ pub(crate) fn check_values(
         }
     }
     ok
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Value;
+
+    #[test]
+    fn a_value_is_written_as_kdl_spells_it() {
+        assert_eq!(Value::String("44".into()).kdl(), "\"44\"");
+        assert_eq!(Value::Bool(true).kdl(), "#true");
+    }
 }

@@ -22,7 +22,7 @@ mod tests {
     use super::matching;
 
     #[test]
-    fn module_names_are_unambiguous_suffixes() {
+    fn component_names_are_unambiguous_suffixes() {
         let paths = vec![
             "one/hardening/coredumps".to_string(),
             "two/coredumps".to_string(),

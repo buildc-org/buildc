@@ -1,0 +1,70 @@
+---
+name: Update components
+
+on:
+  schedule:
+    - cron: '30 5 * * 1'  # buildc:schedule
+  workflow_dispatch:
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+permissions: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: true
+
+      - name: Refresh the tracked components
+        run: |
+          set -euo pipefail
+          ./scripts/buildc.sh fetch components
+          ./scripts/buildc.sh generate
+
+      - name: Open or update the pull request
+        run: |
+          set -euo pipefail
+          branch="update-components"
+          title="chore(components): refresh the tracked components"
+          if [ -z "$(git status --porcelain -- components generated .github)" ]; then
+            echo "Every tracked component matches its library."
+            exit 0
+          fi
+          if [ -n "$(git status --porcelain -- .github/workflows)" ]; then
+            echo "::error::The refreshed components change the generated workflows. Run 'buildc fetch components' and 'buildc generate' locally, and push the result."
+            exit 1
+          fi
+          git diff -- components/components.lock.kdl > "$RUNNER_TEMP/lock.diff"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add -A -- components generated .github
+          git commit -m "$title"
+          git push -f origin "$branch"
+          {
+            echo "Automated by the update-components workflow. Each tracked component below was copied again from its library."
+            echo
+            echo '```diff'
+            cat "$RUNNER_TEMP/lock.diff"
+            echo '```'
+          } > "$RUNNER_TEMP/pr-body.md"
+          pr="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --body-file "$RUNNER_TEMP/pr-body.md"
+          elif ! gh pr create --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"; then
+            echo "::error::The branch ${branch} is pushed, and no pull request opened. Allow GitHub Actions to create pull requests under Settings, Actions, General, Workflow permissions."
+            exit 1
+          fi
+          if [ -f .github/workflows/build.yml ]; then
+            # A branch this token pushes gets no push-triggered run, so the workflow dispatches the build.
+            gh workflow run build.yml --ref "$branch"
+          fi

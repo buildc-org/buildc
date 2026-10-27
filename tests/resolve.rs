@@ -1519,6 +1519,45 @@ fn a_component_the_base_requires_leaves_no_base_witness() {
 }
 
 #[test]
+fn a_component_the_base_imports_leaves_no_base_witness() {
+    let plan = planned(
+        "base-imports-witness",
+        "; imports \"identity\"",
+        "        tool",
+        &[
+            (
+                "identity",
+                "provides \"os-release\" witness=\"/usr/lib/os-release\"\nimports \"helper\"",
+            ),
+            ("helper", "provides \"helper\" witness=\"/usr/bin/helper\""),
+            ("tool", "provides \"tool\" witness=\"/usr/bin/tool\""),
+        ],
+    );
+    assert!(
+        squashed(&plan).contains(r#""witnesses":{"tool":["/usr/bin/tool"]}"#),
+        "{plan}"
+    );
+}
+
+#[test]
+fn an_import_of_a_suppressed_base_import_leaves_no_base_witness() {
+    let plan = planned(
+        "base-imports-suppressed-witness",
+        "; provides \"os-release\"; imports \"identity\"",
+        "        tool",
+        &[
+            ("identity", "provides \"os-release\"\nimports \"helper\""),
+            ("helper", "provides \"helper\" witness=\"/usr/bin/helper\""),
+            ("tool", "provides \"tool\" witness=\"/usr/bin/tool\""),
+        ],
+    );
+    assert!(
+        squashed(&plan).contains(r#""witnesses":{"tool":["/usr/bin/tool"]}"#),
+        "{plan}"
+    );
+}
+
+#[test]
 fn a_component_whose_lower_name_is_removed_no_longer_meets_the_broader_one() {
     let issues = checked(
         "component-lower-removed",

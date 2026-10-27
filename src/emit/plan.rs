@@ -555,16 +555,18 @@ pub(crate) fn provides(image: &Image, entries: &[&Entry], name: &str) -> bool {
 }
 
 fn witnesses(image: &Image) -> Json {
+    let brought = brought(image);
     let stands_in = |component: &&crate::model::component::Component| {
-        image.base.iter().any(|base| {
-            base.requires.iter().any(|decl| {
-                crate::resolve::answers(
-                    &component.path,
-                    component.provides.iter().map(|has| has.name.as_str()),
-                    &decl.name,
-                )
+        brought.contains(component.path.as_str())
+            || image.base.iter().any(|base| {
+                base.requires.iter().any(|decl| {
+                    crate::resolve::answers(
+                        &component.path,
+                        component.provides.iter().map(|has| has.name.as_str()),
+                        &decl.name,
+                    )
+                })
             })
-        })
     };
     let components = image
         .entries
@@ -589,6 +591,31 @@ fn witnesses(image: &Image) -> Json {
             .into_iter()
             .map(|(name, paths)| (name.to_string(), Json::strings(paths))),
     )
+}
+
+fn brought(image: &Image) -> std::collections::BTreeSet<&str> {
+    let mut held = std::collections::BTreeSet::new();
+    let mut todo: Vec<&str> = image
+        .base
+        .iter()
+        .flat_map(|base| &base.imports)
+        .map(|import| import.path.as_str())
+        .collect();
+    while let Some(path) = todo.pop() {
+        if !held.insert(path) {
+            continue;
+        }
+        let component = image
+            .entries
+            .iter()
+            .chain(&image.suppressed)
+            .find(|entry| entry.path == path)
+            .and_then(|entry| entry.component.as_ref());
+        if let Some(component) = component {
+            todo.extend(component.imports.iter().map(|import| import.path.as_str()));
+        }
+    }
+    held
 }
 
 fn overlay_files(image: &Image, shipped: &overlay::Index, flavour: &str) -> Json {

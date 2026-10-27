@@ -3,7 +3,7 @@ name: Base image probe
 
 on:
   schedule:
-    - cron: '30 6 * * *'
+    - cron: '30 6 * * *'  # buildc:schedule
   workflow_dispatch:
 
 permissions: {}
@@ -193,6 +193,7 @@ jobs:
           rows in the catalog are moving tags, which is why this is measured
           nightly rather than audited once.
 
+
           `signed` records whether the base publishes a cosign signature. It
           reaches no build arg and no layer, and the images this repository
           publishes are cosign signed either way. It does reach
@@ -206,6 +207,7 @@ jobs:
           layer at upgrade time. A base that turned `#false` was publishing
           signatures and has stopped, which is worth finding out about before
           merging.
+
 
           `provides` lives in the base component, which this workflow does not
           edit. A tracked base takes the library's correction through the

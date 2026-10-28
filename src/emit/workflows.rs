@@ -55,9 +55,27 @@ mod tests {
         assert!(!without.contains("- cron: '45 9 1 * *'"), "{without}");
         assert!(without.contains("  workflow_dispatch:\n"), "{without}");
         assert!(without.contains("  push:\n"), "{without}");
-        // Every step reading it runs under `set -u`, so it is declared either way.
         assert!(without.contains("\n  KERNEL: ''\n"), "{without}");
         assert!(!without.contains("github.event.inputs.kernel"), "{without}");
+    }
+
+    #[test]
+    fn the_build_job_runs_the_declared_backend() {
+        let buildah = render(BODY, None, &["no-kernel", "backend-buildah"]);
+        assert!(buildah.contains("sudo env \\"), "{buildah}");
+        assert!(!buildah.contains("setup-buildx-action"), "{buildah}");
+        assert!(!buildah.contains("--oci-output"), "{buildah}");
+        let buildx = render(BODY, None, &["no-kernel", "backend-buildx"]);
+        assert!(buildx.contains("setup-buildx-action"), "{buildx}");
+        assert!(
+            buildx.contains("args+=(--oci-output \"$archive\")"),
+            "{buildx}"
+        );
+        assert!(
+            buildx.contains("containers-storage:localhost/${IMAGE_NAME}:raw"),
+            "{buildx}"
+        );
+        assert!(!buildx.contains("sudo env \\"), "{buildx}");
     }
 
     #[test]
@@ -91,14 +109,10 @@ mod tests {
         );
     }
 
-    /// A scan costs a full pull, install and eval per target, so the matrix is
-    /// what declared a `conforms`.
     #[test]
     fn only_a_target_asking_to_be_measured_is_scanned() {
         assert!(BODY.contains("target: ${{ fromJson(needs.compute-matrix.outputs.scanned) }}"));
         assert!(BODY.contains("select(.conforms != \"\") | .name"));
-        // Every scan `if` turns an empty matrix away, because GitHub errors on
-        // one.
         for facts in [
             &["no-kernel", "push-scan"][..],
             &["no-kernel", "scheduled-scan"][..],
@@ -129,22 +143,17 @@ mod tests {
             "          echo \"PUBLISH=${publish}\" >> \"${GITHUB_ENV}\"\n          echo \"publish=${publish}\" >> \"${GITHUB_OUTPUT}\"\n"
         ));
         assert!(scheduled.contains(
-            "      - name: Login to GitHub Container Registry\n        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0\n"
+            "      - name: Login to GitHub Container Registry\n        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0\n"
         ));
 
         let pushed = render(BODY, None, &["no-kernel", "push-publish"]);
         assert!(!pushed.contains(gate), "{pushed}");
     }
 
-    /// A weekly cron cannot say which publication broke the boot, so a
-    /// repository that publishes on a schedule hangs the smoke test off the
-    /// build run that published instead.
     #[test]
     fn a_scheduled_publisher_smoke_tests_the_run_that_published() {
         let body = crate::resolve::workflow::find("smoke-test").unwrap().body;
 
-        // The units are read before the state is judged, or a degraded run
-        // exits without naming the unit that degraded it.
         assert!(
             body.find("systemctl --failed --no-legend") < body.find("expected running"),
             "{body}"
@@ -167,9 +176,6 @@ mod tests {
         assert!(!pushed.contains("workflow_run"), "{pushed}");
     }
 
-    /// A build reads the plan off the committed components, so a fetch step would
-    /// make CI build something the repository does not hold. The update
-    /// workflow commits what it fetches to a pull request.
     #[test]
     fn only_the_update_workflow_fetches_components() {
         for shipped in crate::resolve::workflow::SHIPPED {
@@ -182,8 +188,6 @@ mod tests {
         }
     }
 
-    /// A denial is not a failed unit, so a smoke test that only reads
-    /// `systemctl --failed` reports `running` while the policy refuses work.
     #[test]
     fn the_smoke_test_fails_on_an_selinux_denial_and_not_on_a_quiet_journal() {
         const MATCHER: &str = "grep -Ei 'avc:[[:space:]]+denied'";
@@ -201,8 +205,6 @@ mod tests {
         assert!(denials("nothing to see").is_empty());
     }
 
-    /// Every shipped body, not just the one with regions in it: a marker left
-    /// behind anywhere is a comment a repository commits and nobody wrote.
     #[test]
     fn no_marker_reaches_a_generated_file() {
         for shipped in crate::resolve::workflow::SHIPPED {
@@ -213,8 +215,6 @@ mod tests {
                 for schedule in [None, Some("0 5 * * 1")] {
                     let out = render(shipped.body, schedule, facts);
                     assert!(!out.contains("buildc:"), "{}\n{out}", shipped.stem);
-                    // Only where the rendering kept a schedule at all: a
-                    // region may drop the one line the row is claiming.
                     if schedule.is_some() && out.contains("- cron: '") {
                         assert!(
                             out.contains("    - cron: '0 5 * * 1'\n"),

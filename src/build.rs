@@ -1,7 +1,7 @@
 use crate::emit::plan::{contract_files, of_target, pinned, preset_files, provides, unique_pairs};
 use crate::layout;
 use crate::model::component::Component;
-use crate::model::image::{List, NO_FLAVOUR};
+use crate::model::image::{Backend, List, NO_FLAVOUR};
 use crate::provenance::build as record;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -31,13 +31,8 @@ pub enum Stopped {
     reason = "each build step reads the values the steps before it resolved"
 )]
 pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
-    let backend = match opts.backend.clone().or_else(|| env("BUILD_BACKEND")) {
-        None => "buildah".to_string(),
-        Some(name) if name == "buildx" || name == "buildah" => name,
-        Some(name) => return Err(format!("unknown backend `{name}` (buildx or buildah)")),
-    };
-
     let (list, mut issues, context) = crate::declarations(root);
+    let backend = chosen_backend(opts.backend.clone(), env("BUILD_BACKEND"), list.backend)?;
     if opts.target.is_none() {
         if let Some(issue) = list.no_default() {
             issues.push(issue);
@@ -191,7 +186,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         ),
         format!("ASSET_RESOLUTIONS={}", resolutions.join(" ")),
         format!("SOURCE_COMMIT={source_commit}"),
-        format!("BUILD_BACKEND={backend}"),
+        format!("BUILD_BACKEND={}", backend.name()),
         format!("AUDIT_ENFORCE={}", list.audit_enforce),
     ];
     if let Some(base) = &image.base {
@@ -218,7 +213,8 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     install(root)?;
 
     eprintln!(
-        "buildc: {backend} target={target} version={version}{}",
+        "buildc: {} target={target} version={version}{}",
+        backend.name(),
         match &opts.kernel {
             Some(kernel) => format!(" kernel={kernel}"),
             None => String::new(),
@@ -233,17 +229,17 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     }
 
     let containerfile = crate::emit::containerfile::path(image);
-    let program = match backend.as_str() {
-        "buildx" => "docker",
-        _ => "podman",
+    let program = match backend {
+        Backend::Buildx => "docker",
+        Backend::Buildah => "podman",
     };
-    let prefix = build_prefix(&backend, &containerfile, &build_args, &secrets);
+    let prefix = build_prefix(backend, &containerfile, &build_args, &secrets);
     let mut labels: Vec<String> = lines("LABELS");
     if list.manifest_label {
         labels.push(format!("org.buildc.manifest={}", record::MANIFEST));
     }
 
-    if backend != "buildx" {
+    if backend == Backend::Buildah {
         if export.is_some() {
             return Err("buildah cannot export a BuildKit layer cache".into());
         }
@@ -256,7 +252,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     }
 
     if !image.boot.is_empty() {
-        if backend == "buildx" {
+        if backend == Backend::Buildx {
             return Err(
                 "`--backend buildx` cannot build a UKI target: the composefs digest is read \
                  from the local buildah store, and buildx has none"
@@ -285,7 +281,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     for label in &labels {
         args.extend(["--label".to_string(), label.clone()]);
     }
-    if backend == "buildx" {
+    if backend == Backend::Buildx {
         for reference in &import {
             args.extend([
                 "--cache-from".to_string(),
@@ -299,8 +295,9 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
             ]);
         }
         args.push("--provenance=false".into());
-        if let Some(path) = &opts.oci_output {
-            args.extend(["--output".to_string(), format!("type=oci,dest={path}")]);
+        match &opts.oci_output {
+            Some(path) => args.extend(["--output".to_string(), format!("type=oci,dest={path}")]),
+            None => args.push("--load".into()),
         }
     } else {
         args.push("--pull=newer".into());
@@ -313,15 +310,27 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     ))
 }
 
+fn chosen_backend(
+    flag: Option<String>,
+    variable: Option<String>,
+    declared: Backend,
+) -> Result<Backend, String> {
+    match flag.or(variable) {
+        None => Ok(declared),
+        Some(name) => Backend::parse(&name)
+            .ok_or_else(|| format!("unknown backend `{name}` (buildx or buildah)")),
+    }
+}
+
 fn build_prefix(
-    backend: &str,
+    backend: Backend,
     containerfile: &Path,
     build_args: &[String],
     secrets: &[(String, String)],
 ) -> Vec<String> {
     let mut args = match backend {
-        "buildx" => vec!["buildx".to_string(), "build".to_string()],
-        _ => vec!["build".to_string()],
+        Backend::Buildx => vec!["buildx".to_string(), "build".to_string()],
+        Backend::Buildah => vec!["build".to_string()],
     };
     args.push("--file".to_string());
     args.push(containerfile.display().to_string());
@@ -432,7 +441,7 @@ fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
     let split_tag = scratch_tag("split", target);
     let sealed_tag = scratch_tag("sealed", target);
     let sealed = (|| -> Result<String, String> {
-        let prefix = build_prefix("buildah", &containerfile, build_args, secrets);
+        let prefix = build_prefix(Backend::Buildah, &containerfile, build_args, secrets);
         let split = build_argv(
             &prefix,
             &[],
@@ -449,7 +458,7 @@ fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
         )?;
         let store = graph_root()?;
         let digest = composefs_digest(&store, &split_tag)?;
-        let prefix = build_prefix("buildah", &seal_file, build_args, secrets);
+        let prefix = build_prefix(Backend::Buildah, &seal_file, build_args, secrets);
         let argv = build_argv(
             &prefix,
             &[
@@ -740,7 +749,9 @@ fn cache(
     }
     let (Some(namespace), Some(image)) = (namespace, list.cache_image()) else {
         if opts.cache_to {
-            return Err("`--cache-to` needs a registry namespace".into());
+            return Err(
+                "`--cache-to` needs a registry namespace and a `default-image` in repo.kdl".into(),
+            );
         }
         eprintln!("buildc: skipping the registry layer cache");
         return Ok((Vec::new(), None));
@@ -795,9 +806,22 @@ fn today() -> Result<String, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_flag_wins_over_the_variable_and_the_variable_over_repo_kdl() {
+        let named = |name: &str| Some(name.to_string());
+        let chosen = |flag, variable| chosen_backend(flag, variable, Backend::Buildx);
+        assert_eq!(chosen(None, None), Ok(Backend::Buildx));
+        assert_eq!(chosen(None, named("buildah")), Ok(Backend::Buildah));
+        assert_eq!(
+            chosen(named("buildah"), named("buildx")),
+            Ok(Backend::Buildah)
+        );
+        assert!(chosen(named("kaniko"), None).is_err());
+    }
+
     fn prefix() -> Vec<String> {
         build_prefix(
-            "buildah",
+            Backend::Buildah,
             Path::new("generated/next44/Containerfile"),
             &["FLAVOUR=".to_string(), "BASE=example:1".to_string()],
             &[("mok_privkey".to_string(), "/keys/mok.key".to_string())],

@@ -4,7 +4,7 @@
 
 Location: The root of the repository.
 
-`repo.kdl` sits at the root of the repository and holds what applies to every image in it: which `buildc` release builds it, where its components come from, which CI workflows run and which security rules every image follows. The images themselves live in image files beside it.
+The file holds at most one of each repository setting, and `buildc` reports an unknown node rather than ignoring it. It must declare `schema-version`, and each image lives in an image file.
 
 ```kdl
 schema-version 1
@@ -16,7 +16,7 @@ renovate rebaseWhen="never" {
     schedule "* 0-5 * * *"
 }
 sources {
-    components "buildc-components" {
+    components "buildc" {
         url "https://github.com/buildc-org/library"
         path "components"
     }
@@ -30,6 +30,7 @@ sources {
 | [`name`](#name) (optional) | *string* | An optional human-readable label for the repository. |
 | [`default-image`](#default-image) (optional) | *string* | The image that a command with no image, or a build with no target, uses. |
 | [`pr-image`](#pr-image) (optional) | *string* | The image a pull request builds. |
+| [`backend`](#backend) (optional) | `buildah` or `buildx` | The container build tool that `buildc build` runs and that the generated `build.yml` sets up. |
 | [`seed`](#seed) (optional) | *string* | The image that this repository publishes as a starting point for a new repository. |
 | [`workflows`](#workflows) (optional) | {&nbsp;[fields](#workflows-fields)&nbsp;} | The CI workflows that `buildc generate` writes into `.github/workflows/`. |
 | [`renovate`](#renovate) (optional) | optionally {&nbsp;[fields](#renovate-fields)&nbsp;} | The Renovate policy that `buildc generate` writes into `.github/renovate.json5`. |
@@ -42,7 +43,7 @@ sources {
 
 ## `schema-version` (required)
 
-The schema version tells `buildc` which reader to use for the repository. A repository written against an earlier release keeps building, because the version picks the reader. `buildc create repo` writes it, and `buildc` never changes it.
+The number names the schema release the repository uses, and `buildc` stops at any number it does not implement. It reports the difference and reads no repository node.
 
 ```kdl
 schema-version 1
@@ -61,7 +62,7 @@ Accepts: *number*
 
 ## `buildc-version` (optional)
 
-Pins the `buildc` release that builds the repository, so every build uses the same tool. `buildc.sh` fetches the pinned release, so a build does not depend on the `buildc` installed on the machine.
+The value names the release that builds and reads the repository. `buildc` reports a pin that names another release, and `sha256=` must be 64 lowercase hexadecimal digits.
 
 ```kdl
 buildc-version "0.6.49"
@@ -91,7 +92,7 @@ If a different release of `buildc` reads the repository:
 
 ## `name` (optional)
 
-A human-readable label for the repository. It labels the result tree printed by commands that add or change files, and does not affect generation or builds. When it is omitted, that tree uses the repository directory name.
+The label is for people, and the directory may use another name. It names no image and no target.
 
 ```kdl
 name "Workstation"
@@ -103,7 +104,7 @@ Accepts: *string*
 
 ## `default-image` (optional)
 
-If the repository defines more than one image, then this names the image that a command uses when the user names none. If the repository defines one image, then that image is the default and this field is not needed.
+The name must be an image declared in the repository, and `buildc` refuses a name that no image declares. A repository with more than one image and no `default-image` has no target for a command that names none.
 
 ```kdl
 default-image "workstation"
@@ -123,11 +124,33 @@ pr-image "workstation"
 
 Accepts: *string*
 
+<a id="backend"></a>
+
+## `backend` (optional)
+
+The value selects the one tool that `buildc build` drives, and `buildah` applies when the node is absent. `buildx` needs a `default-image` to name the layer cache, and it cannot build an image whose `boot-chain` seals a UKI.
+
+```kdl
+backend "buildx"
+```
+
+Accepts: `buildah` or `buildx`
+
+| Value | Effect |
+| --- | --- |
+| `buildah` | `buildc build` runs `podman build`. An image whose `boot-chain` builds a UKI needs it. |
+| `buildx` | `buildc build` runs `docker buildx build`. The generated `build.yml` loads its OCI archive into the podman store that the later steps read, and it can use a registry layer cache. |
+
+> [!NOTE]
+> `--backend` or `$BUILD_BACKEND` overrides it for one build. The flag wins over the variable, and the variable wins over this node.
+>
+> `buildc check` refuses `buildx` for an image whose `boot-chain` builds a UKI. A sealed UKI carries the composefs digest, and `buildc build` reads that digest from the local buildah store.
+
 <a id="seed"></a>
 
 ## `seed` (optional)
 
-A seed lets another user start a new repository from this one. `buildc generate` writes the base, the component list and the collections of the named image into the seed, so a new repository starts from the same image.
+The image must be declared in the repository, and `collection=` must name a `components` source that `sources` declares. Every component in the seed is fetched through that collection, so an inline definition leaves the seed unbuildable.
 
 ```kdl
 seed "workstation" collection="owner"
@@ -156,7 +179,7 @@ Accepts: *string*
 
 ## `workflows` (optional)
 
-Names the GitHub Actions workflows that `buildc generate` writes and keeps current, and sets when scheduled builds, publishing and scans run. The repository gets only the workflows named here.
+The block selects the workflows that `buildc generate` writes, and a workflow named twice is refused. A child's `schedule=` needs a five-field cron line, and `at` needs an hour and minute in UTC.
 
 ```kdl
 workflows at="12:30" {
@@ -205,7 +228,7 @@ workflows at="12:30" {
 
 ## `renovate` (optional)
 
-Says when Renovate opens its pull requests and how it groups and merges them. The block is Renovate's own configuration in KDL. `buildc generate` adds the custom managers that match the files it writes, and one manager for each image entry that sets a tracked `version`.
+The block maps member by member to Renovate's JSON, so a property is a scalar, arguments are an array and a child is an object. A node that holds no value, or both values and members, is refused.
 
 ```kdl
 renovate rebaseWhen="never"
@@ -244,11 +267,11 @@ renovate rebaseWhen="never" {
 
 ## `sources` (optional)
 
-Lists the libraries that this repository reads from a local directory or fetches from an HTTPS Git repository. A `components` source holds components and base components alike: `buildc import component` copies a component from it, and `buildc create image` offers its bases. Every source declares exactly one of `dir` and `url`: `dir` names a directory on this machine, and `url` names an HTTPS Git repository.
+Each child declares a `components` library under the alias that references and the local cache use. The alias takes lowercase letters, digits and dashes, and one kind and alias identify one source.
 
 ```kdl
 sources {
-    components "buildc-components"
+    components "buildc"
 }
 ```
 
@@ -271,7 +294,7 @@ A component library that imports and `buildc create image` read components and b
 
 ```kdl
 sources {
-    components "buildc-components"
+    components "buildc"
 }
 ```
 
@@ -296,7 +319,7 @@ The local directory that holds this source.
 
 ```kdl
 sources {
-    components "buildc-components" {
+    components "buildc" {
         dir "../library/components"
     }
 }
@@ -312,7 +335,7 @@ The HTTPS Git repository that holds this source.
 
 ```kdl
 sources {
-    components "buildc-components" {
+    components "buildc" {
         url "https://github.com/buildc-org/library"
     }
 }
@@ -328,7 +351,7 @@ The directory inside the Git repository that holds this component library.
 
 ```kdl
 sources {
-    components "buildc-components" {
+    components "buildc" {
         path "components"
     }
 }
@@ -344,7 +367,7 @@ The branch, tag or commit that selects the repository tree.
 
 ```kdl
 sources {
-    components "buildc-components" {
+    components "buildc" {
         version "v1"
     }
 }
@@ -360,7 +383,7 @@ The hash of the canonical tar archive for the selected commit.
 
 ```kdl
 sources {
-    components "buildc-components" {
+    components "buildc" {
         sha256 "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3"
     }
 }
@@ -376,7 +399,7 @@ Why this source follows a ref without a verified archive hash.
 
 ```kdl
 sources {
-    components "buildc-components" {
+    components "buildc" {
         unpinned "This repository follows the library's default ref"
     }
 }
@@ -388,7 +411,7 @@ Accepts: *string*
 
 ## `manifest` (optional)
 
-The build writes a manifest of what went into the image into the image itself. This block decides whether the build also stamps an OCI label that points at that file, so a tool that reads image labels can find it.
+The block holds one `label`, and a build without the block stamps no label. `label #true` writes `org.buildc.manifest` with the path where the manifest sits in the image.
 
 ```kdl
 manifest {
@@ -422,7 +445,7 @@ Accepts: *boolean*
 
 ## `audit` (optional)
 
-Every build records where its parts came from. This block decides whether a failed provenance check is only reported or stops the command, so a repository can move from reporting to enforcing when it is ready.
+The posture applies to every provenance check that `buildc` runs. The facts are recorded whether or not the block exists, and `enforce #true` is what makes a failed check stop the command.
 
 ```kdl
 audit {
@@ -481,7 +504,7 @@ Each check runs in the command named before it:
 
 ## `security-policy` (optional)
 
-Sets the security rules that every image in the repository follows, whatever each image declares. It holds one rule: what each build step can reach on the network.
+The block holds one `network` rule for every image the repository declares. An image cannot set a rule of its own.
 
 ```kdl
 security-policy
@@ -502,7 +525,7 @@ Accepts: optionally {&nbsp;[fields](#security-policy-fields)&nbsp;}
 
 ### `network` (optional)
 
-Controls network access while the image builds. The user can open the network to every step, or with `strict` open it only for the components that declare a need, so an undeclared download fails the build. `packages` and `scripts` set the rule for one kind of step.
+The value on the line applies to both kinds of step, and a `packages` or `scripts` child overrides one kind. A denied step runs under `--network=none` in the generated Containerfile.
 
 ```kdl
 security-policy {

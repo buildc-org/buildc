@@ -186,6 +186,30 @@ pub struct Seed {
     pub collection: String,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum Backend {
+    #[default]
+    Buildah,
+    Buildx,
+}
+
+impl Backend {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "buildah" => Some(Self::Buildah),
+            "buildx" => Some(Self::Buildx),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Buildah => "buildah",
+            Self::Buildx => "buildx",
+        }
+    }
+}
+
 pub struct List {
     pub name: String,
     pub id: String,
@@ -199,6 +223,7 @@ pub struct List {
     pub pr_image_id: Option<String>,
     pub seed: Option<Seed>,
     pub manifest_label: bool,
+    pub backend: Backend,
     pub renovate: Option<Vec<(String, common::json::Json)>>,
     pub audit_enforce: bool,
     pub network: Network,

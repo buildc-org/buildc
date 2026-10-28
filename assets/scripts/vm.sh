@@ -399,7 +399,7 @@ run_qemu() {
 if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
     if [ "$rebuild" = 1 ]; then
         ./scripts/buildc.sh generate
-        args=(--tag "$ref")
+        args=(--backend buildah --tag "$ref")
         [ -z "$target" ] || args+=(--target "$target")
         ./scripts/buildc.sh build "${args[@]}"
     fi

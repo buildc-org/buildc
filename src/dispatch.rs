@@ -709,10 +709,6 @@ pub fn dispatch(
                 },
             )
         }
-        Verb::OsRelease => {
-            crate::runtime::os_release()?;
-            Ok(ExitCode::SUCCESS)
-        }
         Verb::BuildRecord => {
             crate::provenance::build::write()?;
             Ok(ExitCode::SUCCESS)

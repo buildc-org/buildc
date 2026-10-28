@@ -67,20 +67,6 @@ rm -rf {dest}.d
         let _ = write!(out, "\n# ---- {} ----\n{body}", entry.path);
     }
 
-    for entry in &image.entries {
-        if entry
-            .component
-            .as_ref()
-            .is_some_and(|component| super::containerfile::renders_os_release(image, component))
-        {
-            let _ = write!(
-                out,
-                "\n# ---- os-release ----\n{}\n",
-                super::containerfile::flavoured(entry.flavour.as_deref(), "/ctx/buildc os-release")
-            );
-        }
-    }
-
     out.push('\n');
     out.push_str(include_str!("finalize.sh"));
 

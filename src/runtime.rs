@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -203,79 +202,8 @@ fn classify(line: &str) -> Option<&'static str> {
         .map(|(name, _)| *name)
 }
 
-const OS_RELEASE: &str = "/usr/lib/os-release";
-
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
-}
-
-pub fn os_release() -> Result<(), String> {
-    let version = std::env::var("IMAGE_VERSION")
-        .ok()
-        .map(|version| match version.is_empty() {
-            true => "dev".to_string(),
-            false => version,
-        });
-    let set = release_fields(env, version)?;
-
-    let text = fs::read_to_string(OS_RELEASE).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
-    fs::remove_file(OS_RELEASE).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
-    fs::write(OS_RELEASE, assign(&text, &set)).map_err(|err| format!("{OS_RELEASE}: {err}"))?;
-
-    let link = Path::new("/etc/os-release");
-    let _ = fs::remove_file(link);
-    std::os::unix::fs::symlink("../usr/lib/os-release", link)
-        .map_err(|err| format!("{}: {err}", link.display()))
-}
-
-fn release_fields(
-    get: impl Fn(&str) -> Option<String>,
-    version: Option<String>,
-) -> Result<Vec<(&'static str, String)>, String> {
-    let name = get("IMAGE_NAME").ok_or("IMAGE_NAME is unset: the image declares no name")?;
-    let hostname =
-        get("IMAGE_ID").ok_or("IMAGE_ID is unset: the generated Containerfile passes it")?;
-    let pretty = get("IMAGE_PRETTY_NAME")
-        .or_else(|| version.as_ref().map(|version| format!("{name} {version}")));
-
-    let mut set: Vec<(&str, String)> = vec![("NAME", name), ("DEFAULT_HOSTNAME", hostname)];
-    set.extend(pretty.map(|pretty| ("PRETTY_NAME", pretty)));
-    set.extend(version.map(|version| ("IMAGE_VERSION", version)));
-    if let Some(url) = get("IMAGE_URL") {
-        set.push(("HOME_URL", url.clone()));
-        set.push(("DOCUMENTATION_URL", url));
-    }
-    if let Some(url) = get("IMAGE_ISSUES_URL") {
-        set.push(("SUPPORT_URL", url.clone()));
-        set.push(("BUG_REPORT_URL", url));
-    }
-    Ok(set)
-}
-
-fn assign(text: &str, set: &[(&str, String)]) -> String {
-    let mut out = String::new();
-    for line in text.lines() {
-        match line
-            .split_once('=')
-            .and_then(|(key, _)| set.iter().find(|(name, _)| *name == key))
-        {
-            Some((name, value)) => {
-                let _ = writeln!(out, "{name}=\"{value}\"");
-            }
-            None => {
-                let _ = writeln!(out, "{line}");
-            }
-        }
-    }
-    for (name, value) in set {
-        if !text
-            .lines()
-            .any(|line| line.split_once('=').is_some_and(|(key, _)| key == *name))
-        {
-            let _ = writeln!(out, "{name}=\"{value}\"");
-        }
-    }
-    out
 }
 
 const FETCH_USAGE: &str = "\
@@ -1006,7 +934,6 @@ pub fn fuzz_readers(text: &str) {
     }
     let _ = unexpected(text, "fuzz.service", &["mount-not-found"]);
     let _ = found(text, &links(text));
-    let _ = assign(text, &[("NAME", "fuzz".to_string())]);
     let _ = opens_luks(text);
     let _ = missing_presets(text, &["fuzz.service".to_string()]);
     let _ = names(text, "enable", "fuzz.service");
@@ -1072,26 +999,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn os_release_writes_the_version_half_only_when_given_one() {
-        let get = |name: &str| match name {
-            "IMAGE_NAME" => Some("Example".to_string()),
-            "IMAGE_ID" => Some("example".to_string()),
-            _ => None,
-        };
-        let stable = release_fields(get, None).unwrap();
-        assert_eq!(
-            stable,
-            [
-                ("NAME", "Example".to_string()),
-                ("DEFAULT_HOSTNAME", "example".to_string())
-            ]
-        );
-        let last = release_fields(get, Some("44.1".to_string())).unwrap();
-        assert!(last.contains(&("PRETTY_NAME", "Example 44.1".to_string())));
-        assert!(last.contains(&("IMAGE_VERSION", "44.1".to_string())));
-    }
-
-    #[test]
     fn a_removed_name_whose_witness_is_still_present_fails() {
         let dir = std::env::temp_dir().join(format!("buildc-removed.{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
@@ -1134,22 +1041,6 @@ mod tests {
             "sshd.service"
         ));
         assert!(!names(policy, "disable", "sshd.service.d"));
-    }
-
-    #[test]
-    fn os_release_keys_are_replaced_in_place_or_appended() {
-        let set = [
-            ("NAME", "Example".to_string()),
-            ("IMAGE_VERSION", "20260809".to_string()),
-        ];
-        assert_eq!(
-            assign("NAME=Fedora\nVERSION_ID=44\nID=fedora\n", &set),
-            "NAME=\"Example\"\nVERSION_ID=44\nID=fedora\nIMAGE_VERSION=\"20260809\"\n"
-        );
-        assert_eq!(
-            assign("IMAGE_VERSION=\"old\"\nNAME=Fedora\n", &set),
-            "IMAGE_VERSION=\"20260809\"\nNAME=\"Example\"\n"
-        );
     }
 
     #[test]

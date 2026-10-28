@@ -107,7 +107,6 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | Command | Description | Schema |
 | --- | --- | --- |
 | [`buildc fetch <what> <url> <sha256> [target] [extra]...`](#buildc-fetch) | download one payload, verify it, and place it | [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset) |
-| [`buildc os-release`](#buildc-os-release) | write the image identity the build ARGs carry | [`image.kdl`&nbsp;›&nbsp;`image`](schema/image.md#image) |
 | [`buildc build-record`](#buildc-build-record) | write the record of what the build resolved |  |
 | [`buildc validate-image`](#buildc-validate-image) | run every check a built image has to pass | [`manifest.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify) |
 
@@ -1335,15 +1334,6 @@ user, so the recipe holds none of them.
 >
 > `hostname` is the published name. It is the one value that the user is
 > expected to replace.
-
-## `buildc os-release`
-
-Writes the image identity, which the build arguments carry, into
-`/usr/lib/os-release`. The generated Containerfile runs it.
-
-**Usage:** `buildc os-release`
-
-**Schema:** [`image.kdl`&nbsp;›&nbsp;`image`](schema/image.md#image)
 
 ## `buildc build-record`
 

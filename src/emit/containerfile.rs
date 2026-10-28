@@ -65,8 +65,6 @@ const COMPONENT_DIR: &str = "@COMPONENT@";
 
 const LINEAGE: &str = "rootfs";
 
-pub const OS_RELEASE: &str = "os-release";
-
 const BUILDC_MOUNT: &str = "--mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    ";
 
 const CONFORMS_ARG: &str = "\
@@ -131,7 +129,6 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
         .iter()
         .map(|(name, _)| format!("{name}=\"${{{name}}}\" "))
         .collect();
-    let mut identity_declared = false;
 
     let _ = write!(out, "## Component layers\n\n");
     let _ = write!(
@@ -199,19 +196,6 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
         }
         let _ = writeln!(out, "# ---- {} ----", entry.path);
         let _ = write!(out, "{}\n\n", blocks.join("\n\n"));
-
-        if renders_os_release(image, component) {
-            if !identity_declared {
-                out.push_str(&identity_args);
-                identity_declared = true;
-            }
-            let render = format!("{identity_env}/ctx/buildc os-release");
-            let _ = write!(
-                out,
-                "# ---- os-release ----\nRUN {BUILDC_MOUNT}{}\n\n",
-                flavoured(entry.flavour.as_deref(), &render)
-            );
-        }
     }
 
     if !flavour_arg_emitted {
@@ -223,9 +207,7 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
     let _ = write!(out, "{CONFORMS_ARG}\n\n");
     let _ = write!(out, "{SCAP_ARGS}\n\n");
 
-    if !identity_declared {
-        out.push_str(&identity_args);
-    }
+    out.push_str(&identity_args);
 
     let _ = write!(out, "{}\n\n", finalize_layer(image, &identity_env, root));
 
@@ -235,20 +217,6 @@ pub fn sections(image: &Image, root: &Path) -> (String, String) {
     }
 
     (out, tail_out)
-}
-
-pub fn renders_os_release(image: &Image, component: &Component) -> bool {
-    component.answers(OS_RELEASE)
-        && image
-            .remover(OS_RELEASE, component.flavour.as_deref())
-            .is_none()
-}
-
-pub fn flavoured(flavour: Option<&str>, line: &str) -> String {
-    match flavour {
-        None => line.to_string(),
-        Some(flavour) => format!("if [ \"${{FLAVOUR:-}}\" = \"{flavour}\" ]; then {line}; fi"),
-    }
 }
 
 pub fn section(image: &Image, root: &Path) -> String {

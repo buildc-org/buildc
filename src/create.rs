@@ -12,6 +12,8 @@ const GH_INSTALL: &str = "install gh from https://github.com/cli/cli";
 
 const BUILD_ENVIRONMENT: &str = "build-environment";
 
+const OS_RELEASE: &str = "os-release";
+
 pub fn origin(host: &str, owner: &str) -> String {
     format!("https://{host}/{owner}")
 }
@@ -1710,15 +1712,17 @@ fn wanted<'a>(
 }
 
 fn roles<'a>(base: Option<&'a crate::base::Base>, index: &crate::provider::Index) -> Vec<&'a str> {
-    let lacks = base.is_none_or(|base| {
-        !index
-            .fitting(BUILD_ENVIRONMENT, &base.family)
-            .iter()
-            .any(|provider| base.imports.contains(&provider.name))
-    });
-    lacks
-        .then_some(BUILD_ENVIRONMENT)
+    let lacks = |role: &str| {
+        base.is_none_or(|base| {
+            !index
+                .fitting(role, &base.family)
+                .iter()
+                .any(|provider| base.imports.contains(&provider.name))
+        })
+    };
+    [BUILD_ENVIRONMENT, OS_RELEASE]
         .into_iter()
+        .filter(|role| lacks(role))
         .chain(
             base.into_iter()
                 .flat_map(|base| base.requires.iter().map(String::as_str)),
@@ -1733,7 +1737,7 @@ fn offer(
     current: bool,
 ) -> Result<bool, String> {
     if prompt.asks() {
-        println!("{base} needs the following components:");
+        println!("{base} brings none of these components:");
         for provider in wanted {
             println!("\x20   {}", provider.qualified());
         }
@@ -2052,7 +2056,7 @@ image {
     }
 
     #[test]
-    fn a_base_that_imports_no_build_environment_offers_one() {
+    fn a_base_that_imports_no_role_provider_offers_one() {
         let root = std::env::temp_dir().join(format!("buildc-roles-{}", std::process::id()));
         for (path, provides) in [
             ("fedora/build-environment", "build-environment"),
@@ -2078,10 +2082,10 @@ image {
             roles(None, &index),
         ];
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(offered[0], [BUILD_ENVIRONMENT]);
+        assert_eq!(offered[0], [BUILD_ENVIRONMENT, OS_RELEASE]);
         assert_eq!(offered[1], [BUILD_ENVIRONMENT]);
-        assert!(offered[2].is_empty());
-        assert_eq!(offered[3], [BUILD_ENVIRONMENT]);
+        assert_eq!(offered[2], [OS_RELEASE]);
+        assert_eq!(offered[3], [BUILD_ENVIRONMENT, OS_RELEASE]);
     }
 
     #[test]

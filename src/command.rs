@@ -45,7 +45,6 @@ pub enum Verb {
     RegistryNamespace,
     RegistryRef,
     Recipe,
-    OsRelease,
     BuildRecord,
     Fetch,
     ValidateImage,
@@ -86,7 +85,6 @@ impl Verb {
                 "satisfies",
             )),
             Self::Generate => Some(("`generated/`", Area::Repository, "")),
-            Self::OsRelease => Some(("`image.kdl`&nbsp;›&nbsp;`image`", Area::Image, "image")),
             Self::Fetch => Some((
                 "`manifest.kdl`&nbsp;›&nbsp;`asset`",
                 Area::Component,
@@ -161,7 +159,6 @@ pub const ALL: &[Verb] = &[
     Verb::RegistryNamespace,
     Verb::RegistryRef,
     Verb::Recipe,
-    Verb::OsRelease,
     Verb::BuildRecord,
     Verb::Fetch,
     Verb::ValidateImage,
@@ -409,13 +406,6 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Family::Script,
         false,
         Topic::Inspect,
-    ),
-    (
-        "os-release",
-        Verb::OsRelease,
-        Family::Layer,
-        false,
-        Topic::Layer,
     ),
     (
         "build-record",
@@ -667,8 +657,6 @@ pub enum Surface {
         #[arg(long, value_name = "ref")]
         image: Vec<String>,
     },
-    #[command(long_about = help::OS_RELEASE)]
-    OsRelease,
     /// write the build record that an image carries
     #[command(long_about = help::BUILD_RECORD)]
     BuildRecord,
@@ -1417,7 +1405,6 @@ impl Verb {
             | Self::RegistryNamespace
             | Self::RegistryRef
             | Self::Recipe
-            | Self::OsRelease
             | Self::BuildRecord
             | Self::Fetch
             | Self::ValidateImage => return None,

@@ -1,11 +1,15 @@
 ---
 name: VM boot smoke test
 on:
+  # buildc:only push-publish
   schedule:
-    - cron: '30 3 * * 1'
+    - cron: '30 3 * * 1'  # buildc:schedule
+  # buildc:end
+  # buildc:only scheduled-publish
   workflow_run:
     workflows: ['Build container image']
     types: [completed]
+  # buildc:end
   workflow_dispatch:
 
 permissions: {}
@@ -16,12 +20,14 @@ env:
 jobs:
   smoke-test:
     runs-on: ubuntu-24.04
+    # buildc:only scheduled-publish
     # A push build publishes no image, so only a successful scheduled or dispatched build is smoked.
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
       (github.event.workflow_run.event == 'schedule' ||
       github.event.workflow_run.event == 'workflow_dispatch'))
+    # buildc:end
     permissions:
       contents: read
       packages: read
@@ -95,7 +101,8 @@ jobs:
           fi
 
           echo "==> selinux denials"
-          denials="$(s journalctl -b --no-pager | grep -Ei 'avc:[[:space:]]+denied')" || true
+          # A permissive denial does not block the service, so it is not a failed assertion.
+          denials="$(s journalctl -b --no-pager | grep -Ei 'avc:[[:space:]]+denied' | grep -v 'permissive=1')" || true
           if [ -n "$denials" ]; then
             printf '%s\n' "$denials"
           else

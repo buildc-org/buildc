@@ -669,6 +669,10 @@ pub(crate) fn overrides(
     out
 }
 
+pub(crate) fn declares_presets(shipped: &overlay::Index) -> bool {
+    shipped.keys().any(|path| is_preset(path))
+}
+
 pub(crate) fn preset_files(image: &Image, shipped: &overlay::Index, flavour: &str) -> Vec<String> {
     shipped
         .keys()

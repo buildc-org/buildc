@@ -138,43 +138,20 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         false => crate::scap::datastream(&list, Some(&target))?,
     };
     let (scap_claimed, scap_refused) = crate::scap::exclusions(image);
+    let contracts = contract_files(image, &components);
+    let exceptions: Vec<String> = unique_pairs(&components, |m| {
+        m.verify_exceptions
+            .iter()
+            .map(|e| (e.class.clone(), e.unit.clone()))
+            .collect()
+    })
+    .iter()
+    .map(|(class, unit)| format!("{class}|{unit}"))
+    .collect();
+    let luks = provides(image, &entries, crate::emit::recipe::LUKS_INITRAMFS);
     let mut build_args = vec![
-        format!("FLAVOUR={}", flavour.unwrap_or_default()),
         format!("IMAGE_VERSION={version}"),
         format!("IMAGE_REGISTRY={}", namespace.clone().unwrap_or_default()),
-        format!(
-            "CONTRACT_FILES={}",
-            contract_files(image, &components).join(" ")
-        ),
-        format!(
-            "VERIFY_EXCEPTIONS={}",
-            unique_pairs(&components, |m| m
-                .verify_exceptions
-                .iter()
-                .map(|e| (e.class.clone(), e.unit.clone()))
-                .collect())
-            .iter()
-            .map(|(class, unit)| format!("{class}|{unit}"))
-            .collect::<Vec<_>>()
-            .join(" ")
-        ),
-        format!("COMPONENT_PRESETS={}", presets.join(" ")),
-        format!(
-            "LUKS_INITRAMFS={}",
-            provides(image, &entries, crate::emit::recipe::LUKS_INITRAMFS)
-        ),
-        format!(
-            "FAMILY={}",
-            image
-                .base
-                .as_ref()
-                .map(|b| b.family.as_str())
-                .unwrap_or_default()
-        ),
-        format!("CONFORMS={conforms}"),
-        format!("SCAP_CONTENT={scap_content}"),
-        format!("SCAP_CLAIMED={}", scap_claimed.join(" ")),
-        format!("SCAP_REFUSED={}", scap_refused.join(" ")),
         format!("TARGET={target}"),
         format!(
             "COMPONENT_HASHES={}",
@@ -187,8 +164,33 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         format!("ASSET_RESOLUTIONS={}", resolutions.join(" ")),
         format!("SOURCE_COMMIT={source_commit}"),
         format!("BUILD_BACKEND={}", backend.name()),
-        format!("AUDIT_ENFORCE={}", list.audit_enforce),
     ];
+    if !contracts.is_empty() {
+        build_args.push(format!("CONTRACT_FILES={}", contracts.join(" ")));
+    }
+    if !exceptions.is_empty() {
+        build_args.push(format!("VERIFY_EXCEPTIONS={}", exceptions.join(" ")));
+    }
+    if !presets.is_empty() {
+        build_args.push(format!("COMPONENT_PRESETS={}", presets.join(" ")));
+    }
+    if luks {
+        build_args.push("LUKS_INITRAMFS=true".to_string());
+    }
+    if list.audit_enforce {
+        build_args.push("AUDIT_ENFORCE=true".to_string());
+    }
+    if !image.flavours.is_empty() {
+        build_args.push(format!("FLAVOUR={}", flavour.unwrap_or_default()));
+    }
+    if image.declares_conforms() {
+        build_args.push(format!("CONFORMS={conforms}"));
+        build_args.push(format!("SCAP_CONTENT={scap_content}"));
+    }
+    if !scap_claimed.is_empty() || !scap_refused.is_empty() {
+        build_args.push(format!("SCAP_CLAIMED={}", scap_claimed.join(" ")));
+        build_args.push(format!("SCAP_REFUSED={}", scap_refused.join(" ")));
+    }
     if let Some(base) = &image.base {
         build_args.push(format!("BASE_DECLARED={}", base.image));
         build_args.push(format!("BASE={resolved_base}"));
@@ -196,6 +198,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     if let Some(kernel) = &opts.kernel {
         build_args.push(format!("KERNEL={kernel}"));
     }
+    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
 
     let mut tags = opts.tags.clone();
     tags.extend(lines("TAGS"));
@@ -265,6 +268,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
                 program,
                 containerfile: &containerfile,
                 build_args: &build_args,
+                family,
                 secrets: &secrets,
                 target: &target,
                 tags: &tags,
@@ -388,6 +392,7 @@ struct Invocation<'a> {
     program: &'a str,
     containerfile: &'a Path,
     build_args: &'a [String],
+    family: &'a str,
     secrets: &'a [(String, String)],
     target: &'a str,
     tags: &'a [String],
@@ -399,6 +404,7 @@ fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
         program,
         containerfile,
         build_args,
+        family,
         secrets,
         target,
         tags,
@@ -510,7 +516,7 @@ fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
                 "{sealed_tag} does not carry composefs={digest} on its UKI cmdline"
             ));
         }
-        validate_sealed(root, &sealed_tag, build_args)
+        validate_sealed(root, &sealed_tag, build_args, family)
     })();
     if let Err(err) = checked {
         remove_image(program, &sealed_tag);
@@ -543,8 +549,13 @@ fn seal_containerfile(text: &str) -> Option<String> {
     Some(text[..end].to_string())
 }
 
-fn validate_sealed(root: &Path, tag: &str, build_args: &[String]) -> Result<(), String> {
-    let argv = validate_argv(root, tag, build_args);
+fn validate_sealed(
+    root: &Path,
+    tag: &str,
+    build_args: &[String],
+    family: &str,
+) -> Result<(), String> {
+    let argv = validate_argv(root, tag, build_args, family);
     let status = Command::new("podman")
         .args(&argv)
         .status()
@@ -555,7 +566,7 @@ fn validate_sealed(root: &Path, tag: &str, build_args: &[String]) -> Result<(), 
     }
 }
 
-fn validate_argv(root: &Path, tag: &str, build_args: &[String]) -> Vec<String> {
+fn validate_argv(root: &Path, tag: &str, build_args: &[String], family: &str) -> Vec<String> {
     let tool = root.join(layout::MOUNTED);
     let mut argv: Vec<String> = vec![
         "run".to_string(),
@@ -574,7 +585,6 @@ fn validate_argv(root: &Path, tag: &str, build_args: &[String]) -> Vec<String> {
         "VERIFY_EXCEPTIONS",
         "COMPONENT_PRESETS",
         "LUKS_INITRAMFS",
-        "FAMILY",
     ] {
         if let Some(value) = build_args
             .iter()
@@ -583,6 +593,7 @@ fn validate_argv(root: &Path, tag: &str, build_args: &[String]) -> Vec<String> {
             argv.extend(["-e".to_string(), format!("{name}={value}")]);
         }
     }
+    argv.extend(["-e".to_string(), format!("FAMILY={family}")]);
     argv.push(tag.to_string());
     argv.push("validate-image".to_string());
     argv
@@ -907,7 +918,7 @@ mod tests {
             "FAMILY=fedora".to_string(),
             "CONTRACT_FILES=a b".to_string(),
         ];
-        let argv = validate_argv(root, "example:latest", &args);
+        let argv = validate_argv(root, "example:latest", &args, "fedora");
         assert!(argv
             .windows(2)
             .any(|w| w[0] == "--entrypoint" && w[1] == "/ctx/buildc"));

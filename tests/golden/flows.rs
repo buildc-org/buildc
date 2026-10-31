@@ -508,7 +508,7 @@ fn datastream() -> String {
 }
 
 fn scaffolded_sources() -> String {
-    buildc::init::sources_block(&buildc::create::Libraries::every())
+    buildc::init::sources_block(&buildc::flow::Libraries::every())
 }
 
 fn import_sshd(stream: &str) -> [&str; 7] {
@@ -732,7 +732,7 @@ fn setup_component_in_flavour(flow: &Flow) {
     );
     let listed = |at: &str| {
         let (list, _, _) = buildc::declarations(&root);
-        buildc::create::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
+        buildc::flow::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
             .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools"))
             .err()
             .unwrap_or_default()

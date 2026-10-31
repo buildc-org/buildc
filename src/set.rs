@@ -1,7 +1,7 @@
 use crate::copy;
-use crate::create::Field;
-use crate::dispatch::Error;
-use crate::resolve::workflow::{Basis, Shipped, DEFAULT_AT, SHIPPED};
+use crate::declaration::{line_indent, splice};
+use crate::error::Error;
+use crate::flow::profile_options;
 use crate::scap::{ordinal, rule_name, Content};
 use crate::{layout, parse};
 use common::prompt::Prompt;
@@ -9,293 +9,6 @@ use common::ui::tree::Change;
 use common::ui::{Answer, Choice};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-
-pub const BY_HAND: &str = "nothing can be asked here; edit the `workflows` block in repo.kdl, \
-                           then run `buildc generate`";
-
-pub const CONFORMS_BY_HAND: &str = "nothing can be asked here; write `conforms \"<profile>\"` \
-                                    into the image, and `buildc scap content` prints the \
-                                    datastream it is then measured with";
-
-pub const CLAIMS_BY_HAND: &str = "nothing can be asked here; write `satisfies { <benchmark> \
-                                  \"<number>\" }` into the component, and `buildc scap content` \
-                                  prints the datastream those numbers are read out of";
-
-fn splice(text: &str, was: Option<crate::diag::Span>, block: &str) -> String {
-    let mut out = text.to_string();
-    match was {
-        Some(was) => {
-            let end = was.offset + was.len;
-            let start = match block.is_empty() {
-                true => text[..was.offset].trim_end_matches(['\n', ' ']).len(),
-                false => was.offset,
-            };
-            out.replace_range(start..end, block);
-        }
-        None if block.is_empty() => {}
-        None => {
-            if !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(&format!("\n{block}\n"));
-        }
-    }
-    if !out.ends_with('\n') {
-        out.push('\n');
-    }
-    out
-}
-
-#[cfg(feature = "fuzzing")]
-pub fn fuzz_rewrites(text: &str) {
-    let spans = [
-        crate::parse::repo::workflows_span(text),
-        crate::parse::image::conforms_span(text, "fuzz"),
-        crate::parse::component::satisfies_span(text),
-    ];
-    for span in spans {
-        let _ = splice(text, span, "fuzz \"value\"");
-        let _ = splice(text, span, "");
-    }
-}
-
-fn line_indent(text: &str, at: usize) -> &str {
-    let start = text[..at].rfind('\n').map_or(0, |found| found + 1);
-    let line = &text[start..at];
-    &line[..line.len() - line.trim_start().len()]
-}
-
-pub struct Workflows {
-    chosen: Vec<&'static str>,
-    at: (u32, u32),
-    publishes_scheduled: bool,
-    scans_scheduled: bool,
-}
-
-impl Workflows {
-    pub fn every(basis: &Basis) -> Vec<&'static str> {
-        SHIPPED
-            .iter()
-            .filter(|shipped| shipped.met(basis))
-            .map(|shipped| shipped.stem)
-            .collect()
-    }
-
-    pub fn adding(list: &crate::model::image::List, more: &[&'static str]) -> Self {
-        Self {
-            chosen: SHIPPED
-                .iter()
-                .filter(|shipped| {
-                    more.contains(&shipped.stem)
-                        || list.workflows.iter().any(|w| w.name == shipped.stem)
-                })
-                .map(|shipped| shipped.stem)
-                .collect(),
-            at: list.workflows_at,
-            publishes_scheduled: list.publishes_scheduled,
-            scans_scheduled: list.scans_scheduled,
-        }
-    }
-
-    pub fn collect(
-        basis: &Basis,
-        on: &[&str],
-        at: (u32, u32),
-        publishes_current: bool,
-        scans_current: bool,
-        from: Field,
-        prompt: &Prompt,
-    ) -> Result<Option<Self>, String> {
-        let chosen: Vec<&'static Shipped> = match from > Field::Workflows {
-            true => SHIPPED
-                .iter()
-                .filter(|shipped| on.contains(&shipped.stem))
-                .collect(),
-            false => {
-                let options = workflow_options(basis);
-                for shipped in SHIPPED
-                    .iter()
-                    .filter(|shipped| on.contains(&shipped.stem) && !shipped.met(basis))
-                {
-                    println!("{}", copy::cleared(shipped.stem, shipped.needs.unmet()));
-                }
-                let held: Vec<usize> = SHIPPED
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, shipped)| on.contains(&shipped.stem) && shipped.met(basis))
-                    .map(|(at, _)| at)
-                    .collect();
-
-                let Answer::Chosen(chosen) =
-                    prompt.choose_many(copy::WORKFLOWS, &options, &held)?
-                else {
-                    return Ok(None);
-                };
-                chosen.iter().map(|at| &SHIPPED[*at]).collect()
-            }
-        };
-        if let Some(short) = chosen.iter().find(|shipped| !shipped.met(basis)) {
-            return Err(format!("`{}` {}", short.stem, short.needs.unmet()));
-        }
-
-        let builds = chosen.iter().any(|shipped| shipped.stem == "build");
-        let publishes_scheduled = builds
-            && match from > Field::Publish {
-                true => publishes_current,
-                false => prompt.confirm_current(
-                    copy::PUBLISH_SCHEDULED,
-                    copy::YES,
-                    copy::NO,
-                    publishes_current,
-                )?,
-            };
-        let scans_scheduled = match (builds, publishes_scheduled) {
-            (false, _) => false,
-            (true, true) => scans_current,
-            (true, false) => match from > Field::Scans {
-                true => scans_current,
-                false => prompt.confirm_current(
-                    copy::SCAN_SCHEDULED,
-                    copy::YES,
-                    copy::NO,
-                    scans_current,
-                )?,
-            },
-        };
-
-        let at = match chosen.iter().any(|shipped| shipped.at.is_some()) {
-            false => at,
-            true => {
-                let asked = prompt.text(
-                    None,
-                    copy::DAILY_AT,
-                    BY_HAND,
-                    Some(&parse::repo::at_text(at)),
-                )?;
-                parse::repo::time(&asked)
-                    .ok_or_else(|| format!("`{asked}` is not a time of day: `HH:MM`"))?
-            }
-        };
-        Ok(Some(Self {
-            chosen: chosen.iter().map(|shipped| shipped.stem).collect(),
-            at,
-            publishes_scheduled,
-            scans_scheduled,
-        }))
-    }
-
-    pub fn again(
-        &self,
-        basis: &Basis,
-        from: Field,
-        prompt: &Prompt,
-    ) -> Result<Option<Self>, String> {
-        Self::collect(
-            basis,
-            &self.chosen,
-            self.at,
-            self.publishes_scheduled,
-            self.scans_scheduled,
-            from,
-            prompt,
-        )
-    }
-
-    pub fn rows(&self) -> Vec<(Field, &'static str, String)> {
-        let mut rows = vec![(
-            Field::Workflows,
-            copy::ROW_WORKFLOWS,
-            match self.chosen.is_empty() {
-                true => copy::NONE.to_string(),
-                false => self.chosen.join(", "),
-            },
-        )];
-        if !self.chosen.contains(&"build") {
-            return rows;
-        }
-        rows.push((
-            Field::Publish,
-            copy::ROW_PUBLISH,
-            match self.publishes_scheduled {
-                true => copy::ON_SCHEDULED,
-                false => copy::ON_EVERY_PUSH,
-            }
-            .to_string(),
-        ));
-        if !self.publishes_scheduled {
-            rows.push((
-                Field::Scans,
-                copy::ROW_SCANS,
-                match self.scans_scheduled {
-                    true => copy::ON_SCHEDULED,
-                    false => copy::ON_EVERY_BUILD,
-                }
-                .to_string(),
-            ));
-        }
-        if self
-            .chosen
-            .iter()
-            .any(|stem| SHIPPED.iter().any(|s| s.stem == *stem && s.at.is_some()))
-        {
-            rows.push((Field::Daily, copy::ROW_DAILY, parse::repo::at_text(self.at)));
-        }
-        rows
-    }
-
-    pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
-        let file = root.join(layout::REPO_FILE);
-        let text =
-            std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
-        std::fs::write(&file, self.spliced(&text))
-            .map_err(|err| format!("{}: {err}", file.display()))?;
-        Ok(vec![(
-            PathBuf::from(layout::REPO_FILE),
-            Change::Updated("the workflows it generates".to_string()),
-        )])
-    }
-
-    fn spliced(&self, text: &str) -> String {
-        let block = match self.chosen.is_empty() {
-            true => String::new(),
-            false => {
-                let held = parse::repo::workflow_schedules(text);
-                let named: String = self
-                    .chosen
-                    .iter()
-                    .map(|stem| match held.iter().find(|(name, _)| name == stem) {
-                        Some((_, line)) => format!("    {stem} schedule=\"{line}\"\n"),
-                        None => format!("    {stem}\n"),
-                    })
-                    .collect();
-                let at = match self.at == DEFAULT_AT {
-                    true => String::new(),
-                    false => format!(" at=\"{}\"", parse::repo::at_text(self.at)),
-                };
-                let publish = match self.publishes_scheduled {
-                    true => " publish=\"scheduled\"",
-                    false => "",
-                };
-                let scan = match self.scans_scheduled {
-                    true => " scan=\"scheduled\"",
-                    false => "",
-                };
-                format!("workflows{at}{publish}{scan} {{\n{named}}}")
-            }
-        };
-        splice(text, parse::repo::workflows_span(text), &block)
-    }
-}
-
-fn workflow_options(basis: &Basis) -> Vec<Choice> {
-    SHIPPED
-        .iter()
-        .map(|shipped| match shipped.met(basis) {
-            true => Choice::new(shipped.stem, shipped.about),
-            false => Choice::new(shipped.stem, shipped.needs.unmet()).unavailable(),
-        })
-        .collect()
-}
 
 pub struct Library {
     kind: crate::model::remote::Kind,
@@ -421,42 +134,56 @@ impl Library {
     }
 }
 
-pub(crate) fn cost(measured: &str, enforce: bool) -> String {
-    match enforce {
-        false => format!(
-            "A `conforms` turns the scan on: every build measures {measured} against the profile \
-             and publishes the score."
-        ),
-        true => format!(
-            "A `conforms` turns the scan on, and this repository enforces: every build measures \
-             {measured} against the profile, and a rule it fails fails the build."
-        ),
-    }
+fn group(number: &str) -> &str {
+    number.rsplit_once('.').map_or("other", |(head, _)| head)
+}
+
+fn claimable_rules<'a>(
+    content: &'a Content,
+    selected: &'a BTreeSet<String>,
+) -> Vec<(&'a String, &'a BTreeSet<String>)> {
+    let mut rules: Vec<_> = selected
+        .iter()
+        .filter_map(|rule| content.numbers.get(rule).map(|numbers| (rule, numbers)))
+        .collect();
+    rules.sort_by_key(|(rule, numbers)| {
+        (
+            numbers
+                .iter()
+                .next()
+                .map(|number| ordinal(number))
+                .unwrap_or_default(),
+            (*rule).clone(),
+        )
+    });
+    rules
+}
+
+fn claim_options(content: &Content, rules: &[(&String, &BTreeSet<String>)]) -> Vec<Choice> {
+    rules
+        .iter()
+        .map(|(rule, numbers)| {
+            let first = numbers.iter().next().expect("a number reaches the rule");
+            Choice::new(
+                format!(
+                    "{}  {}  {}",
+                    first,
+                    content.titles.get(*rule).unwrap_or(*rule),
+                    rule_name(rule)
+                ),
+                content.descriptions.get(*rule).cloned().unwrap_or_default(),
+            )
+            .within(group(first))
+        })
+        .collect()
 }
 
 pub struct Conforms {
-    file: PathBuf,
-    image: String,
-    profile: String,
-    brought: Vec<String>,
+    declaration: crate::flow::Conforms,
     bring: Option<crate::import::Component>,
 }
 
 impl Conforms {
-    pub(crate) fn declaring(
-        image: &crate::model::image::Image,
-        profile: &str,
-        brought: Vec<String>,
-    ) -> Self {
-        Self {
-            file: PathBuf::from(image.src.name()),
-            image: image.name.clone(),
-            profile: profile.to_string(),
-            brought,
-            bring: None,
-        }
-    }
-
     pub fn collect(
         root: &Path,
         named: Option<String>,
@@ -514,7 +241,10 @@ impl Conforms {
             .into());
         }
 
-        println!("{}\n", cost(&format!("`{}`", image.id), list.audit_enforce));
+        println!(
+            "{}\n",
+            crate::flow::cost(&format!("`{}`", image.id), list.audit_enforce)
+        );
         let options = profile_options(&content);
         let Some(chosen) = prompt.choose(copy::WHICH_PROFILE, &options)? else {
             return Ok(None);
@@ -532,14 +262,12 @@ impl Conforms {
                 &image.id,
             )?),
         };
+        let brought = bring
+            .as_ref()
+            .map(crate::import::Component::brought)
+            .unwrap_or_default();
         Ok(Some(Self {
-            file: PathBuf::from(image.src.name()),
-            image: image.name.clone(),
-            profile: profile.name().to_string(),
-            brought: bring
-                .as_ref()
-                .map(crate::import::Component::brought)
-                .unwrap_or_default(),
+            declaration: crate::flow::Conforms::declaring(image, profile.name(), brought),
             bring,
         }))
     }
@@ -549,91 +277,32 @@ impl Conforms {
             Some(bring) => bring.write(root, &crate::model::image::List::load(root).0.sources)?,
             None => Vec::new(),
         };
-        let text = std::fs::read_to_string(&self.file)
-            .map_err(|err| format!("{}: {err}", self.file.display()))?;
-        let spliced = self.spliced(&text)?;
-        std::fs::write(&self.file, spliced)
-            .map_err(|err| format!("{}: {err}", self.file.display()))?;
-        wrote.push((
-            self.file.clone(),
-            Change::Updated(match self.brought.is_empty() {
-                true => format!("measured against `{}`", self.profile),
-                false => format!(
-                    "measured against `{}`, and {} added to components",
-                    self.profile,
-                    crate::said(&self.brought)
-                ),
-            }),
-        ));
+        wrote.extend(self.declaration.apply(root)?);
         Ok(wrote)
     }
-
-    fn spliced(&self, text: &str) -> Result<String, String> {
-        let was = parse::image::conforms_span(text, &self.image)
-            .ok_or_else(|| format!("{} declares no image `{}`", self.file.display(), self.image))?;
-        let indent = &text[text[..was.offset].rfind('\n').map_or(0, |at| at + 1)..was.offset];
-        let mut out = text.to_string();
-        out.replace_range(
-            was.offset..was.offset + was.len,
-            &match was.len {
-                0 => format!("conforms \"{}\"\n\n{indent}", self.profile),
-                _ => format!("conforms \"{}\"", self.profile),
-            },
-        );
-        Ok(out)
-    }
 }
 
-fn group(number: &str) -> &str {
-    number.rsplit_once('.').map_or("other", |(head, _)| head)
-}
-
-fn profile_options(content: &Content) -> Vec<Choice> {
-    content
-        .profiles
+fn offer(
+    image: &crate::model::image::Image,
+    content: &Content,
+    profile: &crate::scap::Profile,
+    index: &crate::provider::Index,
+    prompt: &Prompt,
+) -> Result<Vec<String>, String> {
+    let owed = crate::scap::owed(image, content, profile, index);
+    let named: Vec<String> = owed
+        .helping
         .iter()
-        .map(|profile| Choice::new(profile.name(), &profile.title))
-        .collect()
-}
-
-fn claimable_rules<'a>(
-    content: &'a Content,
-    selected: &'a BTreeSet<String>,
-) -> Vec<(&'a String, &'a BTreeSet<String>)> {
-    let mut rules: Vec<_> = selected
-        .iter()
-        .filter_map(|rule| content.numbers.get(rule).map(|numbers| (rule, numbers)))
+        .filter(|provider| provider.owner.is_some())
+        .map(|provider| provider.qualified())
         .collect();
-    rules.sort_by_key(|(rule, numbers)| {
-        (
-            numbers
-                .iter()
-                .next()
-                .map(|number| ordinal(number))
-                .unwrap_or_default(),
-            (*rule).clone(),
-        )
-    });
-    rules
-}
-
-fn claim_options(content: &Content, rules: &[(&String, &BTreeSet<String>)]) -> Vec<Choice> {
-    rules
-        .iter()
-        .map(|(rule, numbers)| {
-            let first = numbers.iter().next().expect("a number reaches the rule");
-            Choice::new(
-                format!(
-                    "{}  {}  {}",
-                    first,
-                    content.titles.get(*rule).unwrap_or(*rule),
-                    rule_name(rule)
-                ),
-                content.descriptions.get(*rule).cloned().unwrap_or_default(),
-            )
-            .within(group(first))
-        })
-        .collect()
+    if named.is_empty() {
+        return Ok(Vec::new());
+    }
+    match prompt.confirm(copy::IMPORT_CLAIMING, copy::YES, copy::NO)? {
+        true => Ok(named),
+        false => Ok(Vec::new()),
+    }
 }
 
 pub struct Claims {
@@ -776,32 +445,12 @@ impl Claims {
     }
 }
 
-fn offer(
-    image: &crate::model::image::Image,
-    content: &Content,
-    profile: &crate::scap::Profile,
-    index: &crate::provider::Index,
-    prompt: &Prompt,
-) -> Result<Vec<String>, String> {
-    let owed = crate::scap::owed(image, content, profile, index);
-    let named: Vec<String> = owed
-        .helping
-        .iter()
-        .filter(|provider| provider.owner.is_some())
-        .map(|provider| provider.qualified())
-        .collect();
-    if named.is_empty() {
-        return Ok(Vec::new());
-    }
-    match prompt.confirm(copy::IMPORT_CLAIMING, copy::YES, copy::NO)? {
-        true => Ok(named),
-        false => Ok(Vec::new()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::flow::Conforms;
+    use crate::flow::{workflow_options, Field, Workflows};
+    use crate::resolve::workflow::{Basis, DEFAULT_AT};
 
     fn conforms(profile: &str) -> Conforms {
         Conforms {
@@ -809,7 +458,6 @@ mod tests {
             image: "Example".to_string(),
             profile: profile.to_string(),
             brought: Vec::new(),
-            bring: None,
         }
     }
 

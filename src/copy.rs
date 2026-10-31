@@ -1,5 +1,7 @@
 pub const PRODUCT: &str = "Buildc";
 
+pub const HOST: &str = "github.com";
+
 pub const REPO_NAME: &str = "What will the repo be called?";
 pub const SCHEDULED: &str = "Sync this repo to a provider?";
 pub const REPO_HOST: &str = "Where will the repo be hosted?";
@@ -9,7 +11,7 @@ pub const NO_GH: &str = "Install the Github CLI now?";
 
 pub fn username(host: &str) -> String {
     match host {
-        crate::create::HOST => "Github username?".to_string(),
+        HOST => "Github username?".to_string(),
         host => format!("Username on {host}?"),
     }
 }

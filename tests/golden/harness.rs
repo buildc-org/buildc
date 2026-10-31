@@ -80,7 +80,7 @@ pub(super) fn copy(from: &Path, to: &Path) {
 }
 
 pub(super) fn seed_bases(root: &Path) {
-    let keyed = buildc::import::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
+    let keyed = buildc::collection::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
     copy(
@@ -94,7 +94,7 @@ pub(super) fn seed_bases(root: &Path) {
 }
 
 pub(super) fn seed_library(root: &Path) {
-    let keyed = buildc::import::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
+    let keyed = buildc::collection::cache_path(root, buildc::base::LIBRARY_URL, "HEAD")
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
     copy(&collections, &keyed.join("components"));

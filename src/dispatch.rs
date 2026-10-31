@@ -1,6 +1,7 @@
 use crate::command::{self, Context, Verb};
 use crate::copy;
 use crate::emit::Part;
+use crate::error::Error;
 use crate::Command;
 use common::prompt::Prompt;
 use std::path::{Path, PathBuf};
@@ -9,30 +10,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const USAGE_ERROR: u8 = 1;
 pub const REPO_ERROR: u8 = 2;
-
-pub enum Error {
-    Invocation(String),
-    Operation(String),
-    Cancelled,
-}
-
-impl Error {
-    pub fn message(&self) -> &str {
-        match self {
-            Self::Invocation(message) | Self::Operation(message) => message,
-            Self::Cancelled => "cancelled",
-        }
-    }
-}
-
-impl From<String> for Error {
-    fn from(message: String) -> Self {
-        match common::prompt::cancelled(&message) {
-            true => Self::Cancelled,
-            false => Self::Operation(message),
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct Flags {
@@ -355,13 +332,9 @@ pub fn dispatch(
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            let repo = crate::create::named_after_root(&root).unwrap_or_default();
-            let url = owner.map(|owner| {
-                format!(
-                    "{}/{repo}",
-                    crate::create::origin(crate::create::HOST, &owner)
-                )
-            });
+            let repo = crate::flow::named_after_root(&root).unwrap_or_default();
+            let url =
+                owner.map(|owner| format!("{}/{repo}", crate::create::origin(copy::HOST, &owner)));
             let wrote = crate::create::Image::collect(
                 crate::create::Home {
                     root: &root,
@@ -372,12 +345,12 @@ pub fn dispatch(
                 name,
                 base,
                 "a name argument",
-                crate::create::Field::Image,
+                crate::flow::Field::Image,
                 None,
                 prompt,
             )?
             .apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::CreateFlavour => {
@@ -387,7 +360,7 @@ pub fn dispatch(
             };
             let wrote =
                 crate::create::Flavour::collect(&root, name, images, prompt)?.apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::CreateModule => {
@@ -397,7 +370,7 @@ pub fn dispatch(
             };
             let wrote = crate::create::Component::collect(&root, name, pkgs, with, images, prompt)?
                 .apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::CreateKey => {
@@ -414,7 +387,7 @@ pub fn dispatch(
             };
             let scripts = crate::create::Scripts::collect(&root, rest, &[], prompt)?;
             let wrote = scripts.apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             if !wrote.is_empty() {
                 println!("{}", crate::copy::SCRIPTS_NEXT);
             }
@@ -456,7 +429,7 @@ pub fn dispatch(
                 .iter()
                 .any(|record| record.tracked);
             match (wrote.is_empty(), tracks) {
-                (false, _) => crate::create::report(&root, &wrote),
+                (false, _) => crate::flow::report(&root, &wrote),
                 (true, true) => eprintln!("buildc: every tracked component matches its library"),
                 (true, false) => eprintln!("buildc: no component tracks its library"),
             }
@@ -483,7 +456,7 @@ pub fn dispatch(
                 }
             }
             match crate::provenance::lock::untrack(&root, key)? {
-                true => crate::create::report(
+                true => crate::flow::report(
                     &root,
                     &[(
                         PathBuf::from(crate::layout::COMPONENTS).join(crate::layout::LOCK_FILE),
@@ -505,24 +478,24 @@ pub fn dispatch(
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             if !prompt.asks() {
-                return Err(Error::Invocation(crate::set::BY_HAND.to_string()));
+                return Err(Error::Invocation(crate::flow::BY_HAND.to_string()));
             }
             let list = crate::load(&root).list;
             let on: Vec<&str> = list.workflows.iter().map(|w| w.name.as_str()).collect();
-            let Some(set) = crate::set::Workflows::collect(
+            let Some(set) = crate::flow::Workflows::collect(
                 &crate::resolve::workflow::Basis::of(&list),
                 &on,
                 list.workflows_at,
                 list.publishes_scheduled,
                 list.scans_scheduled,
-                crate::create::Field::Workflows,
+                crate::flow::Field::Workflows,
                 prompt,
             )?
             else {
                 return Ok(ExitCode::SUCCESS);
             };
             let wrote = set.apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             println!("\nnext, in {}:\n\x20 buildc generate\n", root.display());
             Ok(ExitCode::SUCCESS)
         }
@@ -535,7 +508,7 @@ pub fn dispatch(
                 return Ok(ExitCode::SUCCESS);
             };
             let wrote = set.apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetConforms => {
@@ -544,13 +517,13 @@ pub fn dispatch(
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             if !prompt.asks() {
-                return Err(Error::Invocation(crate::set::CONFORMS_BY_HAND.to_string()));
+                return Err(Error::Invocation(crate::flow::CONFORMS_BY_HAND.to_string()));
             }
             let Some(set) = crate::set::Conforms::collect(&root, name, datastream, prompt)? else {
                 return Ok(ExitCode::SUCCESS);
             };
             let wrote = set.apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::SetClaims => {
@@ -561,13 +534,13 @@ pub fn dispatch(
                 return Ok(ExitCode::from(REPO_ERROR));
             };
             if !prompt.asks() {
-                return Err(Error::Invocation(crate::set::CLAIMS_BY_HAND.to_string()));
+                return Err(Error::Invocation(crate::flow::CLAIMS_BY_HAND.to_string()));
             }
             let Some(set) = crate::set::Claims::collect(&root, &named, datastream, prompt)? else {
                 return Ok(ExitCode::SUCCESS);
             };
             let wrote = set.apply(&root)?;
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
         Verb::Build => {
@@ -943,7 +916,7 @@ fn reading(
             .collect();
         crate::write_generated(&root, &run.files)?;
         if prompt.draws() {
-            crate::create::report(&root, &wrote);
+            crate::flow::report(&root, &wrote);
             run.stdout.clear();
         }
     }

@@ -116,7 +116,7 @@ fn create_into(name: &str, root: &Path) {
         Some("Server".into()),
         Some("quay.io/fedora/fedora-bootc:44".into()),
         "a name argument",
-        buildc::create::Field::Image,
+        buildc::flow::Field::Image,
         None,
         &silent,
     )
@@ -187,7 +187,7 @@ fn copied(name: &str, root: &Path) {
     }
 
     out.push_str("==== the catalog\n");
-    for component in buildc::import::catalog(&here, &sources, true).unwrap() {
+    for component in buildc::provider::catalog(&here, &sources, true).unwrap() {
         out.push_str(&format!(
             "{}  {}\n",
             component.qualified(),

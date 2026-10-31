@@ -359,7 +359,7 @@ fn common_name(
     profile: Option<&str>,
     prompt: &Prompt,
 ) -> Result<String, String> {
-    let named = crate::create::named_after_root(root).unwrap_or_else(|| "buildc".to_string());
+    let named = crate::flow::named_after_root(root).unwrap_or_else(|| "buildc".to_string());
     let what = match profile {
         Some("tls-ca") => "TLS CA",
         _ => "Secure Boot",

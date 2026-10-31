@@ -6,7 +6,8 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use buildc::command::{self, Cli, Context, Verb};
 use buildc::copy;
-use buildc::dispatch::{self, Error, USAGE_ERROR};
+use buildc::dispatch::{self, USAGE_ERROR};
+use buildc::error::Error;
 use buildc::model::image::BUILDC_VERSION;
 
 const COMMANDS: &str = "Run 'buildc --help' to list the commands";

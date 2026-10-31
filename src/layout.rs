@@ -390,6 +390,18 @@ pub const COMPONENT_DIR: Tree = Tree {
     ],
 };
 
+pub fn named_after_root(root: &Path) -> Option<String> {
+    std::fs::canonicalize(root)
+        .ok()
+        .as_deref()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
+pub(crate) fn under(root: &Path, path: &Path) -> PathBuf {
+    path.strip_prefix(root).unwrap_or(path).to_path_buf()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -20,17 +20,17 @@ pub struct Plan {
 fn plan(
     version: &str,
     arch: &str,
-    euid: u32,
+    privileged: bool,
     home: Option<PathBuf>,
     data: Option<PathBuf>,
 ) -> Result<Plan, String> {
     let unset = "HOME is not set, so there is no per-user pair to move to";
-    let (bindir, assets) = match euid {
-        0 => (
+    let (bindir, assets) = match privileged {
+        true => (
             PathBuf::from("/usr/local/bin"),
             PathBuf::from("/usr/local/share/buildc/assets"),
         ),
-        _ => (
+        false => (
             home.ok_or(unset)?.join(".local/bin"),
             data.ok_or(unset)?.join("buildc/assets"),
         ),
@@ -46,10 +46,10 @@ fn plan(
     })
 }
 
-fn instead(euid: u32) -> &'static str {
-    match euid {
-        0 => "the per-user pair is ~/.local/bin with $XDG_DATA_HOME/buildc/assets",
-        _ => "run as root to move /usr/local/bin and /usr/local/share/buildc/assets",
+fn instead(privileged: bool) -> &'static str {
+    match privileged {
+        true => "the per-user pair is ~/.local/bin with $XDG_DATA_HOME/buildc/assets",
+        false => "run as root to move /usr/local/bin and /usr/local/share/buildc/assets",
     }
 }
 
@@ -140,11 +140,11 @@ pub fn run() -> Result<(), String> {
         Ordering::Less => println!("buildc: running {running}, at {}", here.display()),
     }
 
-    let euid = unsafe { libc::geteuid() };
+    let privileged = crate::sys::privileged();
     let plan = plan(
         &latest,
         arch,
-        euid,
+        privileged,
         std::env::var_os("HOME").map(PathBuf::from),
         init::data_home(),
     )?;
@@ -178,12 +178,12 @@ pub fn run() -> Result<(), String> {
 
     for dir in [bindir, parent] {
         fs::create_dir_all(dir)
-            .map_err(|err| format!("{}: {err}\n\n{}", dir.display(), instead(euid)))?;
+            .map_err(|err| format!("{}: {err}\n\n{}", dir.display(), instead(privileged)))?;
     }
 
     let work = init::Scratch(parent.join(format!(".upgrade.{}", std::process::id())));
     fs::create_dir(&work.0)
-        .map_err(|err| format!("{}: {err}\n\n{}", work.0.display(), instead(euid)))?;
+        .map_err(|err| format!("{}: {err}\n\n{}", work.0.display(), instead(privileged)))?;
     let sha256 = digest(&format!("{}.sha256", plan.url))?;
     crate::runtime::extract(&plan.url, Some(&sha256), &work.0, &[])?;
 
@@ -197,7 +197,7 @@ pub fn run() -> Result<(), String> {
 
     let ready = init::Scratch(bindir.join(format!(".buildc.{}", std::process::id())));
     fs::copy(&came, &ready.0)
-        .map_err(|err| format!("{}: {err}\n\n{}", ready.0.display(), instead(euid)))?;
+        .map_err(|err| format!("{}: {err}\n\n{}", ready.0.display(), instead(privileged)))?;
     fs::set_permissions(&ready.0, fs::Permissions::from_mode(0o755))
         .map_err(|err| format!("{}: {err}", ready.0.display()))?;
 
@@ -247,12 +247,9 @@ mod tests {
 
     #[test]
     fn root_and_a_person_take_different_pairs_and_never_each_others() {
-        let root = plan("0.3.8", "x86_64", 0, None, None).unwrap();
+        let root = plan("0.3.8", "x86_64", true, None, None).unwrap();
         assert_eq!(root.bin, PathBuf::from("/usr/local/bin/buildc"));
-        assert_eq!(
-            root.assets,
-            PathBuf::from("/usr/local/share/buildc/assets")
-        );
+        assert_eq!(root.assets, PathBuf::from("/usr/local/share/buildc/assets"));
         assert_eq!(
             root.url,
             "https://github.com/buildc-org/buildc/releases/download/v0.3.8/\
@@ -263,22 +260,22 @@ mod tests {
         let user = plan(
             "0.3.8",
             "x86_64",
-            1000,
+            false,
             Some(home.clone()),
             Some(PathBuf::from("/elsewhere/data")),
         )
         .unwrap();
         assert_eq!(user.bin, home.join(".local/bin/buildc"));
-        assert_eq!(
-            user.assets,
-            PathBuf::from("/elsewhere/data/buildc/assets")
-        );
+        assert_eq!(user.assets, PathBuf::from("/elsewhere/data/buildc/assets"));
+
+        assert!(instead(true).contains("per-user"));
+        assert!(instead(false).contains("run as root"));
     }
 
     #[test]
     fn the_asset_is_named_for_the_architecture() {
         for arch in PUBLISHED {
-            let url = plan("0.3.8", arch, 0, None, None).unwrap().url;
+            let url = plan("0.3.8", arch, true, None, None).unwrap().url;
             assert!(
                 url.ends_with(&format!("buildc-v0.3.8-{arch}-linux-musl.tar.gz")),
                 "{url}"
@@ -288,11 +285,11 @@ mod tests {
 
     #[test]
     fn a_person_with_no_home_is_refused_rather_than_sent_to_usr_local() {
-        assert!(plan("0.3.8", "x86_64", 1000, None, None).is_err());
+        assert!(plan("0.3.8", "x86_64", false, None, None).is_err());
         assert!(plan(
             "0.3.8",
             "x86_64",
-            1000,
+            false,
             Some(PathBuf::from("/home/x")),
             None
         )

@@ -1,11 +1,12 @@
 use crate::copy;
 use crate::error::Error;
-use crate::flow::{report, Listing};
 use crate::layout;
 use crate::model::remote::{Collection, Kind as SourceKind};
 use crate::provenance::lock;
 use crate::provider::Provider;
+use crate::report::report;
 use crate::said;
+use crate::setup::Listing;
 use common::prompt::Prompt;
 use common::ui::tree::Change;
 use common::ui::Choice;
@@ -134,7 +135,7 @@ fn no_library(sources: &[Collection]) -> Result<(), String> {
         return Ok(());
     }
     const NONE: &str = "repo.kdl declares no `sources`, so there is no collection to import from";
-    let block = crate::init::sources_block(&crate::flow::Libraries::every());
+    let block = crate::init::sources_block(&crate::setup::Libraries::every());
     Err(format!(
         "{NONE}.\n\nThis is the block `buildc create repo` writes:\n\n{block}"
     ))
@@ -473,9 +474,13 @@ struct Member {
 
 impl Member {
     fn declares(&self, root: &Path) -> crate::parse::component::Summary {
+        let owned;
         let dir = match self.vendor {
-            true => self.from.dir.clone(),
-            false => layout::component(root, &self.name),
+            true => self.from.dir.as_path(),
+            false => {
+                owned = layout::component(root, &self.name);
+                owned.as_path()
+            }
         };
         crate::parse::component::summary(&dir.join(layout::MANIFEST_FILE))
     }
@@ -499,8 +504,8 @@ pub struct Component {
     listing: Listing,
     tracked: bool,
     unlisted: Vec<Unlisted>,
-    workflows: Option<crate::flow::Workflows>,
-    conforms: Vec<crate::flow::Conforms>,
+    workflows: Option<crate::setup::Workflows>,
+    conforms: Vec<crate::conformance::Conforms>,
     imported: Vec<Member>,
 }
 
@@ -511,6 +516,7 @@ impl Component {
         sources: &[Collection],
         enforce: bool,
         prompt: &Prompt,
+        say: crate::report::Say<'_>,
     ) -> Result<Self, Error> {
         let Request {
             name,
@@ -579,6 +585,7 @@ impl Component {
             },
             dependencies,
             prompt,
+            &mut *say,
         )?;
         let also = owed_now
             .bring
@@ -628,17 +635,17 @@ impl Component {
                     .iter()
                     .map(|s| format!("`{}` {}", s.stem, s.about))
                     .collect();
-                println!("{}\n", rows.join("\n"));
+                say(&format!("{}\n\n", rows.join("\n")));
                 prompt
                     .confirm(copy::GENERATE_WORKFLOWS, copy::YES, copy::NO)?
-                    .then(|| crate::flow::Workflows::adding(&list, &named))
+                    .then(|| crate::setup::Workflows::adding(&list, &named))
             }
         };
 
         let members: Vec<Member> = also.into_iter().chain(chosen).collect();
         let brought: Vec<String> = members.iter().map(|member| member.name.clone()).collect();
         let conforms = measured(
-            &list, &listing, &named, &declares, datastream, &brought, prompt,
+            &list, &listing, &named, &declares, datastream, &brought, prompt, say,
         )?;
         let copied: Vec<String> = members
             .iter()
@@ -691,17 +698,18 @@ impl Component {
                 None => {
                     let text = std::fs::read_to_string(&file)
                         .map_err(|err| format!("{}: {err}", file.display()))?;
-                    edits.push((file.clone(), text));
+                    edits.push((file, text));
                     edits.len() - 1
                 }
             };
-            edits[at].1 = crate::declaration::unlisting(
-                &file,
+            let text = crate::declaration::unlisting(
+                &edits[at].0,
                 &edits[at].1,
                 &gone.image,
                 gone.flavour.as_deref(),
                 &gone.name,
             )?;
+            edits[at].1 = text;
         }
         let mut wrote = vendor_all(root, sources, &copies, self.tracked)?;
         let listed: Vec<(&str, &str)> = self
@@ -872,6 +880,7 @@ fn short(
     listed: &Listed,
     dependencies: bool,
     prompt: &Prompt,
+    say: crate::report::Say<'_>,
 ) -> Result<Owed, String> {
     let &Listed {
         listing,
@@ -932,13 +941,13 @@ fn short(
         return Ok(owed_now);
     }
 
-    println!("{}", copy::REQUIRED);
+    say(&format!("{}\n", copy::REQUIRED));
     for (component, base, want, provider) in mappings {
-        println!(
-            "\n  {component} > {base}\n    requires: {want}\n    provider component: {provider}"
-        );
+        say(&format!(
+            "\n  {component} > {base}\n    requires: {want}\n    provider component: {provider}\n"
+        ));
     }
-    println!();
+    say("\n");
 
     match prompt.confirm(copy::BRING_REQUIRED, copy::YES, copy::NO)? {
         true => Ok(owed_now),
@@ -1158,6 +1167,10 @@ fn collisions(root: &Path, brought: &[String]) {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is one value the offer reads from the imported set"
+)]
 fn measured(
     list: &crate::model::image::List,
     listing: &Listing,
@@ -1166,7 +1179,8 @@ fn measured(
     datastream: Option<&Path>,
     brought: &[String],
     prompt: &Prompt,
-) -> Result<Vec<crate::flow::Conforms>, String> {
+    say: crate::report::Say<'_>,
+) -> Result<Vec<crate::conformance::Conforms>, String> {
     let claims: Vec<&String> = declares
         .iter()
         .flat_map(|held| held.satisfies.iter())
@@ -1208,8 +1222,8 @@ fn measured(
             .map(|i| format!("`{}`", i.id))
             .collect::<Vec<_>>(),
     );
-    println!(
-        "{} {} rules {} {}, and {measured} {} no `conforms`.\n{}\n",
+    say(&format!(
+        "{} {} rules {} {}, and {measured} {} no `conforms`.\n{}\n\n",
         said(
             &named
                 .iter()
@@ -1234,8 +1248,8 @@ fn measured(
             1 => "declares",
             _ => "declare",
         },
-        crate::flow::cost(&measured, list.audit_enforce),
-    );
+        crate::conformance::cost(&measured, list.audit_enforce),
+    ));
     let options: Vec<Choice> = profiles
         .iter()
         .map(|profile| Choice::new(profile.name(), &profile.title))
@@ -1246,7 +1260,11 @@ fn measured(
     Ok(images
         .iter()
         .map(|image| {
-            crate::flow::Conforms::declaring(image, profiles[chosen].name(), brought.to_vec())
+            crate::conformance::Conforms::declaring(
+                image,
+                profiles[chosen].name(),
+                brought.to_vec(),
+            )
         })
         .collect())
 }
@@ -1513,7 +1531,8 @@ mod tests {
 
     #[test]
     fn an_import_that_climbs_out_of_components_is_refused() {
-        let root = std::env::temp_dir().join(format!("buildc-import-escape-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("buildc-import-escape-{}", std::process::id()));
         crate::init::put(&root.join("escape/manifest.kdl"), "schema-version 1\n").unwrap();
         crate::init::put(
             &layout::component(&root, "one").join(layout::MANIFEST_FILE),
@@ -1696,7 +1715,8 @@ image {
 
     #[test]
     fn a_summary_fills_an_option_import_with_its_default() {
-        let root = std::env::temp_dir().join(format!("buildc-summary-import-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("buildc-summary-import-{}", std::process::id()));
         let file = root.join("manifest.kdl");
         crate::init::put(
             &file,
@@ -1780,7 +1800,8 @@ image {
 
     #[test]
     fn an_import_refuses_a_manifest_newer_than_the_repository() {
-        let root = std::env::temp_dir().join(format!("buildc-import-schema-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("buildc-import-schema-{}", std::process::id()));
         crate::init::put(
             &root.join(layout::REPO_FILE),
             "schema-version 1\nname \"Example\"\n",
@@ -1809,6 +1830,7 @@ image {
             &sources,
             false,
             &Prompt::silent(),
+            &mut |_| {},
         );
         let message = match result {
             Err(err) => err.message().to_string(),
@@ -1858,6 +1880,7 @@ image {
             &sources,
             false,
             &Prompt::silent(),
+            &mut |_| {},
         );
         let _ = std::fs::remove_dir_all(&root);
         let message = match result {
@@ -1882,6 +1905,7 @@ image {
             &sources,
             false,
             &Prompt::scripted(answers),
+            &mut |_| {},
         );
         let _ = std::fs::remove_dir_all(&root);
         assert!(result.is_err(), "two candidates were settled by a flag");
@@ -1897,6 +1921,7 @@ image {
             &sources,
             false,
             &Prompt::scripted(answers),
+            &mut |_| {},
         )
         .unwrap_or_else(|err| panic!("{}", err.message()))
         .write(&root, &sources)
@@ -1922,6 +1947,7 @@ image {
             &sources,
             false,
             &Prompt::scripted(vec!["y".to_string()]),
+            &mut |_| {},
         )
         .unwrap_or_else(|err| panic!("{}", err.message()))
         .write(&root, &sources)
@@ -1930,6 +1956,7 @@ image {
         let held = root.join("components/podman/manifest.kdl").is_file();
         let lock = std::fs::read_to_string(layout::lock(&root)).unwrap();
         let issues = crate::run(crate::Command::Check, None, &root)
+            .problems
             .issues
             .plain();
         let _ = std::fs::remove_dir_all(&root);

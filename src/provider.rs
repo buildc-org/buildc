@@ -118,7 +118,6 @@ impl Index {
     pub fn of(&self, capability: &str) -> Vec<&Provider> {
         self.held
             .iter()
-            // A provider that supplies `base-image` is a whole base, so its capabilities come with the image and it never fits as the component that adds one.
             .filter(|held| {
                 crate::resolve::answers(
                     &held.name,
@@ -133,6 +132,7 @@ impl Index {
         self.of(capability)
             .into_iter()
             .filter(|held| crate::resolve::targets(&held.declares.targets, family))
+            // A provider that supplies `base-image` is a whole base, so its capabilities come with the image and it never fits as the component that adds one.
             .filter(|held| {
                 !held
                     .declares
@@ -212,7 +212,7 @@ fn own(root: &Path, disk: &Disk) -> Vec<Provider> {
     disk.components()
         .map(|dir| Provider {
             owner: None,
-            name: dir.clone(),
+            name: dir.to_string(),
             here: true,
             declares: parse::component::summary(&layout::manifest(root, dir)),
         })

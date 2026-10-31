@@ -43,8 +43,8 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     }
     let target = target(&list, opts.target.as_deref())?;
 
-    let gate = crate::run(crate::Command::Verify, None, root);
-    if gate.issues.report(&gate.context) {
+    let mut gate = crate::run(crate::Command::Verify, None, root);
+    if gate.problems.report() {
         return Ok(Stopped::Repository);
     }
     eprintln!(
@@ -52,7 +52,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         gate.files.len()
     );
 
-    let (list, resolved) = (gate.list, gate.resolved);
+    let (list, resolved) = (gate.reading.list, gate.reading.resolved);
     let (image, flavour, entries) =
         of_target(&list, &target).ok_or_else(|| format!("`{target}` has no image"))?;
     let components: Vec<&Component> = entries
@@ -151,7 +151,10 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     let luks = provides(image, &entries, crate::emit::recipe::LUKS_INITRAMFS);
     let mut build_args = vec![
         format!("IMAGE_VERSION={version}"),
-        format!("IMAGE_REGISTRY={}", namespace.clone().unwrap_or_default()),
+        format!(
+            "IMAGE_REGISTRY={}",
+            namespace.as_deref().unwrap_or_default()
+        ),
         format!("TARGET={target}"),
         format!(
             "COMPONENT_HASHES={}",
@@ -203,11 +206,11 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     let mut tags = opts.tags.clone();
     tags.extend(lines("TAGS"));
     if tags.is_empty() {
-        tags.push(format!(
-            "{}:{}",
-            env("IMAGE_NAME").unwrap_or_else(|| published.clone()),
-            env("DEFAULT_TAG").unwrap_or_else(|| "latest".to_string())
-        ));
+        let default_tag = env("DEFAULT_TAG").unwrap_or_else(|| "latest".to_string());
+        tags.push(match env("IMAGE_NAME") {
+            Some(name) => format!("{name}:{default_tag}"),
+            None => format!("{published}:{default_tag}"),
+        });
     }
 
     let secrets = secrets(opts)?;

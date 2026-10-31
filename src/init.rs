@@ -3,10 +3,7 @@ use crate::model::image::{is_name, SCHEMA_VERSION};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const INSTALLED: [&str; 2] = [
-    "/usr/local/share/buildc/assets",
-    "/usr/share/buildc/assets",
-];
+const INSTALLED: [&str; 2] = ["/usr/local/share/buildc/assets", "/usr/share/buildc/assets"];
 
 pub(crate) const GITIGNORE: &str = include_str!("../assets/.gitignore");
 
@@ -80,7 +77,7 @@ pub fn drifted(root: &Path) -> Vec<String> {
         .collect()
 }
 
-pub fn sources_block(chosen: &[&crate::base::DefaultLibrary]) -> String {
+pub fn sources_block(chosen: &[&crate::collection::DefaultLibrary]) -> String {
     if chosen.is_empty() {
         return String::new();
     }
@@ -92,7 +89,7 @@ pub fn sources_block(chosen: &[&crate::base::DefaultLibrary]) -> String {
                 "    {} \"{}\" {{\n        url \"{}\"\n        path \"{}\"\n    }}\n",
                 library.kind.as_str(),
                 library.alias,
-                crate::base::LIBRARY_URL,
+                crate::collection::LIBRARY_URL,
                 library.path
             ),
         );
@@ -297,7 +294,7 @@ mod tests {
     #[test]
     fn a_removal_that_fails_names_the_path() {
         use std::os::unix::fs::PermissionsExt as _;
-        if unsafe { libc::geteuid() } == 0 {
+        if crate::sys::privileged() {
             return;
         }
         let root = std::env::temp_dir().join(format!("buildc-held-{}", std::process::id()));

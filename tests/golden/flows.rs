@@ -508,7 +508,7 @@ fn datastream() -> String {
 }
 
 fn scaffolded_sources() -> String {
-    buildc::init::sources_block(&buildc::flow::Libraries::every())
+    buildc::init::sources_block(&buildc::setup::Libraries::every())
 }
 
 fn import_sshd(stream: &str) -> [&str; 7] {
@@ -732,7 +732,7 @@ fn setup_component_in_flavour(flow: &Flow) {
     );
     let listed = |at: &str| {
         let (list, _, _) = buildc::declarations(&root);
-        buildc::flow::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
+        buildc::setup::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
             .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools"))
             .err()
             .unwrap_or_default()
@@ -969,10 +969,17 @@ fn setup_workflows(flow: &Flow) {
 
     let generated_build = |root: &Path| {
         let run = buildc::run(Command::Generate, None, root);
-        assert!(run.issues.is_empty(), "{}", run.issues.plain());
+        assert!(
+            run.problems.issues.is_empty(),
+            "{}",
+            run.problems.issues.plain()
+        );
         buildc::write_generated(root, &run.files).unwrap();
         assert!(
-            buildc::run(Command::Verify, None, root).issues.is_empty(),
+            buildc::run(Command::Verify, None, root)
+                .problems
+                .issues
+                .is_empty(),
             "verify rejected its generated workflow"
         );
         run.files
@@ -1650,6 +1657,7 @@ fn setup_import_edit_guards(flow: &Flow) {
             &list.sources,
             false,
             &common::prompt::Prompt::silent(),
+            &mut |_| {},
         )
     };
     import(None)
@@ -1848,6 +1856,7 @@ fn setup_collides(flow: &Flow) {
     );
     assert!(
         buildc::run(Command::Check, None, &collide)
+            .problems
             .issues
             .plain()
             .contains("`flatpak` overwrites `/usr/share/example/remotes.list`"),
@@ -2143,14 +2152,6 @@ fn tect_terminal_smoke_waits_for_each_screen() {
             ],
             "beta.image.kdl",
         ),
-        (
-            format!("'{binary}' --root . create image Gamma --base example.invalid/own:1"),
-            vec![
-                (b"base family".as_slice(), b"\r".as_slice()),
-                (b"Add them now?".as_slice(), b"\x1b".as_slice()),
-            ],
-            "gamma.image.kdl",
-        ),
     ] {
         let before = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
         let (status, errors, raw) = drawn_run(&root, &command, &steps);
@@ -2166,4 +2167,20 @@ fn tect_terminal_smoke_waits_for_each_screen() {
             "Escape edited repo.kdl"
         );
     }
+
+    let (status, errors, raw) = drawn_run(
+        &root,
+        &format!("'{binary}' --root . create image Gamma --base example.invalid/own:1"),
+        &[],
+    );
+    assert!(
+        status.success(),
+        "{errors}{}",
+        String::from_utf8_lossy(&raw)
+    );
+    let image = std::fs::read_to_string(root.join("gamma.image.kdl")).unwrap();
+    assert!(!image.contains("family"), "{image}");
+    let base =
+        std::fs::read_to_string(root.join("components/base-image/own/manifest.kdl")).unwrap();
+    assert!(!base.contains("family"), "{base}");
 }

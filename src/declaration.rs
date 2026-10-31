@@ -115,19 +115,6 @@ pub(crate) fn splice(text: &str, was: Option<crate::diag::Span>, block: &str) ->
     out
 }
 
-#[cfg(feature = "fuzzing")]
-pub fn fuzz_rewrites(text: &str) {
-    let spans = [
-        crate::parse::repo::workflows_span(text),
-        crate::parse::image::conforms_span(text, "fuzz"),
-        crate::parse::component::satisfies_span(text),
-    ];
-    for span in spans {
-        let _ = splice(text, span, "fuzz \"value\"");
-        let _ = splice(text, span, "");
-    }
-}
-
 pub(crate) fn line_indent(text: &str, at: usize) -> &str {
     let start = text[..at].rfind('\n').map_or(0, |found| found + 1);
     let line = &text[start..at];

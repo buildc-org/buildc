@@ -46,6 +46,7 @@ impl Copr {
         )
     }
 }
+
 pub struct Coverage {
     pub benchmark: String,
     pub rules: Vec<String>,
@@ -69,6 +70,20 @@ pub struct BaseFacts {
     pub family: String,
     pub bootloaders: Vec<String>,
     pub scap_content: String,
+}
+
+pub struct BaseComponent {
+    pub name: String,
+    pub owner: Option<String>,
+    pub image: String,
+    pub family: String,
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
+    pub imports: Vec<String>,
+    pub about: String,
+    pub version: Option<String>,
+    pub scap_content: String,
+    pub bootloaders: Vec<String>,
 }
 
 pub struct Located {
@@ -127,22 +142,6 @@ pub enum Position {
     Tail,
 }
 
-impl Component {
-    pub fn withdraws(&self, name: &str) -> bool {
-        self.removes
-            .iter()
-            .any(|decl| crate::resolve::meets(name, &decl.name))
-    }
-
-    pub fn answers(&self, required: &str) -> bool {
-        crate::resolve::answers(
-            &self.path,
-            self.provides.iter().map(|decl| decl.name.as_str()),
-            required,
-        )
-    }
-}
-
 pub struct Component {
     pub path: String,
     pub dir: String,
@@ -186,6 +185,22 @@ pub struct Component {
     pub repo: bool,
     pub network: Option<Span>,
     pub access: Access,
+}
+
+impl Component {
+    pub fn withdraws(&self, name: &str) -> bool {
+        self.removes
+            .iter()
+            .any(|decl| crate::resolve::meets(name, &decl.name))
+    }
+
+    pub fn answers(&self, required: &str) -> bool {
+        crate::resolve::answers(
+            &self.path,
+            self.provides.iter().map(|decl| decl.name.as_str()),
+            required,
+        )
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

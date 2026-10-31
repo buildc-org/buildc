@@ -9,7 +9,11 @@ use crate::parse::{string_arg, string_args, text};
 use kdl::{KdlDocument, KdlNode};
 
 #[rustfmt::skip]
-const SEGMENT: Node = Node::new("", "One part of a component path, which lists the component at that path or holds further parts.").about("Names one directory of a component path under `components/`. A segment lists the component at its path. If no component is there, then the segment only holds the segments below it. A child with an argument sets an option that the component declares, such as `version \"44\"`. A child with no argument is the next segment. A segment that holds a manifest node, such as `packages` or `base`, defines its component inline, and no directory is needed.").example("desktop-environment")
+const SEGMENT: Node = Node::new("", "One part of a component path, which lists the component at that path or holds further parts.")
+    .about("A segment takes no argument, and its name takes lowercase letters, digits and dashes, \
+        with one `@<tag>` allowed on the last part. `variant=` is its only property, and every \
+        other setting is a child node.")
+    .example("desktop-environment")
     .notes(&[
         "A component that the image file defines inline must not also be a component under \
          `components/`. `buildc check` refuses the pair and names both.",
@@ -28,7 +32,10 @@ pub(crate) const BOOT_CHAINS: &[&str] = &["uki-shim", "uki-db"];
 
 #[rustfmt::skip]
 pub const IMAGE: Node = Node::new("image",
-    "One image, which declares its names and every component that it is made of, its base among them.").about("Declares one bootable operating system image: its names, how the installer lays it down and the components that make it up. Each component is a path of segments, such as `desktop-environment { kde-plasma }`, and one of them is the base that every layer builds on. The build publishes the image under its `id`.").scaffolds(&["name", "url", "issues-url", "layout", ""])
+    "One image, which declares its names and every component that it is made of, its base among them.")
+    .about("The block is the whole declaration of one published image. `buildc` reports two images \
+        with one `id`, and a flavour name that publishes as another image's `id`.")
+    .scaffolds(&["name", "url", "issues-url", "layout", ""])
     .minimal()
     .arg(Arg::None, Say::new("`image` takes no argument", "the name belongs in the block",
         "`image { id \"{}\" }` is the machine name, and `name` is the human one it derives from \
@@ -65,19 +72,32 @@ pub const IMAGE: Node = Node::new("image",
             .arg(Arg::Strs, Say::NONE),
         Node::new("logo-url", "OCI label `io.artifacthub.package.logo-url`. The URL that points at the logo of the image.").example("\"https://github.com/owner/workstation/raw/main/logo.svg\"")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
-        Node::new("conforms", "The benchmark profile that a scan measures the ungated target against.").about("Names the benchmark profile that a scan measures the image against. Setting it turns the scan on: every build measures the image against the profile and publishes the score.").example("\"standard\"")
+        Node::new("conforms", "The benchmark profile that a scan measures the ungated target against.")
+            .about("The name selects a profile in the SSG datastream that the base pins, and `buildc \
+                scap` measures the target against its rules. `buildc scap` refuses a name the \
+                datastream does not carry.")
+            .example("\"standard\"")
             .arg(Arg::Str, NEEDS_VALUE).once("")
             .notes(&["A scan reports the result. A failed rule fails `buildc scap` only if \
                 `audit { enforce #true }` is set."]),
 
-        Node::new("boot-chain", "The UKI boot chain, which is owner-signed through shim or enrolled directly into Secure Boot.").about("Builds the image to boot as a unified kernel image (UKI) under Secure Boot. `uki-shim` boots through shim with a key the owner signs, and `uki-db` enrolls the key directly into the firmware key database.").example("\"uki-shim\"")
+        Node::new("boot-chain", "The UKI boot chain, which is owner-signed through shim or enrolled directly into Secure Boot.")
+            .about("A declared chain builds a UKI and settles the install layout, so `buildc check` \
+                refuses a `layout` row that contradicts it. A `buildx` backend cannot build the \
+                image, because `buildc build` reads the sealed composefs digest from the local \
+                buildah store.")
+            .example("\"uki-shim\"")
             .arg(Arg::One(BOOT_CHAINS), Say::new("`{}` is not a boot chain",
                 "not a boot chain",
                 "`boot-chain \"uki-shim\"` for owner-signed through shim, or `boot-chain \"uki-db\"` for \
                  direct enrollment into the firmware key database"))
             .once(""),
 
-        Node::new("layout", "What the installer lays down if the answer of the base family is not the one that the image wants.").about("Each base family comes with installer defaults for the filesystem, composefs, the generic image and the administrator group. This block replaces those defaults for this image, so the installer lays the image down the way it needs. No family supplies a bootloader, so a declared `layout` names `bootloader`.").scaffolds(&["bootloader"])
+        Node::new("layout", "What the installer lays down if the answer of the base family is not the one that the image wants.")
+            .about("A layout answers the install questions that the base family leaves open. If \
+                the family and a `boot-chain` both leave an answer open, then the image builds no \
+                install media unless the block gives it.")
+            .scaffolds(&["bootloader"])
             .arg(Arg::None, Say::new("`layout` takes no argument", "the declarations belong in the block",
                 "`layout { filesystem \"btrfs\" }`"))
             .once("an image is installed one way")
@@ -106,7 +126,10 @@ pub const IMAGE: Node = Node::new("image",
                         "`admin-group \"wheel\"`; `useradd` refuses the whole call when a listed \
                          group is missing on the target, so this names one"))
                     .once(""),
-                Node::new("bootloader", "The bootloader that the installer installs. The catalog entry of the base lists the bootloaders that the base carries.").about("The bootloader that the installer writes to the disk. No base family supplies a default, so `buildc check` fails a `layout` without one. If `boot` is set, then the bootloader is `systemd`. If neither is set, then the image builds no install media.").example("\"grub2\"")
+                Node::new("bootloader", "The bootloader that the installer installs. The catalog entry of the base lists the bootloaders that the base carries.")
+                    .about("No family answers this row, so a layout declares a bootloader unless a \
+                        `boot-chain` settles it as `systemd`.")
+                    .example("\"grub2\"")
                     .arg(Arg::One(BOOTLOADERS), Say::new("`{}` is not a bootloader the installer installs",
                         "not a bootloader",
                         "the installer writes `grub2` or `systemd`; no family answers this, so \
@@ -117,7 +140,10 @@ pub const IMAGE: Node = Node::new("image",
                  and `bootloader`")),
 
         Node::new("allow-remediation",
-            "One rule an installed component refuses that this image lets remediation set anyway.").about("A component can refuse a hardening rule because the rule breaks what the component does. This lets one image accept that rule anyway, for a machine where the reason of the component does not apply. `because=` records why.").example("\"grub2_nousb_argument\" because=\"this machine has no USB keyboard\"")
+            "One rule an installed component refuses that this image lets remediation set anyway.")
+            .about("The rule must be one that a component the image installs refuses, or the \
+                allowance lifts nothing and `buildc scap` reports it.")
+            .example("\"grub2_nousb_argument\" because=\"this machine has no USB keyboard\"")
             .arg(Arg::Str, Say::new("`allow-remediation` needs a rule ID", "nothing named",
                 "`allow-remediation \"grub2_nousb_argument\" because=\"this machine has no USB \
                  keyboard\"`"))
@@ -130,7 +156,10 @@ pub const IMAGE: Node = Node::new("image",
             ], Say::new("unknown `allow-remediation` property `{}`", "not part of the schema",
                 "`allow-remediation` accepts `because`")),
 
-        Node::new("flavours", "The flavours that this image publishes beside its ungated build.").about("A flavour builds a variant of the same image with extra components, such as a `dev` build with developer tools, and publishes it as `<id>-<flavour>`. Flavours suit two builds that share almost every component.")
+        Node::new("flavours", "The flavours that this image publishes beside its ungated build.")
+            .about("The block publishes each child as `<id>-<flavour>`, and it reserves `none` for \
+                the ungated build. One flavour at most carries `default=#true`, and one flavour at \
+                most carries `pr-build=#true`.")
             .once("a second block would split one set of flavours in two")
             .empty(Say::new("`flavours` has no flavours in it", "empty block",
                 "omit the block entirely to build one unnamed image"))
@@ -167,7 +196,11 @@ pub const IMAGE: Node = Node::new("image",
                  measures the ungated target only.",
             ]),
 
-        Node::new("flavour", "The components one flavour adds, which build only for that flavour.").about("Holds the path segments of the components that build only for one flavour. Every component outside a `flavour` block builds for every target.").example("\"dev\"")
+        Node::new("flavour", "The components one flavour adds, which build only for that flavour.")
+            .about("The argument names one flavour of the `flavours` block, and every component \
+                below the node is gated to that target. `buildc check` refuses a name that no \
+                flavour declares.")
+            .example("\"dev\"")
             .arg(Arg::Str, Say::new("`flavour` needs a flavour name", "no name given",
                 "`flavour \"desktop\" { tools { devtools } }`")),
 
@@ -475,8 +508,8 @@ impl Image {
         });
     }
 
-    pub(super) fn check_layout(&mut self, issues: &mut Issues) {
-        let src = &self.src.clone();
+    pub(super) fn check_layout(&self, issues: &mut Issues) {
+        let src = &self.src;
         let (Some(layout), Some(base)) = (&self.layout, &self.base) else {
             return;
         };
@@ -551,7 +584,7 @@ impl Image {
     }
 
     fn check_id(&mut self, issues: &mut Issues) {
-        let src = &self.src.clone();
+        let src = &self.src;
         if self.id.is_empty() {
             self.id = self.name.to_lowercase().replace(' ', "-");
             if !self.name.is_empty() && !is_name(&self.id) {
@@ -583,7 +616,7 @@ impl Image {
     }
 
     fn parse_flavours(&mut self, block: &KdlNode, issues: &mut Issues) {
-        let src = &self.src.clone();
+        let src = &self.src;
         for node in kids(block) {
             let flavour = Flavour {
                 name: node.name().value().to_string(),

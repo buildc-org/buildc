@@ -8,6 +8,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const DER_SEQUENCE_TAG: u8 = 0x30;
 pub struct Key {
     declared: Declared,
     public: PathBuf,
@@ -231,7 +232,7 @@ fn holds(declared: &Declared, bytes: &[u8]) -> Result<(), String> {
         ),
         _ => match declared.format.as_str() {
             "der" => (
-                bytes.first() == Some(&0x30),
+                bytes.first() == Some(&DER_SEQUENCE_TAG),
                 "a DER certificate".to_string(),
             ),
             format => (
@@ -359,7 +360,7 @@ fn common_name(
     profile: Option<&str>,
     prompt: &Prompt,
 ) -> Result<String, String> {
-    let named = crate::flow::named_after_root(root).unwrap_or_else(|| "buildc".to_string());
+    let named = crate::layout::named_after_root(root).unwrap_or_else(|| "buildc".to_string());
     let what = match profile {
         Some("tls-ca") => "TLS CA",
         _ => "Secure Boot",
@@ -480,6 +481,7 @@ fn unwritten(path: &Path) -> Result<(), String> {
 }
 
 fn workspace(what: &str) -> Result<PathBuf, String> {
+    // The generated private key sits in a shared temporary directory, so the workspace is readable by its owner alone.
     let dir = std::env::temp_dir().join(format!("buildc-{what}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;

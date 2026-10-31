@@ -1,14 +1,15 @@
+use buildc::command::{self, Cli, Context, Verb};
+use buildc::copy;
+use buildc::dispatch::{self, USAGE_ERROR};
+use buildc::error::Error;
+use buildc::model::image::BUILDC_VERSION;
+use buildc::sys;
 use clap::error::ErrorKind;
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use common::prompt::Prompt;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use buildc::command::{self, Cli, Context, Verb};
-use buildc::copy;
-use buildc::dispatch::{self, USAGE_ERROR};
-use buildc::error::Error;
-use buildc::model::image::BUILDC_VERSION;
 
 const COMMANDS: &str = "Run 'buildc --help' to list the commands";
 
@@ -149,7 +150,7 @@ fn refused(error: clap::Error) -> ExitCode {
 }
 
 fn main() -> ExitCode {
-    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+    sys::restore_sigpipe();
 
     match run() {
         Ok(code) => code,

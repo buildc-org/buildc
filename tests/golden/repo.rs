@@ -12,12 +12,15 @@ fn capture(name: &str, root: &Path) {
         (Command::Summary, "summary.md"),
         (Command::Sbom, "sbom.json"),
     ] {
-        assert_golden(name, file, &buildc::run(command, None, &here).stdout);
+        assert_golden(name, file, &buildc::run(command, None, &here).report.stdout);
     }
     assert_golden(
         name,
         "issues.txt",
-        &buildc::run(Command::Check, None, &here).issues.plain(),
+        &buildc::run(Command::Check, None, &here)
+            .problems
+            .issues
+            .plain(),
     );
 
     let mut generated = String::new();
@@ -65,7 +68,12 @@ fn verify(name: &str, root: &Path) {
         std::fs::create_dir_all(path.parent().expect("a file under generated/")).unwrap();
         std::fs::write(path, body).unwrap();
     }
-    let issues = || buildc::run(Command::Verify, None, &here).issues.plain();
+    let issues = || {
+        buildc::run(Command::Verify, None, &here)
+            .problems
+            .issues
+            .plain()
+    };
 
     let mut out = format!("==== as generated\n{}", issues());
 
@@ -116,7 +124,7 @@ fn create_into(name: &str, root: &Path) {
         Some("Server".into()),
         Some("quay.io/fedora/fedora-bootc:44".into()),
         "a name argument",
-        buildc::flow::Field::Image,
+        buildc::setup::Field::Image,
         None,
         &silent,
     )
@@ -160,7 +168,10 @@ fn create_into(name: &str, root: &Path) {
     }
     out.push_str(&format!(
         "==== check\n{}",
-        buildc::run(Command::Check, None, &here).issues.plain()
+        buildc::run(Command::Check, None, &here)
+            .problems
+            .issues
+            .plain()
     ));
     assert_golden(name, "create.txt", &out);
 }
@@ -216,6 +227,7 @@ fn copied(name: &str, root: &Path) {
             &sources,
             false,
             &common::prompt::Prompt::silent(),
+            &mut |_| {},
         )
         .map_err(|err| err.message().to_string())
         .and_then(|component| component.apply(&here, &sources));
@@ -239,7 +251,10 @@ fn copied(name: &str, root: &Path) {
     ));
     out.push_str(&format!(
         "==== check\n{}",
-        buildc::run(Command::Check, None, &here).issues.plain()
+        buildc::run(Command::Check, None, &here)
+            .problems
+            .issues
+            .plain()
     ));
 
     std::fs::write(
@@ -249,7 +264,10 @@ fn copied(name: &str, root: &Path) {
     .unwrap();
     out.push_str(&format!(
         "==== check after an edit\n{}",
-        buildc::run(Command::Check, None, &here).issues.plain()
+        buildc::run(Command::Check, None, &here)
+            .problems
+            .issues
+            .plain()
     ));
     assert_golden(name, "import.txt", &out);
 }
@@ -261,7 +279,12 @@ fn edited_component(root: &Path) {
         std::fs::create_dir_all(path.parent().expect("a file under generated/")).unwrap();
         std::fs::write(path, body).unwrap();
     }
-    let issues = || buildc::run(Command::Verify, None, &here).issues.plain();
+    let issues = || {
+        buildc::run(Command::Verify, None, &here)
+            .problems
+            .issues
+            .plain()
+    };
     let clean = issues();
     assert!(
         clean.is_empty(),
@@ -286,17 +309,22 @@ fn why(name: &str, root: &Path, component: &str) {
 
     for (command, heading) in [(Command::Why, "markdown"), (Command::WhyJson, "json")] {
         out.push_str(&format!("==== {heading}\n"));
-        out.push_str(&buildc::run(command, component.rsplit('/').next(), &here).stdout);
+        out.push_str(
+            &buildc::run(command, component.rsplit('/').next(), &here)
+                .report
+                .stdout,
+        );
     }
 
     out.push_str("==== unknown\n");
     out.push_str(
         &buildc::run(Command::Why, Some("nosuch"), &here)
+            .problems
             .issues
             .plain(),
     );
 
-    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).stdout)
+    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).report.stdout)
         .expect("the plan is a document");
     let host = buildc::emit::why::on_host(&manifest, None, component).expect("the manifest names it");
     out.push_str("==== from the baked manifest, with no repository\n");
@@ -329,7 +357,7 @@ fn why(name: &str, root: &Path, component: &str) {
 
 fn summary_on_host(root: &Path) {
     let here = given(root);
-    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).stdout)
+    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).report.stdout)
         .expect("the plan is a document");
 
     let (every, _) = buildc::emit::why::built_as(&manifest, None);
@@ -350,6 +378,7 @@ fn summary_on_host(root: &Path) {
                 common::json::text(target, "name").as_deref(),
                 &here
             )
+            .report
             .stdout,
             buildc::emit::summary::on_host(scoped),
             "{} disagrees with itself",
@@ -366,10 +395,14 @@ fn why_unbuilt(root: &Path) {
     let mut out = String::new();
 
     out.push_str("==== a component the base suppresses\n");
-    let bare = buildc::run(Command::Why, Some("flatpak"), &here).stdout;
+    let bare = buildc::run(Command::Why, Some("flatpak"), &here)
+        .report
+        .stdout;
     out.push_str(&bare);
 
-    let full = buildc::run(Command::Why, Some("apps/flatpak"), &here).stdout;
+    let full = buildc::run(Command::Why, Some("apps/flatpak"), &here)
+        .report
+        .stdout;
     assert_eq!(bare, full, "the full path is a name like any other");
 
     std::fs::write(
@@ -380,6 +413,7 @@ fn why_unbuilt(root: &Path) {
     out.push_str("==== and the same component in an image that does build it\n");
     out.push_str(
         buildc::run(Command::Why, Some("flatpak"), &here)
+            .report
             .stdout
             .split("## What it exchanges")
             .next()
@@ -391,7 +425,8 @@ fn why_unbuilt(root: &Path) {
     out.push_str("==== and one whose manifest never loaded\n");
     let run = buildc::run(Command::Why, Some("flatpak"), &here);
     out.push_str(
-        run.issues
+        run.problems
+            .issues
             .plain()
             .split("`apps/flatpak` is listed")
             .nth(1)
@@ -414,7 +449,10 @@ fn unenforced(root: &Path) {
     std::fs::write(&repo, format!("{before}{after}")).unwrap();
 
     let here = given(&temp);
-    let issues = buildc::run(Command::Check, None, &here).issues.plain();
+    let issues = buildc::run(Command::Check, None, &here)
+        .problems
+        .issues
+        .plain();
     assert!(
         issues.is_empty(),
         "the same repository has to check clean unenforced: {issues}"
@@ -436,10 +474,13 @@ fn unpinned_import(root: &Path) {
 
 fn refused_everywhere(root: &Path) {
     let here = given(root);
-    let checked = buildc::run(Command::Check, None, &here).issues.plain();
+    let checked = buildc::run(Command::Check, None, &here)
+        .problems
+        .issues
+        .plain();
     assert!(checked.contains("tracks its library"), "{checked}");
     for command in [Command::Generate, Command::Verify] {
-        let said = buildc::run(command, None, &here).issues.plain();
+        let said = buildc::run(command, None, &here).problems.issues.plain();
         assert!(said.starts_with(&checked), "{command:?}: {said}");
     }
 }
@@ -447,11 +488,14 @@ fn refused_everywhere(root: &Path) {
 fn assert_no_default(root: &Path) {
     let here = given(root);
     for quiet in [Command::Check, Command::Generate] {
-        let issues = buildc::run(quiet, None, &here).issues.plain();
+        let issues = buildc::run(quiet, None, &here).problems.issues.plain();
         assert!(issues.is_empty(), "{quiet:?} reported {issues}");
     }
     for quiet in [Command::Section, Command::Graph] {
-        let issues = buildc::run(quiet, Some("server"), &here).issues.plain();
+        let issues = buildc::run(quiet, Some("server"), &here)
+            .problems
+            .issues
+            .plain();
         assert!(issues.is_empty(), "{quiet:?} reported {issues}");
     }
     for loud in [
@@ -461,7 +505,7 @@ fn assert_no_default(root: &Path) {
         Command::Summary,
         Command::Sbom,
     ] {
-        let issues = buildc::run(loud, None, &here).issues.plain();
+        let issues = buildc::run(loud, None, &here).problems.issues.plain();
         assert!(
             issues.contains("2 images are declared and none is the default"),
             "{loud:?} reported {issues}"
@@ -577,7 +621,10 @@ fn the_library_cache_changes_no_output() {
     seed_library(&root);
     let run = || {
         (
-            buildc::run(Command::Check, None, &root).issues.plain(),
+            buildc::run(Command::Check, None, &root)
+                .problems
+                .issues
+                .plain(),
             buildc::run(Command::Generate, None, &root).files,
         )
     };

@@ -14,8 +14,8 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn components(&self) -> impl Iterator<Item = &String> {
-        self.overlays.keys()
+    pub fn components(&self) -> impl Iterator<Item = &str> {
+        self.overlays.keys().map(String::as_str)
     }
 
     pub fn is_component(&self, dir: &str) -> bool {

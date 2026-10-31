@@ -1,6 +1,29 @@
 use crate::layout;
-use crate::model::remote::{At, Collection};
+use crate::model::remote::{At, Collection, Kind as SourceKind};
 use std::path::{Path, PathBuf};
+
+pub const LIBRARY_URL: &str = "https://github.com/buildc-org/library";
+
+pub struct DefaultLibrary {
+    pub kind: SourceKind,
+    pub alias: &'static str,
+    pub path: &'static str,
+    pub about: &'static str,
+}
+
+pub const DEFAULT_LIBRARIES: [DefaultLibrary; 1] = [DefaultLibrary {
+    kind: SourceKind::Components,
+    alias: "buildc",
+    path: "components",
+    about: "Feature components and base images for many use cases",
+}];
+
+pub fn default_library(kind: SourceKind) -> &'static DefaultLibrary {
+    DEFAULT_LIBRARIES
+        .iter()
+        .find(|library| library.kind == kind)
+        .expect("every source kind has a default library")
+}
 
 pub(crate) fn members(tree: &Path) -> Vec<String> {
     layout::member_dirs(tree)
@@ -32,6 +55,15 @@ pub fn cached(root: &Path, collection: &Collection) -> Option<PathBuf> {
         }
     };
     dir.is_dir().then_some(dir)
+}
+
+pub fn fetch(root: &Path, sources: &[Collection]) -> Result<(), String> {
+    for collection in sources {
+        if cached(root, collection).is_none() {
+            tree(root, collection)?;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn tree(root: &Path, collection: &Collection) -> Result<PathBuf, String> {

@@ -87,7 +87,7 @@ forbidden() {
         echo "lint: $file is gone or is now a directory, so the command-edge check cannot run" >&2
         exit 1
     fi
-    if grep -nE "$pattern" "$file"; then
+    if grep -nE "$pattern" "$file" | grep -vE '^[0-9]+:[[:space:]]*(//|/\*|\*)'; then
         echo "lint: $message" >&2
         exit 1
     fi
@@ -99,19 +99,19 @@ forbidden src/provider.rs \
 
 forbidden src/import.rs \
     'crate::(set|create)::|use crate::(set|create)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "import reads a setup command, and the shared setup lives in flow"
+    "import reads a setup command, and the shared setup lives in setup"
 
 forbidden src/create.rs \
     'crate::set::|use crate::set( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "create reads set, and the shared setup lives in flow"
+    "create reads set, and the shared setup lives in setup"
 
 forbidden src/set.rs \
     'crate::create::|use crate::create( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "set reads create, and the shared setup lives in flow"
+    "set reads create, and the shared setup lives in setup"
 
 forbidden src/copy.rs \
-    'crate::create::|use crate::create( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "copy reads create, and the host constant moved into copy"
+    'crate::(create|import|set|dispatch|setup|conformance|report)::|use crate::(create|import|set|dispatch|setup|conformance|report)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "copy holds prompt text and reads the host from forge, so every flow sits above it"
 
 forbidden src/import.rs \
     'crate::dispatch::|use crate::dispatch( as [A-Za-z_][A-Za-z0-9_]*)?;' \
@@ -122,12 +122,35 @@ forbidden src/set.rs \
     "a command reads dispatch, and the command error is error.rs"
 
 forbidden src/declaration.rs \
-    'crate::(create|import|set|dispatch|flow|provider)::|use crate::(create|import|set|dispatch|flow|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(create|import|set|dispatch|setup|conformance|report|forge|provider)::|use crate::(create|import|set|dispatch|setup|conformance|report|forge|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "declaration writes text and sits below every command and flow"
 
-forbidden src/flow.rs \
+forbidden src/setup.rs \
     'crate::(create|import|set|dispatch|provider)::|use crate::(create|import|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "flow holds the shared setup and sits below every command"
+    "setup holds the shared questions and sits below every command"
+
+forbidden src/conformance.rs \
+    'crate::(create|import|set|dispatch|provider)::|use crate::(create|import|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "conformance holds the profile declaration and sits below every command"
+
+forbidden src/report.rs \
+    'crate::(create|import|set|dispatch|provider|setup|conformance)::|use crate::(create|import|set|dispatch|provider|setup|conformance)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "report renders the written tree and sits below every flow"
+
+forbidden src/forge.rs \
+    'crate::(copy|create|import|set|dispatch|setup|conformance|report)::|use crate::(copy|create|import|set|dispatch|setup|conformance|report)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "forge is the host leaf, and every reader sits above it"
+
+forbidden src/bases.rs \
+    'crate::(create|import|set|dispatch|provider)::|use crate::(create|import|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "bases holds the base-component query and sits below every command"
+
+mapfile -t parse_files < <(find src/parse -name '*.rs' -type f)
+for file in "${parse_files[@]}"; do
+    forbidden "$file" \
+        'crate::bases::|crate::\{[^}]*\bbases\b|\bbases::|use crate::bases( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+        "parse reads the base catalog, and the catalog sits above the parser"
+done
 
 # `install.sh` is what a stranger pipes into `sh`, so it is checked as the
 # shell it declares. Every other script here is bash.

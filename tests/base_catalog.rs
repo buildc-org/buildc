@@ -3,9 +3,9 @@
     reason = "a test helper panics on a failed step, which fails the calling test"
 )]
 
-use std::path::PathBuf;
 use buildc::diag::Span;
 use buildc::model::remote::{At, Collection, Kind as SourceKind};
+use std::path::PathBuf;
 
 struct Library {
     root: PathBuf,
@@ -68,7 +68,7 @@ fn a_base_component_is_offered_with_its_default_version() {
     library.component(true, "base-image/fedora", FEDORA);
     library.component(true, "tools", "schema-version 1\nprovides \"tools\"\n");
 
-    let bases = buildc::base::catalog(&library.root, &[library.source()]);
+    let bases = buildc::bases::catalog(&library.root, &[library.source()]);
 
     let [base] = bases.as_slice() else {
         panic!("one base is offered, and the component is not");
@@ -92,7 +92,7 @@ fn the_repository_s_own_base_shadows_the_library_s() {
         "schema-version 1\nbase \"example.invalid/own:1\"\n",
     );
 
-    let bases = buildc::base::catalog(&library.root, &[library.source()]);
+    let bases = buildc::bases::catalog(&library.root, &[library.source()]);
 
     let [base] = bases.as_slice() else {
         panic!("one base is offered");
@@ -105,16 +105,16 @@ fn the_repository_s_own_base_shadows_the_library_s() {
 fn a_base_is_found_by_its_path_or_its_image_reference() {
     let library = Library::new("catalog-find");
     library.component(true, "base-image/fedora", FEDORA);
-    let bases = buildc::base::catalog(&library.root, &[library.source()]);
+    let bases = buildc::bases::catalog(&library.root, &[library.source()]);
 
     for name in [
         "base-image/fedora",
         "quay.io/fedora/fedora-bootc:44",
         "quay.io/fedora/fedora-bootc:44@sha256:abc",
     ] {
-        assert!(buildc::base::find(&bases, name).is_some(), "{name}");
+        assert!(buildc::bases::find(&bases, name).is_some(), "{name}");
     }
-    assert!(buildc::base::find(&bases, "quay.io/fedora/fedora-bootc:43").is_none());
+    assert!(buildc::bases::find(&bases, "quay.io/fedora/fedora-bootc:43").is_none());
 }
 
 #[test]
@@ -124,5 +124,5 @@ fn a_source_that_is_not_on_this_machine_offers_nothing() {
         at: At::Dir("nowhere".to_string()),
         ..library.source()
     };
-    assert!(buildc::base::catalog(&library.root, &[absent]).is_empty());
+    assert!(buildc::bases::catalog(&library.root, &[absent]).is_empty());
 }

@@ -3,20 +3,12 @@ use crate::declaration::{append, placed, splice, wrap};
 use crate::layout;
 use crate::parse;
 use crate::resolve::workflow::{Basis, Shipped, DEFAULT_AT, SHIPPED};
-use crate::scap::Content;
 use common::prompt::Prompt;
 use common::ui::tree::Change;
 use common::ui::{Answer, Choice};
 use std::path::{Path, PathBuf};
 
-pub fn named_after_root(root: &Path) -> Option<String> {
-    std::fs::canonicalize(root)
-        .ok()
-        .as_deref()
-        .and_then(Path::file_name)
-        .map(|name| name.to_string_lossy().into_owned())
-}
-
+/// The variant order is the order the setup asks, so re-entry keeps every answer before the field the user resumes at.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Field {
     Name,
@@ -34,12 +26,12 @@ pub enum Field {
 
 #[derive(Clone, Default)]
 pub struct Libraries {
-    pub(crate) chosen: Vec<&'static crate::base::DefaultLibrary>,
+    pub(crate) chosen: Vec<&'static crate::collection::DefaultLibrary>,
 }
 
 impl Libraries {
-    pub fn every() -> Vec<&'static crate::base::DefaultLibrary> {
-        crate::base::DEFAULT_LIBRARIES.iter().collect()
+    pub fn every() -> Vec<&'static crate::collection::DefaultLibrary> {
+        crate::collection::DEFAULT_LIBRARIES.iter().collect()
     }
 
     pub fn collect(held: Option<&Self>, prompt: &Prompt) -> Result<Self, String> {
@@ -92,32 +84,10 @@ impl Libraries {
     }
 }
 
-pub fn report(root: &Path, wrote: &[(PathBuf, Change)]) {
-    let declared = crate::model::image::List::load(root).0.id;
-    let id = match declared.is_empty() {
-        true => named_after_root(root).unwrap_or_default(),
-        false => declared,
-    };
-    common::ui::tree::print(&id, wrote, describe);
-}
-
-fn describe(_path: &Path, change: Option<&Change>) -> String {
-    match change {
-        Some(Change::Updated(edit)) => edit.clone(),
-        _ => String::new(),
-    }
-}
-
-pub(crate) fn under(root: &Path, path: &Path) -> PathBuf {
-    path.strip_prefix(root).unwrap_or(path).to_path_buf()
-}
-
 pub enum Listing {
     Cancelled,
     NoImage,
-    Declined {
-        asked: bool,
-    },
+    Declined { asked: bool },
     In(Vec<Listed>),
 }
 
@@ -425,15 +395,15 @@ fn target_rows(
     list: &crate::model::image::List,
     targets: &[crate::model::image::Target],
 ) -> Vec<Choice> {
-    let mut ungated = 0;
+    let mut ungated_row = 0;
     let mut rows: Vec<Choice> = Vec::new();
     for (at, target) in targets.iter().enumerate() {
         let label = target.to_string();
         if target.flavour != crate::model::image::NO_FLAVOUR {
-            rows.push(Choice::new(label, "").under(ungated));
+            rows.push(Choice::new(label, "").under(ungated_row));
             continue;
         }
-        ungated = at;
+        ungated_row = at;
         let named = list
             .images
             .iter()
@@ -448,10 +418,10 @@ fn target_rows(
 }
 
 pub struct Workflows {
-    pub(crate) chosen: Vec<&'static str>,
-    pub(crate) at: (u32, u32),
-    pub(crate) publishes_scheduled: bool,
-    pub(crate) scans_scheduled: bool,
+    chosen: Vec<&'static str>,
+    at: (u32, u32),
+    publishes_scheduled: bool,
+    scans_scheduled: bool,
 }
 
 impl Workflows {
@@ -479,6 +449,10 @@ impl Workflows {
         }
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each argument is one answer or one current value the picker reads"
+    )]
     pub fn collect(
         basis: &Basis,
         on: &[&str],
@@ -487,6 +461,7 @@ impl Workflows {
         scans_current: bool,
         from: Field,
         prompt: &Prompt,
+        say: crate::report::Say<'_>,
     ) -> Result<Option<Self>, String> {
         let chosen: Vec<&'static Shipped> = match from > Field::Workflows {
             true => SHIPPED
@@ -499,7 +474,10 @@ impl Workflows {
                     .iter()
                     .filter(|shipped| on.contains(&shipped.stem) && !shipped.met(basis))
                 {
-                    println!("{}", copy::cleared(shipped.stem, shipped.needs.unmet()));
+                    say(&format!(
+                        "{}\n",
+                        copy::cleared(shipped.stem, shipped.needs.unmet())
+                    ));
                 }
                 let held: Vec<usize> = SHIPPED
                     .iter()
@@ -531,6 +509,7 @@ impl Workflows {
                     publishes_current,
                 )?,
             };
+        // A scheduled publish already limits the scan, so the scan question has no separate cadence to ask.
         let scans_scheduled = match (builds, publishes_scheduled) {
             (false, _) => false,
             (true, true) => scans_current,
@@ -571,6 +550,7 @@ impl Workflows {
         basis: &Basis,
         from: Field,
         prompt: &Prompt,
+        say: crate::report::Say<'_>,
     ) -> Result<Option<Self>, String> {
         Self::collect(
             basis,
@@ -580,6 +560,7 @@ impl Workflows {
             self.scans_scheduled,
             from,
             prompt,
+            say,
         )
     }
 
@@ -679,90 +660,240 @@ pub(crate) fn workflow_options(basis: &Basis) -> Vec<Choice> {
         .collect()
 }
 
-pub(crate) fn profile_options(content: &Content) -> Vec<Choice> {
-    content
-        .profiles
-        .iter()
-        .map(|profile| Choice::new(profile.name(), &profile.title))
-        .collect()
-}
-
 pub const BY_HAND: &str = "nothing can be asked here; edit the `workflows` block in repo.kdl, \
                            then run `buildc generate`";
 
-pub const CONFORMS_BY_HAND: &str = "nothing can be asked here; write `conforms \"<profile>\"` \
-                                    into the image, and `buildc scap content` prints the \
-                                    datastream it is then measured with";
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub const CLAIMS_BY_HAND: &str = "nothing can be asked here; write `satisfies { <benchmark> \
-                                  \"<number>\" }` into the component, and `buildc scap content` \
-                                  prints the datastream those numbers are read out of";
-
-pub(crate) fn cost(measured: &str, enforce: bool) -> String {
-    match enforce {
-        false => format!(
-            "A `conforms` turns the scan on: every build measures {measured} against the profile \
-             and publishes the score."
-        ),
-        true => format!(
-            "A `conforms` turns the scan on, and this repository enforces: every build measures \
-             {measured} against the profile, and a rule it fails fails the build."
-        ),
-    }
-}
-
-pub struct Conforms {
-    pub(crate) file: PathBuf,
-    pub(crate) image: String,
-    pub(crate) profile: String,
-    pub(crate) brought: Vec<String>,
-}
-
-impl Conforms {
-    pub(crate) fn declaring(
-        image: &crate::model::image::Image,
-        profile: &str,
-        brought: Vec<String>,
-    ) -> Self {
-        Self {
-            file: PathBuf::from(image.src.name()),
-            image: image.name.clone(),
-            profile: profile.to_string(),
-            brought,
+    fn set(chosen: &[&'static str], at: (u32, u32)) -> Workflows {
+        Workflows {
+            chosen: chosen.to_vec(),
+            at,
+            publishes_scheduled: false,
+            scans_scheduled: false,
         }
     }
 
-    pub(crate) fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
-        let file = root.join(&self.file);
-        let text =
-            std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
-        let spliced = self.spliced(&text)?;
-        std::fs::write(&file, spliced).map_err(|err| format!("{}: {err}", file.display()))?;
-        Ok(vec![(
-            self.file.clone(),
-            Change::Updated(match self.brought.is_empty() {
-                true => format!("measured against `{}`", self.profile),
-                false => format!(
-                    "measured against `{}`, and {} added to components",
-                    self.profile,
-                    crate::said(&self.brought)
-                ),
-            }),
-        )])
+    #[test]
+    fn the_block_replaces_the_one_that_was_there_and_leaves_the_rest() {
+        let text = "name \"Example\"\n\nworkflows {\n    build\n}\n\nsources {\n}\n";
+        let out = set(&["build", "smoke-test"], DEFAULT_AT).spliced(text);
+        assert_eq!(
+            out,
+            "name \"Example\"\n\nworkflows {\n    build\n    smoke-test\n}\n\nsources {\n}\n"
+        );
     }
 
-    pub(crate) fn spliced(&self, text: &str) -> Result<String, String> {
-        let was = parse::image::conforms_span(text, &self.image)
-            .ok_or_else(|| format!("{} declares no image `{}`", self.file.display(), self.image))?;
-        let indent = &text[text[..was.offset].rfind('\n').map_or(0, |at| at + 1)..was.offset];
-        let mut out = text.to_string();
-        out.replace_range(
-            was.offset..was.offset + was.len,
-            &match was.len {
-                0 => format!("conforms \"{}\"\n\n{indent}", self.profile),
-                _ => format!("conforms \"{}\"", self.profile),
-            },
+    #[test]
+    fn a_rewritten_block_keeps_each_declared_schedule() {
+        let text = "workflows {\n    build\n    update-components schedule=\"0 3 * * 0\"\n}\n";
+        assert_eq!(
+            set(&["build", "update-components"], DEFAULT_AT).spliced(text),
+            text
         );
-        Ok(out)
+    }
+
+    #[test]
+    fn a_repository_with_no_block_gets_one_at_the_end() {
+        let out = set(&["build"], (6, 0)).spliced("name \"Example\"\n");
+        assert_eq!(
+            out,
+            "name \"Example\"\n\nworkflows at=\"06:00\" {\n    build\n}\n"
+        );
+    }
+
+    #[test]
+    fn cadence_properties_follow_declaration_order() {
+        let mut workflows = set(&["build"], (6, 0));
+        workflows.publishes_scheduled = true;
+        workflows.scans_scheduled = true;
+        assert_eq!(
+            workflows.spliced("name \"Example\"\n"),
+            "name \"Example\"\n\nworkflows at=\"06:00\" publish=\"scheduled\" scan=\"scheduled\" {\n    build\n}\n"
+        );
+    }
+
+    #[test]
+    fn re_entering_at_a_field_asks_it_and_nothing_above_it() {
+        let mut held = set(&["build"], DEFAULT_AT);
+        held.scans_scheduled = true;
+        let prompt = Prompt::scripted(["07:30"].map(str::to_string).to_vec());
+        let again = held
+            .again(&Basis::scaffolding(""), Field::Daily, &prompt, &mut |_| {})
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.chosen, ["build"]);
+        assert!(!again.publishes_scheduled);
+        assert!(again.scans_scheduled);
+        assert_eq!(again.at, (7, 30));
+    }
+
+    #[test]
+    fn a_workflow_the_basis_cannot_run_opens_cleared_rather_than_refused() {
+        let held = set(&["build", "build-disk"], DEFAULT_AT);
+        let prompt = Prompt::scripted(["", "No", "No", "06:00"].map(str::to_string).to_vec());
+        let mut said = String::new();
+        let again = held
+            .again(
+                &Basis::scaffolding(""),
+                Field::Workflows,
+                &prompt,
+                &mut |text| said.push_str(text),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.chosen, ["build"]);
+        assert!(said.contains("build-disk"), "{said}");
+    }
+
+    #[test]
+    fn a_cadence_is_a_row_only_where_its_question_was_asked() {
+        let labels = |workflows: &Workflows| -> Vec<&str> {
+            workflows
+                .rows()
+                .iter()
+                .map(|(_, label, _)| *label)
+                .collect()
+        };
+        let mut workflows = set(&["build"], DEFAULT_AT);
+        assert_eq!(
+            labels(&workflows),
+            [
+                copy::ROW_WORKFLOWS,
+                copy::ROW_PUBLISH,
+                copy::ROW_SCANS,
+                copy::ROW_DAILY
+            ]
+        );
+        workflows.publishes_scheduled = true;
+        assert!(!labels(&workflows).contains(&copy::ROW_SCANS));
+        assert_eq!(labels(&set(&[], DEFAULT_AT)), [copy::ROW_WORKFLOWS]);
+        assert_eq!(
+            labels(&set(&["build-disk"], DEFAULT_AT)),
+            [copy::ROW_WORKFLOWS]
+        );
+    }
+
+    #[test]
+    fn scheduled_publishing_makes_the_scan_question_redundant() {
+        let prompt = Prompt::scripted(["1", "Yes", "06:00"].map(str::to_string).to_vec());
+        let workflows = Workflows::collect(
+            &Basis::scaffolding(""),
+            &[],
+            DEFAULT_AT,
+            false,
+            false,
+            Field::Workflows,
+            &prompt,
+            &mut |_| {},
+        )
+        .unwrap()
+        .unwrap();
+        assert!(workflows.publishes_scheduled);
+        assert!(!workflows.scans_scheduled);
+        assert_eq!(workflows.at, (6, 0));
+    }
+
+    #[test]
+    fn existing_scheduled_cadences_survive_accepting_scheduled_publishing() {
+        let prompt = Prompt::scripted(["", "Yes", "06:00"].map(str::to_string).to_vec());
+        let workflows = Workflows::collect(
+            &Basis::scaffolding(""),
+            &["build"],
+            DEFAULT_AT,
+            true,
+            true,
+            Field::Workflows,
+            &prompt,
+            &mut |_| {},
+        )
+        .unwrap()
+        .unwrap();
+        assert!(workflows.publishes_scheduled);
+        assert!(workflows.scans_scheduled);
+    }
+
+    #[test]
+    fn declining_scheduled_publishing_preserves_the_current_scan_cadence() {
+        let prompt = Prompt::scripted(["", "No", "", "06:00"].map(str::to_string).to_vec());
+        let workflows = Workflows::collect(
+            &Basis::scaffolding(""),
+            &["build"],
+            DEFAULT_AT,
+            true,
+            true,
+            Field::Workflows,
+            &prompt,
+            &mut |_| {},
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!workflows.publishes_scheduled);
+        assert!(workflows.scans_scheduled);
+    }
+
+    #[test]
+    fn choosing_nothing_takes_the_block_away() {
+        let text = "name \"Example\"\n\nworkflows {\n    build\n}\n";
+        assert_eq!(set(&[], DEFAULT_AT).spliced(text), "name \"Example\"\n");
+    }
+
+    #[test]
+    fn workflow_and_cadence_screens_snapshot_production_rows() {
+        use crate::screen_tests::{assert_screen, assert_style_at, screen};
+
+        let basis = Basis::scaffolding("");
+        let options = workflow_options(&basis);
+        let selected = [0, 2, 3, 5];
+        let rendered = assert_screen(
+            "workflow-picker",
+            screen().picker(
+                copy::WORKFLOWS,
+                &options,
+                Some(&selected),
+                "space toggles",
+                0,
+            ),
+        );
+        assert_style_at(
+            &rendered,
+            0,
+            2,
+            "modifier: DIM",
+            "the unavailable build-disk workflow",
+        );
+        let yes_no = [Choice::new(copy::YES, ""), Choice::new(copy::NO, "")];
+        assert_screen(
+            "workflow-publish-cadence",
+            screen().picker(copy::PUBLISH_SCHEDULED, &yes_no, None, "enter confirms", 1),
+        );
+        assert_screen(
+            "workflow-scan-cadence",
+            screen().picker(copy::SCAN_SCHEDULED, &yes_no, None, "enter confirms", 1),
+        );
+        assert_screen(
+            "workflow-daily-at",
+            screen().line(
+                copy::DAILY_AT,
+                "",
+                "",
+                Some(&parse::repo::at_text(DEFAULT_AT)),
+            ),
+        );
+
+        let mut workflows = set(&["build", "base-sig-probe"], DEFAULT_AT);
+        workflows.scans_scheduled = true;
+        let mut rows: Vec<Choice> = workflows
+            .rows()
+            .into_iter()
+            .map(|(_, label, value)| Choice::new(format!("{label}  {value}"), ""))
+            .collect();
+        rows.push(Choice::new(copy::CREATE, ""));
+        assert_screen(
+            "workflow-cadences",
+            screen().picker(copy::REVIEW, &rows, None, copy::REVIEW_KEYS, rows.len() - 1),
+        );
     }
 }

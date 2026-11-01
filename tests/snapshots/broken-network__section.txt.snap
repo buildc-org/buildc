@@ -15,63 +15,57 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
 # ---- fedora-family ----
-RUN --network=none --mount=type=bind,from=ctx,source=/components/fedora-family,target=/ctx/components/fedora-family \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --network=none --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family.sh,target=/generated/broken-network/components/fedora-family.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-network/components/fedora-family.sh
 
 # ---- core/tools ----
-RUN --network=none --mount=type=bind,from=ctx,source=/components/core/tools,target=/ctx/components/core/tools \
+RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/tools,target=/ctx/components/core/tools \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/tools.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/tools.sh,target=/generated/broken-network/components/core/tools.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-network/components/core/tools.sh
 
 # ---- core/fetcher ----
-RUN --network=none --mount=type=bind,from=ctx,source=/components/core/fetcher,target=/ctx/components/core/fetcher \
+RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/fetcher,target=/ctx/components/core/fetcher \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/fetcher.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/fetcher.sh,target=/generated/broken-network/components/core/fetcher.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-network/components/core/fetcher.sh
 
 # ---- core/asset-only ----
-RUN --network=none --mount=type=bind,from=ctx,source=/components/core/asset-only,target=/ctx/components/core/asset-only \
+RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/asset-only,target=/ctx/components/core/asset-only \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/asset-only.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/asset-only.sh,target=/generated/broken-network/components/core/asset-only.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-network/components/core/asset-only.sh
 
 # ---- core/fragment-only ----
 # verbatim from components/core/fragment-only/Containerfile.inc:
 RUN true
 
 # ---- core/installer ----
-RUN --network=none --mount=type=bind,from=ctx,source=/components/core/installer,target=/ctx/components/core/installer \
+RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/installer,target=/ctx/components/core/installer \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/installer.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/installer.sh,target=/generated/broken-network/components/core/installer.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-network/components/core/installer.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -85,14 +79,13 @@ ARG IMAGE_NAME="Broken network"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/finalize.sh,target=/ctx/finalize.sh \
+RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/finalize.sh,target=/generated/broken-network/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/components/core/tools,target=/ctx/components/core/tools \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/broken-network/components/core/tools,target=/ctx/components/core/tools \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /ctx/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-network/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
@@ -104,17 +97,12 @@ ARG SOURCE_COMMIT=""
 ARG BUILD_BACKEND=""
 ARG COMPONENT_HASHES=""
 ARG ASSET_RESOLUTIONS=""
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+ARG BUILDC_VERSION=""
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
     SOURCE_COMMIT="${SOURCE_COMMIT}" BUILD_BACKEND="${BUILD_BACKEND}" \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
-    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" \
-    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" /ctx/buildc build-record
+    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
+    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
 
 RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
-
-ARG FAMILY=fedora
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=tmpfs,target=/run \
-    FAMILY="${FAMILY}" /ctx/buildc validate-image

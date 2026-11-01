@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "broken-component",
   "ungated_published": "broken-component",
   "cache_image": "broken-component-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -72,6 +75,7 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -80,6 +84,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "157c6f4c6dec62ae03abecfa1c7802cfafa3b08651d214dec028d3daac444206",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -115,6 +120,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -123,6 +129,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": null,
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -141,6 +148,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -149,6 +157,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": null,
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -167,7 +176,24 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-component/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-component",
+              "COMPONENT_HASHES=core/nameless|157c6f4c6dec62ae03abecfa1c7802cfafa3b08651d214dec028d3daac444206",
+              "ASSET_RESOLUTIONS=",
+              "SCAP_CLAIMED=",
+              "SCAP_REFUSED=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

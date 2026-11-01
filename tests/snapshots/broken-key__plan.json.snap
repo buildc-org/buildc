@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "broken-key",
   "ungated_published": "broken-key",
   "cache_image": "broken-key-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -76,6 +79,9 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [
+                "/usr/share/secureboot/sb_cert.der"
+              ],
               "removes": [],
               "files": {
                 "secureboot-key": "/usr/share/secureboot/sb_cert.der"
@@ -86,6 +92,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "89992c3b4b68be2b7e2e6bebdd9362f520dd55722785435cbbc5ba6a0d3a6629",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -106,6 +113,7 @@ source: tests/golden/harness.rs
                 "cosign-key"
               ],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -114,6 +122,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "f4ec478fe7587b5b940d0c91dd7afe02eecc4804439d074e34f711f12534c8f5",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -136,7 +145,24 @@ source: tests/golden/harness.rs
           },
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-key/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-key",
+              "COMPONENT_HASHES=core/keys|89992c3b4b68be2b7e2e6bebdd9362f520dd55722785435cbbc5ba6a0d3a6629 core/signer|f4ec478fe7587b5b940d0c91dd7afe02eecc4804439d074e34f711f12534c8f5",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/share/secureboot/sb_cert.der"
+            ]
+          }
         }
       ]
     }

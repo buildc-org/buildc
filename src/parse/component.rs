@@ -324,10 +324,12 @@ const BASE_BOOTLOADER: Node = Node::new("bootloader",
 
 #[rustfmt::skip]
 const BASE_SCAP_CONTENT: Node = Node::new("scap-content",
-    "The SSG datastream file that a scan of an image on this base reads.").about("Names the SCAP content file that measures an image on this base, as a filename in the content directory. If a base names no content, then the scan reads the default content of the base's family. Each EL release publishes its own datastream, so the `rhel` family has no default. `buildc check` refuses an image that conforms to a benchmark while its base resolves to no content.").example("\"ssg-fedora-ds.xml\"")
+    "The SSG datastream file that remediates and measures an image on this base, and the pin it is fetched by.").about("Names the SCAP datastream that remediates and measures an image on this base, and pins where it comes from. `buildc generate` fetches the pinned content, checks it against the pinned `sha256` and writes the datastream into `generated/`. The build, the remediation and the scan all read that one file. If the `url` names a `.zip`, then the datastream is the archive member with this filename. If the `url` names no scheme, then it is a path inside the repository. `buildc check` refuses an image that conforms to a benchmark while its base pins no content, so a conforming base writes the pin in the block: `scap-content \"ssg-fedora-ds.xml\" { pin { manual \"why\"; url \"https://...\"; sha256 \"...\" } }`.").example("\"ssg-fedora-ds.xml\"")
     .arg(Arg::Str, Say::new("`scap-content` needs a filename", "no file given",
-        "`scap-content \"ssg-cs10-ds.xml\"`, a datastream in the SSG content directory"))
-    .once("");
+        "`scap-content \"ssg-cs10-ds.xml\"`, the datastream file the pin delivers"))
+    .once("")
+    .children(&[crate::provenance::evidence::PIN], Say::new("`scap-content` holds no `{}`", "not allowed in `scap-content`",
+        "`scap-content` holds one `pin`, where the datastream comes from and what it hashes to"));
 
 #[rustfmt::skip]
 pub const COMPONENT: Node = Node::new("component",
@@ -483,9 +485,9 @@ pub const COMPONENT: Node = Node::new("component",
                 "a fragment accepts `position` and `standard-layer`"))
             .notes(&[
                 "The build places the fragment verbatim and replaces `@COMPONENT@` with \
-                 `/components/<dir>`, the component directory in the build context. The mounts of the \
-                 component layer use the same path, so a `COPY --from=ctx` needs it to reach a file \
-                 that the component ships.",
+                 `/generated/<image>/components/<dir>`, the component's resolved directory in the \
+                 build context. A `COPY --from=ctx` reaches a file that the component ships through \
+                 that path.",
                 "Every `RUN` bind-mounts over `/etc/hostname`, `/etc/hosts` and \
                  `/etc/resolv.conf`. A fragment writes those three files with a `COPY --from=ctx`.",
             ]),
@@ -646,7 +648,10 @@ fn spread(
 
 fn base_facts(nodes: &[KdlNode], src: &Source, issues: &mut Issues) -> Option<BaseFacts> {
     let reference = nodes.iter().find(|node| node.name().value() == "base")?;
-    let facts = base_block(reference);
+    let mut facts = base_block(reference);
+    facts.scap_pin = child(reference, "scap-content")
+        .and_then(|content| child(content, "pin"))
+        .map(|pin| crate::provenance::evidence::read(pin, src, issues));
     if facts.image.is_empty() {
         return None;
     }
@@ -679,6 +684,7 @@ fn base_block(reference: &KdlNode) -> BaseFacts {
             .map(|node| string_args(node).into_iter().map(str::to_string).collect())
             .unwrap_or_default(),
         scap_content: text(reference, "scap-content"),
+        scap_pin: None,
     }
 }
 

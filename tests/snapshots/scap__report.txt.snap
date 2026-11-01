@@ -1,5 +1,5 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
 ==== the first scan, which is the baseline
 The scan measured 4 rules: 2 pass, 1 fail.
@@ -66,9 +66,9 @@ buildc: 4 findings, and the repository does not enforce
 ==== exit 0
 ==== the tailoring
 <?xml version="1.0" encoding="UTF-8"?>
-<xccdf-1.2:Tailoring xmlns:xccdf-1.2="http://checklists.nist.gov/xccdf/1.2" id="xccdf_tect_tailoring_measured">
+<xccdf-1.2:Tailoring xmlns:xccdf-1.2="http://checklists.nist.gov/xccdf/1.2" id="xccdf_buildc_tailoring_measured">
   <xccdf-1.2:version time="1970-01-01T00:00:00">1</xccdf-1.2:version>
-  <xccdf-1.2:Profile id="xccdf_tect_profile_measured" extends="xccdf_org.ssgproject.content_profile_standard">
+  <xccdf-1.2:Profile id="xccdf_buildc_profile_measured" extends="xccdf_org.ssgproject.content_profile_standard">
     <xccdf-1.2:title>standard, and every other rule</xccdf-1.2:title>
     <xccdf-1.2:select idref="xccdf_org.ssgproject.content_group_auditing" selected="true"/>
     <xccdf-1.2:select idref="xccdf_org.ssgproject.content_rule_audit_rules_login_events" selected="true"/>
@@ -147,7 +147,7 @@ The scan measured 4 rules: 2 pass, 1 fail.
 Every row is scored at the values the scan ran with, which are the named profile's under `buildc scap tailoring` and every default under `(all)`.
 
 ==== the content it is measured with
-/usr/share/xml/scap/ssg/content/ssg-fedora-ds.xml
+generated/workstation/scap/ssg-fedora-ds.xml
 ==== exit 0
 ==== and for an image declaring claims but no profile
 

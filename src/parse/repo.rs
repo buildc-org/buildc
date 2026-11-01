@@ -1,7 +1,7 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::layout;
 use crate::model::image::{
-    Backend, List, NetRule, Network, Seed, Workflow, SCHEMA_VERSION, BUILDC_VERSION,
+    Backend, List, NetRule, Network, Seed, Workflow, BUILDC_VERSION, SCHEMA_VERSION,
 };
 use crate::model::options::Value;
 use crate::model::remote::Kind as SourceKind;
@@ -16,7 +16,11 @@ use kdl::{KdlDocument, KdlNode};
 use std::path::Path;
 
 #[rustfmt::skip]
-const NETWORK: Node = Node::new("network", "The rule that decides whether each step of a component layer reaches the network.").about("Controls network access while the image builds. The user can open the network to every step, or with `strict` open it only for the components that declare a need, so an undeclared download fails the build. `packages` and `scripts` set the rule for one kind of step.").example("\"strict\"")
+const NETWORK: Node = Node::new("network", "The rule that decides whether each step of a component layer reaches the network.")
+    .about("The value on the line applies to both kinds of step, and a `packages` or `scripts` \
+        child overrides one kind. A denied step runs under `--network=none` in the generated \
+        Containerfile.")
+    .example("\"strict\"")
     .arg(Arg::MaybeOne(&["allow", "strict"]), Say::new("`{}` is not a network rule",
         "not a rule",
         "`network \"strict\"` holds every component to what it declares; a block sets \
@@ -70,9 +74,17 @@ const NETWORK: Node = Node::new("network", "The rule that decides whether each s
 
 #[rustfmt::skip]
 pub const REPO: Node = Node::new("repo",
-    "What is true of the repository as a whole, apart from its images.").about("`repo.kdl` sits at the root of the repository and holds what applies to every image in it: which `buildc` release builds it, where its components come from, which CI workflows run and which security rules every image follows. The images themselves live in image files beside it.").scaffolds(&["schema-version", "name", "sources", "workflows", "renovate"])
+    "What is true of the repository as a whole, apart from its images.")
+    .about("The file holds at most one of each repository setting, and `buildc` reports an unknown \
+        node rather than ignoring it. It must declare `schema-version`, and each image lives in \
+        an image file.")
+    .scaffolds(&["schema-version", "name", "sources", "workflows", "renovate"])
     .children(&[
-        Node::new("schema-version", "The schema release that this repository is written against.").about("The schema version tells `buildc` which reader to use for the repository. A repository written against an earlier release keeps building, because the version picks the reader. `buildc create repo` writes it, and `buildc` never changes it.").example("1")
+        Node::new("schema-version", "The schema release that this repository is written against.")
+            .about("The number names the schema release the repository uses, and `buildc` stops at \
+                any number it does not implement. It reports the difference and reads no \
+                repository node.")
+            .example("1")
             .arg(Arg::Int, Say::new("`{}` needs a number", "not a version", "`schema-version 1`"))
             .missing(Say::new("repo.kdl declares no `{}`", "no schema version",
                 "`schema-version 1`, so a tool from a different release says so plainly. Without \
@@ -86,7 +98,11 @@ pub const REPO: Node = Node::new("repo",
                 "`buildc` does not move a repository to a newer version. The release that the \
                  repository pins reads it.",
             ]),
-        Node::new("buildc-version", "The `buildc` release that builds this repository.").about("Pins the `buildc` release that builds the repository, so every build uses the same tool. `buildc.sh` fetches the pinned release, so a build does not depend on the `buildc` installed on the machine.").example("\"0.6.49\"")
+        Node::new("buildc-version", "The `buildc` release that builds this repository.")
+            .about("The value names the release that builds and reads the repository. `buildc` \
+                reports a pin that names another release, and `sha256=` must be 64 lowercase \
+                hexadecimal digits.")
+            .example("\"0.6.49\"")
             .arg(Arg::Str, Say::new("`{}` needs a release", "not a version",
                 concat!("`buildc-version \"", env!("CARGO_PKG_VERSION"),
                         "\"`, the release the build fetches; another release reads the \
@@ -114,12 +130,19 @@ pub const REPO: Node = Node::new("repo",
                  beside the tarball. That check proves only that the download is complete.",
                 "If the repository pins no release, then `buildc` says nothing about the release.",
             ]),
-        Node::new("name", "An optional human-readable label for the repository.").about("A human-readable label for the repository. It labels the result tree printed by commands that add or change files, and does not affect generation or builds. When it is omitted, that tree uses the repository directory name.").example("\"Workstation\"")
+        Node::new("name", "An optional human-readable label for the repository.")
+            .about("The label is for people, and the directory may use another name. It names no \
+                image and no target.")
+            .example("\"Workstation\"")
             .arg(Arg::Str, Say::new("`{}` needs a name", "no name given",
                 "`name \"Workstation\"`, which the directory is free to disagree with"))
             .once(""),
         Node::new("default-image",
-            "The image that a command with no image, or a build with no target, uses.").about("If the repository defines more than one image, then this names the image that a command uses when the user names none. If the repository defines one image, then that image is the default and this field is not needed.").example("\"workstation\"")
+            "The image that a command with no image, or a build with no target, uses.")
+            .about("The name must be an image declared in the repository, and `buildc` refuses a \
+                name that no image declares. A repository with more than one image and no \
+                `default-image` has no target for a command that names none.")
+            .example("\"workstation\"")
             .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
                 "`default-image \"workstation\"`, naming one of the images declared at the root"))
             .once(""),
@@ -127,7 +150,11 @@ pub const REPO: Node = Node::new("repo",
             .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
                 "`pr-image \"workstation\"`, since a pull request builds one target"))
             .once(""),
-        Node::new("backend", "The container build tool that `buildc build` runs and that the generated `build.yml` sets up.").about("Names the tool that builds every image in the repository. If absent, then `buildc build` runs `buildah`.").example("\"buildx\"")
+        Node::new("backend", "The container build tool that `buildc build` runs and that the generated `build.yml` sets up.")
+            .about("The value selects the one tool that `buildc build` drives, and `buildah` applies \
+                when the node is absent. `buildx` needs a `default-image` to name the layer cache, \
+                and it cannot build an image whose `boot-chain` seals a UKI.")
+            .example("\"buildx\"")
             .arg(Arg::One(&["buildah", "buildx"]), Say::new("`{}` is not a build backend",
                 "not a backend", "`backend` takes `buildah` or `buildx`"))
             .once("a repository builds with one backend")
@@ -146,7 +173,12 @@ pub const REPO: Node = Node::new("repo",
                  from the local buildah store.",
             ]),
         Node::new("seed",
-            "The image that this repository publishes as a starting point for a new repository.").about("A seed lets another user start a new repository from this one. `buildc generate` writes the base, the component list and the collections of the named image into the seed, so a new repository starts from the same image.").example("\"workstation\" collection=\"owner\"")
+            "The image that this repository publishes as a starting point for a new repository.")
+            .about("The image must be declared in the repository, and `collection=` must name a \
+                `components` source that `sources` declares. Every component in the seed is \
+                fetched through that collection, so an inline definition leaves the seed \
+                unbuildable.")
+            .example("\"workstation\" collection=\"owner\"")
             .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
                 "`seed \"workstation\" collection=\"owner\"`, naming one of the images declared \
                  at the root"))
@@ -177,7 +209,12 @@ pub const REPO: Node = Node::new("repo",
                 "If the seed image lists a component that no collection can import, then `buildc` \
                  reports it, because a new repository could not build that seed.",
             ]),
-        Node::new("workflows", "The CI workflows that `buildc generate` writes into `.github/workflows/`.").about("Names the GitHub Actions workflows that `buildc generate` writes and keeps current, and sets when scheduled builds, publishing and scans run. The repository gets only the workflows named here.").scaffolds(&[""]).example("at=\"12:30\"")
+        Node::new("workflows", "The CI workflows that `buildc generate` writes into `.github/workflows/`.")
+            .about("The block selects the workflows that `buildc generate` writes, and a workflow \
+                named twice is refused. A child's `schedule=` needs a five-field cron line, and \
+                `at` needs an hour and minute in UTC.")
+            .scaffolds(&[""])
+            .example("at=\"12:30\"")
             .once("a second block would split one set of workflows in two")
             .empty(Say::new("`workflows` has no workflows in it", "empty block",
                 "omit the block entirely; a repository with nothing here generates no CI"))
@@ -225,7 +262,12 @@ pub const REPO: Node = Node::new("repo",
                 "`buildc set workflows` edits this block.",
                 "The `conforms` of each image decides whether SCAP content exists to scan.",
             ]),
-        Node::new("renovate", "The Renovate policy that `buildc generate` writes into `.github/renovate.json5`.").about("Says when Renovate opens its pull requests and how it groups and merges them. The block is Renovate's own configuration in KDL. `buildc generate` adds the custom managers that match the files it writes, and one manager for each image entry that sets a tracked `version`.").example("rebaseWhen=\"never\"").scaffolds(&[""])
+        Node::new("renovate", "The Renovate policy that `buildc generate` writes into `.github/renovate.json5`.")
+            .about("The block maps member by member to Renovate's JSON, so a property is a scalar, \
+                arguments are an array and a child is an object. A node that holds no value, or \
+                both values and members, is refused.")
+            .example("rebaseWhen=\"never\"")
+            .scaffolds(&[""])
             .once("a second block would split one policy in two")
             .children(&[
                 Node::new("", "One Renovate setting, named as Renovate names it.").example("schedule \"* 0-5 * * *\""),
@@ -241,7 +283,11 @@ pub const REPO: Node = Node::new("repo",
                  and leaves one the user wrote in place.",
             ]),
         Node::new("sources",
-            "The component libraries this repository reads.").about("Lists the libraries that this repository reads from a local directory or fetches from an HTTPS Git repository. A `components` source holds components and base components alike: `buildc import component` copies a component from it, and `buildc create image` offers its bases. Every source declares exactly one of `dir` and `url`: `dir` names a directory on this machine, and `url` names an HTTPS Git repository.").scaffolds(&["components"])
+            "The component libraries this repository reads.")
+            .about("Each child declares a `components` library under the alias that references and \
+                the local cache use. The alias takes lowercase letters, digits and dashes, and one \
+                kind and alias identify one source.")
+            .scaffolds(&["components"])
             .once("a second block would split one registry in two")
             .empty(Say::new("`sources` has no sources in it", "empty block",
                 "omit the block entirely; a repository that reads no library declares nothing here"))
@@ -252,7 +298,10 @@ pub const REPO: Node = Node::new("repo",
                  `components/<name>`, and `components/components.lock.kdl` records the source.",
             ]),
         Node::new("manifest",
-            "Whether a build stamps the generated manifest onto the image as an OCI label.").about("The build writes a manifest of what went into the image into the image itself. This block decides whether the build also stamps an OCI label that points at that file, so a tool that reads image labels can find it.")
+            "Whether a build stamps the generated manifest onto the image as an OCI label.")
+            .about("The block holds one `label`, and a build without the block stamps no label. \
+                `label #true` writes `org.buildc.manifest` with the path where the manifest \
+                sits in the image.")
             .once("a second block would split one setting in two")
             .empty(Say::new("`manifest` has no `label` in it", "empty block",
                 "omit the block entirely; a build with nothing here stamps no label"))
@@ -267,7 +316,10 @@ pub const REPO: Node = Node::new("repo",
             ], Say::new("unknown node `{}` in manifest", "not part of the schema",
                 "a manifest block holds `label`")),
 
-        Node::new("audit", "How the repository treats a provenance check that fails.").about("Every build records where its parts came from. This block decides whether a failed provenance check is only reported or stops the command, so a repository can move from reporting to enforcing when it is ready.")
+        Node::new("audit", "How the repository treats a provenance check that fails.")
+            .about("The posture applies to every provenance check that `buildc` runs. The facts are \
+                recorded whether or not the block exists, and `enforce #true` is what makes a \
+                failed check stop the command.")
             .once("a second block would split one posture in two")
             .empty(Say::new("`audit` has no `enforce` in it", "empty block",
                 "omit the block entirely; a repository with nothing here records every \
@@ -313,7 +365,9 @@ pub const REPO: Node = Node::new("repo",
                 ]),
             ]),
         Node::new("security-policy",
-            "The security rules that the repository sets for every image it defines.").about("Sets the security rules that every image in the repository follows, whatever each image declares. It holds one rule: what each build step can reach on the network.")
+            "The security rules that the repository sets for every image it defines.")
+            .about("The block holds one `network` rule for every image the repository declares. \
+                An image cannot set a rule of its own.")
             .once("a second block would contradict the first")
             .children(&[NETWORK],
                 Say::new("unknown node `{}` in security-policy", "not part of the schema",
@@ -339,7 +393,11 @@ fn network(node: &KdlNode) -> Network {
 
 #[rustfmt::skip]
 pub(crate) const IMAGE_FILE: Node = Node::new("image file",
-    "The images that a file named `image.kdl` or `<name>.image.kdl` holds.").about("An image file holds its schema version and one or more images. Each image says what it is called, which base it builds on and which components it is made of.").scaffolds(&["schema-version", "image"])
+    "The images that a file named `image.kdl` or `<name>.image.kdl` holds.")
+    .about("A file at the repository root holds one or more `image` blocks, and `buildc` reads no \
+        other root `.kdl` file. It must declare `schema-version`, and it holds no node besides \
+        `schema-version` and `image`.")
+    .scaffolds(&["schema-version", "image"])
     .children(&[FILE_SCHEMA_VERSION, IMAGE], Say::new("unknown top-level node `{}`", "not part of the schema",
         "an image file holds `schema-version` and `image` nodes; an image's components, its base \
          among them, are path segments inside its `image` node"))
@@ -354,7 +412,7 @@ pub(crate) const IMAGE_FILE: Node = Node::new("image file",
 struct Pins {
     schema: Option<(i128, Span)>,
     buildc: Option<(String, Span)>,
-    tect_sha: Option<String>,
+    buildc_sha: Option<String>,
     src: Source,
 }
 
@@ -372,7 +430,7 @@ fn pins(root: &Path) -> Option<Pins> {
         schema: node("schema-version").and_then(|n| Some((int_arg(&n)?, n.name().span().into()))),
         buildc: node("buildc-version")
             .and_then(|n| Some((string_arg(&n)?.to_string(), n.name().span().into()))),
-        tect_sha: node("buildc-version").and_then(|n| prop(&n, "sha256").map(str::to_string)),
+        buildc_sha: node("buildc-version").and_then(|n| prop(&n, "sha256").map(str::to_string)),
         src: Source::new(path.display().to_string(), text),
     })
 }
@@ -421,7 +479,7 @@ pub fn pinned_elsewhere(root: &Path) -> Option<String> {
 pub fn pinned_unverified(root: &Path) -> Option<String> {
     let pins = pins(root)?;
     pins.buildc
-        .filter(|_| pins.tect_sha.is_none())
+        .filter(|_| pins.buildc_sha.is_none())
         .map(|(version, _)| version)
 }
 
@@ -677,7 +735,7 @@ impl List {
     fn check_images(&self, issues: &mut Issues) {
         for (index, image) in self.images.iter().enumerate() {
             if image.id.is_empty() {
-                continue; 
+                continue;
             }
             for other in &self.images[..index] {
                 if other.id == image.id {
@@ -1405,6 +1463,7 @@ fn based(
         satisfies: component.satisfies,
         signed: held.signed,
         scap_content: facts.scap_content,
+        scap_pin: facts.scap_pin,
         bootloaders: facts.bootloaders,
         files: component.files,
         imported: component.imported,
@@ -1515,7 +1574,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_tect_hashes_are_issues() {
+    fn malformed_buildc_hashes_are_issues() {
         for sha256 in ["", "bad"] {
             let text = format!(
                 "schema-version 1\nbuildc-version \"{BUILDC_VERSION}\" sha256=\"{sha256}\"\nname \"Example\"\n"

@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "broken-cycle",
   "ungated_published": "broken-cycle",
   "cache_image": "broken-cycle-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -79,6 +82,7 @@ source: tests/golden/harness.rs
                   "provider": "core/b"
                 }
               },
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -87,6 +91,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "703db1ad8d1d5b6b99e166f6f422f0c25d22957c6444d780e08a1956ee7a37b9",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -114,6 +119,7 @@ source: tests/golden/harness.rs
                   "provider": "core/a"
                 }
               },
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -122,6 +128,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "6195dadd4fb59d7b6d09045989b7901fc39dd17084250e13920923a94a56204c",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -140,7 +147,22 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-cycle/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-cycle",
+              "COMPONENT_HASHES=core/a|703db1ad8d1d5b6b99e166f6f422f0c25d22957c6444d780e08a1956ee7a37b9 core/b|6195dadd4fb59d7b6d09045989b7901fc39dd17084250e13920923a94a56204c",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

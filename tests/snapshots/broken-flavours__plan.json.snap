@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "broken-flavours",
   "ungated_published": "broken-flavours",
   "cache_image": "broken-flavours-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -86,6 +89,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -94,6 +98,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "2857c3736ecd1054bb8b5936352adfed7901b428a2ff8134134fc4025debd8f2",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -112,7 +117,23 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-flavours/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-flavours",
+              "COMPONENT_HASHES=core/hello|2857c3736ecd1054bb8b5936352adfed7901b428a2ff8134134fc4025debd8f2",
+              "ASSET_RESOLUTIONS=",
+              "FLAVOUR=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         },
         {
           "name": "broken-flavours/dev",
@@ -143,6 +164,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -151,6 +173,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "2857c3736ecd1054bb8b5936352adfed7901b428a2ff8134134fc4025debd8f2",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -169,7 +192,23 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-flavours/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-flavours/dev",
+              "COMPONENT_HASHES=core/hello|2857c3736ecd1054bb8b5936352adfed7901b428a2ff8134134fc4025debd8f2",
+              "ASSET_RESOLUTIONS=",
+              "FLAVOUR=dev",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         },
         {
           "name": "broken-flavours",
@@ -196,6 +235,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -204,6 +244,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "2857c3736ecd1054bb8b5936352adfed7901b428a2ff8134134fc4025debd8f2",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -222,7 +263,23 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-flavours/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-flavours",
+              "COMPONENT_HASHES=core/hello|2857c3736ecd1054bb8b5936352adfed7901b428a2ff8134134fc4025debd8f2",
+              "ASSET_RESOLUTIONS=",
+              "FLAVOUR=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

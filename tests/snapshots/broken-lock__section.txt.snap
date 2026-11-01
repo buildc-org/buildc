@@ -15,37 +15,31 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
 # ---- fedora-family ----
-RUN --mount=type=bind,from=ctx,source=/components/fedora-family,target=/ctx/components/fedora-family \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/fedora-family.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
+    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/fedora-family.sh,target=/generated/broken-lock/components/fedora-family.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-lock/components/fedora-family.sh
 
 # ---- core/edited ----
-RUN --mount=type=bind,from=ctx,source=/components/core/edited,target=/ctx/components/core/edited \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/core/edited.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
+    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/core/edited.sh,target=/generated/broken-lock/components/core/edited.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-lock/components/core/edited.sh
 
 # ---- core/owned ----
-RUN --mount=type=bind,from=ctx,source=/components/core/owned,target=/ctx/components/core/owned \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/core/owned.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
+    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
+    --mount=type=bind,from=ctx,source=/generated/broken-lock/components/core/owned.sh,target=/generated/broken-lock/components/core/owned.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-lock/components/core/owned.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -59,13 +53,12 @@ ARG IMAGE_NAME="Broken lock"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --mount=type=bind,from=ctx,source=/generated/broken-lock/finalize.sh,target=/ctx/finalize.sh \
+RUN --mount=type=bind,from=ctx,source=/generated/broken-lock/finalize.sh,target=/generated/broken-lock/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /ctx/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-lock/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
@@ -77,17 +70,12 @@ ARG SOURCE_COMMIT=""
 ARG BUILD_BACKEND=""
 ARG COMPONENT_HASHES=""
 ARG ASSET_RESOLUTIONS=""
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+ARG BUILDC_VERSION=""
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
     SOURCE_COMMIT="${SOURCE_COMMIT}" BUILD_BACKEND="${BUILD_BACKEND}" \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
-    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" \
-    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" /ctx/buildc build-record
+    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
+    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
 
 RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
-
-ARG FAMILY=fedora
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=tmpfs,target=/run \
-    FAMILY="${FAMILY}" /ctx/buildc validate-image

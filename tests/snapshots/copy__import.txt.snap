@@ -40,10 +40,10 @@ components/flatpak/files/usr/share/example/remotes.list
 components/flatpak/manifest.kdl
 ==== the lock
 component "base-image/fedora" {
-    library "buildc-components"
+    library "buildc"
     path "base-image/fedora"
     url "https://github.com/buildc-org/library"
-    content "3ee9edf2a6836db544042428def080ba23d69a5f59206f3407537a3a6aa81f24"
+    content "0967eb6389e396653ea9fb844a9e254d4eeb5aea7623594841157ec05d188c02"
     track
 }
 
@@ -55,10 +55,10 @@ component "browser" {
 }
 
 component "fedora-family" {
-    library "buildc-components"
+    library "buildc"
     path "fedora-family"
     url "https://github.com/buildc-org/library"
-    content "1657e7d2d58210a215309d2e0803b7fa58b82613c1b96bef63ec97ae7df436de"
+    content "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd"
     track
 }
 

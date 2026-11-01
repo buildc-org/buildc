@@ -2,6 +2,9 @@
 source: tests/golden/harness.rs
 ---
 ==== as generated
+  x `generated/example/components/fedora-family/lib/family.sh` is not there
+  help: run `buildc generate` and commit what it writes
+
 ==== edited by hand
   x `generated/plan.json` is not what this repository generates
    ,-[generated/plan.json:2:1]
@@ -13,16 +16,31 @@ source: tests/golden/harness.rs
    `----
   help: run `buildc generate` and commit what it writes
 
-==== gone, and one nobody claims
-  x `generated/plan.json` is not there
+  x `generated/example/components/fedora-family/lib/family.sh` is not there
   help: run `buildc generate` and commit what it writes
+
+==== gone, and one nobody claims
+  x 2 generated files are not there
+  help: run `buildc generate` and commit what it writes; it writes all 2 of
+        them
 
   x nothing generates `generated/leftover`
   help: delete it, or declare what it belongs to
 
 ==== one workflow undeclared
-  x `generated/plan.json` is not there
+  x `generated/snapshot.json` is not what this repository generates
+   ,-[generated/snapshot.json:2:1]
+ 1 | {
+ 2 |   "root": "e751964afae31736723f47c3133b3f4d3525a8a56a677fa6265f8692eb66a439",
+   : ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   :                                       `-- generated:   "root": "31e63edeb34765adbac51cf1209dcc6b00ab46b289df185fd84800d32ca5462e",
+ 3 |   "files": 20
+   `----
   help: run `buildc generate` and commit what it writes
+
+  x 2 generated files are not there
+  help: run `buildc generate` and commit what it writes; it writes all 2 of
+        them
 
   x nothing generates `generated/leftover`
   help: delete it, or declare what it belongs to
@@ -33,6 +51,6 @@ source: tests/golden/harness.rs
 ==== and generated again
 smoke-test.yml is gone
 ==== never generated
-  x 17 generated files are not there
-  help: run `buildc generate` and commit what it writes; it writes all 17 of
+  x 20 generated files are not there
+  help: run `buildc generate` and commit what it writes; it writes all 20 of
         them

@@ -15,44 +15,36 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
 # ---- core/menu ----
-RUN --mount=type=bind,from=ctx,source=/components/core/menu,target=/ctx/components/core/menu \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/menu.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/menu.sh,target=/generated/broken-collect/components/core/menu.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-collect/components/core/menu.sh
 
 # ---- core/absent ----
-RUN --mount=type=bind,from=ctx,source=/components/core/absent,target=/ctx/components/core/absent \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/absent.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/absent.sh,target=/generated/broken-collect/components/core/absent.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-collect/components/core/absent.sh
 
 # ---- core/unclaimed ----
-RUN --mount=type=bind,from=ctx,source=/components/core/unclaimed,target=/ctx/components/core/unclaimed \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/unclaimed.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/unclaimed.sh,target=/generated/broken-collect/components/core/unclaimed.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-collect/components/core/unclaimed.sh
 
 # ---- core/shipper ----
-RUN --mount=type=bind,from=ctx,source=/components/core/shipper,target=/ctx/components/core/shipper \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/shipper.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-collect/components/core/shipper.sh,target=/generated/broken-collect/components/core/shipper.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-collect/components/core/shipper.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -66,13 +58,12 @@ ARG IMAGE_NAME="Broken Collect"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --mount=type=bind,from=ctx,source=/generated/broken-collect/finalize.sh,target=/ctx/finalize.sh \
+RUN --mount=type=bind,from=ctx,source=/generated/broken-collect/finalize.sh,target=/generated/broken-collect/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /ctx/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-collect/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
@@ -84,17 +75,12 @@ ARG SOURCE_COMMIT=""
 ARG BUILD_BACKEND=""
 ARG COMPONENT_HASHES=""
 ARG ASSET_RESOLUTIONS=""
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+ARG BUILDC_VERSION=""
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
     SOURCE_COMMIT="${SOURCE_COMMIT}" BUILD_BACKEND="${BUILD_BACKEND}" \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
-    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" \
-    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" /ctx/buildc build-record
+    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
+    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
 
 RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
-
-ARG FAMILY=fedora
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=tmpfs,target=/run \
-    FAMILY="${FAMILY}" /ctx/buildc validate-image

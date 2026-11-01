@@ -16,8 +16,8 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Option | Description |
 | --- | --- |
-| `--root <dir>` | the repository, else the nearest `repo.kdl` at or above the working directory |
-| `--no-tui` | ask nothing, using defaults or failing when an answer has no default |
+| `--root <dir>` | the repository root; the nearest `repo.kdl` at or above the working directory if absent |
+| `--no-tui` | ask no questions; use flags and defaults, and fail when an answer has no default |
 
 ## Commands
 
@@ -25,24 +25,24 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create repo [name]`](#buildc-create-repo) | start a repository of images | [repository&nbsp;layout](schema/repository.md) |
-| [`buildc create git`](#buildc-create-git) | initialise git and the ignore file in a directory |  |
-| [`buildc create scripts [name]...`](#buildc-create-scripts) | keep a copy of a script buildc supplies in scripts/ | [`scripts/`](schema/repository.md) |
-| [`buildc set library`](#buildc-set-library) | add a component library | [`repo.kdl`&nbsp;›&nbsp;`sources`](schema/repo.md#sources) |
+| [`buildc create repo [name]`](#buildc-create-repo) | write a repository and its first image | [repository&nbsp;layout](schema/repository.md) |
+| [`buildc create git`](#buildc-create-git) | put a directory under git control |  |
+| [`buildc create scripts [name]...`](#buildc-create-scripts) | copy the scripts that buildc supplies into scripts/ | [`scripts/`](schema/repository.md) |
+| [`buildc set library`](#buildc-set-library) | add a component library to the repository | [`repo.kdl`&nbsp;›&nbsp;`sources`](schema/repo.md#sources) |
 
 ### Image
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create image [name]`](#buildc-create-image) | add an image, with its name and the base it builds on | [`image.kdl`](schema/image.md) |
-| [`buildc create flavour [name]`](#buildc-create-flavour) | add a gated component set an image also publishes | [`image.kdl`&nbsp;›&nbsp;`flavours`](schema/image.md#image-flavours) |
+| [`buildc create image [name]`](#buildc-create-image) | add an image and choose its base | [`image.kdl`](schema/image.md) |
+| [`buildc create flavour [name]`](#buildc-create-flavour) | add a second build of an image with more components | [`image.kdl`&nbsp;›&nbsp;`flavours`](schema/image.md#image-flavours) |
 
 ### Components
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create component [name]`](#buildc-create-component) | write a component, and offer to list it in an image | [`manifest.kdl`](schema/component.md) |
-| [`buildc import component [name]`](#buildc-import-component) | copy a component from a library repo.kdl declares into this repository | [`components.lock.kdl`](schema/lock.md) |
+| [`buildc create component [name]`](#buildc-create-component) | write a component and offer to list it in an image | [`manifest.kdl`](schema/component.md) |
+| [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc set component [path]`](#buildc-set-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
 
@@ -50,114 +50,114 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create key [kind]`](#buildc-create-key) | generate a key one of this repository's components declares | [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
-| [`buildc set key [kind]`](#buildc-set-key) | record a key that already exists, in place of generating one | [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
+| [`buildc create key [kind]`](#buildc-create-key) | generate a key that a component declares | [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
+| [`buildc set key [kind]`](#buildc-set-key) | record an existing key instead of generating one | [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
 
 ### Check and generate
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc check`](#buildc-check) | read every manifest and say what is wrong with it |  |
-| [`buildc generate`](#buildc-generate) | write the build files, and list what was written | [`generated/`](schema/repository.md) |
-| [`buildc verify`](#buildc-verify) | compare the build files byte for byte with what buildc writes |  |
+| [`buildc check`](#buildc-check) | check every manifest and report each problem at its line |  |
+| [`buildc generate`](#buildc-generate) | write the build files and list what was written | [`generated/`](schema/repository.md) |
+| [`buildc verify`](#buildc-verify) | compare every build file byte for byte with the one buildc writes |  |
 
 ### Build and boot
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc build [target]`](#buildc-build) | verify the build files, then build the image |  |
-| [`buildc vm build [type]`](#buildc-vm-build) | convert the built image into a qcow2, raw or iso |  |
-| [`buildc vm run [type]`](#buildc-vm-run) | boot that disk under qemu, building it if missing |  |
-| [`buildc vm spawn [type]`](#buildc-vm-spawn) | boot a qcow2 or raw disk with systemd-vmspawn |  |
+| [`buildc build [target]`](#buildc-build) | build one target with the container backend |  |
+| [`buildc vm build [type]`](#buildc-vm-build) | make the disk for the target |  |
+| [`buildc vm run [type]`](#buildc-vm-run) | boot that disk under qemu and build it if missing |  |
+| [`buildc vm spawn [type]`](#buildc-vm-spawn) | boot the disk with systemd-vmspawn |  |
+| [`buildc validate <image>`](#buildc-validate) | check one built image with the tool that built it |  |
+| [`buildc attribute <image>`](#buildc-attribute) | map each layer of a built image to its component |  |
 
 ### CI
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc set workflows`](#buildc-set-workflows) | choose the CI this repository generates | [`repo.kdl`&nbsp;›&nbsp;`workflows`](schema/repo.md#workflows) |
+| [`buildc set workflows`](#buildc-set-workflows) | choose the CI workflows the repository generates | [`repo.kdl`&nbsp;›&nbsp;`workflows`](schema/repo.md#workflows) |
 
 ### Inspect
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc section [image]`](#buildc-section) | print the Containerfile section an image generates |  |
-| [`buildc graph`](#buildc-graph) | print what provides what, and what the base carries |  |
-| [`buildc why [component]`](#buildc-why) | print one component's trust read-out, byte by byte |  |
-| [`buildc plan`](#buildc-plan) | print every fact this repository derives, as json |  |
-| [`buildc summary [target]`](#buildc-summary) | print what one target is made of, as a markdown table |  |
-| [`buildc sbom [target]`](#buildc-sbom) | print the pinned payloads one target carries, as SPDX |  |
-| [`buildc registry namespace`](#buildc-registry-namespace) | print where images publish |  |
-| [`buildc registry ref`](#buildc-registry-ref) | print the full reference one target publishes under |  |
-| [`buildc recipe`](#buildc-recipe) | print the installer recipe one target installs from |  |
+| [`buildc section [image]`](#buildc-section) | print one image's generated Containerfile section |  |
+| [`buildc graph`](#buildc-graph) | print the capability graph and what the base already carries |  |
+| [`buildc why [component]`](#buildc-why) | print one component's provenance and contents |  |
+| [`buildc plan`](#buildc-plan) | print every fact the repository derives as JSON |  |
+| [`buildc summary [target]`](#buildc-summary) | print a table of what one target is made of |  |
+| [`buildc sbom [target]`](#buildc-sbom) | print one target's pinned payloads as SPDX packages |  |
+| [`buildc registry namespace`](#buildc-registry-namespace) | print the registry namespace that images publish to |  |
+| [`buildc registry ref`](#buildc-registry-ref) | print the full reference that one target publishes under |  |
+| [`buildc recipe`](#buildc-recipe) | print the install recipe that the repository answers |  |
 
 ### Audit
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc set conforms [image]`](#buildc-set-conforms) | choose the benchmark profile an image is measured by | [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms) |
-| [`buildc set claims [component]`](#buildc-set-claims) | choose the benchmark rules a component claims to cover | [`manifest.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies) |
-| [`buildc coverage [image]`](#buildc-coverage) | print who claims each rule the image conforms to | [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms) |
-| [`buildc scap content`](#buildc-scap-content) | print the datastream the target is measured with |  |
-| [`buildc scap tailoring`](#buildc-scap-tailoring) | print the tailoring the target is scanned with |  |
-| [`buildc scap rules [number]...`](#buildc-scap-rules) | print the rule each benchmark number reaches, one per line |  |
-| [`buildc scap [arf.xml]`](#buildc-scap) | print what one scan says about the target |  |
+| [`buildc set conforms [image]`](#buildc-set-conforms) | choose the benchmark profile an image is measured against | [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms) |
+| [`buildc set claims [component]`](#buildc-set-claims) | choose the benchmark rules that a component claims | [`manifest.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies) |
+| [`buildc coverage [image]`](#buildc-coverage) | print which component claims each rule of the image's profile | [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms) |
+| [`buildc scap content`](#buildc-scap-content) | print the datastream that the target is measured with |  |
+| [`buildc scap tailoring`](#buildc-scap-tailoring) | print the XCCDF tailoring that a scan runs |  |
+| [`buildc scap rules [number]...`](#buildc-scap-rules) | print the rule name for each benchmark number |  |
+| [`buildc scap [arf.xml]`](#buildc-scap) | print the findings of one scan for the target |  |
 
 ### Inside a build
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc fetch <what> <url> <sha256> [target] [extra]...`](#buildc-fetch) | download one payload, verify it, and place it | [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset) |
-| [`buildc build-record`](#buildc-build-record) | write the record of what the build resolved |  |
-| [`buildc validate-image`](#buildc-validate-image) | run every check a built image has to pass | [`manifest.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify) |
+| [`buildc fetch <what> <url> <sha256> [target] [extra]...`](#buildc-fetch) | download one payload, verify it and place it | [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset) |
+| [`buildc build-record`](#buildc-build-record) | write the build record that an image carries |  |
+| [`buildc validate-image`](#buildc-validate-image) | run every check that a built image must pass | [`manifest.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify) |
 
 ### CLI tool
 
 | Command | Description | Schema |
 | --- | --- | --- |
 | [`buildc`](#buildc) | open a picker of the commands that run here, or list them where no terminal is watching |  |
-| [`buildc upgrade`](#buildc-upgrade) | replace this buildc and its assets with the latest |  |
+| [`buildc upgrade`](#buildc-upgrade) | replace this buildc and its assets with the latest release |  |
 
 ## `buildc`
 
-The build tool for a bootc image repository. With no command, it opens a picker of the commands that run where it is typed. If no terminal is watching, then it lists those commands instead.
+buildc manages a bootc image repository. With no command, it opens a picker of the commands that run where it is typed. If no terminal is watching, then it lists those commands instead.
 
 **Usage:** `buildc [OPTIONS] [COMMAND]`
 
 
 | Option | Description |
 | --- | --- |
-| `--root <dir>` | the repository, else the nearest `repo.kdl` at or above the working directory |
-| `--no-tui` | ask nothing, using defaults or failing when an answer has no default |
+| `--root <dir>` | the repository root; the nearest `repo.kdl` at or above the working directory if absent |
+| `--no-tui` | ask no questions; use flags and defaults, and fail when an answer has no default |
 
 > [!NOTE]
 > In a terminal, a command asks for each answer that its arguments and flags
-> did not give. `buildc create repo` then shows every answer on a review screen.
-> Enter on an answer asks it again, Create writes, and Esc leaves without
-> writing.
+> did not give. `buildc create repo` shows every answer on a review screen before
+> it writes. Enter reopens an answer. Create writes. Esc writes nothing.
 >
 > With `--no-tui`, or with no terminal, a command asks nothing. A typed answer
-> comes from its flag, else from its default, else the command fails and names
-> the flag. A yes or no question answers no, and a choice keeps the options
-> that it opens with.
+> comes from its flag first, then its default. If neither exists, the command
+> fails and names the flag. A yes or no question answers no, and a choice keeps
+> the options that it opens with.
 
 ## `buildc upgrade`
 
-Replaces this `buildc`, and the assets it scaffolds from, with the latest
-published release. It prints the running version and the latest one. If they
-are the same, or if the running build is newer than the latest tag, then it
-stops.
+Replaces this `buildc` and the assets it scaffolds from with the latest
+published release. It prints the running and latest versions. It stops when
+they match, or when the running build is newer than the latest tag.
 
 **Usage:** `buildc upgrade`
 
 > [!NOTE]
 > The binary and its assets move together. A binary without its assets
-> scaffolds from a stale `assets/` copy and says nothing.
+> uses a stale `assets/` copy and gives no warning.
 >
 > Run as root, it installs to `/usr/local/bin` and
 > `/usr/local/share/buildc/assets`. Run as another user, it installs to
 > `~/.local/bin` and `$XDG_DATA_HOME/buildc/assets`, which is
-> `~/.local/share/buildc/assets` by default. If it cannot write there, then
-> it stops and names the other location. It never falls back to it.
+> `~/.local/share/buildc/assets` by default. If it cannot write there, it
+> stops and names the other location. It never switches to that location.
 >
 > It checks the download against the `.sha256` published beside it before it
 > changes a file. If the check fails, then the old install stays.
@@ -166,8 +166,8 @@ stops.
 > survive.
 >
 > An `assets` directory beside the binary takes priority over the installed
-> assets, so it stops before it downloads. A set `BUILDC_ASSETS` also takes
-> priority, and it warns about that.
+> assets, so it stops before it downloads. A set `BUILDC_ASSETS` also wins, and
+> the warning names the path that wins.
 >
 > Releases exist for x86_64 and aarch64 Linux. On another platform it stops and
 > names the platform.
@@ -177,36 +177,26 @@ stops.
 
 ## `buildc create repo`
 
-Starts a repository for the user's images. Every other command reads the
-`repo.kdl` that it writes, so it runs first. It creates a directory named after
-the repository, or uses the directory that `--root` names.
+Creates a repository for images. Every other command reads the `repo.kdl` that
+it writes, so it runs first. It creates a directory named after the repository,
+or uses the directory that `--root` names.
 
-It asks, in order:
-
-1. Name the repository.
-2. Choose whether to sync the repository to a host. Then choose the host and
-   give the account.
-3. On GitHub, choose whether to create the remote repository now.
-4. Choose whether to add a first image. Then name it and choose its base.
-5. If the base needs components, choose whether to add them.
-6. If the repository syncs to a host, choose the CI workflows. Then choose
-   whether images publish and scan only on scheduled builds, and give the daily
-   build time.
-7. Choose the scripts to keep in `scripts/`.
-8. Review every answer, change any of them, and choose Create.
+It asks for the repository name, the host and account, the first image and its
+base, the base components, the CI workflows and schedule, and the scripts to
+keep in `scripts/`. It shows every answer on a review screen before it writes.
 
 **Usage:** `buildc create repo [OPTIONS] [name]`
 
 | Argument | Description |
 | --- | --- |
-| `<name>` | the repository name, which also names its directory |
+| `<name>` | the repository directory name |
 
 | Option | Description |
 | --- | --- |
-| `--host <domain>` | where the repository is hosted, github.com by default; with `--owner`, it forms the address every image URL starts from |
-| `--owner <name>` | the account or organisation on the repository host |
-| `--image <name>` | write a first image too; `create image` adds one later |
-| `--base <ref>` | the bootc image the first image is based on |
+| `--host <domain>` | the repository host; `github.com` by default, and with `--owner` it forms the base of every image URL |
+| `--owner <name>` | the account or organisation that owns the repository |
+| `--image <name>` | also write a first image with this name |
+| `--base <ref>` | the base image reference for the first image |
 
 **Schema:** [repository&nbsp;layout](schema/repository.md)
 
@@ -238,7 +228,7 @@ example/
 ```
 
 > [!WARNING]
-> The `buildc-components` source that `repo.kdl` declares is `unpinned`. Each
+> The `buildc` source that `repo.kdl` declares is `unpinned`. Each
 > fetch takes the head of its branch, and no hash checks what arrives. To pin
 > it, add `version` and `sha256` beside its `url`.
 
@@ -247,16 +237,17 @@ example/
 > first commit, the remote and the push.
 >
 > On GitHub, it offers to create the remote repository with `gh`. If `gh` is
-> missing or logged out, then it says what to do.
+> missing or logged out, it reports what `gh` still needs before it can create
+> the remote.
 >
 > A repository cannot sit inside another repository, so it refuses such a
 > directory.
 
 ## `buildc create git`
 
-Puts the directory under git control, so a hand-written repository is under
-version control before its first commit. It writes the `.gitignore` that
-ignores `keys/private/`, `out/` and `.cache/`, unless one is already there.
+Puts a directory written by hand or copied from elsewhere under git control
+before its first commit. It writes the `.gitignore` that ignores
+`keys/private/`, `out/` and `.cache/`, unless one is already there.
 
 It refuses a directory that git already tracks, because a repository does not
 nest.
@@ -274,18 +265,16 @@ Adds an image to the repository, in a new image file at the root. The file
 name derives from the image name, so "My Desktop" writes
 `my-desktop.image.kdl`.
 
-It asks, in order:
+It asks for the image name, which defaults to the repository name, and for the
+base. The catalog offers the base, and `--base` names one.
 
-1. Name the image. The repository name is the default.
-2. Choose the base from the catalog, or name one with `--base`.
-
-If the base is a catalogued component that imports no build environment,
-choose whether to add its family adapter. If the base requires a component
-that the image does not list, choose whether to add its providers. Each one
-comes from the declared collections, is copied into `components/` and is
-recorded in `components/components.lock.kdl`. A component the repository
-already holds is listed as it is. A base outside the catalog declares no
-family, so the tool offers no adapter and asks no family question.
+If the base is a catalogued component that imports no build environment, it
+offers to add its family adapter. If the base requires a component that the
+image does not list, it offers to add its providers. It copies each accepted
+component from the declared collections into `components/` and records it in
+`components/components.lock.kdl`. A component the repository already holds is
+listed as it is. A base outside the catalog declares no family, so the tool
+offers no adapter and asks no family question.
 
 The components a library base imports are copied into `components/` beside
 it, and the image file lists none of them.
@@ -294,12 +283,12 @@ it, and the image file lists none of them.
 
 | Argument | Description |
 | --- | --- |
-| `<name>` | the image name, which also names its file |
+| `<name>` | the image name |
 
 | Option | Description |
 | --- | --- |
-| `--owner <name>` | the account or organisation, where no image already carries one |
-| `--base <ref>` | any bootc image reference, in the catalog or not; skips the picker |
+| `--owner <name>` | the account or organisation; used when no image already names one |
+| `--base <ref>` | a bootc image reference, catalogued or not; skips the base picker |
 
 **Schema:** [`image.kdl`](schema/image.md)
 
@@ -336,15 +325,12 @@ example/
 ## `buildc create flavour`
 
 Adds a flavour to an image. A flavour is a second build of the image with more
-components, published as `<image>-<flavour>` beside the image. This command
-declares the flavour in the image's `flavours` block. To add a component to the
-flavour, run `buildc create component` or `buildc import component` and choose the
-flavour.
+components, published as `<image>-<flavour>` beside the image. The command
+declares the flavour in the image's `flavours` block. Add components to the
+flavour with `buildc create component` or `buildc import component`, and choose the
+flavour there.
 
-It asks, in order:
-
-1. Name the flavour.
-2. Choose the image that publishes it.
+It asks for the flavour name and the image that publishes it.
 
 **Usage:** `buildc create flavour [OPTIONS] [name]`
 
@@ -400,29 +386,25 @@ image {
 
 ## `buildc create component`
 
-Writes a new component, `components/<name>/manifest.kdl`, and offers to list it in an
-image. The name can be a path, so `apps/firefox` writes
+Writes a new component to `components/<name>/manifest.kdl` and offers to list
+it in an image. The name can be a path, so `apps/firefox` writes
 `components/apps/firefox/manifest.kdl`.
 
-It asks, in order:
-
-1. Name the component.
-2. Optionally describe it.
-3. Optionally restrict it to named base families.
-4. Choose whether it installs packages, then name them.
-5. Choose the images and flavours that list it.
+It asks for the component name, an optional description, optional base family
+restrictions, whether it installs packages and their names, and the images and
+flavours that list it.
 
 **Usage:** `buildc create component [OPTIONS] [name]`
 
 | Argument | Description |
 | --- | --- |
-| `<name>` | the component name, which can be a path under `components/` |
+| `<name>` | the component name or path |
 
 | Option | Description |
 | --- | --- |
-| `--image <name>` | list the component in this image or flavour; repeatable |
-| `--pkg <name>` | a package the component installs; repeatable |
-| `--with <verb=value>` | one more line in the manifest, such as `--with provides=browser`; repeatable |
+| `--image <name>` | an image that lists the component |
+| `--pkg <name>` | a package the component installs |
+| `--with <verb=value>` | one more manifest line, such as `provides=browser`; repeatable |
 
 **Schema:** [`manifest.kdl`](schema/component.md)
 
@@ -447,8 +429,8 @@ example/
 > An image and one of its own flavours cannot both list the component. The image
 > entry already reaches every flavour of that image.
 >
-> No image is an answer. The component exists, and no image lists it yet. Leaving
-> the picker writes nothing.
+> Choosing no image is valid. The component exists with no listing. Leaving the
+> picker writes nothing.
 
 ## `buildc create key`
 
@@ -456,7 +438,7 @@ Generates a key that a component in the repository declares. The public half goe
 under `keys/public/`, at the path it has in the image. The private half goes
 under `keys/private/`, which git ignores.
 
-It makes each kind with its own tool:
+Each key kind uses its own tool:
 
 - `cosign` makes the key pair that signs a published image. Set the private
   half as the `SIGNING_SECRET` repository secret. `cosign` must be installed.
@@ -476,20 +458,18 @@ It makes each kind with its own tool:
   has no passphrase. The image ships the public half, and no build reads the
   private half.
 
-It asks for one step:
-
-1. Choose the kind.
+It asks for the kind.
 
 **Usage:** `buildc create key [OPTIONS] [kind]`
 
 | Argument | Description |
 | --- | --- |
-| `<kind>` | the kind of key, as a component declares it |
+| `<kind>` | the kind of key that a component declares |
 
 | Option | Description |
 | --- | --- |
-| `--component <name>` | which component, where two of them declare the same kind |
-| `--cn <name>` | the certificate common name; the repository directory name by default |
+| `--component <name>` | the component that declares the key |
+| `--cn <name>` | the common name of a generated certificate |
 
 **Schema:** [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key)
 
@@ -509,24 +489,22 @@ It asks for one step:
 
 ## `buildc create scripts`
 
-Copies a script that `buildc` supplies into `scripts/`, where the repository
-owns it. Git tracks the copy, the user can review and change it, and a `buildc`
+Copies scripts that `buildc` supplies into `scripts/`, where the repository owns
+them. Git tracks each copy, the user can review and change it, and a `buildc`
 upgrade does not replace it. The scripts are:
 
 - `Containerfile.skeleton`, the Containerfile around the generated component layers
 - `lint.sh`, `buildc.sh`, `smoke.sh` and `vm.sh`, which `buildc generate` otherwise
   writes into `generated/scripts/`
 
-It asks for one step:
-
-1. Choose the scripts. The list holds only the scripts that `scripts/` does
-   not hold yet.
+It asks which scripts to keep. The list holds only the scripts that `scripts/`
+does not hold yet.
 
 **Usage:** `buildc create scripts [name]...`
 
 | Argument | Description |
 | --- | --- |
-| `<name>` | each script to keep |
+| `<name>` | the scripts to keep |
 
 **Schema:** [`scripts/`](schema/repository.md)
 
@@ -549,39 +527,37 @@ Copies a component from a library into `components/<name>`, and records it in
 library's revision and the content hash. The repository holds the copy, so a
 fetch never changes it.
 
-It asks, in order:
+It asks for:
 
-1. Choose the image or flavour the components are for, or none.
-2. Choose the components. A component that the image's base family cannot build,
-   and a base component, are listed as unavailable, with the reason beside
-   them.
-3. If the repository already holds a component at that path, choose to list the
-   local component or to import the library's under another name. The name
-   offered is `<name>@1`.
-4. If several library components provide one capability that they require,
-   choose one. Then choose whether to add the components that they require. A
+1. The image or flavour that the components are for, or none.
+2. The components. A component that the image's base family cannot build, and a
+   base component, are listed as unavailable, with the reason beside them.
+3. If the repository already holds a component at that path, whether to list the
+   local component or import the library's component under another name. The
+   name offered is `<name>@1`.
+4. If several library components provide one capability that they require, which
+   one to use, and whether to add the components that they require. A
    requirement whose `provider` reads an option takes the answer as that
    option's value on the component's entry, and the provider is copied in
    without an entry of its own.
 5. If a component provides a capability that an entry in the same image or
-   flavour declares exclusive, or the other way round, choose to replace that
+   flavour declares exclusive, or the other way round, whether to replace that
    entry or cancel.
-6. Choose whether to generate the CI workflows that they make runnable.
-7. If they claim benchmark rules, choose a profile to measure the image
-   against.
-8. Choose whether the copies track upstream.
+6. Whether to generate the CI workflows that they make runnable.
+7. If they claim benchmark rules, the profile to measure the image against.
+8. Whether the copies track upstream.
 
 **Usage:** `buildc import component [OPTIONS] [name]`
 
 | Argument | Description |
 | --- | --- |
-| `<name>` | one component, as `<name>` or `<owner>/<name>` |
+| `<name>` | the component to copy or `<owner>/<name>` to choose a library |
 
 | Option | Description |
 | --- | --- |
-| `--image <name>` | list the component in this image or flavour |
-| `--datastream <file>` | the SCAP content the profile offer is read out of; the family's installed copy by default, and no content is no offer |
-| `--dependencies` | add provider components for dependencies the selected components require |
+| `--image <name>` | the image or flavour that lists the component |
+| `--datastream <file>` | SCAP content for the profile offer; the family's installed copy by default, and no content means no offer |
+| `--dependencies` | add provider components for the requirements of the selected components |
 
 **Schema:** [`components.lock.kdl`](schema/lock.md)
 
@@ -605,8 +581,8 @@ example/
 > If `repo.kdl` declares no `sources`, then the command refuses and prints the
 > `sources` block that `buildc create repo` writes.
 >
-> A bare name is searched for in every library. `<owner>/<name>` picks
-> between two libraries that both hold it.
+> It searches every library for a bare name. `<owner>/<name>` picks between
+> two libraries that both hold it.
 >
 > It refuses a component that the image already lists, and a component that the
 > image's base family cannot build.
@@ -628,16 +604,12 @@ example/
 
 Chooses the CI workflows that the repository generates, and writes the choice
 into `workflows` in `repo.kdl`. Run `buildc generate` next to write the workflow
-files. A workflow that the repository cannot run shows the reason, and the user
-cannot choose it. With no terminal, it changes nothing and says to edit
-`repo.kdl`.
+files. A workflow that the repository cannot run shows its reason and cannot be
+chosen. With no terminal, it changes nothing and says to edit `repo.kdl`.
 
-It asks, in order:
-
-1. Choose the workflows.
-2. Choose whether images publish only on scheduled builds.
-3. Choose whether image scans run only on scheduled builds.
-4. If a chosen workflow has a schedule, give the daily build time in UTC.
+It asks for the workflows, whether images publish only on scheduled builds, and
+whether image scans run only on scheduled builds. If a chosen workflow has a
+schedule, it asks for the daily build time in UTC.
 
 **Usage:** `buildc set workflows`
 
@@ -659,16 +631,13 @@ example/
 
 ## `buildc set library`
 
-Adds a library to the `sources` block in `repo.kdl`: the default library, or
-a source the user types. A library holds components and base components alike. A
-source with the same alias is replaced, so the declaration moves to what the
-user chose.
+Adds a library to the `sources` block in `repo.kdl`, either the default
+library or a source the user types. A library holds components and base
+components alike. A source with the same alias is replaced, so the declaration
+moves to what the user chose.
 
-It asks, in order:
-
-1. Choose the default library, or another source.
-2. For another source, give its alias, its HTTPS Git URL and the directory
-   inside the repository.
+It asks for the default library or another source. For another source, it asks
+for the alias, the HTTPS Git URL and the directory inside the repository.
 
 **Usage:** `buildc set library`
 
@@ -681,22 +650,19 @@ it into the image's `conforms`. A `conforms` turns on the image scan for every
 build. With no terminal, it changes nothing and says to write the line into the
 image file.
 
-It asks, in order:
-
-1. If the repository holds several images, choose one.
-2. Choose the profile.
-3. Choose whether to import the collection components that claim rules of the
-   profile that nothing in the image claims yet.
+It asks for the image if the repository holds several, and for the profile. It
+also asks whether to import collection components that claim rules of the
+profile that no component in the image claims.
 
 **Usage:** `buildc set conforms [OPTIONS] [image]`
 
 | Argument | Description |
 | --- | --- |
-| `<image>` | the image; the only image if absent, else a picker |
+| `<image>` | the image; the only image if absent, otherwise a picker |
 
 | Option | Description |
 | --- | --- |
-| `--datastream <file>` | the SCAP content the profile is chosen out of; the installed copy for the image's family by default |
+| `--datastream <file>` | SCAP content to choose the profile from; the image family's installed copy by default |
 
 **Schema:** [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms)
 
@@ -730,20 +696,17 @@ Chooses the benchmark rules that a component in the repository claims to cover,
 and writes their numbers into its `satisfies` block. A claim says what the
 component supplies, and `buildc scap` measures whether the built image keeps it.
 
-It asks, in order:
-
-1. Choose the profile that the rules come from.
-2. Choose the rules that the component claims.
+It asks for the profile and the rules.
 
 **Usage:** `buildc set claims [OPTIONS] [component]`
 
 | Argument | Description |
 | --- | --- |
-| `<component>` | the component in the repository |
+| `<component>` | the component whose claims are written |
 
 | Option | Description |
 | --- | --- |
-| `--datastream <file>` | the SCAP content the rules are read out of; the installed copy for the component's first declared family by default, and required when the component declares no family restriction |
+| `--datastream <file>` | SCAP content to read the rules from; the installed copy for the component's first declared family by default, and required when the component declares no family restriction |
 
 **Schema:** [`manifest.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies)
 
@@ -778,25 +741,22 @@ example/
 
 ## `buildc set key`
 
-Records the public half of a key that the user already holds, in place of
-generating one. Use it for an existing cosign key, MOK certificate or SSH key.
-It writes to the path that the component's `public` declaration gives.
+Records the public half of an existing key instead of generating one. Use it
+for a cosign key, MOK certificate or SSH key. It writes to the path that the
+component's `public` declaration gives.
 
-It asks, in order:
-
-1. Choose the kind.
-2. Give the file to read.
+It asks for the kind and the file to read.
 
 **Usage:** `buildc set key [OPTIONS] [kind]`
 
 | Argument | Description |
 | --- | --- |
-| `<kind>` | the kind of key, as a component declares it |
+| `<kind>` | the kind of key that a component declares |
 
 | Option | Description |
 | --- | --- |
-| `--component <name>` | which component, where two of them declare the same kind |
-| `--from <path>` | the public half to record |
+| `--component <name>` | the component that declares the key |
+| `--from <path>` | the file that holds the public half |
 
 **Schema:** [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key)
 
@@ -807,8 +767,8 @@ It asks, in order:
 > It takes the public half only. The private half stays with the user, or in a
 > CI secret.
 >
-> It checks the form of the file first, so a wrong form stops here and no later
-> build fails on it. Each kind takes one form:
+> It checks the form of the file first, so a wrong form stops here before a
+> build sees it. Each kind takes one form:
 >
 > - `cosign` takes a PEM public key.
 > - `module-signing` takes a PEM or DER certificate.
@@ -818,18 +778,18 @@ It asks, in order:
 ## `buildc set component`
 
 Makes an imported component the repository's own copy. The component stops tracking
-its library, so `buildc fetch components` passes it over, and the user may edit it.
+its library, so `buildc fetch components` skips it, and the user may edit it.
 With no `--untracked`, it asks first. With no terminal, it needs the flag.
 
 **Usage:** `buildc set component [OPTIONS] [path]`
 
 | Argument | Description |
 | --- | --- |
-| `<path>` | the component, by its path under `components/` |
+| `<path>` | the imported component to make the repository's own |
 
 | Option | Description |
 | --- | --- |
-| `--untracked` | stop tracking its library, without asking |
+| `--untracked` | stop tracking without asking |
 
 **Schema:** [`components.lock.kdl`](schema/lock.md)
 
@@ -841,13 +801,13 @@ With no `--untracked`, it asks first. With no terminal, it needs the flag.
 
 Reads every file in the repository and reports each problem at the line that
 caused it. Run it after an edit. The last line counts the images, the components,
-the flavours and the listed components that the base already provides.
+the flavours and the listed components that the base provides.
 
 **Usage:** `buildc check [OPTIONS]`
 
 | Option | Description |
 | --- | --- |
-| `--datastream <file>` | the SSG content, for the conformance read-out |
+| `--datastream <file>` | SCAP content to count each profile's unclaimed rules against |
 
 > [!NOTE]
 > It also reports these findings, which do not change the exit code:
@@ -865,11 +825,14 @@ the flavours and the listed components that the base already provides.
 
 Writes the build files, and the CI workflows that `repo.kdl` names. Run it
 after a change to a KDL file. `buildc build` refuses build files that are not
-current. It reads only the repository's own components. It writes:
+current. It reads the repository's own components, and it reaches the network
+for two pins alone: the SCAP datastream a conforming image's base pins, and
+the commit each cloned asset's tag names. It writes:
 
 - `generated/<image>/Containerfile`, one for each image
 - `generated/<image>/components/<component>.sh`, the build script of each component
 - `generated/<image>/finalize.sh`
+- `generated/<image>/scap/<file>`, the pinned datastream of a conforming image
 - `generated/<image>/graph.md` and `graph.json`, the capability graph
 - `generated/plan.json`
 - `generated/seed.kdl`, if `repo.kdl` names a seedable image
@@ -885,42 +848,56 @@ current. It reads only the repository's own components. It writes:
 > too. It removes only the workflows that `buildc` ships, and keeps the
 > repository's own.
 >
-> A terminal gets a tree of the files, and a pipe gets one path per line.
+> A terminal draws a file tree. A pipe prints one path per line.
 >
 > The Containerfile copies `plan.json` into the image at
 > `/usr/share/buildc/manifest.json`, so a built image can say what it is made
 > of.
 >
-> It resolves the base tag to a digest once, and passes it as the `BASE` build
-> argument. If `$BASE` is set, then it uses that value as already resolved.
+> A conforming image's datastream comes from the pin in its base's
+> `scap-content`. It writes the datastream under `generated/<image>/scap/`, and
+> maps each claimed benchmark number to its rule there. If the committed copy
+> already matches the pin, then it fetches nothing.
 
 ## `buildc build`
 
 Builds one target with the container backend. A target is `<image>` for the
 image, or `<image>/<flavour>` for a flavour. With no target, it builds the
-default image. It runs `buildc verify` first, so it builds only from build files
-that are current.
+default image. It checks the committed generated tree against the snapshot
+`buildc generate` wrote, then builds from that tree alone. Every build argument
+that the repository declares comes from `generated/plan.json`, so a source
+edit reaches the build only through the next `buildc generate`. The build
+resolves the version, the registry, the source commit, the backend and the base
+digest when it runs.
 
 **Usage:** `buildc build [OPTIONS] [target]`
 
 | Argument | Description |
 | --- | --- |
-| `<target>` | the image, or `<image>/<flavour>` for a flavour; the default image if absent |
+| `<target>` | the target |
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | the target, where the positional argument is not used |
-| `--tag <tag>` | tag the result; repeatable, and $TAGS adds to it |
-| `--kernel <name>` | the KERNEL build arg |
-| `--backend <name>` | buildx or buildah, else $BUILD_BACKEND, else the `backend` in repo.kdl |
-| `--oci-output <path>` | write an OCI archive instead of loading the image |
-| `--secret <id=path>` | mount <path> as the build secret <id>; repeatable |
-| `--cache-to` | export the layer cache to the registry cache repository |
-| `--no-cache-from` | do not import the layer cache |
+| `--target <target>` | the target, as an alternative to the positional argument |
+| `--tag <tag>` | an extra tag for the built image |
+| `--kernel <name>` | the kernel version to install |
+| `--backend <name>` | the container backend: `buildx` or `buildah` |
+| `--oci-output <path>` | write an OCI archive instead of loading the image; needs `--backend buildx` |
+| `--secret <id=path>` | a build secret as `<id>=<path>` |
+| `--cache-to` | export the layer cache to the registry |
+| `--no-cache-from` | build without importing the registry layer cache |
 
 > [!NOTE]
-> It fetches nothing and writes no build file. Run `buildc generate` first, or
-> `buildc vm run --rebuild` to run both.
+> It writes no build file. Run `buildc generate` first, or `buildc vm run
+> --rebuild` to run both.
+>
+> It reaches a remote for two answers. It resolves the base digest, and it asks
+> each cloned asset's remote which commit the tag names. If a tag names another
+> commit than the one `buildc generate` recorded, then it refuses the build. If
+> a remote does not answer, then it warns, and an enforced audit refuses.
+>
+> It resolves the base tag to a digest once, and passes it as the `BASE` build
+> argument. If `$BASE` is set, then it uses that value as already resolved.
 >
 > `$TAGS` adds tags and `$LABELS` adds OCI labels. `$IMAGE_VERSION` is stamped
 > into the image, and is today's date in UTC by default.
@@ -934,7 +911,7 @@ that are current.
 ## `buildc vm`
 
 Turns the built image into a disk and boots it, to try the image before it is
-published. `<type>` is `qcow2`, `raw` or `iso`, and a terminal asks for it.
+published. `<type>` is `qcow2`, `raw` or `iso`. A terminal prompts for it.
 `build` makes the disk. `run` boots it under qemu, and makes it first if it is
 missing. `spawn` boots it with systemd-vmspawn, which cannot boot an `iso`.
 
@@ -966,57 +943,57 @@ missing. `spawn` boots it with systemd-vmspawn, which cannot boot an `iso`.
 
 ## `buildc vm build`
 
-convert the built image into a qcow2, raw or iso
+make the disk for the target
 
 **Usage:** `buildc vm build [OPTIONS] [type]`
 
 | Argument | Description |
 | --- | --- |
-| `<type>` | the disk type, which is `qcow2`, `raw` or `iso` |
+| `<type>` | the disk type: `qcow2`, `raw` or `iso` |
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | what a rebuild builds, and what an iso installs |
-| `--image <ref>` | the container image to convert, without its tag |
-| `--tag <tag>` | its tag, else $DEFAULT_TAG, else latest |
-| `--ram <size>` | memory for the virtual machine |
-| `--rebuild` | fetch, generate and build the container image first |
+| `--target <target>` |  |
+| `--image <ref>` |  |
+| `--tag <tag>` |  |
+| `--ram <size>` |  |
+| `--rebuild` |  |
 
 ## `buildc vm run`
 
-boot that disk under qemu, building it if missing
+boot that disk under qemu and build it if missing
 
 **Usage:** `buildc vm run [OPTIONS] [type]`
 
 | Argument | Description |
 | --- | --- |
-| `<type>` | the disk type, which is `qcow2`, `raw` or `iso` |
+| `<type>` | the disk type: `qcow2`, `raw` or `iso` |
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | what a rebuild builds, and what an iso installs |
-| `--image <ref>` | the container image to convert, without its tag |
-| `--tag <tag>` | its tag, else $DEFAULT_TAG, else latest |
-| `--ram <size>` | memory for the virtual machine |
-| `--rebuild` | fetch, generate and build the container image first |
+| `--target <target>` |  |
+| `--image <ref>` |  |
+| `--tag <tag>` |  |
+| `--ram <size>` |  |
+| `--rebuild` |  |
 
 ## `buildc vm spawn`
 
-boot a qcow2 or raw disk with systemd-vmspawn
+boot the disk with systemd-vmspawn
 
 **Usage:** `buildc vm spawn [OPTIONS] [type]`
 
 | Argument | Description |
 | --- | --- |
-| `<type>` | the disk type, which is `qcow2` or `raw` |
+| `<type>` | the disk type: `qcow2` or `raw` |
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | what a rebuild builds, and what an iso installs |
-| `--image <ref>` | the container image to convert, without its tag |
-| `--tag <tag>` | its tag, else $DEFAULT_TAG, else latest |
-| `--ram <size>` | memory for the virtual machine |
-| `--rebuild` | fetch, generate and build the container image first |
+| `--target <target>` |  |
+| `--image <ref>` |  |
+| `--tag <tag>` |  |
+| `--ram <size>` |  |
+| `--rebuild` |  |
 
 ## `buildc section`
 
@@ -1039,11 +1016,11 @@ base already carries.
 
 | Option | Description |
 | --- | --- |
-| `--format <md|json>` | markdown holding a mermaid diagram by default, or json |
+| `--format <md|json>` | `markdown` with a mermaid diagram, or `json`; `markdown` is the default |
 
 ## `buildc why`
 
-Prints what one component is and where every byte of it came from. It lists the
+Prints what one component is and where each input came from. It lists the
 targets that build it, what it provides and requires, and what it claims to
 harden. It also lists the collection and pin it came from, whether it was
 edited since, what it fetches, and whether it adds a package repository.
@@ -1052,11 +1029,11 @@ edited since, what it fetches, and whether it adds a package repository.
 
 | Argument | Description |
 | --- | --- |
-| `<component>` | the component name |
+| `<component>` | the component to explain |
 
 | Option | Description |
 | --- | --- |
-| `--format <md|json>` | markdown, the default, or JSON |
+| `--format <md|json>` | `markdown` or `json`; `markdown` is the default |
 
 > [!NOTE]
 > In a repository it reads the resolved plan. On a booted image it reads the
@@ -1078,8 +1055,8 @@ edited since, what it fetches, and whether it adds a package repository.
 
 Prints each rule of the profile that an image `conforms` to, with the component
 that claims it. If no component claims a rule, then it names a component in the
-repository or its collections that would. It uses the default image if none is
-named, and a terminal picks one.
+repository or its collections that would. With no image, the default image
+applies. A terminal offers a picker.
 
 **Usage:** `buildc coverage [OPTIONS] [image]`
 
@@ -1089,8 +1066,8 @@ named, and a terminal picks one.
 
 | Option | Description |
 | --- | --- |
-| `--format <md|json>` | markdown, the default, or json |
-| `--datastream <file>` | the SSG content the profile is read out of |
+| `--format <md|json>` | `markdown` or `json`; `markdown` is the default |
+| `--datastream <file>` | SCAP content to read the profile from |
 
 **Schema:** [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms)
 
@@ -1111,23 +1088,74 @@ named, and a terminal picks one.
 
 Prints every fact that the repository derives as one JSON document. The
 document holds the images, the targets of each image, and what each target is
-made of. A script reads a field from it, and derives nothing from a name.
+made of. A script reads a field from it, and derives nothing from a name. It
+reaches the network for a conforming image's datastream when the committed
+copy does not match the pin, and for the commit each cloned asset's tag names.
 
 **Usage:** `buildc plan [OPTIONS]`
 
 | Option | Description |
 | --- | --- |
-| `--json` | the output is JSON with or without it |
+| `--json` | no effect; `plan` always prints JSON |
 
 ## `buildc verify`
 
 Writes every build file again in memory, and compares each one byte for byte
 with what the repository holds: `generated/`, the declared workflows and
 `.github/renovate.json5`. It names each file that differs, each file that is
-missing, and each file under `generated/` that nothing writes. Every build runs
-it first.
+missing, and each file under `generated/` that nothing writes. A build checks
+the committed tree against the snapshot instead, and reads no source. It
+resolves each cloned asset's tag as `generate` does, so a tag that moved
+reports the plan as stale.
 
 **Usage:** `buildc verify`
+
+## `buildc validate`
+
+Checks one built image with the tool that built it. The image is a reference or
+an id in the local container store. The check runs inside the image with the
+pinned tool mounted, and reads `generated/plan.json` for the target's
+contracts, verify exceptions, presets, LUKS witness and family.
+
+**Usage:** `buildc validate [OPTIONS] <image>`
+
+| Argument | Description |
+| --- | --- |
+| `<image>` | the built image reference or id |
+
+| Option | Description |
+| --- | --- |
+| `--target <target>` | the target; the default target if absent |
+
+> [!NOTE]
+> Run `buildc build` first, because the check mounts the tool the build staged at
+> `out/buildc`. The CI build runs this against the image id it produced, before
+> the push step, so a failed check publishes nothing.
+
+## `buildc attribute`
+
+Maps each layer of one built image to the component that made it and to that
+component's paths. The image is a reference or an id in the local container
+store. The layer order and the commands come from the container store, and the
+paths come from `generated/plan.json`.
+
+**Usage:** `buildc attribute [OPTIONS] <image>`
+
+| Argument | Description |
+| --- | --- |
+| `<image>` | the built image reference or id |
+
+| Option | Description |
+| --- | --- |
+| `--target <target>` | the target whose plan maps each layer to its paths |
+
+> [!NOTE]
+> Run `buildc build` first. `generate` runs each step at its own path, so the
+> builder's history names the component. A layer the tool did not make, such as
+> the base's, carries no component.
+>
+> The CI build runs this after the build and before the push, and uploads the
+> document as an artifact.
 
 ## `buildc summary`
 
@@ -1139,7 +1167,7 @@ build writes the table into its job summary.
 
 | Argument | Description |
 | --- | --- |
-| `<target>` | the image, or `<image>/<flavour>` for a flavour |
+| `<target>` | the target |
 
 ## `buildc sbom`
 
@@ -1151,28 +1179,28 @@ came from, so CI merges this into the SBOM that the scan produces.
 
 | Argument | Description |
 | --- | --- |
-| `<target>` | the image, or `<image>/<flavour>` for a flavour |
+| `<target>` | the target |
 
 ## `buildc scap`
 
-Reads the report of one scan against the datastream that produced it, and
-prints what they say about the target as markdown. The report shows what each
-component claimed and what was measured, the score against each profile of the
-datastream, and what stopped passing since the last scan.
+Reads a scan report against its datastream and prints the target's findings.
+The report shows what each component claimed and what was measured, the score
+against each profile of the datastream, and what stopped passing since the last
+scan.
 
 **Usage:** `buildc scap [OPTIONS] [arf.xml] [COMMAND]`
 
 
 | Argument | Description |
 | --- | --- |
-| `<arf.xml>` | the ARF report that the scan wrote |
+| `<arf.xml>` | the ARF report the scan wrote |
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | the target, else the ungated one |
-| `--datastream <file>` | the SSG content, else the one `scap content` names |
-| `--baseline <file>` | the last scan's pass set, read then rewritten |
-| `--base-scan <file>` | what the bare base passed alone, read only |
+| `--target <target>` | the target; the image's own target if absent |
+| `--datastream <file>` | SCAP content; the file `scap content` names by default |
+| `--baseline <file>` | the file that holds the previous scan's pass set |
+| `--base-scan <file>` | a scan of the bare base to compare against |
 
 > [!NOTE]
 > The datastream maps each benchmark number to a rule. A number that maps to no
@@ -1195,20 +1223,23 @@ datastream, and what stopped passing since the last scan.
 
 ## `buildc scap content`
 
-Prints the path of the datastream that the target is measured with. If the image
-declares no `conforms`, then it prints nothing, and the CI scan job skips the
-image. `buildc set conforms` writes a `conforms`.
+Prints the path of the datastream that the target is measured with, as
+`generated/plan.json` records it. The build used that same file for
+remediation. On a booted system, it prints the installed SSG file that the base
+names, which can be another release. If the target declares no `conforms`, then
+it prints nothing, and the CI scan job skips the image. `buildc set conforms`
+writes a `conforms`.
 
 **Usage:** `buildc scap content [OPTIONS]`
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | the target, else the ungated one |
+| `--target <target>` | the target; the image's own target if absent |
 
 ## `buildc scap tailoring`
 
 Prints the XCCDF tailoring that a scan of the target runs. The tailoring defines
-the profile `xccdf_tect_profile_measured`, which is the declared profile with
+the profile `xccdf_buildc_profile_measured`, which is the declared profile with
 every group and rule selected. If the image declares no `conforms`, then it
 prints nothing.
 
@@ -1216,8 +1247,8 @@ prints nothing.
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | the target, else the ungated one |
-| `--datastream <file>` | the SSG content, else the one `scap content` names |
+| `--target <target>` | the target; the image's own target if absent |
+| `--datastream <file>` | SCAP content; the file `scap content` names by default |
 
 > [!NOTE]
 > `--profile '(all)'` scores every variable at its default, so a rule set to the
@@ -1226,17 +1257,17 @@ prints nothing.
 
 ## `buildc scap rules`
 
-print the rule each benchmark number reaches, one per line
+print the rule name for each benchmark number
 
 **Usage:** `buildc scap rules [OPTIONS] [number]...`
 
 | Argument | Description |
 | --- | --- |
-| `<number>` | a benchmark number, such as `1.1.1.1` |
+| `<number>` | a benchmark rule number |
 
 | Option | Description |
 | --- | --- |
-| `--datastream <file>` | the SSG content, else the one `scap content` names |
+| `--datastream <file>` | SCAP content; the file `scap content` names by default |
 
 ## `buildc fetch`
 
@@ -1255,27 +1286,27 @@ It runs inside a build:
 
 | Argument | Description |
 | --- | --- |
-| `<what>` | the kind of payload, which is `file`, `tree`, `bin`, `rpm` or `deb` |
+| `<what>` | the payload kind: `file`, `tree`, `bin`, `rpm` or `deb` |
 | `<url>` | the URL to download |
-| `<sha256>` | the hash that the download must match |
-| `<target>` | the path, the directory or the executable name that the kind places |
-| `<extra>` | for `tree`, more arguments to tar; for `bin`, the file inside the archive |
+| `<sha256>` | the expected SHA-256 of the download |
+| `<target>` | the destination that the payload kind writes to |
+| `<extra>` | extra arguments for the payload kind |
 
 **Schema:** [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset)
 
 ## `buildc fetch components`
 
-Refreshes each tracked component from the library that its lock entry names, as
-`sources` in `repo.kdl` declares that library now. It replaces the component's
-files, and records the new content hash and revision in the lock. A component
-whose library has not moved stays as it is. The scheduled `update-components`
-workflow runs it and opens a pull request.
+Refreshes each tracked component from the library that its lock entry names.
+The command uses the current `sources` entry in `repo.kdl`. It replaces the
+component's files, and records the new content hash and revision in the lock. A
+component whose library has not moved stays as it is. The scheduled
+`update-components` workflow runs it and opens a pull request.
 
 **Usage:** `buildc fetch components [path]...`
 
 | Argument | Description |
 | --- | --- |
-| `<path>` | the components, by their path under `components/`; every tracked component if absent |
+| `<path>` | the components to refresh; every tracked component if absent |
 
 **Schema:** [`components.lock.kdl`](schema/lock.md)
 
@@ -1307,8 +1338,8 @@ default image.
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | the target, else the ungated one |
-| `--tag <tag>` | the tag, else $DEFAULT_TAG, else latest |
+| `--target <target>` | the target; the image's own target if absent |
+| `--tag <tag>` | the tag the reference publishes under |
 
 ## `buildc recipe`
 
@@ -1323,9 +1354,9 @@ user, so the recipe holds none of them.
 
 | Option | Description |
 | --- | --- |
-| `--target <target>` | the target, else the ungated one |
-| `--tag <tag>` | the tag, else $DEFAULT_TAG, else latest |
-| `--image <ref>` | the bytes installed, else the published reference |
+| `--target <target>` | the target; the image's own target if absent |
+| `--tag <tag>` | the tag the reference publishes under |
+| `--image <ref>` | the local image to install in place of the published reference |
 
 > [!NOTE]
 > The base family settles each value. For a family with no measured answer it
@@ -1352,9 +1383,8 @@ it. The record changes with each build.
 
 ## `buildc validate-image`
 
-Runs every check that a built image has to pass. The build gives it the preset
-files of the enabled components, and it fails on each one that the image does not
-have.
+Runs every check that a built image has to pass. The build supplies the
+presets. The command fails for each preset that the image lacks.
 
 **Usage:** `buildc validate-image`
 

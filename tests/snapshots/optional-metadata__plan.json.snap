@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "custom-workstation",
   "ungated_published": "custom-workstation",
   "cache_image": "custom-workstation-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [],
         "witnesses": {},
@@ -68,6 +71,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -76,6 +80,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "aa2ca113c8549f3f7b902eb72e4a4b2304313dbd86619468d2d62aee43b480a5",
+                "resolved": "f17f0c8f645d4170b685ae44cfa29c7881bfaf9b96b81d1b8b2968a563e01fdd",
                 "repo": false,
                 "imported": null
               },
@@ -94,7 +99,22 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/custom-workstation/Containerfile",
+            "uki": false,
+            "family": "",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=custom-workstation",
+              "COMPONENT_HASHES=kde|aa2ca113c8549f3f7b902eb72e4a4b2304313dbd86619468d2d62aee43b480a5",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

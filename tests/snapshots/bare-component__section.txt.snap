@@ -15,44 +15,42 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
 # ---- hello ----
-RUN --mount=type=bind,from=ctx,source=/components/hello,target=/ctx/components/hello \
+RUN --mount=type=bind,from=ctx,source=/generated/bare-component/components/hello,target=/ctx/components/hello \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/bare-component/components/hello.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/bare-component/components/hello.sh,target=/generated/bare-component/components/hello.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/bare-component/components/hello.sh
+
+# ---- hello overlays ----
+COPY --from=ctx /generated/bare-component/components/hello/files/ /
 
 # ---- menu ----
-RUN --mount=type=bind,from=ctx,source=/components/menu,target=/ctx/components/menu \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/bare-component/components/menu.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/bare-component/components/menu.sh,target=/generated/bare-component/components/menu.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/bare-component/components/menu.sh
 
 # ---- apps ----
-RUN --mount=type=bind,from=ctx,source=/components/apps,target=/ctx/components/apps \
+RUN --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps,target=/ctx/components/apps \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps.sh,target=/generated/bare-component/components/apps.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/bare-component/components/apps.sh
 
 # ---- apps/editor ----
-RUN --mount=type=bind,from=ctx,source=/components/apps/editor,target=/ctx/components/apps/editor \
+RUN --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps/editor,target=/ctx/components/apps/editor \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps/editor.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+    --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps/editor.sh,target=/generated/bare-component/components/apps/editor.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/bare-component/components/apps/editor.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -66,13 +64,12 @@ ARG IMAGE_NAME="Bare Component"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --mount=type=bind,from=ctx,source=/generated/bare-component/finalize.sh,target=/ctx/finalize.sh \
+RUN --mount=type=bind,from=ctx,source=/generated/bare-component/finalize.sh,target=/generated/bare-component/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /ctx/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/bare-component/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
@@ -84,17 +81,12 @@ ARG SOURCE_COMMIT=""
 ARG BUILD_BACKEND=""
 ARG COMPONENT_HASHES=""
 ARG ASSET_RESOLUTIONS=""
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+ARG BUILDC_VERSION=""
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
     SOURCE_COMMIT="${SOURCE_COMMIT}" BUILD_BACKEND="${BUILD_BACKEND}" \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
-    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" \
-    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" /ctx/buildc build-record
+    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
+    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
 
 RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
-
-ARG FAMILY=fedora
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=tmpfs,target=/run \
-    FAMILY="${FAMILY}" /ctx/buildc validate-image

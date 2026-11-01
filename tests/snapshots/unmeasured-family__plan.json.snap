@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "arch",
   "ungated_published": "arch",
   "cache_image": "arch-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -42,6 +44,7 @@ source: tests/golden/harness.rs
         "image": "ghcr.io/someone/arch-bootc:latest",
         "family": "arch",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [],
         "witnesses": {},
@@ -70,7 +73,22 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/arch/Containerfile",
+            "uki": false,
+            "family": "arch",
+            "base": "ghcr.io/someone/arch-bootc:latest",
+            "args": [
+              "TARGET=arch",
+              "COMPONENT_HASHES=",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=ghcr.io/someone/arch-bootc:latest"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

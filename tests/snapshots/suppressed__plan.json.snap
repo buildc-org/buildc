@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "suppressed",
   "ungated_published": "suppressed",
   "cache_image": "suppressed-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "ghcr.io/ublue-os/bazzite:stable",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking",
@@ -89,6 +92,7 @@ source: tests/golden/harness.rs
                   "how": "base"
                 }
               },
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -97,6 +101,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "8d9af146c45c5b56c3747cb099403acc5316cdf44f59b0a84f4399a7655ccdae",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -122,6 +127,9 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [
+                "/usr/bin/flatpak"
+              ],
               "removes": [],
               "files": {
                 "flatpak": "/usr/bin/flatpak"
@@ -140,6 +148,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "88c547072a77b325e12905325aece95dea820caba0f53d6ab858f2a9cca0f204",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -166,7 +175,26 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/suppressed/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "ghcr.io/ublue-os/bazzite:stable",
+            "args": [
+              "TARGET=suppressed",
+              "COMPONENT_HASHES=apps/browser|8d9af146c45c5b56c3747cb099403acc5316cdf44f59b0a84f4399a7655ccdae",
+              "ASSET_RESOLUTIONS=",
+              "SCAP_CLAIMED=",
+              "SCAP_REFUSED=",
+              "BASE_DECLARED=ghcr.io/ublue-os/bazzite:stable"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/flatpak"
+            ]
+          }
         }
       ]
     }

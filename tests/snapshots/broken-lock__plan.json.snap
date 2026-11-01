@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "broken-lock",
   "ungated_published": "broken-lock",
   "cache_image": "broken-lock-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -42,6 +44,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [],
         "witnesses": {},
@@ -73,6 +76,7 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -80,7 +84,8 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "893be5ba24118e8a9f68ae39f30c20b7c415dca45f18aa406c8c8f00f02b375b",
+                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "resolved": "c74d08c15984191b3998fb7ff8b778d0a9b57a14da28ec51fb2df6192eec746c",
                 "repo": false,
                 "imported": null
               },
@@ -99,6 +104,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [
@@ -115,6 +121,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "f602499d00637c4f069fce801137cfaf44839d6be0721f4b2004ae0560f1cd52",
+                "resolved": null,
                 "repo": false,
                 "imported": {
                   "library": "upstream",
@@ -148,6 +155,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [
@@ -164,6 +172,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "f602499d00637c4f069fce801137cfaf44839d6be0721f4b2004ae0560f1cd52",
+                "resolved": null,
                 "repo": false,
                 "imported": {
                   "library": "upstream",
@@ -197,7 +206,22 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/broken-lock/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=broken-lock",
+              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb core/edited|f602499d00637c4f069fce801137cfaf44839d6be0721f4b2004ae0560f1cd52 core/owned|f602499d00637c4f069fce801137cfaf44839d6be0721f4b2004ae0560f1cd52",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

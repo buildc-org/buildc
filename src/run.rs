@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 pub struct Run {
     pub report: Report,
     pub files: Vec<(PathBuf, String)>,
+    pub copies: Vec<emit::resolved::CopyFile>,
     pub problems: Problems,
     pub counts: Counts,
     pub reading: Reading,
@@ -75,6 +76,53 @@ pub(crate) fn run_loaded(
         context,
         ungoverned,
     } = loaded;
+
+    let mut resolved = resolved;
+    let derives = matches!(command, Command::Plan | Command::Generate | Command::Verify);
+    let mut copies: Vec<emit::resolved::CopyFile> = Vec::new();
+    let mut unrecorded: Vec<String> = Vec::new();
+    if derives {
+        for (image, held) in list.images.iter().zip(resolved.iter_mut()) {
+            let content = emit::resolved::of(image, &held.collected, root);
+            held.hashes = content.hashes;
+            copies.extend(content.copies);
+            held.clones = crate::provenance::build::clones(&image.components().collect::<Vec<_>>());
+            if list.audit_enforce {
+                for why in held
+                    .clones
+                    .iter()
+                    .filter_map(|one| one.resolved.as_ref().err())
+                {
+                    if !unrecorded.contains(why) {
+                        unrecorded.push(why.clone());
+                    }
+                }
+            }
+            match scap::pinned::resolve(image, root) {
+                Ok(Some((measured, written))) => {
+                    held.scap = Some(measured);
+                    copies.extend(written);
+                }
+                Ok(None) => {}
+                Err(why) => issues.push(
+                    crate::diag::Issue::new(why, &image.src).at(
+                        image
+                            .base
+                            .as_ref()
+                            .map_or_else(Default::default, |base| base.span),
+                        "the base whose content measures this image",
+                    ),
+                ),
+            }
+        }
+    }
+
+    for why in unrecorded {
+        issues.push(crate::diag::Issue::new(
+            format!("{why}, and an enforced audit builds nothing it cannot record"),
+            &list.repo_src,
+        ));
+    }
 
     let unpinned = match command {
         Command::Check => {
@@ -161,6 +209,7 @@ pub(crate) fn run_loaded(
                 (*body).to_string(),
             )
         }));
+        files.push((emit::record::path(), emit::record::script()));
         files.extend(
             emit::SCRIPTS
                 .iter()
@@ -180,7 +229,7 @@ pub(crate) fn run_loaded(
                     image,
                     root,
                     list.audit_enforce,
-                    &resolved.shipped,
+                    &resolved.collected,
                 );
                 files.push((
                     emit::containerfile::path(image),
@@ -212,8 +261,11 @@ pub(crate) fn run_loaded(
         }));
     }
 
+    if matches!(command, Command::Generate | Command::Verify) {
+        files.push(emit::snapshot::file(&files, &copies));
+    }
     if command == Command::Verify {
-        crate::verify(root, &files, &mut issues);
+        crate::verify(root, &files, &copies, &mut issues);
     }
 
     let mut parts = Vec::new();
@@ -255,13 +307,18 @@ pub(crate) fn run_loaded(
                 &list.images[i],
                 root,
                 list.audit_enforce,
-                &resolved[i].shipped,
+                &resolved[i].collected,
             ),
             None => String::new(),
         },
         Command::Generate => files
             .iter()
             .map(|(path, _)| format!("{}\n", path.display()))
+            .chain(
+                copies
+                    .iter()
+                    .map(|copy| format!("{}\n", copy.path.display())),
+            )
             .collect(),
         Command::Why | Command::WhyJson => match component_arg {
             Some(given) => match emit::why::matching(&emit::why::known(&list), given).as_slice() {
@@ -342,6 +399,7 @@ pub(crate) fn run_loaded(
     Run {
         report: Report { stdout, parts },
         files,
+        copies,
         problems: Problems {
             issues,
             context,

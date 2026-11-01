@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "collecting",
   "ungated_published": "collecting",
   "cache_image": "collecting-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -70,6 +73,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -78,6 +82,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "9869b298a9c6dc61bed9fafb33dc9d3c2568dd784d73d64d96eaac6ed137ed56",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -96,6 +101,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -104,6 +110,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "e921e3d8684673a198b1f19772b07778988133b646b7b8ab8ed619f991d12166",
+                "resolved": "1eb5324d893b5315bf5d056292ee0748d16d6ae6401cedc85ca68eb60a71cbef",
                 "repo": false,
                 "imported": null
               },
@@ -122,6 +129,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -130,6 +138,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "8cf21304bcd71e5df803c9f2c4047ce3451e0f8bc9f7175db53a44c78a1799af",
+                "resolved": "0cbe661699219f85b278107f4cd3339346b431818a1b87c601a405987875c376",
                 "repo": false,
                 "imported": null
               },
@@ -163,7 +172,22 @@ source: tests/golden/harness.rs
           },
           "collect_destinations": [
             "/usr/share/menu/justfile.apps"
-          ]
+          ],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/collecting/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=collecting",
+              "COMPONENT_HASHES=core/menu|9869b298a9c6dc61bed9fafb33dc9d3c2568dd784d73d64d96eaac6ed137ed56 core/power|e921e3d8684673a198b1f19772b07778988133b646b7b8ab8ed619f991d12166 core/network|8cf21304bcd71e5df803c9f2c4047ce3451e0f8bc9f7175db53a44c78a1799af",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

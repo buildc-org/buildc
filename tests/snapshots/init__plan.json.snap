@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "example",
   "ungated_published": "example",
   "cache_image": "example-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [
     {
       "file": "build.yml",
@@ -67,6 +69,16 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "ssg-fedora-ds.xml",
+        "scap_pin": {
+          "locator": "https://github.com/ComplianceAsCode/content/releases/download/v{version}/scap-security-guide-{version}.zip",
+          "selector": "0.1.82",
+          "verifier": "190a74c09b648db49a5805087a914659b49346cfde974858d3465ade5fc66c7e",
+          "tracker": "renovate",
+          "reason": null,
+          "from": "manual",
+          "path": null,
+          "resolved": "https://github.com/ComplianceAsCode/content/releases/download/v0.1.82/scap-security-guide-0.1.82.zip"
+        },
         "signed": false,
         "provides": [
           "rechunking",
@@ -130,6 +142,7 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -137,12 +150,13 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "1657e7d2d58210a215309d2e0803b7fa58b82613c1b96bef63ec97ae7df436de",
+                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+                "resolved": "5667fbcb4d6d83bfb0d2e15d84b1091e491a61163ae9763a8d8a5609de1227fd",
                 "repo": false,
                 "imported": {
-                  "library": "buildc-components",
+                  "library": "buildc",
                   "path": "fedora-family",
-                  "content": "1657e7d2d58210a215309d2e0803b7fa58b82613c1b96bef63ec97ae7df436de",
+                  "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
                   "pin": {
                     "locator": "https://github.com/buildc-org/library",
                     "selector": null,
@@ -180,7 +194,25 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/example/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=example",
+              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/dracut /usr/sbin/semodule /usr/sbin/sshd /usr/bin/bootc /usr/bin/bootupctl /usr/bin/podman /usr/bin/crun",
+              "LUKS_INITRAMFS=true"
+            ]
+          }
         }
       ]
     }

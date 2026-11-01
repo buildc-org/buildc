@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "Not An Id",
   "ungated_published": "Not An Id",
   "cache_image": "Not An Id-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -56,7 +58,21 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/Not An Id/Containerfile",
+            "uki": false,
+            "family": "",
+            "base": null,
+            "args": [
+              "TARGET=Not An Id",
+              "COMPONENT_HASHES=",
+              "ASSET_RESOLUTIONS="
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

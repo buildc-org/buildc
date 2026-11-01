@@ -1,3 +1,4 @@
+pub(crate) mod pinned;
 mod xml;
 
 #[cfg(feature = "fuzzing")]
@@ -31,10 +32,10 @@ pub enum Verdict {
 }
 
 pub fn content(root: &Path, named: Option<&str>) -> Result<Verdict, String> {
-    let Some((list, _)) = open(root, named) else {
+    let Some(plan) = crate::planned::Planned::checked(root)? else {
         return Ok(Verdict::Wrong);
     };
-    println!("{}", datastream(&list, named)?);
+    println!("{}", plan.target(named)?.datastream().unwrap_or_default());
     Ok(Verdict::Clean)
 }
 
@@ -352,7 +353,7 @@ fn open(root: &Path, named: Option<&str>) -> Option<(List, Vec<crate::resolve::R
     }
 }
 
-const MEASURED: &str = "xccdf_tect_profile_measured";
+const MEASURED: &str = "xccdf_buildc_profile_measured";
 
 pub fn tailoring_for(
     root: &Path,
@@ -370,7 +371,7 @@ pub fn tailoring_for(
     }
     let path = match given {
         Some(path) => path.to_path_buf(),
-        None => PathBuf::from(datastream(&list, Some(&name))?),
+        None => root.join(datastream(&list, Some(&name))?),
     };
     let content = content_of(&path)?;
     let profile = content
@@ -392,7 +393,7 @@ fn tailoring(content: &Content, profile: &Profile) -> String {
     let mut out = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <xccdf-1.2:Tailoring xmlns:xccdf-1.2=\"http://checklists.nist.gov/xccdf/1.2\" \
-         id=\"xccdf_tect_tailoring_measured\">\n  \
+         id=\"xccdf_buildc_tailoring_measured\">\n  \
          <xccdf-1.2:version time=\"1970-01-01T00:00:00\">1</xccdf-1.2:version>\n  \
          <xccdf-1.2:Profile id=\"{MEASURED}\" extends=\"{}\">\n    \
          <xccdf-1.2:title>{}, and every other rule</xccdf-1.2:title>\n",
@@ -418,8 +419,15 @@ pub fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
     {
         return Ok(String::new());
     }
-    let (content, family) = named_by(image.base.as_ref());
-    Ok(measured_by(CONTENT, content, family)?.display().to_string())
+    let base = image
+        .base
+        .as_ref()
+        .filter(|base| base.scap_pin.is_some())
+        .ok_or_else(|| pinned::unpinned(image))?;
+    Ok(pinned::dir(image)
+        .join(&base.scap_content)
+        .display()
+        .to_string())
 }
 
 pub(crate) fn named_by(base: Option<&crate::model::image::Base>) -> (&str, &str) {
@@ -433,39 +441,16 @@ pub(crate) fn check_content(list: &List, issues: &mut Issues) {
         let Some(base) = &image.base else {
             continue;
         };
-        let conforming = !image.conforms.is_empty()
-            || image
-                .flavours
-                .iter()
-                .any(|flavour| !flavour.conforms.is_empty());
-        if !conforming {
+        if !image.declares_conforms() || base.scap_pin.is_some() {
             continue;
         }
-        let (content, family) = named_by(Some(base));
-        let Err(why) = measured_by(CONTENT, content, family) else {
-            continue;
-        };
-        let message = why
-            .split_once("\n\nhelp: ")
-            .map_or(why.as_str(), |(said, _)| said);
-        let help = match family {
-            "rhel" => {
-                "give the base component's manifest the `scap-content` line that the \
-                 library's base names, such as `scap-content \"ssg-cs10-ds.xml\"`, or drop \
-                 `conforms`"
-            }
-            _ => {
-                "drop `conforms` from this image, because the build has no datastream to \
-                  remediate it against"
-            }
-        };
         issues.push(
-            Issue::new(
-                format!("`{}` conforms, and {message}", image.id),
-                &image.src,
-            )
-            .at(base.span, "no datastream for this base")
-            .help(help),
+            Issue::new(pinned::unpinned(image), &image.src)
+                .at(base.span, "no pinned datastream for this base")
+                .help(
+                    "give the base component's `scap-content` a `pin` with the datastream's \
+                     `url` and `sha256`, or drop `conforms`",
+                ),
         );
     }
 }
@@ -557,7 +542,7 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
                      name a datastream to scan it anyway"
                 ))
             }
-            path => PathBuf::from(path),
+            path => root.join(path),
         },
     };
     let content = content_of(&datastream)?;
@@ -1317,8 +1302,9 @@ mod tests {
     }
 
     #[test]
-    fn check_refuses_a_conforming_image_whose_base_names_no_content() {
-        let root = std::env::temp_dir().join(format!("buildc-check-content-{}", std::process::id()));
+    fn check_refuses_a_conforming_image_whose_base_pins_no_content() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-check-content-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::init::put(
             &root.join("repo.kdl"),
@@ -1331,7 +1317,7 @@ mod tests {
             crate::init::put(
                 &root.join("components/base-image/centos/manifest.kdl"),
                 &format!(
-                    "schema-version 1\n\nbase \"quay.io/centos-bootc/centos-bootc:stream10\" {{ family \"rhel\"; {content} }}\n"
+                    "schema-version 1\n\nbase \"quay.io/centos-bootc/centos-bootc:stream10\" {{\n    family \"rhel\"\n    {content}\n}}\n"
                 ),
             )
             .unwrap();
@@ -1343,15 +1329,13 @@ mod tests {
             check_content(&list, &mut issues);
             issues.plain()
         };
-        let refused = checked("");
-        assert!(
-            refused.contains("one datastream per EL release"),
-            "{refused}"
-        );
-        assert!(!refused.contains("--datastream"), "{refused}");
-        assert!(refused.contains("`scap-content` line"), "{refused}");
-        assert_eq!(checked("scap-content \"ssg-cs10-ds.xml\";"), "");
-        base("");
+        let named = "scap-content \"ssg-cs10-ds.xml\"";
+        let refused = checked(named);
+        assert!(refused.contains("pins no SCAP content"), "{refused}");
+        assert!(refused.contains("a `pin`"), "{refused}");
+        let pinned = "scap-content \"ssg-cs10-ds.xml\" {\n        pin {\n            manual \"a test\"\n            url \"ssg-cs10-ds.xml\"\n            sha256 \"4cd9aa720c627f6357ef6e7d0b777395e5b3c7dbec84ca7ba3f178ebc1a8f48b\"\n        }\n    }";
+        assert_eq!(checked(pinned), "");
+        base(named);
         let flavoured = image.replace(
             "    conforms \"standard\"\n",
             "    flavours { gpu conforms=\"standard\" }\n",
@@ -1361,7 +1345,7 @@ mod tests {
         let mut issues = Issues::default();
         check_content(&list, &mut issues);
         assert!(
-            issues.plain().contains("one datastream per EL release"),
+            issues.plain().contains("pins no SCAP content"),
             "{}",
             issues.plain()
         );
@@ -1393,8 +1377,10 @@ mod tests {
 
     #[test]
     fn a_file_without_rules_or_profiles_is_not_scap_content() {
-        let path =
-            std::env::temp_dir().join(format!("buildc-not-scap-content.{}.xml", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "buildc-not-scap-content.{}.xml",
+            std::process::id()
+        ));
         std::fs::write(&path, "<root/>").unwrap();
         assert_eq!(
             content_of(&path)

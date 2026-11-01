@@ -24,7 +24,8 @@ fn capture(name: &str, root: &Path) {
     );
 
     let mut generated = String::new();
-    for (path, body) in &buildc::run(Command::Generate, None, &here).files {
+    let run = buildc::run(Command::Generate, None, &here);
+    for (path, body) in &run.files {
         let covered = path == std::path::Path::new("generated/plan.json")
             || path.starts_with("generated/lib")
             || path.starts_with("scripts/")
@@ -33,6 +34,9 @@ fn capture(name: &str, root: &Path) {
             true => generated.push_str(&format!("==== {}\n", path.display())),
             false => generated.push_str(&format!("==== {}\n{body}", path.display())),
         }
+    }
+    for copied in &run.copies {
+        generated.push_str(&format!("==== {}\n", copied.path.display()));
     }
     assert_golden(name, "generated.txt", &generated);
 }
@@ -94,7 +98,8 @@ fn verify(name: &str, root: &Path) {
     std::fs::write(&repo, text.replace("    smoke-test\n", "")).unwrap();
     out.push_str(&format!("==== one workflow undeclared\n{}", issues()));
 
-    buildc::write_generated(&here, &buildc::run(Command::Generate, None, &here).files).unwrap();
+    let run = buildc::run(Command::Generate, None, &here);
+    buildc::write_generated(&here, &run.files, &run.copies).unwrap();
     out.push_str(&format!(
         "==== and generated again\n{}smoke-test.yml is {}\n",
         issues(),
@@ -274,10 +279,21 @@ fn copied(name: &str, root: &Path) {
 
 fn edited_component(root: &Path) {
     let here = given(root);
-    for (path, body) in &buildc::run(Command::Generate, None, &here).files {
+    let run = buildc::run(Command::Generate, None, &here);
+    for (path, body) in &run.files {
         let path = root.join(path);
         std::fs::create_dir_all(path.parent().expect("a file under generated/")).unwrap();
         std::fs::write(path, body).unwrap();
+    }
+    for copied in &run.copies {
+        let path = root.join(&copied.path);
+        std::fs::create_dir_all(path.parent().expect("a file under generated/")).unwrap();
+        std::fs::write(&path, &copied.bytes).unwrap();
+        std::fs::set_permissions(
+            &path,
+            std::os::unix::fs::PermissionsExt::from_mode(copied.mode & 0o7777),
+        )
+        .unwrap();
     }
     let issues = || {
         buildc::run(Command::Verify, None, &here)
@@ -324,9 +340,11 @@ fn why(name: &str, root: &Path, component: &str) {
             .plain(),
     );
 
-    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).report.stdout)
-        .expect("the plan is a document");
-    let host = buildc::emit::why::on_host(&manifest, None, component).expect("the manifest names it");
+    let manifest =
+        common::json::Json::parse(&buildc::run(Command::Plan, None, &here).report.stdout)
+            .expect("the plan is a document");
+    let host =
+        buildc::emit::why::on_host(&manifest, None, component).expect("the manifest names it");
     out.push_str("==== from the baked manifest, with no repository\n");
     out.push_str(&host.markdown());
     out.push_str(&format!(
@@ -357,8 +375,9 @@ fn why(name: &str, root: &Path, component: &str) {
 
 fn summary_on_host(root: &Path) {
     let here = given(root);
-    let manifest = common::json::Json::parse(&buildc::run(Command::Plan, None, &here).report.stdout)
-        .expect("the plan is a document");
+    let manifest =
+        common::json::Json::parse(&buildc::run(Command::Plan, None, &here).report.stdout)
+            .expect("the plan is a document");
 
     let (every, _) = buildc::emit::why::built_as(&manifest, None);
     assert!(!every.is_empty(), "{} publishes nothing", root.display());
@@ -666,7 +685,7 @@ fn copy_component() {
 #[test]
 fn a_strict_script_rule_names_the_fragments_it_does_not_reach() {
     let root = crate_dir().join("tests/repos/network");
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"))
         .arg("check")
         .current_dir(&root)
         .env("BUILDC_ASSETS", crate_dir().join("assets"))

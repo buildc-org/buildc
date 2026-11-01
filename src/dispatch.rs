@@ -577,6 +577,30 @@ pub fn dispatch(
                 crate::build::Stopped::Built => ExitCode::SUCCESS,
             })
         }
+        Verb::Validate => {
+            let root = repo_root(here)?;
+            let image = one_name(rest, name)?.ok_or_else(|| {
+                Error::Invocation("`buildc validate` takes the built image to check".to_string())
+            })?;
+            Ok(
+                match crate::build::validate(&root, &image, target.as_deref())? {
+                    crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
+                    crate::build::Stopped::Built => ExitCode::SUCCESS,
+                },
+            )
+        }
+        Verb::Attribute => {
+            let root = repo_root(here)?;
+            let image = one_name(rest, name)?.ok_or_else(|| {
+                Error::Invocation("`buildc attribute` takes the built image to map".to_string())
+            })?;
+            Ok(
+                match crate::attribute::run(&root, &image, target.as_deref())? {
+                    crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
+                    crate::build::Stopped::Built => ExitCode::SUCCESS,
+                },
+            )
+        }
         Verb::VmBuild | Verb::VmRun | Verb::VmSpawn => {
             let root = repo_root(here)?;
             let opts = crate::vm::Options {
@@ -937,7 +961,9 @@ fn reading(
         let wrote: Vec<(PathBuf, crate::create::Change)> = run
             .files
             .iter()
-            .map(|(path, _)| {
+            .map(|(path, _)| path)
+            .chain(run.copies.iter().map(|copied| &copied.path))
+            .map(|path| {
                 let change = match root.join(path).exists() {
                     true => crate::create::Change::Updated(String::new()),
                     false => crate::create::Change::Created,
@@ -945,7 +971,7 @@ fn reading(
                 (path.clone(), change)
             })
             .collect();
-        crate::write_generated(&root, &run.files)?;
+        crate::write_generated(&root, &run.files, &run.copies)?;
         if prompt.draws() {
             crate::report::report(&root, &wrote);
             run.report.stdout.clear();
@@ -996,7 +1022,7 @@ fn reading(
         eprintln!("buildc: nothing to generate; `buildc create image <name>` writes an image");
     }
     if command == Command::Verify {
-        let count = run.files.len();
+        let count = run.files.len() + run.copies.len();
         eprintln!(
             "buildc: {count} generated file{} match the manifests",
             if count == 1 { "" } else { "s" }
@@ -1043,8 +1069,10 @@ mod tests {
     use common::prompt::Prompt;
 
     fn untracks(name: &str, untracked: bool, prompt: &Prompt) -> (bool, Result<(), String>) {
-        let root =
-            std::env::temp_dir().join(format!("buildc-set-component-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "buildc-set-component-{name}-{}",
+            std::process::id()
+        ));
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
         crate::init::put(
             &crate::layout::lock(&root),

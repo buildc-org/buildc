@@ -16,31 +16,27 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
 
 # ---- core/early ----
 # verbatim from components/core/early/Containerfile.inc:
-COPY --from=ctx /components/core/early/hostname /etc/hostname
+COPY --from=ctx /generated/broken-fragment/components/core/early/hostname /etc/hostname
 RUN echo "building ${FLAVOUR}" > /usr/share/early
 
-RUN --mount=type=bind,from=ctx,source=/components/core/early,target=/ctx/components/core/early \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-fragment/components/core/early.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-fragment/components/core/early.sh,target=/generated/broken-fragment/components/core/early.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-fragment/components/core/early.sh
 
 # ---- flavour gate ----
 ARG FLAVOUR
 
 # ---- [dev] ----
 # ---- core/silent ----
-RUN --mount=type=bind,from=ctx,source=/components/core/silent,target=/ctx/components/core/silent \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-fragment/components/core/silent@dev.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-fragment/components/core/silent@dev.sh,target=/generated/broken-fragment/components/core/silent@dev.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-fragment/components/core/silent@dev.sh
 
 # verbatim from components/core/silent/Containerfile.inc:
 RUN echo silent > /usr/share/silent
@@ -50,14 +46,12 @@ RUN echo silent > /usr/share/silent
 # verbatim from components/core/mismatched/Containerfile.inc:
 RUN FLAVOUR_GATE=server echo mismatched > /usr/share/mismatched
 
-RUN --mount=type=bind,from=ctx,source=/components/core/mismatched,target=/ctx/components/core/mismatched \
-    --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-fragment/components/core/mismatched@dev.sh,target=/ctx/component.sh \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-fragment/components/core/mismatched@dev.sh,target=/generated/broken-fragment/components/core/mismatched@dev.sh \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    bash /ctx/component.sh
+    bash /generated/broken-fragment/components/core/mismatched@dev.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -71,13 +65,12 @@ ARG IMAGE_NAME="Broken Fragment"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --mount=type=bind,from=ctx,source=/generated/broken-fragment/finalize.sh,target=/ctx/finalize.sh \
+RUN --mount=type=bind,from=ctx,source=/generated/broken-fragment/finalize.sh,target=/generated/broken-fragment/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /ctx/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-fragment/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
@@ -89,17 +82,12 @@ ARG SOURCE_COMMIT=""
 ARG BUILD_BACKEND=""
 ARG COMPONENT_HASHES=""
 ARG ASSET_RESOLUTIONS=""
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
+ARG BUILDC_VERSION=""
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
     SOURCE_COMMIT="${SOURCE_COMMIT}" BUILD_BACKEND="${BUILD_BACKEND}" \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
-    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" \
-    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" /ctx/buildc build-record
+    ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
+    IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
 
 RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
-
-ARG FAMILY=fedora
-RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=tmpfs,target=/run \
-    FAMILY="${FAMILY}" /ctx/buildc validate-image

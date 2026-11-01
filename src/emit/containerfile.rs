@@ -2,7 +2,7 @@ use crate::emit::{component_build, finalize};
 use crate::layout;
 use crate::model::component::{Component, Position};
 use crate::model::image::{Entry, Image};
-use crate::resolve::overlay;
+use crate::resolve::collect::Collection;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -84,8 +84,6 @@ const COMPONENT_DIR: &str = "@COMPONENT@";
 
 const LINEAGE: &str = "rootfs";
 
-const BUILDC_MOUNT: &str = "--mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    ";
-
 const CONFORMS_ARG: &str = "\
 # ---- declared conformance ----
 ARG CONFORMS=";
@@ -124,11 +122,12 @@ pub fn sections(
     image: &Image,
     root: &Path,
     audit_enforce: bool,
-    shipped: &overlay::Index,
+    collection: &Collection,
 ) -> Regions {
     let mut out = String::new();
     let mut tails: Vec<String> = Vec::new();
     let mut flavour_arg_emitted = false;
+    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
 
     if image
         .entries
@@ -189,7 +188,7 @@ pub fn sections(
 
         let mut blocks: Vec<String> = Vec::new();
         if let Some(body) = at(Position::Before) {
-            blocks.push(fragment(entry, body));
+            blocks.push(fragment(image, entry, body));
         }
         if component.standard_layer {
             if component_build::splits(image, entry, component, root) {
@@ -200,6 +199,7 @@ pub fn sections(
                     image,
                     &packages,
                     component.access.packages,
+                    component_build::package_reads_dir(root, entry, family),
                 ));
             }
             let script = component_build::path(image, entry);
@@ -209,13 +209,42 @@ pub fn sections(
                 image,
                 &script,
                 component.access.scripts,
+                component_build::script_reads_dir(
+                    root, entry, component, image, family, collection,
+                ),
             ));
+            if entry.flavour.is_none() {
+                let overlays = copies(image, entry, family, root);
+                if !overlays.is_empty() {
+                    blocks.push(overlays);
+                }
+                if component_build::tail(entry, component, collection, family, root).is_some() {
+                    let tail = component_build::tail_path(image, entry);
+                    blocks.push(tail_layer(
+                        entry,
+                        image,
+                        &tail,
+                        component_build::tail_reads_dir(root, entry, family, collection),
+                    ));
+                }
+            }
         }
         if let Some(body) = at(Position::After) {
-            blocks.push(fragment(entry, body));
+            blocks.push(fragment(image, entry, body));
+        }
+        let witness_after_block = (!component.standard_layer
+            && component.fragment_position != Position::Tail)
+            || (component.standard_layer && component.fragment_position == Position::After);
+        if witness_after_block && !component_build::witnesses(component).is_empty() {
+            let script = component_build::witness_path(image, entry);
+            blocks.push(witness_layer(entry, &script));
         }
         if let Some(body) = at(Position::Tail) {
-            tails.push(fragment(entry, body));
+            tails.push(fragment(image, entry, body));
+            if !component_build::witnesses(component).is_empty() {
+                let script = component_build::witness_path(image, entry);
+                tails.push(witness_layer(entry, &script));
+            }
         }
 
         if let Some(flavour) = &entry.flavour {
@@ -253,7 +282,7 @@ pub fn sections(
     );
 
     let record = record_layer(audit_enforce);
-    let validate = validate_layer(image, shipped);
+    let validate = String::new();
 
     let mut tail_out = String::new();
     for tail in &tails {
@@ -268,13 +297,8 @@ pub fn sections(
     }
 }
 
-pub fn section(
-    image: &Image,
-    root: &Path,
-    audit_enforce: bool,
-    shipped: &overlay::Index,
-) -> String {
-    let regions = sections(image, root, audit_enforce, shipped);
+pub fn section(image: &Image, root: &Path, audit_enforce: bool, collection: &Collection) -> String {
+    let regions = sections(image, root, audit_enforce, collection);
     let parts = [
         regions.layers,
         regions.record,
@@ -298,79 +322,28 @@ fn record_layer(audit_enforce: bool) -> String {
          ARG SOURCE_COMMIT=\"\"\n\
          ARG BUILD_BACKEND=\"\"\n\
          ARG COMPONENT_HASHES=\"\"\n\
-         ARG ASSET_RESOLUTIONS=\"\"\n",
+         ARG ASSET_RESOLUTIONS=\"\"\n\
+         ARG BUILDC_VERSION=\"\"\n",
     );
     if audit_enforce {
         out.push_str("ARG AUDIT_ENFORCE=\"\"\n");
     }
     let _ = write!(
         out,
-        "RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    \
+        "RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
          BASE=\"${{BASE}}\" BASE_DECLARED=\"${{BASE_DECLARED}}\" TARGET=\"${{TARGET}}\" \\\n    \
          SOURCE_COMMIT=\"${{SOURCE_COMMIT}}\" BUILD_BACKEND=\"${{BUILD_BACKEND}}\" \\\n    \
          COMPONENT_HASHES=\"${{COMPONENT_HASHES}}\" \\\n    \
-         ASSET_RESOLUTIONS=\"${{ASSET_RESOLUTIONS}}\" "
+         ASSET_RESOLUTIONS=\"${{ASSET_RESOLUTIONS}}\" BUILDC_VERSION=\"${{BUILDC_VERSION}}\" "
     );
     if audit_enforce {
         out.push_str("AUDIT_ENFORCE=\"${AUDIT_ENFORCE}\" ");
     }
     out.push_str(
         "\\\n    \
-         IMAGE_ID=\"${IMAGE_ID}\" IMAGE_VERSION=\"${IMAGE_VERSION}\" /ctx/buildc build-record\n\n\
+         IMAGE_ID=\"${IMAGE_ID}\" IMAGE_VERSION=\"${IMAGE_VERSION}\" bash /ctx/lib/build-record.sh\n\n\
          RUN --mount=type=tmpfs,target=/run --network=none bootc container lint\n",
     );
-    out
-}
-
-fn validate_layer(image: &Image, shipped: &overlay::Index) -> String {
-    let components: Vec<&Component> = image
-        .entries
-        .iter()
-        .filter_map(|entry| entry.component.as_ref())
-        .collect();
-    let contracts = crate::emit::plan::contract_files(image, &components);
-    let exceptions = crate::emit::plan::unique_pairs(&components, |component| {
-        component
-            .verify_exceptions
-            .iter()
-            .map(|e| (e.class.clone(), e.unit.clone()))
-            .collect()
-    });
-    let presets = crate::emit::plan::declares_presets(shipped);
-    let luks = image.answers(crate::emit::recipe::LUKS_INITRAMFS);
-
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
-    let mut out = format!("ARG FAMILY={family}\n");
-    if !contracts.is_empty() {
-        out.push_str("ARG CONTRACT_FILES=\"\"\n");
-    }
-    if !exceptions.is_empty() {
-        out.push_str("ARG VERIFY_EXCEPTIONS=\"\"\n");
-    }
-    if presets {
-        out.push_str("ARG COMPONENT_PRESETS=\"\"\n");
-    }
-    if luks {
-        out.push_str("ARG LUKS_INITRAMFS=\"false\"\n");
-    }
-    out.push_str(
-        "RUN --mount=type=bind,from=buildc,source=/buildc,target=/ctx/buildc \\\n    \
-         --mount=type=tmpfs,target=/tmp \\\n    \
-         --mount=type=tmpfs,target=/run \\\n    ",
-    );
-    if !contracts.is_empty() {
-        out.push_str("CONTRACT_FILES=\"${CONTRACT_FILES}\" \\\n    ");
-    }
-    if !exceptions.is_empty() {
-        out.push_str("VERIFY_EXCEPTIONS=\"${VERIFY_EXCEPTIONS}\" \\\n    ");
-    }
-    if presets {
-        out.push_str("COMPONENT_PRESETS=\"${COMPONENT_PRESETS}\" \\\n    ");
-    }
-    if luks {
-        out.push_str("LUKS_INITRAMFS=\"${LUKS_INITRAMFS}\" \\\n    ");
-    }
-    out.push_str("FAMILY=\"${FAMILY}\" /ctx/buildc validate-image\n");
     out
 }
 
@@ -394,24 +367,32 @@ fn finalize_layer(
     };
     let mut out = format!(
         "# ---- finalize ----\n\
-         RUN {network}--mount=type=bind,from=ctx,source=/{script},target=/ctx/finalize.sh \\\n    \
+         RUN {network}--mount=type=bind,from=ctx,source=/{script},target=/{script} \\\n    \
          --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    "
     );
 
+    if conforms && image.base.is_some() {
+        let _ = write!(
+            out,
+            "--mount=type=bind,from=ctx,source=/{},target={} \\\n    ",
+            crate::scap::pinned::dir(image).display(),
+            crate::scap::pinned::MOUNT
+        );
+    }
     let mut mounted: Vec<&str> = Vec::new();
     for (entry, _) in hooks {
         let dir = entry.path.as_str();
         if mounted.contains(&dir) {
             continue;
         }
+        let tree = component_build::dir(image).join(dir).display().to_string();
         let _ = write!(
             out,
-            "--mount=type=bind,from=ctx,source=/components/{dir},target=/ctx/components/{dir} \\\n    "
+            "--mount=type=bind,from=ctx,source=/{tree},target=/ctx/components/{dir} \\\n    "
         );
         mounted.push(dir);
     }
 
-    out.push_str(BUILDC_MOUNT);
     out.push_str(
         "--mount=type=cache,target=/var/cache \\\n    \
          --mount=type=cache,target=/var/log \\\n    \
@@ -431,7 +412,7 @@ fn finalize_layer(
     }
     out.push_str(&env);
     out.push_str(identity_env);
-    out.push_str("bash /ctx/finalize.sh");
+    let _ = write!(out, "bash /{script}");
     out
 }
 
@@ -441,6 +422,7 @@ fn standard(
     image: &Image,
     script: &Path,
     open: bool,
+    reads_dir: bool,
 ) -> String {
     let mut env = String::new();
 
@@ -458,6 +440,7 @@ fn standard(
     }
 
     let path = &entry.path;
+    let tree = component_build::dir(image).display().to_string();
     let script = script.display();
     let keys = match component.keys.is_empty() {
         true => String::new(),
@@ -474,8 +457,10 @@ fn standard(
                 .unwrap_or_default()
                 .to_string_lossy();
             format!(
-                "--mount=type=bind,from=ctx,source=/components/{}/{},target=/ctx/lib/{name} \\\n    ",
-                owner.dir, helper.name
+                "--mount=type=bind,from=ctx,source=/{}/{}/{},target=/ctx/lib/{name} \\\n    ",
+                component_build::dir(image).display(),
+                owner.path,
+                helper.name
             )
         })
         .collect();
@@ -484,29 +469,84 @@ fn standard(
         true => "",
         false => "--network=none ",
     };
+    let dir = match reads_dir {
+        true => format!(
+            "--mount=type=bind,from=ctx,source=/{tree}/{path},target=/ctx/components/{path} \\\n    "
+        ),
+        false => String::new(),
+    };
     let _ = write!(
         out,
-        "RUN {network}--mount=type=bind,from=ctx,source=/components/{path},target=/ctx/components/{path} \\\n    \
+        "RUN {network}{dir}\
          --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib{rw} \\\n    \
          {helpers}\
-         --mount=type=bind,from=ctx,source=/{script},target=/ctx/component.sh \\\n    \
-         {keys}{BUILDC_MOUNT}\
+         --mount=type=bind,from=ctx,source=/{script},target=/{script} \\\n    \
+         {keys}\
          --mount=type=cache,target=/var/cache \\\n    \
          --mount=type=cache,target=/var/log \\\n    \
          --mount=type=tmpfs,target=/tmp \\\n    \
-         {secrets}{env}bash /ctx/component.sh"
+         {secrets}{env}bash /{script}"
     );
     out
 }
 
-fn fragment(entry: &Entry, body: &str) -> String {
+fn copies(image: &Image, entry: &Entry, family: &str, root: &Path) -> String {
+    let tree = component_build::dir(image);
+    let mut out = String::new();
+    for gated in component_build::overlay_prefixes(root, entry, family) {
+        let at = match gated.is_empty() {
+            true => format!("/{}/{}/files/", tree.display(), entry.path),
+            false => format!("/{}/{}/{gated}/files/", tree.display(), entry.path),
+        };
+        let _ = write!(
+            out,
+            "# ---- {} overlays ----\nCOPY --from=ctx {at} /\n",
+            entry.path
+        );
+    }
+    out.trim_end_matches('\n').to_string()
+}
+
+fn tail_layer(entry: &Entry, image: &Image, script: &Path, reads_dir: bool) -> String {
+    let path = &entry.path;
+    let tree = component_build::dir(image);
+    let dir = match reads_dir {
+        true => format!(
+            "--mount=type=bind,from=ctx,source=/{}/{path},target=/ctx/components/{path} \\\n    ",
+            tree.display()
+        ),
+        false => String::new(),
+    };
+    format!(
+        "# ---- {path} after the copies ----\n\
+         RUN --network=none {dir}\
+         --mount=type=bind,from=ctx,source=/{},target=/{} \\\n    \
+         --mount=type=tmpfs,target=/tmp \\\n    \
+         bash /{}",
+        script.display(),
+        script.display(),
+        script.display()
+    )
+}
+
+fn witness_layer(entry: &Entry, script: &Path) -> String {
+    let path = &entry.path;
+    let at = format!("/{}", script.display());
+    format!(
+        "# ---- {path} witnesses ----\n\
+         RUN --network=none --mount=type=bind,from=ctx,source={at},target={at} bash {at}"
+    )
+}
+
+fn fragment(image: &Image, entry: &Entry, body: &str) -> String {
     let dir = &entry.path;
+    let tree = component_build::dir(image).join(dir).display().to_string();
     let mut out = String::new();
     let _ = write!(
         out,
         "# verbatim from components/{dir}/Containerfile.inc:\n{}",
         body.trim_end_matches('\n')
-            .replace(COMPONENT_DIR, &format!("/components/{dir}"))
+            .replace(COMPONENT_DIR, &format!("/{tree}"))
     );
     out
 }

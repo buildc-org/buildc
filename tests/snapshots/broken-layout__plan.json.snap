@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "sealed",
   "ungated_published": "sealed",
   "cache_image": "sealed-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -42,6 +44,7 @@ source: tests/golden/harness.rs
         "image": "docker.io/library/debian:forky",
         "family": "debian",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [],
         "witnesses": {},
@@ -70,7 +73,22 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/sealed/Containerfile",
+            "uki": false,
+            "family": "debian",
+            "base": "docker.io/library/debian:forky",
+            "args": [
+              "TARGET=sealed",
+              "COMPONENT_HASHES=",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=docker.io/library/debian:forky"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     },
@@ -97,6 +115,7 @@ source: tests/golden/harness.rs
         "image": "ghcr.io/someone/arch-bootc:latest",
         "family": "arch",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [],
         "witnesses": {},
@@ -125,7 +144,22 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/halfway/Containerfile",
+            "uki": false,
+            "family": "arch",
+            "base": "ghcr.io/someone/arch-bootc:latest",
+            "args": [
+              "TARGET=halfway",
+              "COMPONENT_HASHES=",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=ghcr.io/someone/arch-bootc:latest"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "bare-component",
   "ungated_published": "bare-component",
   "cache_image": "bare-component-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -42,6 +44,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -73,6 +76,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -81,6 +85,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "c2d1623de00f1d529cc0d583f23f4f963307b32a8ebdd8a2aec003fd1b829cc9",
+                "resolved": "53a05ddb6adf30f541d2e85e763aedff94eb56fdef45abc5c3ac2e5153ee5b80",
                 "repo": false,
                 "imported": null
               },
@@ -99,6 +104,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -107,6 +113,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "b54feb522c877f97d2eb1c03b82c1cae4c35f4ef6cdda08bad9e7f788f672173",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -125,6 +132,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -133,6 +141,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "f0c9ce6caf1bf31e3982de3365cb90c3f79ff140a8e42796cb2b711edaf5a06f",
+                "resolved": "a80f4ff0eddeaa8e2dde5d95787b73bc79579bc9e43790de507a676d259e41a5",
                 "repo": false,
                 "imported": null
               },
@@ -158,6 +167,7 @@ source: tests/golden/harness.rs
                   "provider": "apps"
                 }
               },
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -166,6 +176,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "d3b3189e72b2564dd629a1e7262f0ee1e059fab537ce4b4b6e2ec08f9d59130d",
+                "resolved": "b7b35636830d5019c53c71ea0f6cc5515edfa9f5537a16e18116dee2d8448329",
                 "repo": false,
                 "imported": null
               },
@@ -201,7 +212,22 @@ source: tests/golden/harness.rs
           },
           "collect_destinations": [
             "/usr/share/menu/justfile.apps"
-          ]
+          ],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/bare-component/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=bare-component",
+              "COMPONENT_HASHES=hello|c2d1623de00f1d529cc0d583f23f4f963307b32a8ebdd8a2aec003fd1b829cc9 menu|b54feb522c877f97d2eb1c03b82c1cae4c35f4ef6cdda08bad9e7f788f672173 apps|f0c9ce6caf1bf31e3982de3365cb90c3f79ff140a8e42796cb2b711edaf5a06f apps/editor|d3b3189e72b2564dd629a1e7262f0ee1e059fab537ce4b4b6e2ec08f9d59130d",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
         }
       ]
     }

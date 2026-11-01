@@ -45,6 +45,38 @@ fn resolved_base(reference: &str, digest: &str) -> Option<String> {
         .then(|| format!("{reference}@{digest}"))
 }
 
+pub struct Cloned {
+    pub component: String,
+    pub resolved: Result<String, String>,
+}
+
+pub fn clones(components: &[&crate::model::component::Component]) -> Vec<Cloned> {
+    let mut out = Vec::new();
+    for (component, asset) in crate::emit::plan::pinned(components) {
+        let Some(url) = asset.pin.url.as_deref().filter(|_| asset.pin.cloned()) else {
+            continue;
+        };
+        let named = format!("`{}` asset `{}`", component.path, asset.name);
+        let resolved = match asset.pin.version.as_deref() {
+            None => Err(format!("{named} names no `version` to resolve")),
+            Some(version) => match clone_commit(url, version) {
+                Some(commit) => Ok(format!(
+                    "{}|{}|{version}|{commit}",
+                    component.path, asset.name
+                )),
+                None => Err(format!(
+                    "{named} did not resolve {version} to a commit at {url}"
+                )),
+            },
+        };
+        out.push(Cloned {
+            component: component.path.clone(),
+            resolved,
+        });
+    }
+    out
+}
+
 pub fn clone_commit(url: &str, version: &str) -> Option<String> {
     if version.len() == 40 && version.chars().all(|c| c.is_ascii_hexdigit()) {
         return Some(version.to_lowercase());
@@ -251,6 +283,64 @@ mod tests {
         assert!(out.contains("\"selector\": \"B7\""));
         assert!(out.contains("\"enforce\": false"));
         assert!(out.contains("\"verified\": null"));
+    }
+
+    #[test]
+    fn the_emitted_script_writes_the_record_the_tool_writes() {
+        let script = include_str!("../../assets/lib/build-record.sh");
+        let dir = scratch("record-script");
+        let file = dir.join("build.json");
+        let given = |name: &str| {
+            Some(str::to_string(match name {
+                "BASE" => "quay.io/fedora/fedora-bootc:44@sha256:abc",
+                "BASE_DECLARED" => "quay.io/fedora/fedora-bootc:44",
+                "TARGET" => "example-desktop",
+                "IMAGE_ID" => "example",
+                "SOURCE_COMMIT" => "deadbeef",
+                "BUILD_BACKEND" => "buildah",
+                "COMPONENT_HASHES" => "core/hello|aaa apps/browser|bbb",
+                "ASSET_RESOLUTIONS" => "mods/xone|xone|B7|3484f60",
+                "AUDIT_ENFORCE" => "true",
+                "BUILDC_VERSION" => env!("CARGO_PKG_VERSION"),
+                _ => return None,
+            }))
+        };
+        let mut command = Command::new("bash");
+        command
+            .arg("-c")
+            .arg(script)
+            .arg("build-record")
+            .arg(&file)
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default());
+        for name in [
+            "BASE",
+            "BASE_DECLARED",
+            "TARGET",
+            "IMAGE_ID",
+            "SOURCE_COMMIT",
+            "BUILD_BACKEND",
+            "COMPONENT_HASHES",
+            "ASSET_RESOLUTIONS",
+            "AUDIT_ENFORCE",
+            "BUILDC_VERSION",
+        ] {
+            if let Some(value) = given(name) {
+                command.env(name, value);
+            }
+        }
+        let out = command.output().expect("bash runs");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = std::fs::read_to_string(&file).expect("the script writes its output");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            Json::parse(&text).expect("the script writes JSON").render(),
+            record(&given).render()
+        );
     }
 
     #[test]

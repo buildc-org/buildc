@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "example",
   "ungated_published": "example",
   "cache_image": "example-cache",
+  "backend": "buildah",
+  "manifest_label": true,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking"
@@ -87,6 +90,7 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -94,7 +98,8 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "1657e7d2d58210a215309d2e0803b7fa58b82613c1b96bef63ec97ae7df436de",
+                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+                "resolved": "5667fbcb4d6d83bfb0d2e15d84b1091e491a61163ae9763a8d8a5609de1227fd",
                 "repo": false,
                 "imported": null
               },
@@ -113,6 +118,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [
@@ -129,6 +135,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -152,6 +159,9 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [
+                "/usr/bin/flatpak"
+              ],
               "removes": [],
               "files": {
                 "flatpak": "/usr/bin/flatpak"
@@ -170,6 +180,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
+                "resolved": null,
                 "repo": false,
                 "imported": {
                   "library": "buildc-org",
@@ -205,7 +216,25 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/example/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=example",
+              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd hello|fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666 flatpak|deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
+              "ASSET_RESOLUTIONS=",
+              "FLAVOUR=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/flatpak"
+            ]
+          }
         },
         {
           "name": "example/nvidia",
@@ -234,6 +263,7 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -241,7 +271,8 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "1657e7d2d58210a215309d2e0803b7fa58b82613c1b96bef63ec97ae7df436de",
+                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+                "resolved": "5667fbcb4d6d83bfb0d2e15d84b1091e491a61163ae9763a8d8a5609de1227fd",
                 "repo": false,
                 "imported": null
               },
@@ -260,6 +291,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [
@@ -276,6 +308,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -299,6 +332,9 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [
+                "/usr/bin/flatpak"
+              ],
               "removes": [],
               "files": {
                 "flatpak": "/usr/bin/flatpak"
@@ -317,6 +353,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
+                "resolved": null,
                 "repo": false,
                 "imported": {
                   "library": "buildc-org",
@@ -350,6 +387,7 @@ source: tests/golden/harness.rs
               "provides": [],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [
@@ -366,6 +404,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "44b3527a8df4588fb97df9a7570afc0b25b9514f24d95da407c08e14df593094",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -386,7 +425,25 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/example/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=example/nvidia",
+              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd hello|fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666 flatpak|deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be drivers|44b3527a8df4588fb97df9a7570afc0b25b9514f24d95da407c08e14df593094",
+              "ASSET_RESOLUTIONS=",
+              "FLAVOUR=nvidia",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/flatpak"
+            ]
+          }
         }
       ]
     }

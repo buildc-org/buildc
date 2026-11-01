@@ -36,8 +36,6 @@ fn man_page_missing(line: &str) -> bool {
     !page.contains('\'') && digits(code)
 }
 
-/// Whether a verify line is `<path>/<unit file>:<line>: …` about a unit other
-/// than `unit` or its template. A drop-in's `.conf` is never another unit.
 fn about_another_unit(line: &str, unit: &str) -> bool {
     const TYPES: [&str; 11] = [
         ".service",
@@ -222,18 +220,18 @@ pub fn fetch(args: &[&str]) -> Result<(), String> {
     };
 
     match (what, rest) {
-        ("file", [path]) => verified(url, Some(sha256), Path::new(path)),
+        ("file", [path]) => verified(url, Some(sha256), Path::new(path), None),
         ("tree", [dir, extra @ ..]) => extract(url, Some(sha256), Path::new(dir), extra),
         ("bin", [name]) => install_bin(url, sha256, name, name),
         ("bin", [name, inner]) => install_bin(url, sha256, name, inner),
         ("rpm", []) => {
             let rpm = crate::init::Scratch(scratch(url));
-            verified(url, Some(sha256), &rpm.0)?;
+            verified(url, Some(sha256), &rpm.0, None)?;
             run("dnf", &["install", "-y", &rpm.0.to_string_lossy()])?
         }
         ("deb", []) => {
             let deb = crate::init::Scratch(scratch(url));
-            verified(url, Some(sha256), &deb.0)?;
+            verified(url, Some(sha256), &deb.0, None)?;
             run(
                 "apt-get",
                 &[
@@ -265,11 +263,20 @@ fn run(program: &str, args: &[&str]) -> Result<Result<(), String>, String> {
     })
 }
 
-fn verified(url: &str, sha256: Option<&str>, dest: &Path) -> Result<(), String> {
+pub(crate) fn verified(
+    url: &str,
+    sha256: Option<&str>,
+    dest: &Path,
+    max: Option<u64>,
+) -> Result<(), String> {
     if let Some(dir) = dest.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     }
-    let said = Command::new("curl")
+    let mut curl = Command::new("curl");
+    if let Some(max) = max {
+        curl.args(["--max-filesize", &max.to_string()]);
+    }
+    let said = curl
         .args(["--retry", "3", "-fsSLo", &dest.to_string_lossy(), url])
         .output()
         .map_err(|err| format!("curl: {err}"))?;
@@ -290,7 +297,14 @@ fn verified(url: &str, sha256: Option<&str>, dest: &Path) -> Result<(), String> 
 }
 
 pub(crate) fn match_sha256(path: &Path, expected: &str, what: &str) -> Result<(), String> {
-    let got = sha256_file(path)?;
+    agree(&sha256_file(path)?, expected, what)
+}
+
+pub(crate) fn match_sha256_bytes(bytes: &[u8], expected: &str, what: &str) -> Result<(), String> {
+    agree(&sha256_stdin(bytes)?, expected, what)
+}
+
+fn agree(got: &str, expected: &str, what: &str) -> Result<(), String> {
     match got == expected.to_lowercase() {
         true => Ok(()),
         false => Err(format!(
@@ -307,7 +321,7 @@ pub(crate) fn extract(
 ) -> Result<(), String> {
     let archive = crate::init::Scratch(scratch(url));
     let archive = &archive.0;
-    verified(url, sha256, archive)?;
+    verified(url, sha256, archive, None)?;
     fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
 
     let path = archive.to_string_lossy().into_owned();
@@ -342,7 +356,7 @@ fn install_bin(url: &str, sha256: &str, name: &str, inner: &str) -> Result<(), S
         extract(url, Some(sha256), tmp, &[])?;
         install(&tmp.join(inner), &dest)?;
     } else {
-        verified(url, Some(sha256), tmp)?;
+        verified(url, Some(sha256), tmp, None)?;
         install(tmp, &dest)?;
     }
     Ok(())

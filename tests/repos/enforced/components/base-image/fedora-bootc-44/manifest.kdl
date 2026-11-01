@@ -2,5 +2,12 @@ schema-version 1
 
 base "quay.io/fedora/fedora-bootc:44" {
     family "fedora"
+    scap-content "ssg-fedora-ds.xml" {
+        pin {
+            manual "a fixture"
+            url "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml"
+            sha256 "402fe92ace1c30bd5a9c0f2806f96b412fec6b781023459bd30c99c6c5163c7b"
+        }
+    }
 }
 provides "rechunking"

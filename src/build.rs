@@ -1,7 +1,6 @@
-use crate::emit::plan::{contract_files, of_target, pinned, preset_files, provides, unique_pairs};
 use crate::layout;
-use crate::model::component::Component;
-use crate::model::image::{Backend, List, NO_FLAVOUR};
+use crate::model::image::Backend;
+use crate::planned::Planned;
 use crate::provenance::build as record;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -26,195 +25,40 @@ pub enum Stopped {
     Built,
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "each build step reads the values the steps before it resolved"
-)]
+struct Prepared {
+    backend: Backend,
+    containerfile: std::path::PathBuf,
+    build_args: Vec<String>,
+    validate: Vec<String>,
+    family: String,
+    target: String,
+    version: String,
+    tags: Vec<String>,
+    labels: Vec<String>,
+    import: Vec<String>,
+    export: Option<String>,
+    uki: bool,
+}
+
 pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
-    let (list, mut issues, context) = crate::declarations(root);
-    let backend = chosen_backend(opts.backend.clone(), env("BUILD_BACKEND"), list.backend)?;
-    if opts.target.is_none() {
-        if let Some(issue) = list.no_default() {
-            issues.push(issue);
-        }
-    }
-    if issues.report(&context) {
+    let Some(prepared) = prepare(root, opts)? else {
         return Ok(Stopped::Repository);
-    }
-    let target = target(&list, opts.target.as_deref())?;
-
-    let mut gate = crate::run(crate::Command::Verify, None, root);
-    if gate.problems.report() {
-        return Ok(Stopped::Repository);
-    }
-    eprintln!(
-        "buildc: {} generated files match the manifests",
-        gate.files.len()
-    );
-
-    let (list, resolved) = (gate.reading.list, gate.reading.resolved);
-    let (image, flavour, entries) =
-        of_target(&list, &target).ok_or_else(|| format!("`{target}` has no image"))?;
-    let components: Vec<&Component> = entries
-        .iter()
-        .filter_map(|e| e.component.as_ref())
-        .collect();
-    let presets = list
-        .images
-        .iter()
-        .position(|i| i.id == image.id)
-        .map(|i| {
-            preset_files(
-                image,
-                &resolved[i].shipped,
-                flavour.as_deref().unwrap_or(NO_FLAVOUR),
-            )
-        })
-        .unwrap_or_default();
-    let published = list.find_target(&target)?.published();
-
-    let version = match env("IMAGE_VERSION") {
-        Some(named) => named,
-        None => today()?,
     };
-    let declared_base = image.base.as_ref().map(|b| b.image.clone());
-    let resolved_base = match (env("BASE"), &declared_base) {
-        (Some(given), _) => Some(given),
-        (None, Some(declared)) => record::base(declared),
-        (None, None) => None,
-    };
-    let source_commit = record::source_commit(root);
-    let mut resolutions = Vec::new();
-    let mut unresolved = Vec::new();
-    for (component, asset) in pinned(&components) {
-        let Some(url) = asset.pin.url.as_deref().filter(|_| asset.pin.cloned()) else {
-            continue;
-        };
-        let named = format!("`{}` asset `{}`", component.path, asset.name);
-        let Some(version) = asset.pin.version.as_deref() else {
-            unresolved.push(format!("{named} names no `version` to resolve"));
-            continue;
-        };
-        match record::clone_commit(url, version) {
-            Some(commit) => resolutions.push(format!(
-                "{}|{}|{version}|{commit}",
-                component.path, asset.name
-            )),
-            None => unresolved.push(format!(
-                "{named} did not resolve {version} to a commit at {url}"
-            )),
-        }
-    }
-    crate::provenance::enforce_build(
-        list.audit_enforce,
-        resolved_base.as_deref(),
-        source_commit.as_deref(),
-        &unresolved,
-    )?;
-    for why in &unresolved {
-        eprintln!("buildc: {why}, so the build record leaves it out");
-    }
-    if let Some(declared) = &declared_base {
-        match &resolved_base {
-            Some(resolved) => eprintln!("buildc: base {declared} -> {resolved}"),
-            None => {
-                eprintln!("buildc: {declared} did not resolve to a digest; the build record says so")
-            }
-        }
-    }
-    let resolved_base = resolved_base.unwrap_or_else(|| declared_base.clone().unwrap_or_default());
-    let source_commit = source_commit.unwrap_or_default();
-
-    let namespace = crate::registry::namespace(root);
-    if let Err(err) = &namespace {
-        eprintln!("buildc: {err}; the image carries no IMAGE_REGISTRY");
-    }
-
-    let conforms =
-        crate::scap::profile_name(image.conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR)))
-            .to_string();
-    let scap_content = match conforms.is_empty() {
-        true => String::new(),
-        false => crate::scap::datastream(&list, Some(&target))?,
-    };
-    let (scap_claimed, scap_refused) = crate::scap::exclusions(image);
-    let contracts = contract_files(image, &components);
-    let exceptions: Vec<String> = unique_pairs(&components, |m| {
-        m.verify_exceptions
-            .iter()
-            .map(|e| (e.class.clone(), e.unit.clone()))
-            .collect()
-    })
-    .iter()
-    .map(|(class, unit)| format!("{class}|{unit}"))
-    .collect();
-    let luks = provides(image, &entries, crate::emit::recipe::LUKS_INITRAMFS);
-    let mut build_args = vec![
-        format!("IMAGE_VERSION={version}"),
-        format!(
-            "IMAGE_REGISTRY={}",
-            namespace.as_deref().unwrap_or_default()
-        ),
-        format!("TARGET={target}"),
-        format!(
-            "COMPONENT_HASHES={}",
-            components
-                .iter()
-                .filter_map(|m| m.content.as_ref().map(|c| format!("{}|{c}", m.path)))
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-        format!("ASSET_RESOLUTIONS={}", resolutions.join(" ")),
-        format!("SOURCE_COMMIT={source_commit}"),
-        format!("BUILD_BACKEND={}", backend.name()),
-    ];
-    if !contracts.is_empty() {
-        build_args.push(format!("CONTRACT_FILES={}", contracts.join(" ")));
-    }
-    if !exceptions.is_empty() {
-        build_args.push(format!("VERIFY_EXCEPTIONS={}", exceptions.join(" ")));
-    }
-    if !presets.is_empty() {
-        build_args.push(format!("COMPONENT_PRESETS={}", presets.join(" ")));
-    }
-    if luks {
-        build_args.push("LUKS_INITRAMFS=true".to_string());
-    }
-    if list.audit_enforce {
-        build_args.push("AUDIT_ENFORCE=true".to_string());
-    }
-    if !image.flavours.is_empty() {
-        build_args.push(format!("FLAVOUR={}", flavour.unwrap_or_default()));
-    }
-    if image.declares_conforms() {
-        build_args.push(format!("CONFORMS={conforms}"));
-        build_args.push(format!("SCAP_CONTENT={scap_content}"));
-    }
-    if !scap_claimed.is_empty() || !scap_refused.is_empty() {
-        build_args.push(format!("SCAP_CLAIMED={}", scap_claimed.join(" ")));
-        build_args.push(format!("SCAP_REFUSED={}", scap_refused.join(" ")));
-    }
-    if let Some(base) = &image.base {
-        build_args.push(format!("BASE_DECLARED={}", base.image));
-        build_args.push(format!("BASE={resolved_base}"));
-    }
-    if let Some(kernel) = &opts.kernel {
-        build_args.push(format!("KERNEL={kernel}"));
-    }
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
-
-    let mut tags = opts.tags.clone();
-    tags.extend(lines("TAGS"));
-    if tags.is_empty() {
-        let default_tag = env("DEFAULT_TAG").unwrap_or_else(|| "latest".to_string());
-        tags.push(match env("IMAGE_NAME") {
-            Some(name) => format!("{name}:{default_tag}"),
-            None => format!("{published}:{default_tag}"),
-        });
-    }
-
     let secrets = secrets(opts)?;
-    let (import, export) = cache(&list, &target, &published, opts, namespace.ok())?;
+    let Prepared {
+        backend,
+        containerfile,
+        build_args,
+        validate,
+        family,
+        target,
+        version,
+        tags,
+        labels,
+        import,
+        export,
+        uki,
+    } = prepared;
 
     install(root)?;
 
@@ -234,16 +78,11 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         eprintln!("buildc: exporting cache to {export}");
     }
 
-    let containerfile = crate::emit::containerfile::path(image);
     let program = match backend {
         Backend::Buildx => "docker",
         Backend::Buildah => "podman",
     };
     let prefix = build_prefix(backend, &containerfile, &build_args, &secrets);
-    let mut labels: Vec<String> = lines("LABELS");
-    if list.manifest_label {
-        labels.push(format!("org.buildc.manifest={}", record::MANIFEST));
-    }
 
     if backend == Backend::Buildah {
         if export.is_some() {
@@ -257,7 +96,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
         }
     }
 
-    if !image.boot.is_empty() {
+    if uki {
         if backend == Backend::Buildx {
             return Err(
                 "`--backend buildx` cannot build a UKI target: the composefs digest is read \
@@ -271,12 +110,13 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
                 program,
                 containerfile: &containerfile,
                 build_args: &build_args,
-                family,
-                secrets: &secrets,
+                validate: &validate,
+                family: &family,
                 target: &target,
                 tags: &tags,
                 labels: &labels,
             },
+            &secrets,
         )?;
         return Ok(Stopped::Built);
     }
@@ -317,6 +157,138 @@ pub fn run(root: &Path, opts: &Options) -> Result<Stopped, String> {
     ))
 }
 
+fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
+    let Some(plan) = Planned::checked(root)? else {
+        return Ok(None);
+    };
+    eprintln!(
+        "buildc: {} generated files match the snapshot",
+        plan.generated
+    );
+    let backend = chosen_backend(opts.backend.clone(), env("BUILD_BACKEND"), plan.backend()?)?;
+    let target = plan.target(opts.target.as_deref())?;
+    let published = target.published();
+
+    let version = match env("IMAGE_VERSION") {
+        Some(named) => named,
+        None => today()?,
+    };
+    let declared_base = target.base();
+    let resolved_base = match (env("BASE"), &declared_base) {
+        (Some(given), _) => Some(given),
+        (None, Some(declared)) => record::base(declared),
+        (None, None) => None,
+    };
+    let source_commit = record::source_commit(root);
+    confirm_clones(&target.cloned()?, plan.audit_enforce())?;
+    let unresolved = target.unresolved();
+    crate::provenance::enforce_build(
+        plan.audit_enforce(),
+        resolved_base.as_deref(),
+        source_commit.as_deref(),
+        &unresolved,
+    )?;
+    for why in &unresolved {
+        eprintln!("buildc: {why}, so the build record leaves it out");
+    }
+    if let Some(declared) = &declared_base {
+        match &resolved_base {
+            Some(resolved) => eprintln!("buildc: base {declared} -> {resolved}"),
+            None => {
+                eprintln!(
+                    "buildc: {declared} did not resolve to a digest; the build record says so"
+                )
+            }
+        }
+    }
+
+    let namespace = crate::registry::namespace(root);
+    if let Err(err) = &namespace {
+        eprintln!("buildc: {err}; the image carries no IMAGE_REGISTRY");
+    }
+
+    let mut build_args = vec![
+        format!("IMAGE_VERSION={version}"),
+        format!(
+            "IMAGE_REGISTRY={}",
+            namespace.as_deref().unwrap_or_default()
+        ),
+        format!("SOURCE_COMMIT={}", source_commit.unwrap_or_default()),
+        format!("BUILD_BACKEND={}", backend.name()),
+        format!("BUILDC_VERSION={}", env!("CARGO_PKG_VERSION")),
+    ];
+    build_args.extend(target.args());
+    if let Some(declared) = &declared_base {
+        build_args.push(format!(
+            "BASE={}",
+            resolved_base.as_deref().unwrap_or(declared)
+        ));
+    }
+    if let Some(kernel) = &opts.kernel {
+        build_args.push(format!("KERNEL={kernel}"));
+    }
+
+    let mut tags = opts.tags.clone();
+    tags.extend(lines("TAGS"));
+    if tags.is_empty() {
+        let default_tag = env("DEFAULT_TAG").unwrap_or_else(|| "latest".to_string());
+        tags.push(match env("IMAGE_NAME") {
+            Some(name) => format!("{name}:{default_tag}"),
+            None => format!("{published}:{default_tag}"),
+        });
+    }
+    let mut labels: Vec<String> = lines("LABELS");
+    if plan.manifest_label() {
+        labels.push(format!("org.buildc.manifest={}", record::MANIFEST));
+    }
+
+    let (import, export) = cache(&plan, &target, opts, namespace.ok())?;
+
+    Ok(Some(Prepared {
+        backend,
+        containerfile: target.containerfile(),
+        build_args,
+        validate: target.validate(),
+        family: target.family(),
+        target: target.name.clone(),
+        version,
+        tags,
+        labels,
+        import,
+        export,
+        uki: target.uki(),
+    }))
+}
+
+fn confirm_clones(cloned: &[crate::planned::Cloned], enforce: bool) -> Result<(), String> {
+    for one in cloned {
+        match record::clone_commit(&one.url, &one.version) {
+            Some(now) if now != one.commit => {
+                return Err(format!(
+                    "{} named {} when `buildc generate` ran and names {now} now; run `buildc generate` to record the commit the build clones",
+                    one.named, one.commit
+                ))
+            }
+            Some(_) => {}
+            None => {
+                let why = format!(
+                    "{} did not resolve {} at {}, so the build cannot confirm the commit `buildc generate` recorded",
+                    one.named, one.version, one.url
+                );
+                match enforce {
+                    true => {
+                        return Err(format!(
+                            "{why}; an enforced audit builds nothing it cannot confirm"
+                        ))
+                    }
+                    false => eprintln!("buildc: {why}"),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn chosen_backend(
     flag: Option<String>,
     variable: Option<String>,
@@ -333,7 +305,7 @@ fn build_prefix(
     backend: Backend,
     containerfile: &Path,
     build_args: &[String],
-    secrets: &[(String, String)],
+    secrets: &[Secret],
 ) -> Vec<String> {
     let mut args = match backend {
         Backend::Buildx => vec!["buildx".to_string(), "build".to_string()],
@@ -344,7 +316,7 @@ fn build_prefix(
     for arg in build_args {
         args.extend(["--build-arg".to_string(), arg.clone()]);
     }
-    for (id, path) in secrets {
+    for Secret { id, path } in secrets {
         args.extend(["--secret".to_string(), format!("id={id},src={path}")]);
     }
     args
@@ -395,20 +367,20 @@ struct Invocation<'a> {
     program: &'a str,
     containerfile: &'a Path,
     build_args: &'a [String],
+    validate: &'a [String],
     family: &'a str,
-    secrets: &'a [(String, String)],
     target: &'a str,
     tags: &'a [String],
     labels: &'a [String],
 }
 
-fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
+fn build_uki(root: &Path, invocation: &Invocation, secrets: &[Secret]) -> Result<(), String> {
     let &Invocation {
         program,
         containerfile,
         build_args,
+        validate,
         family,
-        secrets,
         target,
         tags,
         labels,
@@ -519,7 +491,7 @@ fn build_uki(root: &Path, invocation: &Invocation) -> Result<(), String> {
                 "{sealed_tag} does not carry composefs={digest} on its UKI cmdline"
             ));
         }
-        validate_sealed(root, &sealed_tag, build_args, family)
+        validate_sealed(root, &sealed_tag, validate, family)
     })();
     if let Err(err) = checked {
         remove_image(program, &sealed_tag);
@@ -552,13 +524,36 @@ fn seal_containerfile(text: &str) -> Option<String> {
     Some(text[..end].to_string())
 }
 
+pub fn validate(root: &Path, reference: &str, target: Option<&str>) -> Result<Stopped, String> {
+    let Some(plan) = Planned::checked(root)? else {
+        return Ok(Stopped::Repository);
+    };
+    let target = plan.target(target)?;
+    let tool = root.join(layout::MOUNTED);
+    if !tool.is_file() {
+        return Err(format!(
+            "{}: not there; run `buildc build` first, which stages the tool",
+            tool.display()
+        ));
+    }
+    let argv = validate_argv(root, reference, &target.validate(), &target.family());
+    let status = Command::new("podman")
+        .args(&argv)
+        .status()
+        .map_err(|err| format!("podman: {err}"))?;
+    if !status.success() {
+        return Err(format!("validating {reference}: podman exited {status}"));
+    }
+    Ok(Stopped::Built)
+}
+
 fn validate_sealed(
     root: &Path,
     tag: &str,
-    build_args: &[String],
+    validate: &[String],
     family: &str,
 ) -> Result<(), String> {
-    let argv = validate_argv(root, tag, build_args, family);
+    let argv = validate_argv(root, tag, validate, family);
     let status = Command::new("podman")
         .args(&argv)
         .status()
@@ -569,7 +564,7 @@ fn validate_sealed(
     }
 }
 
-fn validate_argv(root: &Path, tag: &str, build_args: &[String], family: &str) -> Vec<String> {
+fn validate_argv(root: &Path, tag: &str, validate: &[String], family: &str) -> Vec<String> {
     let tool = root.join(layout::MOUNTED);
     let mut argv: Vec<String> = vec![
         "run".to_string(),
@@ -583,18 +578,8 @@ fn validate_argv(root: &Path, tag: &str, build_args: &[String], family: &str) ->
         "--entrypoint".to_string(),
         "/ctx/buildc".to_string(),
     ];
-    for name in [
-        "CONTRACT_FILES",
-        "VERIFY_EXCEPTIONS",
-        "COMPONENT_PRESETS",
-        "LUKS_INITRAMFS",
-    ] {
-        if let Some(value) = build_args
-            .iter()
-            .find_map(|arg| arg.strip_prefix(&format!("{name}=")))
-        {
-            argv.extend(["-e".to_string(), format!("{name}={value}")]);
-        }
+    for pair in validate {
+        argv.extend(["-e".to_string(), pair.clone()]);
     }
     argv.extend(["-e".to_string(), format!("FAMILY={family}")]);
     argv.push(tag.to_string());
@@ -715,33 +700,32 @@ fn lines(name: &str) -> Vec<String> {
         .collect()
 }
 
-fn target(list: &List, named: Option<&str>) -> Result<String, String> {
-    match named {
-        Some(name) => list.find_target(name).map(|target| target.to_string()),
-        None => Ok(list
-            .default_target()
-            .ok_or("no default image to build; name a target with `--target`")?
-            .to_string()),
-    }
+struct Secret {
+    id: String,
+    path: String,
 }
 
-fn secrets(opts: &Options) -> Result<Vec<(String, String)>, String> {
-    let mut out: Vec<(String, String)> = Vec::new();
+fn secrets(opts: &Options) -> Result<Vec<Secret>, String> {
+    let mut out: Vec<Secret> = Vec::new();
     for pair in &opts.secrets {
         match pair.split_once('=') {
-            Some((id, path)) if !id.is_empty() && !path.is_empty() => {
-                out.push((id.to_string(), path.to_string()))
-            }
+            Some((id, path)) if !id.is_empty() && !path.is_empty() => out.push(Secret {
+                id: id.to_string(),
+                path: path.to_string(),
+            }),
             _ => return Err(format!("`--secret` takes `<id>=<path>`, not `{pair}`")),
         }
     }
     if let Some(path) = env("MOK_KEY_PATH") {
-        if out.iter().any(|(id, _)| id == "mok_privkey") {
+        if out.iter().any(|secret| secret.id == "mok_privkey") {
             return Err("MOK_KEY_PATH and `--secret mok_privkey=` both set; use one".into());
         }
-        out.push(("mok_privkey".to_string(), path));
+        out.push(Secret {
+            id: "mok_privkey".to_string(),
+            path,
+        });
     }
-    for (id, path) in &out {
+    for Secret { id, path } in &out {
         if !Path::new(path).is_file() {
             return Err(format!(
                 "secret `{id}` points at `{path}`, which is not there"
@@ -752,16 +736,15 @@ fn secrets(opts: &Options) -> Result<Vec<(String, String)>, String> {
 }
 
 fn cache(
-    list: &List,
-    target: &str,
-    published: &str,
+    plan: &Planned,
+    target: &crate::planned::Target,
     opts: &Options,
     namespace: Option<String>,
 ) -> Result<(Vec<String>, Option<String>), String> {
     if opts.no_cache_from && !opts.cache_to {
         return Ok((Vec::new(), None));
     }
-    let (Some(namespace), Some(image)) = (namespace, list.cache_image()) else {
+    let (Some(namespace), Some(image)) = (namespace, plan.cache_image()) else {
         if opts.cache_to {
             return Err(
                 "`--cache-to` needs a registry namespace and a `default-image` in repo.kdl".into(),
@@ -772,17 +755,12 @@ fn cache(
     };
     let repo = format!("{namespace}/{image}");
 
+    let published = target.published();
     let mut import = Vec::new();
     if !opts.no_cache_from {
         import.push(format!("{repo}:{published}"));
-        let this = list.targets().into_iter().find(|t| t.to_string() == target);
-        for sibling in list.targets() {
-            let same = this
-                .as_ref()
-                .is_some_and(|t| t.image == sibling.image && t.flavour != sibling.flavour);
-            if same {
-                import.push(format!("{repo}:{}", sibling.published()));
-            }
+        for sibling in target.siblings() {
+            import.push(format!("{repo}:{sibling}"));
         }
     }
     let export = opts
@@ -820,6 +798,175 @@ fn today() -> Result<String, String> {
 mod tests {
     use super::*;
 
+    fn read_by_a_build(root: &Path, target: &str) -> Vec<String> {
+        let opts = Options {
+            target: Some(target.to_string()),
+            ..Options::default()
+        };
+        let prepared = prepare(root, &opts)
+            .expect("the build prepares")
+            .expect("the generated tree is the snapshot");
+        let plan = Planned::checked(root)
+            .expect("the plan reads")
+            .expect("the generated tree is the snapshot");
+        let target = plan.target(Some(target)).expect("the target is planned");
+        let mut out = vec![
+            prepared.backend.name().to_string(),
+            prepared.containerfile.display().to_string(),
+            prepared.family,
+            prepared.uki.to_string(),
+        ];
+        out.extend(prepared.build_args);
+        out.extend(prepared.validate);
+        out.extend(prepared.tags);
+        out.extend(prepared.import);
+        for component in target.components() {
+            out.push(component.path);
+            out.extend(component.witnessed);
+        }
+        out.extend(
+            target
+                .overlay_owners()
+                .into_iter()
+                .map(|(path, owner)| format!("{path} {owner}")),
+        );
+        out.extend(target.datastream());
+        out
+    }
+
+    fn generated_fixture(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("buildc-{name}-{}", std::process::id()));
+        if let Err(err) = fs::remove_dir_all(&root) {
+            assert_eq!(
+                err.kind(),
+                std::io::ErrorKind::NotFound,
+                "{}: {err}",
+                root.display()
+            );
+        }
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/multi-image");
+        let copied = Command::new("cp")
+            .arg("-r")
+            .arg(&fixture)
+            .arg(&root)
+            .status()
+            .expect("cp runs");
+        assert!(copied.success());
+        std::env::set_var("BASE", "quay.io/fedora/fedora-bootc:44@sha256:0");
+        std::env::set_var("IMAGE_VERSION", "1");
+        std::env::set_var("IMAGE_REGISTRY", "ghcr.io/example");
+        let run = crate::run::run(crate::Command::Generate, None, &root);
+        assert_eq!(run.problems.issues.plain(), "");
+        crate::write_generated(&root, &run.files, &run.copies).expect("generate writes");
+        root
+    }
+
+    #[test]
+    fn a_selector_that_moved_since_generate_refuses_the_build() {
+        let cloned = |version: &str| crate::planned::Cloned {
+            named: "`core/one` asset `src`".to_string(),
+            url: "https://example.com/src.git".to_string(),
+            version: version.to_string(),
+            commit: "a".repeat(40),
+        };
+        assert_eq!(confirm_clones(&[cloned(&"a".repeat(40))], false), Ok(()));
+        let moved = confirm_clones(&[cloned(&"b".repeat(40))], false)
+            .err()
+            .unwrap_or_default();
+        assert!(moved.contains("run `buildc generate`"), "{moved}");
+        let mut unreachable = cloned("v1");
+        unreachable.url = "https://invalid.invalid/src.git".to_string();
+        assert_eq!(
+            confirm_clones(std::slice::from_ref(&unreachable), false),
+            Ok(())
+        );
+        let enforced = confirm_clones(&[unreachable], true)
+            .err()
+            .unwrap_or_default();
+        assert!(enforced.contains("an enforced audit"), "{enforced}");
+    }
+
+    #[test]
+    fn a_build_adds_its_own_inputs_to_the_planned_arguments() {
+        let root = generated_fixture("prepared");
+        let opts = Options {
+            target: Some("workstation".to_string()),
+            ..Options::default()
+        };
+        let prepared = prepare(&root, &opts)
+            .expect("the build prepares")
+            .expect("the generated tree is the snapshot");
+        fs::remove_dir_all(&root).expect("the scratch repository goes");
+        assert_eq!(prepared.backend, Backend::Buildah);
+        assert_eq!(prepared.target, "workstation");
+        assert_eq!(prepared.version, "1");
+        assert_eq!(prepared.tags, vec!["workstation:latest"]);
+        assert_eq!(
+            prepared.import[0],
+            "ghcr.io/example/workstation-cache:workstation"
+        );
+        assert!(prepared.import.len() > 1, "{:?}", prepared.import);
+        assert!(prepared.export.is_none());
+        assert!(!prepared.uki);
+        for arg in [
+            "IMAGE_VERSION=1",
+            "IMAGE_REGISTRY=ghcr.io/example",
+            "TARGET=workstation",
+            "CONFORMS=standard",
+            "BASE=quay.io/fedora/fedora-bootc:44@sha256:0",
+        ] {
+            assert!(
+                prepared.build_args.iter().any(|have| have == arg),
+                "{arg}: {:?}",
+                prepared.build_args
+            );
+        }
+    }
+
+    #[test]
+    fn a_source_edit_after_generate_reaches_no_build_input() {
+        let root = generated_fixture("inert");
+        let before = read_by_a_build(&root, "workstation");
+        assert!(
+            before
+                .iter()
+                .any(|arg| arg == "SCAP_CONTENT=/ctx/scap/ssg-fedora-ds.xml"),
+            "{before:?}"
+        );
+
+        fs::rename(root.join("components"), root.join("moved")).expect("the sources move");
+        fs::create_dir(root.join("components")).expect("an empty components directory is made");
+        fs::write(root.join("components/components.lock.kdl"), "not a lock")
+            .expect("a broken lock is written");
+        let image = root.join("workstation.image.kdl");
+        let text = fs::read_to_string(&image).expect("the image file reads");
+        fs::write(&image, text.replace("conforms \"standard\"", ""))
+            .expect("the image file writes");
+        let repo = root.join("repo.kdl");
+        let text = fs::read_to_string(&repo).expect("repo.kdl reads");
+        fs::write(&repo, format!("{text}backend \"buildx\"\n")).expect("repo.kdl writes");
+
+        let after = read_by_a_build(&root, "workstation");
+        assert_eq!(before, after);
+
+        fs::remove_dir_all(root.join("components")).expect("the broken lock goes");
+        fs::rename(root.join("moved"), root.join("components")).expect("the sources return");
+        let run = crate::run::run(crate::Command::Generate, None, &root);
+        assert_eq!(run.problems.issues.plain(), "");
+        crate::write_generated(&root, &run.files, &run.copies).expect("generate writes");
+        let regenerated = read_by_a_build(&root, "workstation");
+        fs::remove_dir_all(&root).expect("the scratch repository goes");
+        assert_ne!(before, regenerated);
+        assert!(
+            regenerated.iter().any(|fact| fact == "buildx"),
+            "{regenerated:?}"
+        );
+        assert!(
+            regenerated.iter().any(|arg| arg == "CONFORMS="),
+            "{regenerated:?}"
+        );
+    }
+
     #[test]
     fn the_flag_wins_over_the_variable_and_the_variable_over_repo_kdl() {
         let named = |name: &str| Some(name.to_string());
@@ -838,8 +985,24 @@ mod tests {
             Backend::Buildah,
             Path::new("generated/next44/Containerfile"),
             &["FLAVOUR=".to_string(), "BASE=example:1".to_string()],
-            &[("mok_privkey".to_string(), "/keys/mok.key".to_string())],
+            &[Secret {
+                id: "mok_privkey".to_string(),
+                path: "/keys/mok.key".to_string(),
+            }],
         )
+    }
+
+    #[test]
+    fn a_secret_whose_file_is_absent_stops_the_build() {
+        let opts = Options {
+            secrets: vec!["signing=/nonexistent/buildc-test.key".to_string()],
+            ..Options::default()
+        };
+        let refused = secrets(&opts).err().unwrap_or_default();
+        assert!(
+            refused.contains("/nonexistent/buildc-test.key"),
+            "{refused}"
+        );
     }
 
     #[test]

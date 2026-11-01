@@ -66,6 +66,8 @@ pub fn build(list: &List, resolved: &[Resolved], workflows: &[Declared]) -> Json
             Json::optional(list.ungated_target().map(|t| t.published())),
         ),
         ("cache_image", Json::optional(list.cache_image())),
+        ("backend", Json::string(list.backend.name())),
+        ("manifest_label", Json::Bool(list.manifest_label)),
         (
             "workflows",
             Json::array(workflows.iter().map(|declared| {
@@ -146,6 +148,10 @@ fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
                     ("image", Json::string(&base.image)),
                     ("family", Json::string(&base.family)),
                     ("scap_content", Json::string(&base.scap_content)),
+                    (
+                        "scap_pin",
+                        base.scap_pin.as_ref().map_or(Json::Null, |pin| pin.json()),
+                    ),
                     ("signed", Json::Bool(base.signed)),
                     (
                         "provides",
@@ -254,7 +260,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
             Json::array(
                 entries
                     .iter()
-                    .map(|entry| self::component(entry, family, image, &entries)),
+                    .map(|entry| self::component(entry, family, image, &entries, resolved)),
             ),
         ),
         (
@@ -264,7 +270,7 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
                     .suppressed
                     .iter()
                     .filter(|entry| in_target(entry, flavour))
-                    .map(|entry| self::component(entry, family, image, &entries)),
+                    .map(|entry| self::component(entry, family, image, &entries, resolved)),
             ),
         ),
         (
@@ -280,16 +286,11 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
         (
             "verify_exceptions",
             Json::array(
-                unique_pairs(&components, |m| {
-                    m.verify_exceptions
-                        .iter()
-                        .map(|e| (e.class.clone(), e.unit.clone()))
-                        .collect()
-                })
-                .into_iter()
-                .map(|(class, unit)| {
-                    Json::object([("class", Json::string(class)), ("unit", Json::string(unit))])
-                }),
+                verify_exceptions(&components)
+                    .into_iter()
+                    .map(|(class, unit)| {
+                        Json::object([("class", Json::string(class)), ("unit", Json::string(unit))])
+                    }),
             ),
         ),
         ("assets", assets(&components)),
@@ -325,7 +326,156 @@ fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> J
             "collect_destinations",
             Json::strings(resolved.collected.destinations.clone()),
         ),
+        (
+            "datastream",
+            match (image.conforms_of(flavour).is_empty(), &resolved.scap) {
+                (false, Some(measured)) => Json::string(
+                    crate::scap::pinned::dir(image)
+                        .join(&measured.file)
+                        .display()
+                        .to_string(),
+                ),
+                (true, _) | (false, None) => Json::Null,
+            },
+        ),
+        (
+            "build",
+            build_facts(list, image, resolved, target, &entries),
+        ),
     ])
+}
+
+fn build_facts(
+    list: &List,
+    image: &Image,
+    resolved: &Resolved,
+    target: &Target,
+    entries: &[&Entry],
+) -> Json {
+    let flavour = target.flavour.as_str();
+    let components: Vec<&Component> = entries
+        .iter()
+        .filter_map(|e| e.component.as_ref())
+        .collect();
+    let listed = |path: &str| components.iter().any(|component| component.path == path);
+    let clones: Vec<&crate::provenance::build::Cloned> = resolved
+        .clones
+        .iter()
+        .filter(|cloned| listed(&cloned.component))
+        .collect();
+
+    let mut args = vec![
+        format!("TARGET={target}"),
+        format!(
+            "COMPONENT_HASHES={}",
+            components
+                .iter()
+                .filter_map(|m| m.content.as_ref().map(|c| format!("{}|{c}", m.path)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        format!(
+            "ASSET_RESOLUTIONS={}",
+            clones
+                .iter()
+                .filter_map(|cloned| cloned.resolved.as_deref().ok())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    ];
+    if list.audit_enforce {
+        args.push("AUDIT_ENFORCE=true".to_string());
+    }
+    if !image.flavours.is_empty() {
+        args.push(format!(
+            "FLAVOUR={}",
+            match flavour {
+                NO_FLAVOUR => "",
+                named => named,
+            }
+        ));
+    }
+    let conforms = crate::scap::profile_name(image.conforms_of(flavour));
+    if image.declares_conforms() {
+        let content = match (conforms.is_empty(), &resolved.scap) {
+            (false, Some(measured)) => format!("{}/{}", crate::scap::pinned::MOUNT, measured.file),
+            (true, _) | (false, None) => String::new(),
+        };
+        args.push(format!("CONFORMS={conforms}"));
+        args.push(format!("SCAP_CONTENT={content}"));
+    }
+    let (claimed, refused) = crate::scap::exclusions(image);
+    if !claimed.is_empty() || !refused.is_empty() {
+        let claimed = resolved
+            .scap
+            .as_ref()
+            .map(|measured| measured.claimed.join(" "))
+            .unwrap_or_default();
+        args.push(format!("SCAP_CLAIMED={claimed}"));
+        args.push(format!("SCAP_REFUSED={}", refused.join(" ")));
+    }
+    if let Some(base) = &image.base {
+        args.push(format!("BASE_DECLARED={}", base.image));
+    }
+
+    let mut validate = Vec::new();
+    let contracts = contract_files(image, &components);
+    if !contracts.is_empty() {
+        validate.push(format!("CONTRACT_FILES={}", contracts.join(" ")));
+    }
+    let exceptions: Vec<String> = verify_exceptions(&components)
+        .iter()
+        .map(|(class, unit)| format!("{class}|{unit}"))
+        .collect();
+    if !exceptions.is_empty() {
+        validate.push(format!("VERIFY_EXCEPTIONS={}", exceptions.join(" ")));
+    }
+    let presets = preset_files(image, &resolved.shipped, flavour);
+    if !presets.is_empty() {
+        validate.push(format!("COMPONENT_PRESETS={}", presets.join(" ")));
+    }
+    if provides(image, entries, crate::emit::recipe::LUKS_INITRAMFS) {
+        validate.push("LUKS_INITRAMFS=true".to_string());
+    }
+
+    Json::object([
+        (
+            "containerfile",
+            Json::string(
+                crate::emit::containerfile::path(image)
+                    .display()
+                    .to_string(),
+            ),
+        ),
+        ("uki", Json::Bool(!image.boot.is_empty())),
+        (
+            "family",
+            Json::string(image.base.as_ref().map_or("", |base| base.family.as_str())),
+        ),
+        (
+            "base",
+            Json::optional(image.base.as_ref().map(|base| base.image.clone())),
+        ),
+        ("args", Json::strings(args)),
+        (
+            "unresolved",
+            Json::strings(
+                clones
+                    .iter()
+                    .filter_map(|cloned| cloned.resolved.as_ref().err().cloned()),
+            ),
+        ),
+        ("validate", Json::strings(validate)),
+    ])
+}
+
+fn verify_exceptions(components: &[&Component]) -> Vec<(String, String)> {
+    unique_pairs(components, |m| {
+        m.verify_exceptions
+            .iter()
+            .map(|e| (e.class.clone(), e.unit.clone()))
+            .collect()
+    })
 }
 
 fn met_by(entry: &Entry, image: &Image, entries: &[&Entry]) -> Json {
@@ -362,7 +512,13 @@ fn met_by(entry: &Entry, image: &Image, entries: &[&Entry]) -> Json {
     }))
 }
 
-fn component(entry: &Entry, family: &str, image: &Image, entries: &[&Entry]) -> Json {
+fn component(
+    entry: &Entry,
+    family: &str,
+    image: &Image,
+    entries: &[&Entry],
+    resolved: &Resolved,
+) -> Json {
     let component = entry.component.as_ref();
     Json::object([
         ("path", Json::string(&entry.path)),
@@ -389,6 +545,17 @@ fn component(entry: &Entry, family: &str, image: &Image, entries: &[&Entry]) -> 
         ("provides", Json::strings(decls(component, |m| &m.provides))),
         ("requires", Json::strings(decls(component, |m| &m.requires))),
         ("met_by", met_by(entry, image, entries)),
+        (
+            "witnessed",
+            Json::strings(
+                component
+                    .map(|m| m.files.as_slice())
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|file| !file.build_only)
+                    .map(|file| file.file.clone()),
+            ),
+        ),
         ("removes", Json::strings(decls(component, |m| &m.removes))),
         (
             "files",
@@ -409,7 +576,7 @@ fn component(entry: &Entry, family: &str, image: &Image, entries: &[&Entry]) -> 
             batches(component.map(|m| m.groups.as_slice()), family),
         ),
         ("coprs", coprs(component, family)),
-        ("provenance", provenance(entry)),
+        ("provenance", provenance(entry, resolved)),
         (
             "origin",
             match &entry.imported_by {
@@ -493,7 +660,7 @@ fn decls(
         .unwrap_or_default()
 }
 
-fn provenance(entry: &Entry) -> Json {
+fn provenance(entry: &Entry, resolved: &Resolved) -> Json {
     let component = entry.component.as_ref();
     Json::object([
         (
@@ -506,6 +673,10 @@ fn provenance(entry: &Entry) -> Json {
         (
             "content",
             Json::optional(component.and_then(|m| m.content.clone())),
+        ),
+        (
+            "resolved",
+            Json::optional(component.and_then(|m| resolved.hashes.get(&m.path).cloned())),
         ),
         ("repo", Json::Bool(component.is_some_and(|m| m.repo))),
         (
@@ -673,10 +844,6 @@ pub(crate) fn overrides(
     out
 }
 
-pub(crate) fn declares_presets(shipped: &overlay::Index) -> bool {
-    shipped.keys().any(|path| is_preset(path))
-}
-
 pub(crate) fn preset_files(image: &Image, shipped: &overlay::Index, flavour: &str) -> Vec<String> {
     shipped
         .keys()
@@ -747,7 +914,7 @@ fn unique(components: &[&Component], of: impl Fn(&Component) -> Vec<String>) -> 
     ))
 }
 
-pub(crate) fn unique_pairs(
+fn unique_pairs(
     components: &[&Component],
     of: impl Fn(&Component) -> Vec<(String, String)>,
 ) -> Vec<(String, String)> {

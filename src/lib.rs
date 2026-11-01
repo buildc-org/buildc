@@ -1,3 +1,4 @@
+pub mod attribute;
 pub mod bases;
 pub mod build;
 pub mod collection;
@@ -20,6 +21,7 @@ pub mod key;
 pub mod layout;
 pub mod model;
 pub mod parse;
+pub(crate) mod planned;
 pub mod provenance;
 pub mod provider;
 pub mod registry;
@@ -38,6 +40,7 @@ pub mod vm;
 mod screen_tests;
 
 pub use command::{Arg, Command};
+use common::json::Json;
 use diag::Issue;
 use diag::Issues;
 use diag::Source;
@@ -86,7 +89,7 @@ pub(crate) fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
         }
     };
     let src = Source::new(SKELETON, text.clone());
-    let stale = old_spine(&text);
+    let stale = stale_generated_steps(&text);
     if !stale.is_empty() {
         let ranges: Vec<String> = stale
             .iter()
@@ -150,7 +153,7 @@ pub(crate) fn skeleton(root: &Path, issues: &mut Issues) -> Option<String> {
     found.then_some(text)
 }
 
-fn old_spine(text: &str) -> Vec<(usize, usize)> {
+fn stale_generated_steps(text: &str) -> Vec<(usize, usize)> {
     use emit::containerfile::{
         BEGIN, END, RECORD_BEGIN, RECORD_END, TAIL_BEGIN, TAIL_END, VALIDATE_BEGIN, VALIDATE_END,
     };
@@ -264,7 +267,13 @@ pub(crate) fn load(root: &Path) -> Loaded {
         resolve::overlay::check(image, &shipped, &mut issues);
         let collected = resolve::collect::resolve_collects(image, root, &disk, &mut issues);
 
-        resolved.push(Resolved { shipped, collected });
+        resolved.push(Resolved {
+            shipped,
+            collected,
+            hashes: std::collections::BTreeMap::new(),
+            scap: None,
+            clones: Vec::new(),
+        });
     }
 
     parse::component::check_unlisted(&list, root, &disk, &mut issues);
@@ -293,7 +302,12 @@ pub(crate) fn load(root: &Path) -> Loaded {
     }
 }
 
-pub(crate) fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issues) {
+pub(crate) fn verify(
+    root: &Path,
+    files: &[(PathBuf, String)],
+    copies: &[crate::emit::resolved::CopyFile],
+    issues: &mut Issues,
+) {
     const HELP: &str = "run `buildc generate` and commit what it writes";
 
     let mut absent: Vec<String> = Vec::new();
@@ -316,6 +330,39 @@ pub(crate) fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issu
             .help(HELP),
         );
     }
+    for copied in copies {
+        let name = copied.path.display().to_string();
+        let at = root.join(&copied.path);
+        let shown = match &copied.link {
+            Some(target) => {
+                let found = std::fs::read_link(&at).ok();
+                if found.as_deref() == Some(target.as_path()) {
+                    continue;
+                }
+                found.map_or_else(String::new, |path| path.display().to_string())
+            }
+            None => {
+                let Ok(found) = std::fs::read(&at) else {
+                    absent.push(name);
+                    continue;
+                };
+                let mode = std::fs::metadata(&at)
+                    .map(|meta| std::os::unix::fs::PermissionsExt::mode(&meta.permissions()))
+                    .unwrap_or_default();
+                if found == copied.bytes && mode & 0o7777 == copied.mode & 0o7777 {
+                    continue;
+                }
+                String::from_utf8_lossy(&found).into_owned()
+            }
+        };
+        issues.push(
+            Issue::new(
+                format!("`{name}` is not what this repository generates"),
+                &Source::new(&name, shown),
+            )
+            .help(HELP),
+        );
+    }
 
     match absent.as_slice() {
         [] => {}
@@ -334,6 +381,7 @@ pub(crate) fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issu
         .into_iter()
         .filter_map(|path| path.strip_prefix(root).map(Path::to_path_buf).ok())
         .filter(|path| !files.iter().any(|(emitted, _)| emitted == path))
+        .filter(|path| !copies.iter().any(|copied| copied.path == *path))
         .chain(resolve::workflow::orphans(root, files));
     for path in stale {
         let name = path.display().to_string();
@@ -347,7 +395,50 @@ pub(crate) fn verify(root: &Path, files: &[(PathBuf, String)], issues: &mut Issu
     }
 }
 
-pub fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
+pub(crate) fn verify_snapshot(root: &Path, issues: &mut Issues) -> usize {
+    const HELP: &str = "run `buildc generate` and commit what it writes";
+    let generated = layout::generated(root);
+    let files = tracked(&generated);
+    let count = files.len();
+    let manifest = root.join(emit::snapshot::path());
+    let name = manifest.display().to_string();
+    let Ok(text) = std::fs::read_to_string(&manifest) else {
+        issues
+            .push(Issue::new(format!("`{name}` is not there"), &Source::new(&name, "")).help(HELP));
+        return count;
+    };
+    let expected = Json::parse(&text)
+        .ok()
+        .as_ref()
+        .and_then(|json| common::json::text(json, "root"));
+    let Some(expected) = expected else {
+        issues.push(
+            Issue::new(
+                format!("`{name}` names no snapshot root"),
+                &Source::new(&name, text),
+            )
+            .help(HELP),
+        );
+        return count;
+    };
+    let found = emit::snapshot::root_on_disk(root, &files);
+    if found.as_deref() != Some(expected.as_str()) {
+        issues.push(
+            Issue::new(
+                "the generated tree is not the snapshot the repository holds",
+                &Source::new(&name, text),
+            )
+            .help(HELP),
+        );
+    }
+    count
+}
+
+pub fn write_generated(
+    root: &Path,
+    files: &[(PathBuf, String)],
+    copies: &[crate::emit::resolved::CopyFile],
+) -> Result<(), String> {
     let dir = layout::generated(root);
     if dir.is_dir() {
         std::fs::remove_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
@@ -361,10 +452,26 @@ pub fn write_generated(root: &Path, files: &[(PathBuf, String)]) -> Result<(), S
         let dir = path.parent().unwrap_or(&path);
         std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
         std::fs::write(&path, text).map_err(|err| format!("{}: {err}", path.display()))?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .map_err(|err| format!("{}: {err}", path.display()))?;
+    }
+    use std::os::unix::fs::PermissionsExt;
+    for copied in copies {
+        let path = root.join(&copied.path);
+        let dir = path.parent().unwrap_or(&path);
+        std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+        if let Some(target) = &copied.link {
+            let _ = std::fs::remove_file(&path);
+            std::os::unix::fs::symlink(target, &path)
+                .map_err(|err| format!("{}: {err}", path.display()))?;
+            continue;
+        }
+        std::fs::write(&path, &copied.bytes).map_err(|err| format!("{}: {err}", path.display()))?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(copied.mode & 0o7777))
+            .map_err(|err| format!("{}: {err}", path.display()))?;
     }
     let scripts = layout::generated(root).join(layout::SCRIPTS);
     for script in emit::SCRIPTS {
-        use std::os::unix::fs::PermissionsExt;
         let path = scripts.join(script.name);
         if !path.is_file() {
             continue;
@@ -425,6 +532,75 @@ pub(crate) fn tracked(dir: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_snapshot_refuses_an_edited_and_an_extra_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("buildc-snapshot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let file = PathBuf::from("generated/one/Containerfile");
+        let mut files = vec![(file.clone(), String::from("FROM scratch\n"))];
+        let manifest = emit::snapshot::file(&files, &[]);
+        files.push(manifest);
+        for (path, body) in files {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        let mut issues = Issues::default();
+        assert_eq!(verify_snapshot(&root, &mut issues), 2);
+        assert!(issues.findings().is_empty(), "{}", issues.plain());
+
+        std::fs::write(root.join(&file), "FROM other\n").unwrap();
+        let mut issues = Issues::default();
+        verify_snapshot(&root, &mut issues);
+        assert!(
+            issues.plain().contains("not the snapshot"),
+            "{}",
+            issues.plain()
+        );
+
+        std::fs::write(root.join(&file), "FROM scratch\n").unwrap();
+        std::fs::write(root.join("generated/one/extra"), "x\n").unwrap();
+        let mut issues = Issues::default();
+        verify_snapshot(&root, &mut issues);
+        assert!(
+            issues.plain().contains("not the snapshot"),
+            "{}",
+            issues.plain()
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_generated_copy_whose_mode_moved_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("buildc-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let at = root.join("generated/one/component.sh");
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, "true\n").unwrap();
+        std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let copy = crate::emit::resolved::CopyFile {
+            path: PathBuf::from("generated/one/component.sh"),
+            bytes: b"true\n".to_vec(),
+            mode: 0o755,
+            link: None,
+        };
+        let mut issues = Issues::default();
+        verify(&root, &[], std::slice::from_ref(&copy), &mut issues);
+        assert!(
+            issues
+                .plain()
+                .contains("not what this repository generates"),
+            "{}",
+            issues.plain()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_skeleton_that_still_carries_the_old_steps_is_refused() {

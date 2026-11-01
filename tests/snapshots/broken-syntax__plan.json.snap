@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": null,
   "ungated_published": null,
   "cache_image": null,
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false

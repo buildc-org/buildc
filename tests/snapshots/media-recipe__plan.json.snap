@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "deb",
   "ungated_published": "deb",
   "cache_image": "deb-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -42,6 +44,7 @@ source: tests/golden/harness.rs
         "image": "docker.io/library/debian:forky",
         "family": "debian",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [],
         "witnesses": {},
@@ -73,6 +76,7 @@ source: tests/golden/harness.rs
               ],
               "requires": [],
               "met_by": {},
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -81,6 +85,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "c54d668a97aeac1c5aea2e887e1cccbb65b36531e9fbbee6eb85bd3f3c19e2dc",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -99,7 +104,24 @@ source: tests/golden/harness.rs
           "overlay_files": {},
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/deb/Containerfile",
+            "uki": false,
+            "family": "debian",
+            "base": "docker.io/library/debian:forky",
+            "args": [
+              "TARGET=deb",
+              "COMPONENT_HASHES=core/luks|c54d668a97aeac1c5aea2e887e1cccbb65b36531e9fbbee6eb85bd3f3c19e2dc",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=docker.io/library/debian:forky"
+            ],
+            "unresolved": [],
+            "validate": [
+              "LUKS_INITRAMFS=true"
+            ]
+          }
         }
       ]
     }

@@ -48,6 +48,8 @@ pub enum Verb {
     BuildRecord,
     Fetch,
     ValidateImage,
+    Validate,
+    Attribute,
 }
 
 impl Verb {
@@ -116,6 +118,8 @@ impl Verb {
             | Self::RegistryRef
             | Self::Recipe
             | Self::BuildRecord
+            | Self::Validate
+            | Self::Attribute
             | Self::CreateGit => None,
         }
     }
@@ -162,6 +166,8 @@ pub const ALL: &[Verb] = &[
     Verb::BuildRecord,
     Verb::Fetch,
     Verb::ValidateImage,
+    Verb::Validate,
+    Verb::Attribute,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -422,13 +428,27 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         false,
         Topic::Layer,
     ),
+    (
+        "validate",
+        Verb::Validate,
+        Family::Repo,
+        false,
+        Topic::Build,
+    ),
+    (
+        "attribute",
+        Verb::Attribute,
+        Family::Repo,
+        false,
+        Topic::Build,
+    ),
 ];
 
 #[derive(Parser)]
 #[command(
     name = "buildc",
-    about = "the build tool for a bootc image repository",
-    long_about = "The build tool for a bootc image repository. With no command, it opens a picker \
+    about = "manage a repository of bootc images",
+    long_about = "buildc manages a bootc image repository. With no command, it opens a picker \
                   of the commands that run where it is typed. If no terminal is watching, then it \
                   lists those commands instead.",
     after_long_help = help::ROOT_NOTES,
@@ -476,12 +496,6 @@ pub enum Surface {
     #[command(long_about = help::CHECK, after_long_help = help::CHECK_NOTES)]
     Check {
         /// SCAP content to count each profile's unclaimed rules against
-        /// SCAP content to read the profile from
-        /// SCAP content; the file `scap content` names by default
-        /// the file that holds the previous scan's pass set
-        /// SCAP content for the profile offer; the family's installed copy by default, and no content means no offer
-        /// SCAP content to choose the profile from; the image family's installed copy by default
-        /// SCAP content to read the rules from; the installed copy for the component's first declared family by default, and required when the component declares no family restriction
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
     },
@@ -490,35 +504,20 @@ pub enum Surface {
     Generate,
     /// build one target with the container backend
     #[command(long_about = help::BUILD, after_long_help = help::BUILD_NOTES)]
-    /// make the disk for the target
     Build {
         /// the target
-        /// the destination that the payload kind writes to
         #[arg(value_name = "target")]
         target_arg: Option<String>,
         /// the target, as an alternative to the positional argument
-        /// the target; the default target if absent
-        /// the target whose plan maps each layer to its paths
-        /// the target; the image's own target if absent
         #[arg(long, value_name = "target")]
         target: Option<String>,
         /// an extra tag for the built image
-        /// the tag the reference publishes under
         #[arg(long, value_name = "tag")]
         tag: Vec<String>,
         /// the kernel version to install
-        /// the container backend: `buildx` or `buildah`
-        /// the account or organisation that owns the repository
-        /// also write a first image with this name
-        /// the account or organisation; used when no image already names one
-        /// the image that publishes the flavour
-        /// an image that lists the component
-        /// a package the component installs
-        /// the component that declares the key
-        /// the common name of a generated certificate
-        /// the image or flavour that lists the component
         #[arg(long, value_name = "name")]
         kernel: Option<String>,
+        /// the container backend: `buildx` or `buildah`
         #[arg(long, value_name = "name")]
         backend: Option<String>,
         /// write an OCI archive instead of loading the image; needs `--backend buildx`
@@ -544,8 +543,6 @@ pub enum Surface {
     #[command(long_about = help::SECTION)]
     Section {
         /// the image; the default image if absent
-        /// the image; the default image if absent, or a picker in a terminal
-        /// the image; the only image if absent, otherwise a picker
         #[arg(value_name = "image")]
         image: Option<String>,
     },
@@ -553,7 +550,6 @@ pub enum Surface {
     #[command(long_about = help::GRAPH)]
     Graph {
         /// `markdown` with a mermaid diagram, or `json`; `markdown` is the default
-        /// `markdown` or `json`; `markdown` is the default
         #[arg(long, value_name = "md|json")]
         format: Option<String>,
     },
@@ -561,19 +557,22 @@ pub enum Surface {
     #[command(long_about = help::WHY, after_long_help = help::WHY_NOTES)]
     Why {
         /// the component to explain
-        /// the component whose claims are written
         #[arg(value_name = "component")]
         component: Option<String>,
+        /// `markdown` or `json`; `markdown` is the default
         #[arg(long, value_name = "md|json")]
         format: Option<String>,
     },
     /// print which component claims each rule of the image's profile
     #[command(long_about = help::COVERAGE, after_long_help = help::COVERAGE_NOTES)]
     Coverage {
+        /// the image; the default image if absent, or a picker in a terminal
         #[arg(value_name = "image")]
         image: Option<String>,
+        /// `markdown` or `json`; `markdown` is the default
         #[arg(long, value_name = "md|json")]
         format: Option<String>,
+        /// SCAP content to read the profile from
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
     },
@@ -581,23 +580,43 @@ pub enum Surface {
     #[command(long_about = help::PLAN)]
     Plan {
         /// no effect; `plan` always prints JSON
-        /// add provider components for the requirements of the selected components
-        /// stop tracking without asking
         #[arg(long)]
         json: bool,
     },
     /// compare every build file byte for byte with the one buildc writes
     #[command(long_about = help::VERIFY)]
     Verify,
+    /// check one built image with the tool that built it
+    #[command(long_about = help::VALIDATE, after_long_help = help::VALIDATE_NOTES)]
+    Validate {
+        /// the built image reference or id
+        #[arg(value_name = "image", required = true)]
+        image: Option<String>,
+        /// the target; the default target if absent
+        #[arg(long, value_name = "target")]
+        target: Option<String>,
+    },
+    /// map each layer of a built image to its component
+    #[command(long_about = help::ATTRIBUTE, after_long_help = help::ATTRIBUTE_NOTES)]
+    Attribute {
+        /// the built image reference or id
+        #[arg(value_name = "image", required = true)]
+        image: Option<String>,
+        /// the target whose plan maps each layer to its paths
+        #[arg(long, value_name = "target")]
+        target: Option<String>,
+    },
     /// print a table of what one target is made of
     #[command(long_about = help::SUMMARY)]
     Summary {
+        /// the target
         #[arg(value_name = "target")]
         target: Option<String>,
     },
     /// print one target's pinned payloads as SPDX packages
     #[command(long_about = help::SBOM)]
     Sbom {
+        /// the target
         #[arg(value_name = "target")]
         target: Option<String>,
     },
@@ -609,10 +628,13 @@ pub enum Surface {
         /// the ARF report the scan wrote
         #[arg(value_name = "arf.xml")]
         arf: Option<String>,
+        /// the target; the image's own target if absent
         #[arg(long, value_name = "target")]
         target: Option<String>,
+        /// SCAP content; the file `scap content` names by default
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
+        /// the file that holds the previous scan's pass set
         #[arg(long, value_name = "file")]
         baseline: Option<PathBuf>,
         /// a scan of the bare base to compare against
@@ -633,6 +655,7 @@ pub enum Surface {
         /// the expected SHA-256 of the download
         #[arg(value_name = "sha256", required = true)]
         sha256: Option<String>,
+        /// the destination that the payload kind writes to
         #[arg(value_name = "target")]
         target: Option<String>,
         /// extra arguments for the payload kind
@@ -647,13 +670,13 @@ pub enum Surface {
     /// print the install recipe that the repository answers
     #[command(long_about = help::RECIPE, after_long_help = help::RECIPE_NOTES)]
     Recipe {
+        /// the target; the image's own target if absent
         #[arg(long, value_name = "target")]
         target: Option<String>,
+        /// the tag the reference publishes under
         #[arg(long, value_name = "tag")]
         tag: Vec<String>,
         /// the local image to install in place of the published reference
-        /// the base image reference for the first image
-        /// a bootc image reference, catalogued or not; skips the base picker
         #[arg(long, value_name = "ref")]
         image: Vec<String>,
     },
@@ -671,20 +694,18 @@ pub enum CreateWhat {
     #[command(long_about = help::CREATE_REPO, after_long_help = help::CREATE_REPO_NOTES)]
     Repo {
         /// the repository directory name
-        /// the image name
-        /// the flavour name
-        /// the component name or path
-        /// the scripts to keep
-        /// the component to copy or `<owner>/<name>` to choose a library
         #[arg(value_name = "name")]
         name: Option<String>,
         /// the repository host; `github.com` by default, and with `--owner` it forms the base of every image URL
         #[arg(long, value_name = "domain")]
         host: Option<String>,
+        /// the account or organisation that owns the repository
         #[arg(long, value_name = "name")]
         owner: Option<String>,
+        /// also write a first image with this name
         #[arg(long, value_name = "name")]
         image: Vec<String>,
+        /// the base image reference for the first image
         #[arg(long, value_name = "ref")]
         base: Option<String>,
     },
@@ -694,28 +715,36 @@ pub enum CreateWhat {
     /// add an image and choose its base
     #[command(long_about = help::CREATE_IMAGE, after_long_help = help::CREATE_IMAGE_NOTES)]
     Image {
+        /// the image name
         #[arg(value_name = "name")]
         name: Option<String>,
+        /// the account or organisation; used when no image already names one
         #[arg(long, value_name = "name")]
         owner: Option<String>,
+        /// a bootc image reference, catalogued or not; skips the base picker
         #[arg(long, value_name = "ref")]
         base: Option<String>,
     },
     /// add a second build of an image with more components
     #[command(long_about = help::CREATE_FLAVOUR, after_long_help = help::CREATE_FLAVOUR_NOTES)]
     Flavour {
+        /// the flavour name
         #[arg(value_name = "name")]
         name: Option<String>,
+        /// the image that publishes the flavour
         #[arg(long, value_name = "name")]
         image: Vec<String>,
     },
     /// write a component and offer to list it in an image
     #[command(long_about = help::CREATE_COMPONENT, after_long_help = help::CREATE_COMPONENT_NOTES)]
     Component {
+        /// the component name or path
         #[arg(value_name = "name")]
         name: Option<String>,
+        /// an image that lists the component
         #[arg(long, value_name = "name")]
         image: Vec<String>,
+        /// a package the component installs
         #[arg(long, value_name = "name")]
         pkg: Vec<String>,
         /// one more manifest line, such as `provides=browser`; repeatable
@@ -728,14 +757,17 @@ pub enum CreateWhat {
         /// the kind of key that a component declares
         #[arg(value_name = "kind")]
         kind: Option<String>,
+        /// the component that declares the key
         #[arg(long, value_name = "name")]
         component: Option<String>,
+        /// the common name of a generated certificate
         #[arg(long, value_name = "name")]
         cn: Option<String>,
     },
     /// copy the scripts that buildc supplies into scripts/
     #[command(long_about = help::CREATE_SCRIPTS, after_long_help = help::CREATE_SCRIPTS_NOTES)]
     Scripts {
+        /// the scripts to keep
         #[arg(value_name = "name")]
         names: Vec<String>,
     },
@@ -746,12 +778,16 @@ pub enum ImportWhat {
     /// copy a component from a declared library into this repository
     #[command(long_about = help::IMPORT_COMPONENT, after_long_help = help::IMPORT_COMPONENT_NOTES)]
     Component {
+        /// the component to copy or `<owner>/<name>` to choose a library
         #[arg(value_name = "name")]
         name: Option<String>,
+        /// the image or flavour that lists the component
         #[arg(long, value_name = "name")]
         image: Option<String>,
+        /// SCAP content for the profile offer; the family's installed copy by default, and no content means no offer
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
+        /// add provider components for the requirements of the selected components
         #[arg(long)]
         dependencies: bool,
     },
@@ -768,24 +804,30 @@ pub enum SetWhat {
     /// choose the benchmark profile an image is measured against
     #[command(long_about = help::SET_CONFORMS, after_long_help = help::SET_CONFORMS_NOTES)]
     Conforms {
+        /// the image; the only image if absent, otherwise a picker
         #[arg(value_name = "image")]
         image: Option<String>,
+        /// SCAP content to choose the profile from; the image family's installed copy by default
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
     },
     /// choose the benchmark rules that a component claims
     #[command(long_about = help::SET_CLAIMS, after_long_help = help::SET_CLAIMS_NOTES)]
     Claims {
+        /// the component whose claims are written
         #[arg(value_name = "component")]
         component: Option<String>,
+        /// SCAP content to read the rules from; the installed copy for the component's first declared family by default, and required when the component declares no family restriction
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
     },
     /// record an existing key instead of generating one
     #[command(long_about = help::SET_KEY, after_long_help = help::SET_KEY_NOTES)]
     Key {
+        /// the kind of key that a component declares
         #[arg(value_name = "kind")]
         kind: Option<String>,
+        /// the component that declares the key
         #[arg(long, value_name = "name")]
         component: Option<String>,
         /// the file that holds the public half
@@ -796,9 +838,9 @@ pub enum SetWhat {
     #[command(long_about = help::SET_COMPONENT, after_long_help = help::SET_COMPONENT_NOTES)]
     Component {
         /// the imported component to make the repository's own
-        /// the components to refresh; every tracked component if absent
         #[arg(value_name = "path")]
         path: Option<String>,
+        /// stop tracking without asking
         #[arg(long)]
         untracked: bool,
     },
@@ -806,9 +848,9 @@ pub enum SetWhat {
 
 #[derive(Subcommand)]
 pub enum VmWhat {
+    /// make the disk for the target
     Build {
         /// the disk type: `qcow2`, `raw` or `iso`
-        /// the disk type: `qcow2` or `raw`
         #[arg(value_name = "type")]
         kind: Option<String>,
         #[command(flatten)]
@@ -816,6 +858,7 @@ pub enum VmWhat {
     },
     /// boot that disk under qemu and build it if missing
     Run {
+        /// the disk type: `qcow2`, `raw` or `iso`
         #[arg(value_name = "type")]
         kind: Option<String>,
         #[command(flatten)]
@@ -823,6 +866,7 @@ pub enum VmWhat {
     },
     /// boot the disk with systemd-vmspawn
     Spawn {
+        /// the disk type: `qcow2` or `raw`
         #[arg(value_name = "type")]
         kind: Option<String>,
         #[command(flatten)]
@@ -850,19 +894,23 @@ pub enum ScapWhat {
     /// print the datastream that the target is measured with
     #[command(long_about = help::SCAP_CONTENT)]
     Content {
+        /// the target; the image's own target if absent
         #[arg(long, value_name = "target")]
         target: Option<String>,
     },
     /// print the XCCDF tailoring that a scan runs
     #[command(long_about = help::SCAP_TAILORING, after_long_help = help::SCAP_TAILORING_NOTES)]
     Tailoring {
+        /// the target; the image's own target if absent
         #[arg(long, value_name = "target")]
         target: Option<String>,
+        /// SCAP content; the file `scap content` names by default
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
     },
     /// print the rule name for each benchmark number
     Rules {
+        /// SCAP content; the file `scap content` names by default
         #[arg(long, value_name = "file")]
         datastream: Option<PathBuf>,
         /// a benchmark rule number
@@ -876,6 +924,7 @@ pub enum FetchWhat {
     /// refresh each tracked component from its library
     #[command(long_about = help::FETCH_COMPONENTS, after_long_help = help::FETCH_COMPONENTS_NOTES)]
     Components {
+        /// the components to refresh; every tracked component if absent
         #[arg(value_name = "path")]
         paths: Vec<String>,
     },
@@ -889,8 +938,10 @@ pub enum RegistryWhat {
     /// print the full reference that one target publishes under
     #[command(long_about = help::REGISTRY_REF)]
     Ref {
+        /// the target; the image's own target if absent
         #[arg(long, value_name = "target")]
         target: Option<String>,
+        /// the tag the reference publishes under
         #[arg(long, value_name = "tag")]
         tag: Vec<String>,
     },
@@ -1407,7 +1458,9 @@ impl Verb {
             | Self::Recipe
             | Self::BuildRecord
             | Self::Fetch
-            | Self::ValidateImage => return None,
+            | Self::ValidateImage
+            | Self::Validate
+            | Self::Attribute => return None,
         })
     }
 }

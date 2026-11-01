@@ -1,28 +1,26 @@
 pub(super) const ROOT_NOTES: &str = r#"> [!NOTE]
 > In a terminal, a command asks for each answer that its arguments and flags
-> did not give. `buildc create repo` then shows every answer on a review screen.
-> Enter on an answer asks it again, Create writes, and Esc leaves without
-> writing.
+> did not give. `buildc create repo` shows every answer on a review screen before
+> it writes. Enter reopens an answer. Create writes. Esc writes nothing.
 >
 > With `--no-tui`, or with no terminal, a command asks nothing. A typed answer
-> comes from its flag, else from its default, else the command fails and names
-> the flag. A yes or no question answers no, and a choice keeps the options
-> that it opens with."#;
+> comes from its flag first, then its default. If neither exists, the command
+> fails and names the flag. A yes or no question answers no, and a choice keeps
+> the options that it opens with."#;
 
-pub(super) const UPGRADE: &str = r#"Replaces this `buildc`, and the assets it scaffolds from, with the latest
-published release. It prints the running version and the latest one. If they
-are the same, or if the running build is newer than the latest tag, then it
-stops."#;
+pub(super) const UPGRADE: &str = r#"Replaces this `buildc` and the assets it scaffolds from with the latest
+published release. It prints the running and latest versions. It stops when
+they match, or when the running build is newer than the latest tag."#;
 
 pub(super) const UPGRADE_NOTES: &str = r#"> [!NOTE]
 > The binary and its assets move together. A binary without its assets
-> scaffolds from a stale `assets/` copy and says nothing.
+> uses a stale `assets/` copy and gives no warning.
 >
 > Run as root, it installs to `/usr/local/bin` and
 > `/usr/local/share/buildc/assets`. Run as another user, it installs to
 > `~/.local/bin` and `$XDG_DATA_HOME/buildc/assets`, which is
-> `~/.local/share/buildc/assets` by default. If it cannot write there, then
-> it stops and names the other location. It never falls back to it.
+> `~/.local/share/buildc/assets` by default. If it cannot write there, it
+> stops and names the other location. It never switches to that location.
 >
 > It checks the download against the `.sha256` published beside it before it
 > changes a file. If the check fails, then the old install stays.
@@ -31,8 +29,8 @@ pub(super) const UPGRADE_NOTES: &str = r#"> [!NOTE]
 > survive.
 >
 > An `assets` directory beside the binary takes priority over the installed
-> assets, so it stops before it downloads. A set `BUILDC_ASSETS` also takes
-> priority, and it warns about that.
+> assets, so it stops before it downloads. A set `BUILDC_ASSETS` also wins, and
+> the warning names the path that wins.
 >
 > Releases exist for x86_64 and aarch64 Linux. On another platform it stops and
 > names the platform.
@@ -40,26 +38,16 @@ pub(super) const UPGRADE_NOTES: &str = r#"> [!NOTE]
 > On a machine with no `buildc`, the install script does the same job:
 > `curl -fsSL https://raw.githubusercontent.com/buildc-org/buildc/main/install.sh | sh`."#;
 
-pub(super) const CREATE_REPO: &str = r#"Starts a repository for the user's images. Every other command reads the
-`repo.kdl` that it writes, so it runs first. It creates a directory named after
-the repository, or uses the directory that `--root` names.
+pub(super) const CREATE_REPO: &str = r#"Creates a repository for images. Every other command reads the `repo.kdl` that
+it writes, so it runs first. It creates a directory named after the repository,
+or uses the directory that `--root` names.
 
-It asks, in order:
-
-1. Name the repository.
-2. Choose whether to sync the repository to a host. Then choose the host and
-   give the account.
-3. On GitHub, choose whether to create the remote repository now.
-4. Choose whether to add a first image. Then name it and choose its base.
-5. If the base needs components, choose whether to add them.
-6. If the repository syncs to a host, choose the CI workflows. Then choose
-   whether images publish and scan only on scheduled builds, and give the daily
-   build time.
-7. Choose the scripts to keep in `scripts/`.
-8. Review every answer, change any of them, and choose Create."#;
+It asks for the repository name, the host and account, the first image and its
+base, the base components, the CI workflows and schedule, and the scripts to
+keep in `scripts/`. It shows every answer on a review screen before it writes."#;
 
 pub(super) const CREATE_REPO_NOTES: &str = r#"> [!WARNING]
-> The `buildc-components` source that `repo.kdl` declares is `unpinned`. Each
+> The `buildc` source that `repo.kdl` declares is `unpinned`. Each
 > fetch takes the head of its branch, and no hash checks what arrives. To pin
 > it, add `version` and `sha256` beside its `url`.
 
@@ -68,7 +56,8 @@ pub(super) const CREATE_REPO_NOTES: &str = r#"> [!WARNING]
 > first commit, the remote and the push.
 >
 > On GitHub, it offers to create the remote repository with `gh`. If `gh` is
-> missing or logged out, then it says what to do.
+> missing or logged out, it reports what `gh` still needs before it can create
+> the remote.
 >
 > A repository cannot sit inside another repository, so it refuses such a
 > directory."#;
@@ -77,18 +66,16 @@ pub(super) const CREATE_IMAGE: &str = r#"Adds an image to the repository, in a n
 name derives from the image name, so "My Desktop" writes
 `my-desktop.image.kdl`.
 
-It asks, in order:
+It asks for the image name, which defaults to the repository name, and for the
+base. The catalog offers the base, and `--base` names one.
 
-1. Name the image. The repository name is the default.
-2. Choose the base from the catalog, or name one with `--base`.
-
-If the base is a catalogued component that imports no build environment,
-choose whether to add its family adapter. If the base requires a component
-that the image does not list, choose whether to add its providers. Each one
-comes from the declared collections, is copied into `components/` and is
-recorded in `components/components.lock.kdl`. A component the repository
-already holds is listed as it is. A base outside the catalog declares no
-family, so the tool offers no adapter and asks no family question.
+If the base is a catalogued component that imports no build environment, it
+offers to add its family adapter. If the base requires a component that the
+image does not list, it offers to add its providers. It copies each accepted
+component from the declared collections into `components/` and records it in
+`components/components.lock.kdl`. A component the repository already holds is
+listed as it is. A base outside the catalog declares no family, so the tool
+offers no adapter and asks no family question.
 
 The components a library base imports are copied into `components/` beside
 it, and the image file lists none of them."#;
@@ -111,15 +98,12 @@ pub(super) const CREATE_IMAGE_NOTES: &str = r#"> [!NOTE]
 > component that `targets` the family and `provides "build-environment"`."#;
 
 pub(super) const CREATE_FLAVOUR: &str = r#"Adds a flavour to an image. A flavour is a second build of the image with more
-components, published as `<image>-<flavour>` beside the image. This command
-declares the flavour in the image's `flavours` block. To add a component to the
-flavour, run `buildc create component` or `buildc import component` and choose the
-flavour.
+components, published as `<image>-<flavour>` beside the image. The command
+declares the flavour in the image's `flavours` block. Add components to the
+flavour with `buildc create component` or `buildc import component`, and choose the
+flavour there.
 
-It asks, in order:
-
-1. Name the flavour.
-2. Choose the image that publishes it."#;
+It asks for the flavour name and the image that publishes it."#;
 
 pub(super) const CREATE_FLAVOUR_NOTES: &str = r#"> [!NOTE]
 > It writes neither `default` nor `pr-build`. Each one changes what a build
@@ -128,17 +112,13 @@ pub(super) const CREATE_FLAVOUR_NOTES: &str = r#"> [!NOTE]
 > It refuses a name that the image already declares, and `none`, which names
 > the image's own build."#;
 
-pub(super) const CREATE_COMPONENT: &str = r#"Writes a new component, `components/<name>/manifest.kdl`, and offers to list it in an
-image. The name can be a path, so `apps/firefox` writes
+pub(super) const CREATE_COMPONENT: &str = r#"Writes a new component to `components/<name>/manifest.kdl` and offers to list
+it in an image. The name can be a path, so `apps/firefox` writes
 `components/apps/firefox/manifest.kdl`.
 
-It asks, in order:
-
-1. Name the component.
-2. Optionally describe it.
-3. Optionally restrict it to named base families.
-4. Choose whether it installs packages, then name them.
-5. Choose the images and flavours that list it."#;
+It asks for the component name, an optional description, optional base family
+restrictions, whether it installs packages and their names, and the images and
+flavours that list it."#;
 
 pub(super) const CREATE_COMPONENT_NOTES: &str = r#"> [!NOTE]
 > With no `targets` declaration, a component targets every base family. It
@@ -151,35 +131,33 @@ pub(super) const CREATE_COMPONENT_NOTES: &str = r#"> [!NOTE]
 > An image and one of its own flavours cannot both list the component. The image
 > entry already reaches every flavour of that image.
 >
-> No image is an answer. The component exists, and no image lists it yet. Leaving
-> the picker writes nothing."#;
+> Choosing no image is valid. The component exists with no listing. Leaving the
+> picker writes nothing."#;
 
 pub(super) const IMPORT_COMPONENT: &str = r#"Copies a component from a library into `components/<name>`, and records it in
 `components/components.lock.kdl`: the library, the component's path there, the
 library's revision and the content hash. The repository holds the copy, so a
 fetch never changes it.
 
-It asks, in order:
+It asks for:
 
-1. Choose the image or flavour the components are for, or none.
-2. Choose the components. A component that the image's base family cannot build,
-   and a base component, are listed as unavailable, with the reason beside
-   them.
-3. If the repository already holds a component at that path, choose to list the
-   local component or to import the library's under another name. The name
-   offered is `<name>@1`.
-4. If several library components provide one capability that they require,
-   choose one. Then choose whether to add the components that they require. A
+1. The image or flavour that the components are for, or none.
+2. The components. A component that the image's base family cannot build, and a
+   base component, are listed as unavailable, with the reason beside them.
+3. If the repository already holds a component at that path, whether to list the
+   local component or import the library's component under another name. The
+   name offered is `<name>@1`.
+4. If several library components provide one capability that they require, which
+   one to use, and whether to add the components that they require. A
    requirement whose `provider` reads an option takes the answer as that
    option's value on the component's entry, and the provider is copied in
    without an entry of its own.
 5. If a component provides a capability that an entry in the same image or
-   flavour declares exclusive, or the other way round, choose to replace that
+   flavour declares exclusive, or the other way round, whether to replace that
    entry or cancel.
-6. Choose whether to generate the CI workflows that they make runnable.
-7. If they claim benchmark rules, choose a profile to measure the image
-   against.
-8. Choose whether the copies track upstream."#;
+6. Whether to generate the CI workflows that they make runnable.
+7. If they claim benchmark rules, the profile to measure the image against.
+8. Whether the copies track upstream."#;
 
 pub(super) const IMPORT_COMPONENT_NOTES: &str = r#"> [!WARNING]
 > A pinned library is downloaded once and checked against its hash. An
@@ -190,8 +168,8 @@ pub(super) const IMPORT_COMPONENT_NOTES: &str = r#"> [!WARNING]
 > If `repo.kdl` declares no `sources`, then the command refuses and prints the
 > `sources` block that `buildc create repo` writes.
 >
-> A bare name is searched for in every library. `<owner>/<name>` picks
-> between two libraries that both hold it.
+> It searches every library for a bare name. `<owner>/<name>` picks between
+> two libraries that both hold it.
 >
 > It refuses a component that the image already lists, and a component that the
 > image's base family cannot build.
@@ -209,9 +187,9 @@ pub(super) const IMPORT_COMPONENT_NOTES: &str = r#"> [!WARNING]
 > If the user declines a required component, then the file stays valid, and
 > `buildc check` names the import that would satisfy it."#;
 
-pub(super) const CREATE_GIT: &str = r#"Puts the directory under git control, so a hand-written repository is under
-version control before its first commit. It writes the `.gitignore` that
-ignores `keys/private/`, `out/` and `.cache/`, unless one is already there.
+pub(super) const CREATE_GIT: &str = r#"Puts a directory written by hand or copied from elsewhere under git control
+before its first commit. It writes the `.gitignore` that ignores
+`keys/private/`, `out/` and `.cache/`, unless one is already there.
 
 It refuses a directory that git already tracks, because a repository does not
 nest."#;
@@ -221,18 +199,16 @@ pub(super) const CREATE_GIT_NOTES: &str = r#"> [!NOTE]
 > command is for a directory written by hand or copied from somewhere, and it
 > leaves every file that is already there alone."#;
 
-pub(super) const CREATE_SCRIPTS: &str = r#"Copies a script that `buildc` supplies into `scripts/`, where the repository
-owns it. Git tracks the copy, the user can review and change it, and a `buildc`
+pub(super) const CREATE_SCRIPTS: &str = r#"Copies scripts that `buildc` supplies into `scripts/`, where the repository owns
+them. Git tracks each copy, the user can review and change it, and a `buildc`
 upgrade does not replace it. The scripts are:
 
 - `Containerfile.skeleton`, the Containerfile around the generated component layers
 - `lint.sh`, `buildc.sh`, `smoke.sh` and `vm.sh`, which `buildc generate` otherwise
   writes into `generated/scripts/`
 
-It asks for one step:
-
-1. Choose the scripts. The list holds only the scripts that `scripts/` does
-   not hold yet."#;
+It asks which scripts to keep. The list holds only the scripts that `scripts/`
+does not hold yet."#;
 
 pub(super) const CREATE_SCRIPTS_NOTES: &str = r#"> [!NOTE]
 > Run `buildc generate` after it. Every generated script and workflow then calls
@@ -250,7 +226,7 @@ pub(super) const CREATE_KEY: &str = r#"Generates a key that a component in the r
 under `keys/public/`, at the path it has in the image. The private half goes
 under `keys/private/`, which git ignores.
 
-It makes each kind with its own tool:
+Each key kind uses its own tool:
 
 - `cosign` makes the key pair that signs a published image. Set the private
   half as the `SIGNING_SECRET` repository secret. `cosign` must be installed.
@@ -270,9 +246,7 @@ It makes each kind with its own tool:
   has no passphrase. The image ships the public half, and no build reads the
   private half.
 
-It asks for one step:
-
-1. Choose the kind."#;
+It asks for the kind."#;
 
 pub(super) const CREATE_KEY_NOTES: &str = r#"> [!WARNING]
 > It never replaces an existing key, because a private half cannot be
@@ -288,14 +262,11 @@ pub(super) const CREATE_KEY_NOTES: &str = r#"> [!WARNING]
 > If no component declares the kind, then it names a component in the declared
 > collections that does, and the `buildc import component` line that adds it."#;
 
-pub(super) const SET_KEY: &str = r#"Records the public half of a key that the user already holds, in place of
-generating one. Use it for an existing cosign key, MOK certificate or SSH key.
-It writes to the path that the component's `public` declaration gives.
+pub(super) const SET_KEY: &str = r#"Records the public half of an existing key instead of generating one. Use it
+for a cosign key, MOK certificate or SSH key. It writes to the path that the
+component's `public` declaration gives.
 
-It asks, in order:
-
-1. Choose the kind.
-2. Give the file to read."#;
+It asks for the kind and the file to read."#;
 
 pub(super) const SET_KEY_NOTES: &str = r#"> [!WARNING]
 > It never replaces an existing key.
@@ -304,8 +275,8 @@ pub(super) const SET_KEY_NOTES: &str = r#"> [!WARNING]
 > It takes the public half only. The private half stays with the user, or in a
 > CI secret.
 >
-> It checks the form of the file first, so a wrong form stops here and no later
-> build fails on it. Each kind takes one form:
+> It checks the form of the file first, so a wrong form stops here before a
+> build sees it. Each kind takes one form:
 >
 > - `cosign` takes a PEM public key.
 > - `module-signing` takes a PEM or DER certificate.
@@ -313,7 +284,7 @@ pub(super) const SET_KEY_NOTES: &str = r#"> [!WARNING]
 > - `ssh-keygen` takes an OpenSSH key line."#;
 
 pub(super) const SET_COMPONENT: &str = r#"Makes an imported component the repository's own copy. The component stops tracking
-its library, so `buildc fetch components` passes it over, and the user may edit it.
+its library, so `buildc fetch components` skips it, and the user may edit it.
 With no `--untracked`, it asks first. With no terminal, it needs the flag."#;
 
 pub(super) const SET_COMPONENT_NOTES: &str = r#"> [!NOTE]
@@ -322,16 +293,12 @@ pub(super) const SET_COMPONENT_NOTES: &str = r#"> [!NOTE]
 
 pub(super) const SET_WORKFLOWS: &str = r#"Chooses the CI workflows that the repository generates, and writes the choice
 into `workflows` in `repo.kdl`. Run `buildc generate` next to write the workflow
-files. A workflow that the repository cannot run shows the reason, and the user
-cannot choose it. With no terminal, it changes nothing and says to edit
-`repo.kdl`.
+files. A workflow that the repository cannot run shows its reason and cannot be
+chosen. With no terminal, it changes nothing and says to edit `repo.kdl`.
 
-It asks, in order:
-
-1. Choose the workflows.
-2. Choose whether images publish only on scheduled builds.
-3. Choose whether image scans run only on scheduled builds.
-4. If a chosen workflow has a schedule, give the daily build time in UTC."#;
+It asks for the workflows, whether images publish only on scheduled builds, and
+whether image scans run only on scheduled builds. If a chosen workflow has a
+schedule, it asks for the daily build time in UTC."#;
 
 pub(super) const SET_WORKFLOWS_NOTES: &str = r#"> [!NOTE]
 > No workflow removes the `workflows` block, and the repository then generates
@@ -340,28 +307,22 @@ pub(super) const SET_WORKFLOWS_NOTES: &str = r#"> [!NOTE]
 > Each schedule is an offset from the daily build time, so a new daily time
 > moves every schedule."#;
 
-pub(super) const SET_LIBRARY: &str = r#"Adds a library to the `sources` block in `repo.kdl`: the default library, or
-a source the user types. A library holds components and base components alike. A
-source with the same alias is replaced, so the declaration moves to what the
-user chose.
+pub(super) const SET_LIBRARY: &str = r#"Adds a library to the `sources` block in `repo.kdl`, either the default
+library or a source the user types. A library holds components and base
+components alike. A source with the same alias is replaced, so the declaration
+moves to what the user chose.
 
-It asks, in order:
-
-1. Choose the default library, or another source.
-2. For another source, give its alias, its HTTPS Git URL and the directory
-   inside the repository."#;
+It asks for the default library or another source. For another source, it asks
+for the alias, the HTTPS Git URL and the directory inside the repository."#;
 
 pub(super) const SET_CONFORMS: &str = r#"Chooses the benchmark profile that a scan measures an image against, and writes
 it into the image's `conforms`. A `conforms` turns on the image scan for every
 build. With no terminal, it changes nothing and says to write the line into the
 image file.
 
-It asks, in order:
-
-1. If the repository holds several images, choose one.
-2. Choose the profile.
-3. Choose whether to import the collection components that claim rules of the
-   profile that nothing in the image claims yet."#;
+It asks for the image if the repository holds several, and for the profile. It
+also asks whether to import collection components that claim rules of the
+profile that no component in the image claims."#;
 
 pub(super) const SET_CONFORMS_NOTES: &str = r#"> [!NOTE]
 > A `conforms` is not a claim that the image passes. It names what the image is
@@ -380,10 +341,7 @@ pub(super) const SET_CLAIMS: &str = r#"Chooses the benchmark rules that a compon
 and writes their numbers into its `satisfies` block. A claim says what the
 component supplies, and `buildc scap` measures whether the built image keeps it.
 
-It asks, in order:
-
-1. Choose the profile that the rules come from.
-2. Choose the rules that the component claims."#;
+It asks for the profile and the rules."#;
 
 pub(super) const SET_CLAIMS_NOTES: &str = r#"> [!NOTE]
 > A group chooses every rule under it. The file holds the number of each rule,
@@ -407,7 +365,7 @@ pub(super) const SET_CLAIMS_NOTES: &str = r#"> [!NOTE]
 
 pub(super) const CHECK: &str = r#"Reads every file in the repository and reports each problem at the line that
 caused it. Run it after an edit. The last line counts the images, the components,
-the flavours and the listed components that the base already provides."#;
+the flavours and the listed components that the base provides."#;
 
 pub(super) const CHECK_NOTES: &str = r#"> [!NOTE]
 > It also reports these findings, which do not change the exit code:
@@ -423,11 +381,14 @@ pub(super) const CHECK_NOTES: &str = r#"> [!NOTE]
 
 pub(super) const GENERATE: &str = r#"Writes the build files, and the CI workflows that `repo.kdl` names. Run it
 after a change to a KDL file. `buildc build` refuses build files that are not
-current. It reads only the repository's own components. It writes:
+current. It reads the repository's own components, and it reaches the network
+for two pins alone: the SCAP datastream a conforming image's base pins, and
+the commit each cloned asset's tag names. It writes:
 
 - `generated/<image>/Containerfile`, one for each image
 - `generated/<image>/components/<component>.sh`, the build script of each component
 - `generated/<image>/finalize.sh`
+- `generated/<image>/scap/<file>`, the pinned datastream of a conforming image
 - `generated/<image>/graph.md` and `graph.json`, the capability graph
 - `generated/plan.json`
 - `generated/seed.kdl`, if `repo.kdl` names a seedable image
@@ -439,23 +400,37 @@ pub(super) const GENERATE_NOTES: &str = r#"> [!NOTE]
 > too. It removes only the workflows that `buildc` ships, and keeps the
 > repository's own.
 >
-> A terminal gets a tree of the files, and a pipe gets one path per line.
+> A terminal draws a file tree. A pipe prints one path per line.
 >
 > The Containerfile copies `plan.json` into the image at
 > `/usr/share/buildc/manifest.json`, so a built image can say what it is made
 > of.
 >
-> It resolves the base tag to a digest once, and passes it as the `BASE` build
-> argument. If `$BASE` is set, then it uses that value as already resolved."#;
+> A conforming image's datastream comes from the pin in its base's
+> `scap-content`. It writes the datastream under `generated/<image>/scap/`, and
+> maps each claimed benchmark number to its rule there. If the committed copy
+> already matches the pin, then it fetches nothing."#;
 
 pub(super) const BUILD: &str = r#"Builds one target with the container backend. A target is `<image>` for the
 image, or `<image>/<flavour>` for a flavour. With no target, it builds the
-default image. It runs `buildc verify` first, so it builds only from build files
-that are current."#;
+default image. It checks the committed generated tree against the snapshot
+`buildc generate` wrote, then builds from that tree alone. Every build argument
+that the repository declares comes from `generated/plan.json`, so a source
+edit reaches the build only through the next `buildc generate`. The build
+resolves the version, the registry, the source commit, the backend and the base
+digest when it runs."#;
 
 pub(super) const BUILD_NOTES: &str = r#"> [!NOTE]
-> It fetches nothing and writes no build file. Run `buildc generate` first, or
-> `buildc vm run --rebuild` to run both.
+> It writes no build file. Run `buildc generate` first, or `buildc vm run
+> --rebuild` to run both.
+>
+> It reaches a remote for two answers. It resolves the base digest, and it asks
+> each cloned asset's remote which commit the tag names. If a tag names another
+> commit than the one `buildc generate` recorded, then it refuses the build. If
+> a remote does not answer, then it warns, and an enforced audit refuses.
+>
+> It resolves the base tag to a digest once, and passes it as the `BASE` build
+> argument. If `$BASE` is set, then it uses that value as already resolved.
 >
 > `$TAGS` adds tags and `$LABELS` adds OCI labels. `$IMAGE_VERSION` is stamped
 > into the image, and is today's date in UTC by default.
@@ -467,7 +442,7 @@ pub(super) const BUILD_NOTES: &str = r#"> [!NOTE]
 > check publishes nothing."#;
 
 pub(super) const VM: &str = r#"Turns the built image into a disk and boots it, to try the image before it is
-published. `<type>` is `qcow2`, `raw` or `iso`, and a terminal asks for it.
+published. `<type>` is `qcow2`, `raw` or `iso`. A terminal prompts for it.
 `build` makes the disk. `run` boots it under qemu, and makes it first if it is
 missing. `spawn` boots it with systemd-vmspawn, which cannot boot an `iso`."#;
 
@@ -504,8 +479,8 @@ base already carries."#;
 
 pub(super) const COVERAGE: &str = r#"Prints each rule of the profile that an image `conforms` to, with the component
 that claims it. If no component claims a rule, then it names a component in the
-repository or its collections that would. It uses the default image if none is
-named, and a terminal picks one."#;
+repository or its collections that would. With no image, the default image
+applies. A terminal offers a picker."#;
 
 pub(super) const COVERAGE_NOTES: &str = r#"> [!NOTE]
 > It reads no scan. It says what is claimed, and `buildc scap` measures what
@@ -522,13 +497,40 @@ pub(super) const COVERAGE_NOTES: &str = r#"> [!NOTE]
 
 pub(super) const PLAN: &str = r#"Prints every fact that the repository derives as one JSON document. The
 document holds the images, the targets of each image, and what each target is
-made of. A script reads a field from it, and derives nothing from a name."#;
+made of. A script reads a field from it, and derives nothing from a name. It
+reaches the network for a conforming image's datastream when the committed
+copy does not match the pin, and for the commit each cloned asset's tag names."#;
+
+pub(super) const ATTRIBUTE: &str = r#"Maps each layer of one built image to the component that made it and to that
+component's paths. The image is a reference or an id in the local container
+store. The layer order and the commands come from the container store, and the
+paths come from `generated/plan.json`."#;
+
+pub(super) const ATTRIBUTE_NOTES: &str = r#"> [!NOTE]
+> Run `buildc build` first. `generate` runs each step at its own path, so the
+> builder's history names the component. A layer the tool did not make, such as
+> the base's, carries no component.
+>
+> The CI build runs this after the build and before the push, and uploads the
+> document as an artifact."#;
+
+pub(super) const VALIDATE: &str = r#"Checks one built image with the tool that built it. The image is a reference or
+an id in the local container store. The check runs inside the image with the
+pinned tool mounted, and reads `generated/plan.json` for the target's
+contracts, verify exceptions, presets, LUKS witness and family."#;
+
+pub(super) const VALIDATE_NOTES: &str = r#"> [!NOTE]
+> Run `buildc build` first, because the check mounts the tool the build staged at
+> `out/buildc`. The CI build runs this against the image id it produced, before
+> the push step, so a failed check publishes nothing."#;
 
 pub(super) const VERIFY: &str = r#"Writes every build file again in memory, and compares each one byte for byte
 with what the repository holds: `generated/`, the declared workflows and
 `.github/renovate.json5`. It names each file that differs, each file that is
-missing, and each file under `generated/` that nothing writes. Every build runs
-it first."#;
+missing, and each file under `generated/` that nothing writes. A build checks
+the committed tree against the snapshot instead, and reads no source. It
+resolves each cloned asset's tag as `generate` does, so a tag that moved
+reports the plan as stale."#;
 
 pub(super) const SUMMARY: &str = r#"Prints a markdown table of what one target is made of. Each row is a component
 that the target builds, with its description and the options it resolved. A CI
@@ -538,10 +540,10 @@ pub(super) const SBOM: &str = r#"Prints the pinned payloads of one target, as SP
 relationships. A scan of the built image cannot see where a downloaded asset
 came from, so CI merges this into the SBOM that the scan produces."#;
 
-pub(super) const SCAP: &str = r#"Reads the report of one scan against the datastream that produced it, and
-prints what they say about the target as markdown. The report shows what each
-component claimed and what was measured, the score against each profile of the
-datastream, and what stopped passing since the last scan."#;
+pub(super) const SCAP: &str = r#"Reads a scan report against its datastream and prints the target's findings.
+The report shows what each component claimed and what was measured, the score
+against each profile of the datastream, and what stopped passing since the last
+scan."#;
 
 pub(super) const SCAP_NOTES: &str = r#"> [!NOTE]
 > The datastream maps each benchmark number to a rule. A number that maps to no
@@ -562,12 +564,15 @@ pub(super) const SCAP_NOTES: &str = r#"> [!NOTE]
 > A finding fails the command only under `audit { enforce #true }`. The report
 > goes to stdout either way."#;
 
-pub(super) const SCAP_CONTENT: &str = r#"Prints the path of the datastream that the target is measured with. If the image
-declares no `conforms`, then it prints nothing, and the CI scan job skips the
-image. `buildc set conforms` writes a `conforms`."#;
+pub(super) const SCAP_CONTENT: &str = r#"Prints the path of the datastream that the target is measured with, as
+`generated/plan.json` records it. The build used that same file for
+remediation. On a booted system, it prints the installed SSG file that the base
+names, which can be another release. If the target declares no `conforms`, then
+it prints nothing, and the CI scan job skips the image. `buildc set conforms`
+writes a `conforms`."#;
 
 pub(super) const SCAP_TAILORING: &str = r#"Prints the XCCDF tailoring that a scan of the target runs. The tailoring defines
-the profile `xccdf_tect_profile_measured`, which is the declared profile with
+the profile `xccdf_buildc_profile_measured`, which is the declared profile with
 every group and rule selected. If the image declares no `conforms`, then it
 prints nothing."#;
 
@@ -601,7 +606,7 @@ pub(super) const RECIPE_NOTES: &str = r#"> [!NOTE]
 > `hostname` is the published name. It is the one value that the user is
 > expected to replace."#;
 
-pub(super) const WHY: &str = r#"Prints what one component is and where every byte of it came from. It lists the
+pub(super) const WHY: &str = r#"Prints what one component is and where each input came from. It lists the
 targets that build it, what it provides and requires, and what it claims to
 harden. It also lists the collection and pin it came from, whether it was
 edited since, what it fetches, and whether it adds a package repository."#;
@@ -640,11 +645,11 @@ It runs inside a build:
 - `rpm` installs the package, on an rpm family
 - `deb` installs the package, on a deb family"#;
 
-pub(super) const FETCH_COMPONENTS: &str = r#"Refreshes each tracked component from the library that its lock entry names, as
-`sources` in `repo.kdl` declares that library now. It replaces the component's
-files, and records the new content hash and revision in the lock. A component
-whose library has not moved stays as it is. The scheduled `update-components`
-workflow runs it and opens a pull request."#;
+pub(super) const FETCH_COMPONENTS: &str = r#"Refreshes each tracked component from the library that its lock entry names.
+The command uses the current `sources` entry in `repo.kdl`. It replaces the
+component's files, and records the new content hash and revision in the lock. A
+component whose library has not moved stays as it is. The scheduled
+`update-components` workflow runs it and opens a pull request."#;
 
 pub(super) const FETCH_COMPONENTS_NOTES: &str = r#"> [!WARNING]
 > A tracked component whose content no longer matches its lock entry stops the
@@ -656,6 +661,5 @@ pub(super) const FETCH_COMPONENTS_NOTES: &str = r#"> [!WARNING]
 > another component's directory holds has its own lock entry, so the refresh of
 > the outer component leaves it in place."#;
 
-pub(super) const VALIDATE_IMAGE: &str = r#"Runs every check that a built image has to pass. The build gives it the preset
-files of the enabled components, and it fails on each one that the image does not
-have."#;
+pub(super) const VALIDATE_IMAGE: &str = r#"Runs every check that a built image has to pass. The build supplies the
+presets. The command fails for each preset that the image lacks."#;

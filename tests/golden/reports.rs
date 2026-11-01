@@ -1,9 +1,26 @@
 use crate::harness::{assert_golden, copy, crate_dir, tmp};
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn generated(fixture: &Path, name: &str) -> PathBuf {
+    let root = tmp().join(name);
+    if let Err(err) = std::fs::remove_dir_all(&root) {
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::NotFound,
+            "{}: {err}",
+            root.display()
+        );
+    }
+    copy(fixture, &root);
+    std::env::set_var("BUILDC_ASSETS", crate_dir().join("assets"));
+    let (_, said, code) = scap_run(&root, &["--root", ".", "generate"]);
+    assert_eq!(code, 0, "generate refused {}: {said}", fixture.display());
+    root
+}
 
 fn scap_run(root: &Path, args: &[&str]) -> (String, String, i32) {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_tect"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"))
         .args(args)
         .current_dir(root)
         .output()
@@ -221,18 +238,32 @@ fn scap() {
         "==== enforced, and the report is the same\n{report}"
     ));
 
-    for (heading, at) in [
-        ("the content it is measured with", &enforced),
+    for (heading, at, named) in [
+        (
+            "the content it is measured with",
+            generated(
+                &crate_dir().join("tests/repos/multi-image"),
+                "scap-content-measured",
+            ),
+            &["--target", "workstation"][..],
+        ),
         (
             "and for an image declaring claims but no profile",
-            &claim_only,
+            generated(&claim_only, "scap-content-claims"),
+            &[][..],
         ),
         (
             "and for an image declaring neither a claim nor a profile",
-            &crate_dir().join("tests/repos/minimal"),
+            generated(
+                &crate_dir().join("tests/repos/minimal"),
+                "scap-content-minimal",
+            ),
+            &[][..],
         ),
     ] {
-        let (path, _, code) = scap_run(at, &["--root", ".", "scap", "content"]);
+        let mut args = vec!["--root", ".", "scap", "content"];
+        args.extend_from_slice(named);
+        let (path, _, code) = scap_run(&at, &args);
         out.push_str(&format!("==== {heading}\n{path}==== exit {code}\n"));
     }
 

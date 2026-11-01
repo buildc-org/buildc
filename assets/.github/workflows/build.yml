@@ -5,8 +5,10 @@ on:
     branches:
       - main
   schedule:
-    - cron: '30 12 * * *'
+    - cron: '30 12 * * *'  # buildc:schedule
+    # buildc:only kernel
     - cron: '45 9 1 * *'
+    # buildc:end
   push:
     branches:
       - main
@@ -14,6 +16,7 @@ on:
       - '**/README.md'
       - '.github/workflows/cleanup-registry.yml'
   workflow_dispatch:
+    # buildc:only kernel
     inputs:
       kernel:
         description: >-
@@ -22,11 +25,17 @@ on:
           kernel path and are never pushed, signed, or cached.
         type: string
         default: ''
+    # buildc:end
+
 permissions: {}
 
 env:
+  # buildc:only kernel
   KERNEL: ${{ github.event.inputs.kernel || (github.event.schedule == '45 9 1 * *' && 'stock') || '' }}
+  # buildc:end
+  # buildc:only no-kernel
   KERNEL: ''
+  # buildc:end
   PROBE_IMAGE: "quay.io/podman/hello:latest"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
 
@@ -155,7 +164,6 @@ jobs:
             "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
           sudo chmod +x /usr/local/bin/shfmt
 
-      # shellcheck and shfmt over every Bash script in the repo, then a
       - name: Run lint
         run: ./scripts/lint.sh
 
@@ -285,10 +293,12 @@ jobs:
           else
             publish=false
           fi
+          # buildc:only scheduled-publish
           if [ "${{ github.event_name }}" != "schedule" ] \
              && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             publish=false
           fi
+          # buildc:end
           echo "PUBLISH=${publish}" >> "${GITHUB_ENV}"
           echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
 
@@ -417,9 +427,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # buildc:only backend-buildx
       - name: Set up buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
 
+      # buildc:end
       - name: Build image
         env:
           TARGET: ${{ matrix.target }}
@@ -435,6 +447,7 @@ jobs:
           if [ -n "$KERNEL" ]; then
             args+=(--kernel "$KERNEL")
           fi
+          # buildc:only backend-buildah
           # The root build records the commit with git, which refuses a checkout owned by another user until the path is marked safe.
           sudo git config --system --add safe.directory "$PWD"
           sudo env \
@@ -443,6 +456,8 @@ jobs:
             IMAGE_VERSION="$IMAGE_VERSION" \
             LABELS="$LABELS" \
             "$(realpath "$(./scripts/buildc.sh --path)")" build "${args[@]}"
+          # buildc:end
+          # buildc:only backend-buildx
           archive="${RUNNER_TEMP}/image.oci.tar"
           args+=(--oci-output "$archive")
           if [ "$PUBLISH" = true ]; then
@@ -453,6 +468,8 @@ jobs:
           sudo skopeo copy "oci-archive:${archive}" \
             "containers-storage:localhost/${IMAGE_NAME}:raw"
           rm -f "$archive"
+          # buildc:end
+
       - name: Summarize the resolved build
         env:
           TARGET: ${{ matrix.target }}
@@ -564,6 +581,37 @@ jobs:
           sudo podman rmi "localhost/${IMAGE_NAME}:raw"
           echo "tag=chunked" >> "$GITHUB_OUTPUT"
 
+      - name: Validate the built image
+        if: env.PUBLISH == 'true'
+        env:
+          SOURCE_TAG: ${{ steps.rechunk.outputs.tag || 'raw' }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          image="$(sudo podman image inspect --format '{{.Id}}' "localhost/${IMAGE_NAME}:${SOURCE_TAG}")"
+          sudo env TARGET="$TARGET" \
+            "$(realpath "$(./scripts/buildc.sh --path)")" validate --target "$TARGET" "$image"
+
+      - name: Attribute the built layers
+        if: env.PUBLISH == 'true'
+        env:
+          SOURCE_TAG: ${{ steps.rechunk.outputs.tag || 'raw' }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          image="$(sudo podman image inspect --format '{{.Id}}' "localhost/${IMAGE_NAME}:${SOURCE_TAG}")"
+          sudo env TARGET="$TARGET" \
+            "$(realpath "$(./scripts/buildc.sh --path)")" attribute --target "$TARGET" "$image" \
+            > "${RUNNER_TEMP}/attribution.json"
+
+      - name: Upload the layer attribution
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: attribution-${{ env.IMAGE_NAME }}
+          path: ${{ runner.temp }}/attribution.json
+          retention-days: 30
+
       - name: Login to GitHub Container Registry (root)
         if: env.PUBLISH == 'true'
         run: |
@@ -658,8 +706,13 @@ jobs:
     needs: [checksums, compute-matrix, build_push]
     name: Scan the claims (${{ matrix.target }})
     runs-on: ubuntu-24.04
+    # buildc:only push-scan
     if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request' && needs.compute-matrix.outputs.scanned != '[]'
+    # buildc:end
+    # buildc:only scheduled-scan
     if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'
+    # buildc:end
+
     strategy:
       matrix:
         target: ${{ fromJson(needs.compute-matrix.outputs.scanned) }}
@@ -722,14 +775,6 @@ jobs:
           docker image prune --all --force > /dev/null
           df -h /
 
-      - name: Install openscap and the SSG content
-        if: steps.content.outputs.datastream != ''
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            openscap-utils ssg-base ssg-debian ssg-nondebian
-
       - name: Login to GitHub Container Registry (root)
         if: steps.content.outputs.datastream != ''
         run: |
@@ -743,7 +788,7 @@ jobs:
           DATASTREAM: ${{ steps.content.outputs.datastream }}
         run: |
           set -euo pipefail
-          [ -s "$DATASTREAM" ] || { echo "::error::${DATASTREAM} is not installed"; exit 1; }
+          [ -s "$DATASTREAM" ] || { echo "::error::${DATASTREAM} is not in the checkout; run buildc generate and commit it"; exit 1; }
           family="$(jq -r --arg t "$TARGET" '
             .images[] | select([.targets[].name] | index($t)) | .base.family
           ' generated/plan.json)"
@@ -789,7 +834,7 @@ jobs:
           sudo podman cp "${RUNNER_TEMP}/tailoring.xml" scan:/tmp/tailoring.xml
           # Oscap exits non-zero for a failed rule and still writes the report this step keeps.
           sudo podman exec scan oscap xccdf eval \
-            --tailoring-file /tmp/tailoring.xml --profile xccdf_tect_profile_measured \
+            --tailoring-file /tmp/tailoring.xml --profile xccdf_buildc_profile_measured \
             --results-arf /tmp/arf.xml /tmp/ds.xml || true
           sudo podman cp scan:/tmp/arf.xml "${RUNNER_TEMP}/arf.xml" || true
           sudo podman rm -f scan

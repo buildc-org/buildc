@@ -1098,7 +1098,7 @@ fn an_image_entry_version_reaches_the_package_line() {
         .map(|(_, text)| text.as_str())
         .unwrap_or_else(|| panic!("{}", run.problems.issues.plain()));
     assert!(
-        script.contains("install_packages 'firefox-130.0'"),
+        script.contains("dnf install -y 'firefox-130.0'"),
         "{script}"
     );
 }
@@ -1267,7 +1267,10 @@ fn the_generated_build_job_follows_the_declared_backend() {
 #[test]
 fn a_component_with_one_script_and_no_manifest_builds() {
     for (file, line) in [
-        ("files/", "cp -rT /ctx/components/bare/files /"),
+        (
+            "files/",
+            "COPY --from=ctx /generated/checked/components/bare/files/ /",
+        ),
         ("repo.sh", "source /ctx/components/bare/repo.sh"),
         (
             "packages.sh",
@@ -1280,7 +1283,261 @@ fn a_component_with_one_script_and_no_manifest_builds() {
         let out = generated(&root);
         let _ = std::fs::remove_dir_all(&root);
         assert!(out.contains(line), "{file}: {out}");
+        if file == "packages.sh" {
+            assert!(
+                out.contains(
+                    "source=/generated/checked/components/bare,target=/ctx/components/bare"
+                ),
+                "{out}"
+            );
+        }
     }
+}
+
+fn files_named(run: &buildc::run::Run, ending: &str) -> String {
+    run.files
+        .iter()
+        .find(|(path, _)| path.to_string_lossy().ends_with(ending))
+        .map(|(_, text)| text.clone())
+        .unwrap_or_else(|| panic!("no file ending {ending}: {}", run.problems.issues.plain()))
+}
+
+#[test]
+fn a_component_witness_is_checked_in_its_own_layer() {
+    let root = written(
+        "witness-layer",
+        "        checker",
+        &[("checker", "provides \"tool\" witness=\"/usr/share/tool\"")],
+    );
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let script = files_named(&run, "components/checker.sh");
+    assert!(
+        script.contains(
+            "component checker provides tool, and its witness /usr/share/tool is missing"
+        ),
+        "{script}"
+    );
+}
+
+#[test]
+fn an_overlay_witness_is_checked_after_the_copy() {
+    let root = written(
+        "witness-overlay",
+        "        overlay-check",
+        &[(
+            "overlay-check",
+            "provides \"tool\" witness=\"/usr/share/tool\"",
+        )],
+    );
+    let at = root.join("components/overlay-check/files/usr/share/tool");
+    std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+    std::fs::write(at, "true\n").unwrap();
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let script = files_named(&run, "components/overlay-check.sh");
+    assert!(!script.contains("witness for tool"), "{script}");
+    let tail = files_named(&run, "components/overlay-check.sh.tail.sh");
+    assert!(
+        tail.contains("component overlay-check provides tool"),
+        "{tail}"
+    );
+}
+
+#[test]
+fn a_witness_created_by_an_after_fragment_is_checked_after_it() {
+    let root = written(
+        "witness-after",
+        "        after-check",
+        &[(
+            "after-check",
+            "provides \"tool\" witness=\"/usr/share/tool\"\nfragment position=\"after\"",
+        )],
+    );
+    std::fs::write(
+        root.join("components/after-check/Containerfile.inc"),
+        "RUN true\n",
+    )
+    .unwrap();
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let script = files_named(&run, "components/after-check.sh");
+    assert!(!script.contains("witness for tool"), "{script}");
+    let containerfile = files_named(&run, "Containerfile");
+    let after = containerfile
+        .find("verbatim from components/after-check/Containerfile.inc")
+        .expect("the after fragment is emitted");
+    let witness = containerfile
+        .find("components/after-check.sh.witness.sh")
+        .expect("the witness step is emitted");
+    assert!(after < witness, "{containerfile}");
+}
+
+#[test]
+fn a_fragment_component_carries_only_its_family() {
+    let root = written(
+        "fragment-family",
+        "        inc",
+        &[("inc", "fragment standard-layer=#false")],
+    );
+    std::fs::write(
+        root.join("components/inc/manifest.kdl"),
+        "schema-version 1\n\ntargets \"fedora\" \"debian\"\nfragment standard-layer=#false\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("components/inc/Containerfile.inc"), "RUN true\n").unwrap();
+    for (path, body) in [
+        ("components/inc/plain", "plain\n"),
+        ("components/inc/fedora/own", "fedora\n"),
+        ("components/inc/debian/other", "debian\n"),
+    ] {
+        let at = root.join(path);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(at, body).unwrap();
+    }
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let names: Vec<String> = run
+        .copies
+        .iter()
+        .map(|copy| copy.path.display().to_string())
+        .collect();
+    assert!(
+        names.iter().any(|path| path.ends_with("/inc/plain")),
+        "{names:?}"
+    );
+    assert!(
+        names.iter().any(|path| path.ends_with("/inc/fedora/own")),
+        "{names:?}"
+    );
+    assert!(
+        !names.iter().any(|path| path.ends_with("/inc/debian/other")),
+        "{names:?}"
+    );
+}
+
+#[test]
+fn an_overlay_symlink_is_kept_as_a_link() {
+    let root = written("overlay-link", "        linker", &[("linker", "")]);
+    let at = root.join("components/linker/files/usr/bin/linked");
+    std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink("/usr/bin/true", &at).unwrap();
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let copy = run
+        .copies
+        .iter()
+        .find(|copy| copy.path.ends_with("files/usr/bin/linked"))
+        .expect("the link is resolved");
+    assert_eq!(
+        copy.link.as_deref(),
+        Some(std::path::Path::new("/usr/bin/true"))
+    );
+    assert!(copy.bytes.is_empty());
+}
+
+#[test]
+fn a_fragment_witness_gets_its_own_step() {
+    let root = written(
+        "witness-fragment",
+        "        inc-check",
+        &[(
+            "inc-check",
+            "provides \"tool\" witness=\"/usr/share/tool\"\nfragment standard-layer=#false",
+        )],
+    );
+    std::fs::write(
+        root.join("components/inc-check/Containerfile.inc"),
+        "RUN true\n",
+    )
+    .unwrap();
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let containerfile = files_named(&run, "Containerfile");
+    assert!(
+        containerfile.contains("components/inc-check.sh.witness.sh"),
+        "{containerfile}"
+    );
+    let script = files_named(&run, "components/inc-check.sh.witness.sh");
+    assert!(
+        script.contains("component inc-check provides tool"),
+        "{script}"
+    );
+}
+
+#[test]
+fn an_ungated_overlay_is_copied_and_a_gated_one_stays_in_its_script() {
+    let root = written(
+        "overlay-copies",
+        "        ungated\n        flavour \"dev\" {\n            gated\n        }",
+        &[("ungated", ""), ("gated", "")],
+    );
+    for (component, file) in [("ungated", "ungated.conf"), ("gated", "gated.conf")] {
+        let at = root.join(format!("components/{component}/files/etc/{file}"));
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(at, "true\n").unwrap();
+    }
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let containerfile = run
+        .files
+        .iter()
+        .find(|(path, _)| path.ends_with("Containerfile"))
+        .map(|(_, text)| text.as_str())
+        .expect("the Containerfile is generated");
+    assert!(
+        containerfile.contains("COPY --from=ctx /generated/checked/components/ungated/files/ /"),
+        "{containerfile}"
+    );
+    assert!(
+        !containerfile.contains("/components/gated/files/"),
+        "{containerfile}"
+    );
+    let script = run
+        .files
+        .iter()
+        .find(|(path, _)| path.ends_with("gated@dev.sh"))
+        .map(|(_, text)| text.as_str())
+        .expect("the gated script is generated");
+    assert!(
+        script.contains("cp -rT /ctx/components/gated/files /"),
+        "{script}"
+    );
 }
 
 #[test]
@@ -1304,7 +1561,7 @@ packages \"tool\"\n",
     let out = generated(&root);
     let _ = std::fs::remove_dir_all(&root);
     let at = |line: &str| out.find(line).unwrap_or_else(|| panic!("{line}: {out}"));
-    assert!(at("install_packages 'tool'") < at("source /ctx/components/bare/packages.sh"));
+    assert!(at("dnf install -y 'tool'") < at("source /ctx/components/bare/packages.sh"));
     assert!(
         at("source /ctx/components/bare/packages.sh")
             < at("source /ctx/components/bare/rpm/packages.sh")
@@ -1744,4 +2001,230 @@ fn an_inline_provider_answers_only_its_own_image() {
         "{issues}"
     );
     assert_eq!(issues.matches("provides \"tool\"").count(), 1, "{issues}");
+}
+
+const PINNED_BASE: &str = "components/base-image/fedora-bootc-44/manifest.kdl";
+
+fn conforming(name: &str) -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+    if let Err(err) = std::fs::remove_dir_all(&root) {
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::NotFound,
+            "{}: {err}",
+            root.display()
+        );
+    }
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/repos/multi-image");
+    let copied = std::process::Command::new("cp")
+        .arg("-r")
+        .arg(&fixture)
+        .arg(&root)
+        .status()
+        .expect("cp runs");
+    assert!(copied.success());
+    root
+}
+
+fn edit(path: &std::path::Path, from: &str, to: &str) {
+    let text = std::fs::read_to_string(path).expect("the fixture file reads");
+    assert!(text.contains(from), "{} holds no {from}", path.display());
+    std::fs::write(path, text.replace(from, to)).expect("the fixture file writes");
+}
+
+fn zipped(root: &std::path::Path) {
+    let archive = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/scap/datastream.zip");
+    std::fs::copy(archive, root.join("scap.zip")).expect("the archive copies");
+}
+
+fn written_datastream(run: &buildc::Run) -> Option<&[u8]> {
+    run.copies
+        .iter()
+        .find(|copy| copy.path.ends_with("workstation/scap/ssg-fedora-ds.xml"))
+        .map(|copy| copy.bytes.as_slice())
+}
+
+#[test]
+fn a_datastream_that_is_not_the_pinned_one_refuses_the_generate() {
+    let root = conforming("scap-tampered");
+    edit(
+        &root.join(PINNED_BASE),
+        "402fe92ace1c30bd5a9c0f2806f96b412fec6b781023459bd30c99c6c5163c7b",
+        &"0".repeat(64),
+    );
+    let run = buildc::run(Command::Generate, None, &root);
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    let said = run.problems.issues.plain();
+    assert!(said.contains("is not the datastream"), "{said}");
+    assert!(said.contains("402fe92ace1c30bd5a9c0f2806f96b41"), "{said}");
+    assert!(written_datastream(&run).is_none());
+}
+
+#[test]
+fn a_committed_datastream_that_matches_its_pin_needs_no_fetch() {
+    let root = conforming("scap-committed");
+    let run = buildc::run(Command::Generate, None, &root);
+    buildc::write_generated(&root, &run.files, &run.copies).unwrap();
+    std::fs::remove_file(root.join("components/base-image/fedora-bootc-44/ssg-fedora-ds.xml"))
+        .unwrap();
+    let again = buildc::run(Command::Generate, None, &root);
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert_eq!(again.problems.issues.plain(), "");
+    assert_eq!(written_datastream(&again), written_datastream(&run));
+}
+
+#[test]
+fn a_zipped_datastream_is_read_from_its_member() {
+    let root = conforming("scap-zipped");
+    zipped(&root);
+    edit(
+        &root.join(PINNED_BASE),
+        "url \"components/base-image/fedora-bootc-44/ssg-fedora-ds.xml\"",
+        "url \"scap.zip\"",
+    );
+    let run = buildc::run(Command::Generate, None, &root);
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert_eq!(run.problems.issues.plain(), "");
+    let expected =
+        std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/scap/datastream.xml"))
+            .unwrap();
+    assert_eq!(written_datastream(&run), Some(expected.as_slice()));
+}
+
+#[test]
+fn a_claim_the_pinned_datastream_does_not_reach_refuses_the_generate() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/repos/enforced");
+    let said = buildc::run(Command::Generate, None, &root)
+        .problems
+        .issues
+        .plain();
+    assert!(
+        said.contains("9.9.9.9 reaches no rule in ssg-fedora-ds.xml"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_zip_without_the_named_datastream_refuses_the_generate() {
+    let root = conforming("scap-zip-missing");
+    zipped(&root);
+    let base = root.join(PINNED_BASE);
+    edit(
+        &base,
+        "url \"components/base-image/fedora-bootc-44/ssg-fedora-ds.xml\"",
+        "url \"scap.zip\"",
+    );
+    edit(
+        &base,
+        "scap-content \"ssg-fedora-ds.xml\"",
+        "scap-content \"ssg-cs10-ds.xml\"",
+    );
+    let said = buildc::run(Command::Generate, None, &root)
+        .problems
+        .issues
+        .plain();
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert!(said.contains("holds no ssg-cs10-ds.xml"), "{said}");
+}
+
+#[test]
+fn a_scan_defaults_to_the_generated_datastream() {
+    let root = conforming("scap-default");
+    let (list, _, _) = buildc::declarations(&root);
+    let measured = buildc::scap::datastream(&list, Some("workstation"));
+    let unmeasured = buildc::scap::datastream(&list, Some("workstation/base"));
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert_eq!(
+        measured.as_deref(),
+        Ok("generated/workstation/scap/ssg-fedora-ds.xml")
+    );
+    assert_eq!(unmeasured.as_deref(), Ok(""));
+}
+
+#[test]
+fn a_cloned_asset_resolves_into_the_plan_of_the_target_that_lists_it() {
+    let root = conforming("clone-resolution");
+    let commit = "0123456789abcdef0123456789abcdef01234567";
+    let manifest = root.join("components/core/dev-tools/manifest.kdl");
+    let text = std::fs::read_to_string(&manifest).expect("the fixture file reads");
+    std::fs::write(
+        &manifest,
+        format!(
+            "{text}\nasset \"src\" {{\n    pin {{\n        manual \"a test\"\n        version \"{commit}\"\n        url \"https://example.com/src.git\"\n    }}\n}}\n"
+        ),
+    )
+    .expect("the fixture file writes");
+    let run = buildc::run(Command::Plan, None, &root);
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    let plan = run.report.stdout;
+    let resolved = format!("ASSET_RESOLUTIONS=core/dev-tools|src|{commit}|{commit}");
+    assert_eq!(
+        plan.matches(&resolved).count(),
+        1,
+        "{}",
+        run.problems.issues.plain()
+    );
+}
+
+#[test]
+fn a_datastream_pin_that_is_neither_https_nor_a_repository_path_is_refused() {
+    let root = conforming("scap-file-scheme");
+    edit(
+        &root.join(PINNED_BASE),
+        "url \"components/base-image/fedora-bootc-44/ssg-fedora-ds.xml\"",
+        "url \"file:///usr/share/xml/scap/ssg/content/ssg-fedora-ds.xml\"",
+    );
+    let said = buildc::run(Command::Generate, None, &root)
+        .problems
+        .issues
+        .plain();
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert!(said.contains("datastream downloads over"), "{said}");
+}
+
+#[test]
+fn a_changed_pin_url_does_not_reuse_the_committed_datastream() {
+    let root = conforming("scap-moved-url");
+    let run = buildc::run(Command::Generate, None, &root);
+    buildc::write_generated(&root, &run.files, &run.copies).expect("generate writes");
+    edit(
+        &root.join(PINNED_BASE),
+        "url \"components/base-image/fedora-bootc-44/ssg-fedora-ds.xml\"",
+        "url \"moved/ssg-fedora-ds.xml\"",
+    );
+    let said = buildc::run(Command::Generate, None, &root)
+        .problems
+        .issues
+        .plain();
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert!(said.contains("moved/ssg-fedora-ds.xml"), "{said}");
+}
+
+#[test]
+fn an_enforced_audit_refuses_a_clone_that_names_no_commit_at_generate() {
+    let root = conforming("clone-enforced");
+    let repo = root.join("repo.kdl");
+    let text = std::fs::read_to_string(&repo).expect("repo.kdl reads");
+    std::fs::write(&repo, format!("{text}\naudit {{\n    enforce #true\n}}\n"))
+        .expect("repo.kdl writes");
+    let manifest = root.join("components/core/shared/manifest.kdl");
+    let text = std::fs::read_to_string(&manifest).expect("the fixture file reads");
+    std::fs::write(
+        &manifest,
+        format!(
+            "{text}\nasset \"src\" {{\n    pin {{\n        manual \"a test\"\n        url \"https://example.com/src.git\"\n    }}\n}}\n"
+        ),
+    )
+    .expect("the fixture file writes");
+    let said = buildc::run(Command::Generate, None, &root)
+        .problems
+        .issues
+        .plain();
+    std::fs::remove_dir_all(&root).expect("the scratch repository goes");
+    assert!(said.contains("names no `version` to resolve"), "{said}");
+    assert_eq!(
+        said.matches("names no `version` to resolve").count(),
+        1,
+        "{said}"
+    );
 }

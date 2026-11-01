@@ -7,6 +7,13 @@ provides {
 }
 base "ghcr.io/ublue-os/bazzite:stable" {
     family "fedora"
-    scap-content "ssg-fedora-ds.xml"
+    scap-content "ssg-fedora-ds.xml" {
+        pin {
+            renovate datasource="github-releases" depName="ComplianceAsCode/content" extractVersion="^v(?<version>.+)$"
+            version "0.1.82"
+            url "https://github.com/ComplianceAsCode/content/releases/download/v{version}/scap-security-guide-{version}.zip"
+            sha256 "190a74c09b648db49a5805087a914659b49346cfde974858d3465ade5fc66c7e" from="manual"
+        }
+    }
     bootloader "grub2"
 }

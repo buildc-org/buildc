@@ -49,6 +49,7 @@ impl Flow {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let paths = std::env::var("PATH").unwrap_or_default();
+
         for tool in ["git", "sha256sum"] {
             let at = paths
                 .split(':')
@@ -72,7 +73,7 @@ impl Flow {
     fn run_silent(&self, name: &str, dir: &Path, args: &[&str]) {
         let log = self.at(&format!("{name}.log"));
         let file = std::fs::File::create(&log).unwrap();
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"));
         let status = sealed(&mut command, &self.bin(name, None))
             .env("BUILDC_ASSETS", crate_dir().join("assets"))
             .args(args)
@@ -104,7 +105,7 @@ impl Flow {
         let fixture = crate_dir().join("tests/answers").join(name);
         let log = self.at(&format!("{name}.log"));
         let file = std::fs::File::create(&log).unwrap();
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"));
         let status = sealed(&mut command, &self.bin(name, gh))
             .env("BUILDC_ASSETS", assets)
             .args(args)
@@ -133,7 +134,7 @@ impl Flow {
         let root = dir.join("example");
         seed_library(&root);
         let file = std::fs::File::create(&log).unwrap();
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"));
         let status = command
             .env("PATH", &path)
             .env("HOME", tmp())
@@ -163,7 +164,7 @@ impl Flow {
         assert!(root.join("components/fedora-family/manifest.kdl").is_file());
     }
     fn buildc(&self, dir: &Path, args: &[&str]) {
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"));
         let out = sealed(&mut command, &self.bin("buildc", None))
             .args(args)
             .current_dir(dir)
@@ -316,6 +317,7 @@ fn drawn_run(
             while output.read_exact(&mut byte).is_ok() {
                 let mut held = raw.lock().unwrap();
                 held.push(byte[0]);
+
                 // The test answers the cursor-position request an inline viewport sends, because a pseudo-terminal has no terminal to answer it.
                 if held.ends_with(b"\x1b[6n") {
                     let mut input = input.lock().unwrap();
@@ -379,14 +381,18 @@ fn lists_sshd(root: &Path) {
 const CLAIMANT: &str =
     "schema-version 1\n\ndescription \"SSH daemon hardening\"\n\ntargets \"fedora\"\n";
 
-const KEYHOLDER: &str = "schema-version 1\n\ndescription \"Signs the modules it builds\"\n\n\
-     targets \"fedora\"\n\n\
-     key \"secureboot\" {\n\
-     \x20   generator \"openssl\" profile=\"module-signing\" bits=4096\n\
-     \x20   public \"/usr/share/secureboot/sb_cert.der\" format=\"der\"\n\
-     \x20   private \"MOK.priv\"\n\
-     }\n";
+const KEYHOLDER: &str = r#"schema-version 1
 
+description "Signs the modules it builds"
+
+targets "fedora"
+
+key "secureboot" {
+    generator "openssl" profile="module-signing" bits=4096
+    public "/usr/share/secureboot/sb_cert.der" format="der"
+    private "MOK.priv"
+}
+"#;
 fn scaffolded(area: buildc::emit::schema_md::Area, file: &Path) {
     fn walk(nodes: &[kdl::KdlNode], prefix: &str, out: &mut Vec<String>) {
         for node in nodes {
@@ -547,7 +553,10 @@ fn setup_create_repo(flow: &Flow) {
     flow.run(target, &dir, gh, &["create", "repo"]);
     if target == "flow-create-repo" {
         let created = flow.at("flow-create-repo-in").join("example");
-        scaffolded(buildc::emit::schema_md::Area::Repo, &created.join("repo.kdl"));
+        scaffolded(
+            buildc::emit::schema_md::Area::Repo,
+            &created.join("repo.kdl"),
+        );
         scaffolded(
             buildc::emit::schema_md::Area::Image,
             &created.join("desktop.image.kdl"),
@@ -974,7 +983,7 @@ fn setup_workflows(flow: &Flow) {
             "{}",
             run.problems.issues.plain()
         );
-        buildc::write_generated(root, &run.files).unwrap();
+        buildc::write_generated(root, &run.files, &run.copies).unwrap();
         assert!(
             buildc::run(Command::Verify, None, root)
                 .problems
@@ -1573,7 +1582,7 @@ fn setup_import_edit_guards(flow: &Flow) {
             "example",
         ],
     ] {
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_tect"));
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"));
         let out = sealed(&mut command, &flow.bin("malformed-edit", None))
             .args(args)
             .current_dir(&malformed)
@@ -2028,9 +2037,9 @@ fn every_answers_directory_has_a_case() {
 }
 
 #[test]
-fn tect_terminal_smoke_waits_for_each_screen() {
+fn buildc_terminal_smoke_waits_for_each_screen() {
     let root = crate_dir().join("tests/repos/enforced");
-    let buildc = env!("CARGO_BIN_EXE_tect");
+    let buildc = env!("CARGO_BIN_EXE_buildc");
     let run = |command: &str, cols: Option<&str>, clear: bool| {
         let mut child = std::process::Command::new("script");
         child
@@ -2107,12 +2116,12 @@ fn tect_terminal_smoke_waits_for_each_screen() {
     std::fs::write(claims_root.join("components/sshd/manifest.kdl"), CLAIMANT).unwrap();
     let claims_command = format!(
         "'{}' --root . set claims sshd --datastream '{stream}'",
-        env!("CARGO_BIN_EXE_tect")
+        env!("CARGO_BIN_EXE_buildc")
     );
     let claim_steps = [
-        (b"Which profile?".as_slice(), b"\r".as_slice()),
+        (b"SCAP profile".as_slice(), b"\r".as_slice()),
         (
-            b"Which rules does `sshd` claim?".as_slice(),
+            b"rules `sshd` claims".as_slice(),
             b"aide \x1b[B\r".as_slice(),
         ),
     ];
@@ -2128,27 +2137,18 @@ fn tect_terminal_smoke_waits_for_each_screen() {
     let made = flow.repo_sourced("flow-create-image-cancel-in");
     let root = made.parent().unwrap().join("cancel-default");
     std::fs::rename(&made, &root).unwrap();
-    let binary = env!("CARGO_BIN_EXE_tect");
+    let binary = env!("CARGO_BIN_EXE_buildc");
     for (command, steps, absent) in [
         (
             format!("'{binary}' --root . create image"),
-            vec![(
-                b"What will the image be called?".as_slice(),
-                b"\x1b".as_slice(),
-            )],
+            vec![(b"image name".as_slice(), b"\x1b".as_slice())],
             "cancel-default.image.kdl",
         ),
         (
             format!("'{binary}' --root . create image"),
             vec![
-                (
-                    b"What will the image be called?".as_slice(),
-                    b"Beta\r".as_slice(),
-                ),
-                (
-                    b"What is the base image for this image?".as_slice(),
-                    b"\x1b".as_slice(),
-                ),
+                (b"image name".as_slice(), b"Beta\r".as_slice()),
+                (b"base image".as_slice(), b"\x1b".as_slice()),
             ],
             "beta.image.kdl",
         ),

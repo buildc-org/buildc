@@ -490,7 +490,7 @@ fragment position="after"
 | `standard-layer=` (optional) | *boolean* | Whether the build emits the generated block. |
 
 > [!NOTE]
-> The build places the fragment verbatim and replaces `@COMPONENT@` with `/components/<dir>`, the component directory in the build context. The mounts of the component layer use the same path, so a `COPY --from=ctx` needs it to reach a file that the component ships.
+> The build places the fragment verbatim and replaces `@COMPONENT@` with `/generated/<image>/components/<dir>`, the component's resolved directory in the build context. A `COPY --from=ctx` reaches a file that the component ships through that path.
 >
 > Every `RUN` bind-mounts over `/etc/hostname`, `/etc/hosts` and `/etc/resolv.conf`. A fragment writes those three files with a `COPY --from=ctx`.
 
@@ -691,7 +691,7 @@ A pin holds exactly one of these, so every pin says how it stays current:
 > [!NOTE]
 > An `asset` holds a `pin`. A library in `sources` declares its own `version`, `sha256` and `unpinned`.
 >
-> A base holds no `pin`. Its image reference holds the location and the version, and `signed` records whether the base publishes a cosign signature.
+> A base reference holds no `pin`. Its image reference holds the location and the version, and `signed` records whether the base publishes a cosign signature. A base's `scap-content` holds a `pin`, whose `sha256` is the hash of the datastream file itself.
 >
 > Renovate matches `renovate` together with the line directly below it. Put `version` on that line.
 
@@ -968,7 +968,7 @@ Accepts: *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;}
 | --- | --- | --- |
 | [`family`](#base-family) (optional) | *string* | The family that an image on this base installs as. |
 | [`bootloader`](#base-bootloader) (optional) | *list of strings* | The bootloaders that an image on this base can install, with the default first. |
-| [`scap-content`](#base-scap-content) (optional) | *string* | The SSG datastream file that a scan of an image on this base reads. |
+| [`scap-content`](#base-scap-content) (optional) | *string*, then optionally {&nbsp;[fields](#base-scap-content-fields)&nbsp;} | The SSG datastream file that remediates and measures an image on this base, and the pin it is fetched by. |
 
 <a id="base-family"></a>
 
@@ -1002,7 +1002,7 @@ Accepts: *list of strings*
 
 ### `scap-content` (optional)
 
-Names the SCAP content file that measures an image on this base, as a filename in the content directory. If a base names no content, then the scan reads the default content of the base's family. Each EL release publishes its own datastream, so the `rhel` family has no default. `buildc check` refuses an image that conforms to a benchmark while its base resolves to no content.
+Names the SCAP datastream that remediates and measures an image on this base, and pins where it comes from. `buildc generate` fetches the pinned content, checks it against the pinned `sha256` and writes the datastream into `generated/`. The build, the remediation and the scan all read that one file. If the `url` names a `.zip`, then the datastream is the archive member with this filename. If the `url` names no scheme, then it is a path inside the repository. `buildc check` refuses an image that conforms to a benchmark while its base pins no content, so a conforming base writes the pin in the block: `scap-content "ssg-fedora-ds.xml" { pin { manual "why"; url "https://..."; sha256 "..." } }`.
 
 ```kdl
 base "quay.io/fedora/fedora-bootc:$version" {
@@ -1010,4 +1010,10 @@ base "quay.io/fedora/fedora-bootc:$version" {
 }
 ```
 
-Accepts: *string*
+Accepts: *string*, then optionally {&nbsp;[fields](#base-scap-content-fields)&nbsp;}
+
+<a id="base-scap-content-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`pin`](#asset-pin) (optional) | {&nbsp;[fields](#asset-pin-fields)&nbsp;} | Where content comes from, which version it is, what verifies it, and what keeps the version current. |

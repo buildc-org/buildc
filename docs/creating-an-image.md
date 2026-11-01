@@ -31,7 +31,7 @@ The last part of the tutorial builds the image locally and in CI, producing a
 signed image.
 
 > [!NOTE]
-> The tutorial creates its own keys and fetches the `buildc-components`
+> The tutorial creates its own keys and fetches the `buildc`
 > library. Run it somewhere disposable.
 
 ## Create the repository
@@ -167,7 +167,7 @@ you can import. A library is declared in the `sources` node in `repo.kdl`:
 schema-version 1
 
 sources {
-    components "buildc-components" {
+    components "buildc" {
         url "https://github.com/buildc-org/library"
         path "components"
     }
@@ -228,7 +228,14 @@ imports "fedora/build-environment" "identity"
 base "quay.io/fedora/fedora-bootc:$version" {
     family "fedora"
     bootloader "grub2"
-    scap-content "ssg-fedora-ds.xml"
+    scap-content "ssg-fedora-ds.xml" {
+        pin {
+            renovate datasource="github-releases" depName="ComplianceAsCode/content" extractVersion="^v(?<version>.+)$"
+            version "0.1.82"
+            url "https://github.com/ComplianceAsCode/content/releases/download/v{version}/scap-security-guide-{version}.zip"
+            sha256 "190a74c09b648db49a5805087a914659b49346cfde974858d3465ade5fc66c7e" from="manual"
+        }
+    }
 }
 ```
 
@@ -244,7 +251,9 @@ every image on this base needs. `buildc create image` copied
 none of them, because the base's import builds each one into every image on
 it. `identity` provides `os-release`. Its finalize hook writes the image's own
 name into `/usr/lib/os-release`. `scap-content` names the benchmark content
-that a compliance scan of the image reads.
+that remediates the image and that a compliance scan of it reads. Its `pin`
+says where `buildc generate` fetches that file from, and the hash the file must
+match.
 
 `signed` records whether the base image publishes a signature. The base
 signature probe workflow corrects it.
@@ -324,8 +333,8 @@ ColorScheme=BreezeDark
 
 During the build, this tree is copied into the image at the same path, so
 `components/kde/files/etc/skel/.config/kdeglobals` lands at
-`/etc/skel/.config/kdeglobals`. The generated component script does the copy with
-`cp -rT /ctx/components/kde/files /`.
+`/etc/skel/.config/kdeglobals`. The generated Containerfile places the resolved
+tree with a `COPY` from `generated/<image>/components/kde/files/`.
 
 Include the `kde` component in the `workstation-1` image node in `image.kdl`:
 
@@ -360,7 +369,7 @@ The first prompt asks which image the components are for. Select `workstation-2`
 and press enter:
 
 ```ansi
-Which image is this for?
+image or flavour
   workstation-1
 > workstation-2
   None, only add it to the repository
@@ -375,13 +384,13 @@ those components. Scroll to the
 `kde-plasma` with the space bar:
 
 ```ansi
-Which components?
+components
   [ ] ▸ browsers
   [-] ▾ desktop-environment
-    [ ] buildc-components/desktop-environment/gamemode
-    [ ] buildc-components/desktop-environment/gnome
-  > [x] buildc-components/desktop-environment/kde-plasma
-    [ ] buildc-components/desktop-environment/krunner-bazaar
+    [ ] buildc/desktop-environment/gamemode
+    [ ] buildc/desktop-environment/gnome
+  > [x] buildc/desktop-environment/kde-plasma
+    [ ] buildc/desktop-environment/krunner-bazaar
   [ ] ▸ fedora
   [ ] ▸ hardening
 ↑↓ • ←/→ open • ␣ toggle • ⇥ hide • ⏎  confirm • Esc cancel
@@ -529,7 +538,7 @@ Does this component install packages? Yes
 
 package names, separated by spaces: firefox
 
-Which images list it?
+images and flavours that list it
   [ ] workstation-1
 > [x] workstation-2
 ↑↓ navigate • ␣ toggle • ⏎  confirm • Esc cancel
@@ -800,7 +809,7 @@ Nothing. It declares no `satisfies`.
 
 | Collection | Locator | Selector | Verifier | Tracker |
 | --- | --- | --- | --- | --- |
-| `buildc-components` | https://github.com/buildc-org/library | not declared | not declared | none |
+| `buildc` | https://github.com/buildc-org/library | not declared | not declared | none |
 
 It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.
 

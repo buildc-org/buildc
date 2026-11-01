@@ -236,7 +236,6 @@ fn repo_urls(root: &std::path::Path, dir: &str) -> Vec<String> {
         .join("\n");
     let mut out: Vec<String> = Vec::new();
     for word in text.split(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
-        // A URL is as likely to be the value of a flag as a word of its own.
         let Some(at) = word.find("https://").or_else(|| word.find("http://")) else {
             continue;
         };
@@ -279,8 +278,6 @@ impl Why {
         }
 
         out.push(Part::Heading("Where it is built".into()));
-        // Suppression in one image does not suppress the component everywhere, so
-        // built images remain separate from suppressed images.
         out.push(Part::Text(match self.suppressed.is_empty() {
             true => listed(&self.images),
             false => format!(
@@ -301,9 +298,6 @@ impl Why {
         if let Some((url, commit)) = &self.source {
             let short: String = commit.chars().take(7).collect();
             out.push(Part::Text(format!("Built from {url} at `{short}`.")));
-            // The component tree is deliberately not in the finished image, so
-            // comparing this machine against its declarations means fetching
-            // them.
             out.push(Part::Text(format!(
                 "`git clone {url} && git -C {} checkout {commit}`",
                 clone_dir(url)
@@ -612,8 +606,6 @@ impl Why {
 const COLLECTION: &[&str] = &["Collection", "Locator", "Selector", "Verifier", "Tracker"];
 const ASSET: &[&str] = &["Asset", "Locator", "Selector", "Verifier", "Tracker"];
 
-/// Terminal evidence runs down rows because five columns of hashes and URLs
-/// would fold. Markdown keeps the same evidence across a row.
 fn evidence(header: &'static [&'static str], pins: &[(&str, &Fetch)], terminal: bool) -> Vec<Part> {
     let say = |value: &Option<String>| value.clone().unwrap_or_else(|| "not declared".into());
     if terminal {
@@ -679,21 +671,19 @@ fn pin_of(value: &Json, name: &str) -> Fetch {
     }
 }
 
-fn targets(manifest: &Json) -> Vec<&Json> {
+pub(crate) fn targets(manifest: &Json) -> Vec<&Json> {
     items(manifest, "images")
         .iter()
         .flat_map(|image| items(image, "targets"))
         .collect()
 }
 
-/// Only the target named by the build record can describe the running image.
 pub fn built_as<'a>(manifest: &'a Json, record: Option<&Json>) -> (Vec<&'a Json>, Scope) {
     let every = targets(manifest);
     let at = match record.and_then(|record| text(record, "target")) {
         Some(name) => every
             .iter()
             .position(|target| text(target, "name").as_deref() == Some(name.as_str())),
-        // One baked target remains unambiguous when the record omits its name.
         None if every.len() == 1 => Some(0),
         None => None,
     };
@@ -713,9 +703,6 @@ pub fn image_of<'a>(manifest: &'a Json, target: &Json) -> Option<&'a Json> {
         .find(|image| text(image, "id").as_deref() == Some(id.as_str()))
 }
 
-/// Without a repository, baked manifest and build evidence let the image
-/// answer only for itself. Repository-wide evidence could otherwise be
-/// mistaken for evidence about the running image.
 pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why> {
     let (targets, scope) = built_as(manifest, record);
     let mut why = Why {
@@ -726,8 +713,6 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
     let mut found = false;
 
     for target in &targets {
-        // The whole path agrees with `of`. `matching` already chose which component
-        // was meant, and a suffix match here could pick a different one.
         let Some(component) = items(target, "components")
             .iter()
             .find(|component| text(component, "path").as_deref() == Some(path))
@@ -829,8 +814,6 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
                 }
             }
             if matches!(field(provenance, "repo"), Some(Json::Bool(true))) {
-                // The component tree is not in the finished image, so the file
-                // itself cannot be read here. Only its existence is available.
                 why.repo = Some(Vec::new());
             }
         }
@@ -854,8 +837,6 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
         return None;
     }
 
-    // The seeding refusal forbids deriving declarations from resolved output,
-    // so this points to the real source. The command stays copy-pasteable.
     if let ([target], Some(record)) = (targets.as_slice(), record) {
         why.source = image_of(manifest, target)
             .and_then(|image| text(image, "url"))
@@ -872,8 +853,6 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
     Some(why)
 }
 
-/// Matching the read-out's scope ensures every offered name is one `on_host`
-/// can answer.
 pub fn known_on_host(manifest: &Json, record: Option<&Json>) -> Vec<String> {
     let mut out: Vec<String> = built_as(manifest, record)
         .0
@@ -886,8 +865,6 @@ pub fn known_on_host(manifest: &Json, record: Option<&Json>) -> Vec<String> {
     out
 }
 
-/// The running binary can differ from the one that built an image, and a host
-/// has no repository against which to check an unknown document shape.
 fn readable(document: &Json, at: &std::path::Path, reads: u32) -> Result<(), String> {
     let tool = env!("CARGO_PKG_VERSION");
     match common::json::declared(document, "schema_version") {
@@ -910,7 +887,6 @@ fn readable(document: &Json, at: &std::path::Path, reads: u32) -> Result<(), Str
              image with this release, or read it with the one that built it",
             at.display()
         )),
-        // A malformed version must not be diagnosed as a legacy document.
         Some(_) => Err(format!(
             "{}: this image names a schema version that is not a number, so nothing can be \
              compared against the {reads} Buildc v{tool} reads\n\nthe document is malformed; \
@@ -949,8 +925,6 @@ mod tests {
     use crate::emit::Part;
     use crate::resolve::name::matching;
 
-    /// A booted image is one target, and the manifest baked into it holds every
-    /// target the repository declares. The record says which one is running.
     #[test]
     fn a_host_answer_is_scoped_to_the_target_the_record_names() {
         let manifest = common::json::Json::parse(
@@ -975,7 +949,6 @@ mod tests {
         assert_eq!(known_on_host(&manifest, Some(&ungated)), ["apps/kde"]);
         let why = on_host(&manifest, Some(&ungated), "apps/kde").expect("the image carries it");
         assert_eq!(why.images, ["desktop"]);
-        // The fixture makes only the other target require the capability.
         assert_eq!(why.provides, [("desktop".to_string(), Vec::new())]);
         assert!(why.scope == Scope::Built("desktop".into()));
         assert!(on_host(&manifest, Some(&ungated), "apps/vscodium").is_none());
@@ -995,7 +968,7 @@ mod tests {
             .expect("the image carries it")
             .markdown();
         assert!(
-            built.contains("Built from https:
+            built.contains("Built from https://example.com/os/desktop at `1f2bb19`"),
             "{built}"
         );
         assert!(

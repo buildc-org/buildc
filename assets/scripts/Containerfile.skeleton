@@ -1,10 +1,6 @@
 ARG BASE
 FROM scratch AS ctx
-COPY components/ /components/
 COPY generated/ /generated/
-
-FROM scratch AS buildc
-COPY out/buildc /buildc
 
 # ---- BEGIN GENERATED (component layers) ----
 # ---- END GENERATED ----

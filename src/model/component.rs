@@ -70,6 +70,7 @@ pub struct BaseFacts {
     pub family: String,
     pub bootloaders: Vec<String>,
     pub scap_content: String,
+    pub scap_pin: Option<crate::provenance::Evidence>,
 }
 
 pub struct BaseComponent {

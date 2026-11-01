@@ -13,6 +13,8 @@ source: tests/golden/harness.rs
   "ungated_target": "signing",
   "ungated_published": "signing",
   "cache_image": "signing-cache",
+  "backend": "buildah",
+  "manifest_label": false,
   "workflows": [],
   "audit": {
     "enforce": false
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "image": "quay.io/fedora/fedora-bootc:44",
         "family": "fedora",
         "scap_content": "",
+        "scap_pin": null,
         "signed": false,
         "provides": [
           "rechunking",
@@ -91,6 +94,9 @@ source: tests/golden/harness.rs
                   "how": "base"
                 }
               },
+              "witnessed": [
+                "/usr/share/secureboot/sb_cert.der"
+              ],
               "removes": [],
               "files": {
                 "kernel-devel-helpers": "/usr/libexec/kernel-devel-helpers.sh",
@@ -102,6 +108,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "bce96e5f3ecb7583ba10db545618f7d8ebd93c5607d0c507ad475368f7081d93",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -146,6 +153,7 @@ source: tests/golden/harness.rs
                   "provider": "kernel/signed-kernel"
                 }
               },
+              "witnessed": [],
               "removes": [],
               "files": {},
               "packages": [],
@@ -154,6 +162,7 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "c1ce5ab5bacdd9ecc69606ecdbbccbf4848b501c12f39e9fa4299b20ed9ffcb3",
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -179,7 +188,26 @@ source: tests/golden/harness.rs
           },
           "overlay_overridden": [],
           "collected_files": {},
-          "collect_destinations": []
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/signing/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=signing",
+              "COMPONENT_HASHES=kernel/signed-kernel|bce96e5f3ecb7583ba10db545618f7d8ebd93c5607d0c507ad475368f7081d93 drivers/kvmfr|c1ce5ab5bacdd9ecc69606ecdbbccbf4848b501c12f39e9fa4299b20ed9ffcb3",
+              "ASSET_RESOLUTIONS=",
+              "SCAP_CLAIMED=",
+              "SCAP_REFUSED=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/dracut /usr/share/secureboot/sb_cert.der"
+            ]
+          }
         }
       ]
     }

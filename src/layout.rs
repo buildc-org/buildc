@@ -426,7 +426,8 @@ mod tests {
 
     #[test]
     fn the_walk_finds_nested_components_and_passes_over_component_content() {
-        let root = std::env::temp_dir().join(format!("buildc-component-dirs-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("buildc-component-dirs-{}", std::process::id()));
         if root.exists() {
             std::fs::remove_dir_all(&root).unwrap();
         }

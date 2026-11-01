@@ -1,5 +1,5 @@
 use crate::layout;
-use crate::model::component::{Component, Copr};
+use crate::model::component::{Component, Copr, PackageGroup, Position};
 use crate::model::image::{Entry, Image};
 use crate::model::options::{env_name, OptType};
 use crate::resolve::collect::Collection;
@@ -77,10 +77,17 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
     let base_family = image.base.as_ref().map_or("", |b| b.family.as_str());
     let mut out = Vec::new();
     for entry in &image.entries {
-        let Some(component) = entry.component.as_ref().filter(|m| m.standard_layer) else {
+        let Some(component) = entry.component.as_ref() else {
             continue;
         };
         let prelude = prelude(entry, component, &image.boot);
+        if !component.standard_layer {
+            let body = witnesses(component);
+            if !body.is_empty() {
+                out.push((witness_path(image, entry), format!("{prelude}{body}")));
+            }
+            continue;
+        }
         let rest = rest(entry, component, collection, base_family, image, root);
         match splits(image, entry, component, root) {
             true => {
@@ -94,8 +101,112 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
                 out.push((path(image, entry), format!("{prelude}{packages}{rest}")));
             }
         }
+        if entry.flavour.is_none() {
+            if let Some(tail) = tail(entry, component, collection, base_family, root) {
+                out.push((tail_path(image, entry), format!("{prelude}{tail}")));
+            }
+        }
     }
     out
+}
+
+pub fn tail_path(image: &Image, entry: &Entry) -> PathBuf {
+    dir(image).join(format!("{}.tail.sh", file_name(entry)))
+}
+
+pub fn tail(
+    entry: &Entry,
+    component: &Component,
+    collection: &Collection,
+    base_family: &str,
+    root: &Path,
+) -> Option<String> {
+    if entry.flavour.is_some() {
+        return None;
+    }
+    if overlay_prefixes(root, entry, base_family).is_empty() {
+        return None;
+    }
+    let body = after_overlays(entry, component, collection, base_family, root);
+    (!body.is_empty()).then_some(body)
+}
+
+pub fn witness_path(image: &Image, entry: &Entry) -> PathBuf {
+    dir(image).join(format!("{}.witness.sh", file_name(entry)))
+}
+
+pub fn witnesses(component: &Component) -> String {
+    let mut out = String::new();
+    for file in component.files.iter().filter(|file| !file.build_only) {
+        let path = shell(&file.file);
+        let _ = write!(
+            out,
+            "\n# ---- witness for {} ----\n\
+             if [ ! -e {path} ]; then\n    \
+             echo \"component {} provides {}, and its witness {} is missing\" >&2\n    \
+             exit 1\n\
+             fi\n",
+            file.name, component.path, file.name, file.file
+        );
+    }
+    out
+}
+
+pub fn witnesses_in_layer(component: &Component) -> String {
+    match component.fragment_position {
+        Position::After | Position::Tail => String::new(),
+        Position::Before => witnesses(component),
+    }
+}
+
+pub fn overlay_prefixes(root: &Path, entry: &Entry, family: &str) -> Vec<String> {
+    let on_disk = layout::component(root, &entry.path);
+    let mut out = Vec::new();
+    if on_disk.join(layout::OVERLAY).is_dir() {
+        out.push(String::new());
+    }
+    for gated in layout::family_dirs(&on_disk, family) {
+        if on_disk.join(gated).join(layout::OVERLAY).is_dir() {
+            out.push(gated.to_string());
+        }
+    }
+    out
+}
+
+pub fn package_reads_dir(root: &Path, entry: &Entry, family: &str) -> bool {
+    let on_disk = layout::component(root, &entry.path);
+    layout::shipped(&on_disk, family, layout::REPO_SCRIPT).is_some()
+        || !layout::layered(&on_disk, family, layout::PACKAGES_SCRIPT).is_empty()
+}
+
+pub fn script_reads_dir(
+    root: &Path,
+    entry: &Entry,
+    component: &Component,
+    image: &Image,
+    family: &str,
+    collection: &Collection,
+) -> bool {
+    let on_disk = layout::component(root, &entry.path);
+    let packages_here =
+        !splits(image, entry, component, root) && package_reads_dir(root, entry, family);
+    let has_overlay = !overlay_prefixes(root, entry, family).is_empty();
+    let collected_here = collection.by_component.contains_key(&entry.path)
+        && (entry.flavour.is_some() || !has_overlay);
+    !layout::layered(&on_disk, family, layout::SCRIPT).is_empty()
+        || (image.answers(layout::SELINUX.capability)
+            && !layout::SELINUX.files(&on_disk).is_empty())
+        || (image.answers(layout::APPARMOR.capability)
+            && !layout::APPARMOR.files(&on_disk).is_empty())
+        || (entry.flavour.is_some() && has_overlay)
+        || collected_here
+        || packages_here
+}
+
+pub fn tail_reads_dir(root: &Path, entry: &Entry, family: &str, collection: &Collection) -> bool {
+    entry.flavour.is_none()
+        && !overlay_prefixes(root, entry, family).is_empty()
+        && collection.by_component.contains_key(&entry.path)
 }
 
 fn prelude(entry: &Entry, component: &Component, boot: &str) -> String {
@@ -198,29 +309,56 @@ fn package_step(entry: &Entry, component: &Component, base_family: &str, root: &
             shell(&copr.name())
         );
     }
-    for (helper, declared) in [
-        ("install_packages", &component.packages),
-        ("install_groups", &component.groups),
+    for (kind, declared) in [
+        (Kind::Packages, &component.packages),
+        (Kind::Groups, &component.groups),
     ] {
         for batch in declared.iter().filter(|g| g.family == base_family) {
-            let names = batch
-                .packages
-                .iter()
-                .map(|name| shell(&spelled(name, base_family)))
-                .collect::<Vec<_>>()
-                .join(" ");
-            let repo = batch
-                .enablerepo
-                .as_ref()
-                .map(|repo| format!("BUILDC_ENABLE_REPO={} ", shell(repo)))
-                .unwrap_or_default();
-            let _ = write!(out, "\n{repo}{helper} {names}\n");
+            let _ = write!(out, "\n{}", install(batch, kind, base_family));
         }
     }
     for script in scripts {
         let _ = write!(out, "\nsource {dir}/{script}\n");
     }
     out
+}
+
+fn install(batch: &PackageGroup, kind: Kind, family: &str) -> String {
+    let names = batch
+        .packages
+        .iter()
+        .map(|name| shell(&spelled(name, family)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    match crate::parse::component::rpm(family) {
+        true => {
+            let verb = match kind {
+                Kind::Packages => "install",
+                Kind::Groups => "group install",
+            };
+            let repo = batch
+                .enablerepo
+                .as_ref()
+                .map(|repo| format!("--enablerepo={} ", shell(repo)))
+                .unwrap_or_default();
+            format!("dnf {verb} -y {repo}{names}\nstash_systemctl\n")
+        }
+        false => {
+            format!(
+                "mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial /var/log/apt\n\
+                 mkdir -p /var/lib/dpkg/updates /var/lib/dpkg/info /var/lib/dpkg/triggers\n\
+                 [ -f /var/lib/dpkg/status ] || : > /var/lib/dpkg/status\n\
+                 DEBIAN_FRONTEND=noninteractive apt-get update\n\
+                 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends {names}\n"
+            )
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Kind {
+    Packages,
+    Groups,
 }
 
 fn rest(
@@ -234,11 +372,6 @@ fn rest(
     let dir = format!("/ctx/components/{}", entry.path);
     let on_disk = layout::component(root, &entry.path);
     let mut out = String::new();
-
-    let mut roots = vec![(on_disk.clone(), dir.clone())];
-    for gated in layout::family_dirs(&on_disk, base_family) {
-        roots.push((on_disk.join(gated), format!("{dir}/{gated}")));
-    }
 
     for key in &component.keys {
         let from = shell(&format!("/ctx/keys{}", key.public));
@@ -276,15 +409,44 @@ fn rest(
         }
     }
 
-    let overlays: Vec<&String> = roots
-        .iter()
-        .filter(|(at, _)| at.join(layout::OVERLAY).is_dir())
-        .map(|(_, ctx)| ctx)
-        .collect();
-    for ctx in &overlays {
-        let _ = write!(out, "\ncp -rT {ctx}/files /\n");
+    match entry.flavour {
+        Some(_) => {
+            for gated in overlay_prefixes(root, entry, base_family) {
+                let at = match gated.is_empty() {
+                    true => dir.clone(),
+                    false => format!("{dir}/{gated}"),
+                };
+                let _ = write!(out, "\ncp -rT {at}/files /\n");
+            }
+            out.push_str(&after_overlays(
+                entry,
+                component,
+                collection,
+                base_family,
+                root,
+            ));
+        }
+        None if overlay_prefixes(root, entry, base_family).is_empty() => {
+            out.push_str(&collected(entry, collection, &dir));
+            out.push_str(&witnesses_in_layer(component));
+        }
+        None => {}
     }
-    if !overlays.is_empty() {
+
+    out
+}
+
+fn after_overlays(
+    entry: &Entry,
+    component: &Component,
+    collection: &Collection,
+    base_family: &str,
+    root: &Path,
+) -> String {
+    let dir = format!("/ctx/components/{}", entry.path);
+    let mut out = String::new();
+
+    if !overlay_prefixes(root, entry, base_family).is_empty() {
         for declared in &component.modes {
             let _ = writeln!(
                 out,
@@ -295,8 +457,15 @@ fn rest(
         }
     }
 
-    if let Some(collected) = collection.by_component.get(&entry.path) {
-        for one in collected {
+    out.push_str(&collected(entry, collection, &dir));
+    out.push_str(&witnesses_in_layer(component));
+    out
+}
+
+fn collected(entry: &Entry, collection: &Collection, dir: &str) -> String {
+    let mut out = String::new();
+    if let Some(parts) = collection.by_component.get(&entry.path) {
+        for one in parts {
             let staged = Path::new(&one.staged);
             let _ = write!(
                 out,
@@ -307,7 +476,6 @@ fn rest(
             );
         }
     }
-
     out
 }
 

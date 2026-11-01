@@ -128,6 +128,7 @@ pub struct Base {
     pub tracker: Option<crate::model::options::VersionTracker>,
     pub imported: Option<crate::provenance::lock::Record>,
     pub scap_content: String,
+    pub scap_pin: Option<crate::provenance::Evidence>,
     pub span: Span,
 }
 

@@ -84,15 +84,34 @@ An `asset` in `manifest.kdl` pins a download that the component's own script
 fetches while its layer builds.
 
 - An asset whose URL ends in `.git` is cloned, and its commit is the
-  verifier. On the build host, `buildc` resolves that commit with
+  verifier. `buildc generate` resolves that commit with
   `protocol.ext.allow=never` (`src/provenance/build.rs` `clone_commit`), so the
-  resolution cannot run a command through the `ext::` transport.
+  resolution cannot run a command through the `ext::` transport. `buildc build`
+  resolves the tag again and refuses the build if it names another commit. If
+  the remote does not answer, then the build warns, and an enforced audit
+  refuses it (`src/build.rs` `confirm_clones`).
 - The clone itself runs in the component's layer, as trusted component code, under
   Git's own protocol policy. An asset URL is not held to `https://`.
 - `buildc build` records the resolved commit of each cloned asset in the build
   record. If the commit does not resolve, then `buildc build` names the asset
-  and leaves it out of the record. Under enforcement, it refuses the build
-  (`src/provenance/mod.rs` `enforce_build`).
+  and leaves it out of the record. Under enforcement, `buildc generate` and
+  `buildc build` refuse it (`src/provenance/mod.rs` `enforce_build`).
+
+### The SCAP datastream `generate` fetches
+
+- A conforming image's base pins its datastream in `scap-content`. `buildc
+  generate` downloads an `https://` URL with curl into `.cache/scap/`, or
+  reads a path inside the repository. A path that leaves the repository,
+  through `..` or a symbolic link, is refused, and so is any other scheme
+  (`src/scap/pinned.rs` `fetch`, `inside`).
+- The pin hashes the datastream itself. A `.zip` is unpacked with `unzip`
+  before that hash is checked, so the bytes `unzip` writes are capped while
+  they are read, whatever size the archive declares (`src/scap/pinned.rs`
+  `member_within`). The download itself is capped by curl's
+  `--max-filesize`.
+- The verified file is committed under `generated/<image>/scap/` beside a
+  record of its URL. A later `generate` reuses it only when both the URL and
+  the hash match.
 
 ### The `buildc` binary a build runs
 

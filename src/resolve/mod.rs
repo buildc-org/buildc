@@ -27,8 +27,11 @@ pub fn answers<'a>(
     path == required || provides.any(|has| meets(has, required))
 }
 
-pub fn conflict(one: (Option<&str>, bool), other: (Option<&str>, bool)) -> bool {
-    (one.1 || other.1) && meet(one.0, other.0)
+pub fn conflict(
+    (one_flavour, one_exclusive): (Option<&str>, bool),
+    (other_flavour, other_exclusive): (Option<&str>, bool),
+) -> bool {
+    (one_exclusive || other_exclusive) && meet(one_flavour, other_flavour)
 }
 
 pub fn meet(one: Option<&str>, other: Option<&str>) -> bool {
@@ -38,6 +41,9 @@ pub fn meet(one: Option<&str>, other: Option<&str>) -> bool {
 pub struct Resolved {
     pub shipped: overlay::Index,
     pub collected: Collection,
+    pub hashes: std::collections::BTreeMap<String, String>,
+    pub scap: Option<crate::scap::pinned::Measured>,
+    pub clones: Vec<crate::provenance::build::Cloned>,
 }
 
 #[cfg(test)]

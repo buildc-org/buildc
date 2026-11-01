@@ -49,5 +49,6 @@ codegen-units = 1
 
 [dev-dependencies]
 clap-markdown = "0.1.5"
+# The rev matches the `common` dependency, so the tests and the tool share one crate.
 common = { git = "https://github.com/buildc-org/common", rev = "8f16bad0fdaaded30dd9eb0cf0b835dabbe20d63", features = ["test-support"] }
 insta = { version = "1.49.0", default-features = false, features = ["filters"] }

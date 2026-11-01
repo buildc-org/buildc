@@ -128,6 +128,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "buildc"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "clap-markdown",
+ "common",
+ "insta",
+ "kdl",
+ "libc",
+ "miette",
+ "quick-xml",
+ "tempfile",
+]
+
+[[package]]
 name = "by_address"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -206,7 +221,6 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/buildc-org/common?rev=8f16bad0fdaaded30dd9eb0cf0b835dabbe20d63#8f16bad0fdaaded30dd9eb0cf0b835dabbe20d63"
 dependencies = [
  "libc",
  "ratatui",
@@ -1108,21 +1122,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "buildc"
-version = "0.7.3"
-dependencies = [
- "clap",
- "clap-markdown",
- "common",
- "insta",
- "kdl",
- "libc",
- "miette",
- "quick-xml",
- "tempfile",
 ]
 
 [[package]]

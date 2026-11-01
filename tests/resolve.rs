@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use buildc::Command;
+use std::path::PathBuf;
 
 #[test]
 fn after_rejects_a_provider_on_another_target() {
@@ -1386,6 +1386,160 @@ fn a_witness_created_by_an_after_fragment_is_checked_after_it() {
         .find("components/after-check.sh.witness.sh")
         .expect("the witness step is emitted");
     assert!(after < witness, "{containerfile}");
+}
+
+#[test]
+fn every_generated_path_the_containerfile_reads_is_written() {
+    let fragments = [
+        ("after-check", "\nfragment position=\"after\""),
+        ("tail-check", "\nfragment position=\"tail\""),
+        ("whole-check", "\nfragment standard-layer=#false"),
+        ("plain-check", ""),
+    ];
+    let manifests: Vec<(&str, String)> = fragments
+        .iter()
+        .map(|(name, fragment)| {
+            (
+                *name,
+                format!("provides \"{name}\" witness=\"/usr/share/{name}\"{fragment}"),
+            )
+        })
+        .collect();
+    let borrowed: Vec<(&str, &str)> = manifests
+        .iter()
+        .map(|(name, manifest)| (*name, manifest.as_str()))
+        .collect();
+    let root = written(
+        "mounts-written",
+        "        after-check\n        tail-check\n        whole-check\n        plain-check",
+        &borrowed,
+    );
+    for (name, _) in fragments
+        .iter()
+        .filter(|(_, fragment)| !fragment.is_empty())
+    {
+        std::fs::write(
+            root.join("components").join(name).join("Containerfile.inc"),
+            "RUN true\n",
+        )
+        .unwrap();
+    }
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let containerfile = files_named(&run, "Containerfile");
+    let written: Vec<String> = run
+        .files
+        .iter()
+        .map(|(path, _)| path.display().to_string())
+        .chain(
+            run.copies
+                .iter()
+                .map(|copy| copy.path.display().to_string()),
+        )
+        .collect();
+    let read: Vec<&str> = ["from=ctx,source=/", "COPY --from=ctx /"]
+        .iter()
+        .flat_map(|marker| containerfile.split(marker).skip(1))
+        .filter_map(|rest| rest.split([',', ' ', '\n']).next())
+        .filter(|path| path.starts_with("generated/"))
+        .map(|path| path.trim_end_matches('/'))
+        .collect();
+    let witness_steps = read
+        .iter()
+        .filter(|path| path.ends_with(".witness.sh"))
+        .count();
+    // `after-check` and `whole-check` each get a witness step in the Containerfile.
+    // An empty parse would pass the loop below, so the count fails first.
+    assert_eq!(witness_steps, 2, "{containerfile}");
+    for path in read {
+        let inside = format!("{path}/");
+        assert!(
+            written
+                .iter()
+                .any(|file| file == path || file.starts_with(&inside)),
+            "the Containerfile reads {path}, which generate does not write:\n{containerfile}"
+        );
+    }
+}
+
+#[test]
+fn a_finalize_hook_witness_is_checked_after_the_hooks_and_before_the_tail() {
+    let root = written(
+        "witness-finalize",
+        "        hook-check",
+        &[(
+            "hook-check",
+            "provides \"tool\" witness=\"/usr/share/tool\"\nfragment position=\"after\"",
+        )],
+    );
+    std::fs::write(
+        root.join("components/hook-check/Containerfile.inc"),
+        "RUN true\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("components/hook-check/finalize.sh"),
+        "touch /usr/share/tool\n",
+    )
+    .unwrap();
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let script = files_named(&run, "components/hook-check.sh");
+    assert!(!script.contains("witness for tool"), "{script}");
+    let containerfile = files_named(&run, "Containerfile");
+    assert!(!containerfile.contains("witness.sh"), "{containerfile}");
+    let finalize = files_named(&run, "finalize.sh");
+    let hook = finalize
+        .find("source /ctx/components/hook-check/finalize.sh")
+        .expect("the finalize layer runs the hook");
+    let witness = finalize
+        .find("component hook-check provides tool")
+        .expect("the finalize layer checks the witness");
+    let tail = finalize
+        .find("zz-opt-symlinks.conf")
+        .expect("the finalize tail is emitted");
+    assert!(hook < witness && witness < tail, "{finalize}");
+}
+
+#[test]
+fn a_tail_fragment_witness_is_checked_in_its_own_layer() {
+    let root = written(
+        "witness-tail",
+        "        tail-check",
+        &[(
+            "tail-check",
+            "provides \"tool\" witness=\"/usr/share/tool\"\nfragment position=\"tail\"",
+        )],
+    );
+    std::fs::write(
+        root.join("components/tail-check/Containerfile.inc"),
+        "FROM scratch AS other\n",
+    )
+    .unwrap();
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let script = files_named(&run, "components/tail-check.sh");
+    assert!(
+        script.contains("component tail-check provides tool"),
+        "{script}"
+    );
+    let containerfile = files_named(&run, "Containerfile");
+    assert!(!containerfile.contains("witness.sh"), "{containerfile}");
 }
 
 #[test]

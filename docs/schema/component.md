@@ -4,7 +4,7 @@
 
 Location: `components/<component-name>/manifest.kdl`, in the directory of the component.
 
-A component is one reusable part of an image, such as a desktop, a kernel or a set of tools. `manifest.kdl` declares its schema version, what the component needs and provides, what it installs and which families it targets, and the files beside it do the work.
+The directory under `components/` is the component's name, and the manifest sits at `manifest.kdl` in it. An image that defines a component inline names it with the path that the image lists.
 
 ```kdl
 schema-version 1
@@ -54,7 +54,7 @@ packages "htop" "tmux"
 
 ## `schema-version` (required)
 
-The schema version tells `buildc` which reader to use for this file. A file written against an earlier release keeps using that release's reader, while `repo.kdl` sets the newest schema the repository accepts.
+The number states the release the file is written against. `buildc` reports a file whose number differs from the one `repo.kdl` declares, and it reports a file that carries none.
 
 ```kdl
 schema-version 1
@@ -83,7 +83,7 @@ Accepts: *string*
 
 ## `targets` (optional, repeatable)
 
-Lists the base families that the component works on. `buildc check` refuses the component on an image whose base family is not in the list, so a portability gap shows before the build. A component with no `targets` declaration is base-agnostic and targets every family.
+Each name must be `fedora`, `rhel`, `debian` or `ubuntu`. An image whose base family this node omits reports the component as unsupported.
 
 ```kdl
 targets "fedora" "debian"
@@ -95,7 +95,7 @@ Accepts: *list of strings*
 
 ## `provides` (optional, repeatable)
 
-Names a capability that this component adds to the image, such as `flatpak`. Another component `requires` it by name. If a name declares `witness`, then the build checks the finished image for that file. A name may have `/`-separated segments, and `rpm/dnf5` also meets a requirement for `rpm`. Several names go on one line, as `provides "a" "b"`, or in a block with one name on each line, where each name carries its own properties.
+A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `base-image` is provided by a `base` node, so a manifest cannot declare it.
 
 ```kdl
 provides "flatpak"
@@ -105,7 +105,7 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp
 
 | Property | Accepts | Description |
 | --- | --- | --- |
-| `witness=` (optional) | *string* | The absolute path in the finished image that witnesses the capability. Without it, nothing witnesses the capability. |
+| `witness=` (optional) | *string* | The absolute path in the finished image that witnesses the capability. Without it, nothing witnesses the capability. The build checks the path at the end of the component's layer. If the component ships a finalize hook for the base family, then the build checks the path after the finalize hooks. |
 | `build-only=` (optional) | *boolean* | Whether the `witness` exists only while the build runs. |
 | `exclusive=` (optional) | *boolean* | Whether a second enabled provider of the capability conflicts with this one. |
 
@@ -144,7 +144,7 @@ provides {
 
 | Property | Accepts | Description |
 | --- | --- | --- |
-| `witness=` (optional) | *string* | The absolute path in the finished image that witnesses the capability. Without it, nothing witnesses the capability. |
+| `witness=` (optional) | *string* | The absolute path in the finished image that witnesses the capability. Without it, nothing witnesses the capability. The build checks the path at the end of the component's layer. If the component ships a finalize hook for the base family, then the build checks the path after the finalize hooks. |
 | `build-only=` (optional) | *boolean* | Whether the `witness` exists only while the build runs. |
 | `exclusive=` (optional) | *boolean* | Whether a second enabled provider of the capability conflicts with this one. |
 
@@ -152,7 +152,7 @@ provides {
 
 ## `requires` (optional, repeatable)
 
-Names a capability that the image must have for this component to work. A component meets it by its own path, or by a `provides` name equal to it or below it, so `rpm/dnf5` meets `rpm`. The base, a component that the image lists or a component that an `imports` brings must meet it. If none does, then `buildc check` fails, and `buildc import component` offers the providers. `buildc` builds this component after each component that meets it.
+A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.
 
 ```kdl
 requires "kernel-devel"
@@ -182,7 +182,7 @@ requires {
 
 ## `imports` (optional, repeatable)
 
-Names a component under `components/` by its path. The imported component builds in every image that holds this component, so the image file does not list it. An image entry at an imported path fails `buildc check`. A path may read an option of this component as `$<name>`, so the image chooses the component in this component's block. Several paths go on one line, as `imports "a" "b"`, or in a block with one path on each line. In the block, a path's own block sets the imported component's options. A value may read this component's options the same way, and an option that the block does not set takes its default. If two components import one component with different values for one option, then `buildc check` fails.
+The value is a component path of lower-case segments joined by `/`, or a `$option` reference that resolves to one. The block of an imported path sets the options that this component passes to that component.
 
 ```kdl
 imports "container-runtime"
@@ -234,7 +234,7 @@ imports {
 
 ## `after` (optional, repeatable)
 
-Names a capability that this component builds after. If an enabled component provides it, then `buildc` builds this component after that component. If no enabled component provides it, then the `after` orders nothing.
+The name orders the build only when something in the image provides it. A name with no provider is allowed and adds no order.
 
 ```kdl
 after "vfio"
@@ -252,7 +252,7 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;}
 
 ## `removes` (optional, repeatable)
 
-Names a capability that the base or another component provides and that this component takes away, such as a tool that its script uninstalls. The image then no longer claims the capability. `buildc` builds this component after every provider of the name. `buildc check` refuses a `removes` that nothing in the image provides, and it refuses every component that requires a removed name. `buildc validate-image` checks that the witness of a removed name is absent from the finished image.
+A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.
 
 ```kdl
 removes "bootupctl"
@@ -270,7 +270,7 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#removes-fields)&nbsp;
 
 ## `overrides` (optional, repeatable)
 
-Declares that this component replaces a file that an earlier component also ships. Without it, `buildc check` reports the two overlays as a collision. `buildc check` also reports an override that no earlier component collides with, so an override cannot outlive its reason.
+The path is absolute, and it must name a file that an earlier component ships. `buildc check` reports an override that replaces nothing, so one cannot outlive the collision it was added for.
 
 ```kdl
 overrides "/etc/containers/policy.json"
@@ -282,7 +282,7 @@ Accepts: *list of strings*
 
 ## `mode` (optional, unique)
 
-Sets the file mode of one file that the `files/` overlay of the component installs, such as `0600` for a file that only root reads.
+The path must name a regular file that the component ships under `files/`, and the mode is an octal number up to `07777`. A `fragment` with `standard-layer #false` refuses the mode, because the fragment replaces the layer that would apply it.
 
 ```kdl
 mode "/etc/audit/rules.d/audit.rules" "0600"
@@ -294,7 +294,7 @@ Accepts: *path*, then *octal mode*
 
 ## `key` (optional, unique)
 
-A component that needs a key declares it here, such as a Secure Boot signing key. `buildc create key` generates the key from this declaration. The build installs the public half into the image at the path that `public` names. The private half stays in `keys/private/`, outside the image and outside git.
+A complete block provides the `<kind>-key` capability and ships the public half as a witness. The public file must exist under `keys/public/` at the path that `public` names.
 
 ```kdl
 key "secureboot" {
@@ -318,7 +318,7 @@ Accepts: *string*, then {&nbsp;[fields](#key-fields)&nbsp;}
 
 ### `generator` (required)
 
-`buildc create key` offers every key that a component declares. `generator` names the tool that writes this key, and its properties set the key up for what the component uses it for.
+`openssl` needs a `profile`, and `bits` is its RSA key size. `cosign` and `ssh-keygen` take no profile.
 
 ```kdl
 key "secureboot" {
@@ -337,7 +337,7 @@ Accepts: `cosign` or `openssl` or `ssh-keygen`
 
 ### `public` (required)
 
-Where the build installs the public half in the image. The file also witnesses the `<kind>-key` capability, so another component can `requires` the key.
+The path is absolute and holds no `..` segment. The public file must exist under `keys/public/`, and a `pcr-signing` key takes PEM alone.
 
 ```kdl
 key "secureboot" {
@@ -355,7 +355,7 @@ Accepts: *string*
 
 ### `private` (required)
 
-The file name of the private half under `keys/private/`, which git ignores. The build never copies the private half into the image.
+The value is a plain filename, so it carries no `/` and does not start with a dot. The scaffolded `.gitignore` keeps `keys/private/` out of the repository.
 
 ```kdl
 key "secureboot" {
@@ -369,7 +369,7 @@ Accepts: *string*
 
 ## `secret` (optional, repeatable)
 
-Names a build secret that the layer of this component reads, such as a signing key. The layer mounts it at `/run/secrets/<name>`, so the secret is there while the component builds and never lands in the image.
+Each name is the ID of a BuildKit secret that the component layer mounts at `/run/secrets/<name>`. The value comes from the build command, and a secret the build does not supply is not an error.
 
 ```kdl
 secret "mok_privkey"
@@ -381,7 +381,7 @@ Accepts: *list of strings*
 
 ## `arg` (optional, repeatable)
 
-Names a build argument that the layer of this component reads as an environment variable, such as the kernel version to install.
+Each name becomes an environment variable in the component's layer script. The value comes from a build argument, and the manifest does not hold it.
 
 ```kdl
 arg "KERNEL"
@@ -393,7 +393,7 @@ Accepts: *list of strings*
 
 ## `helpers` (optional, repeatable)
 
-Shares shell helpers from this component with every other component. The build mounts each listed file by its basename into `/ctx/lib` in every component layer, so another component can source it.
+The path is relative to the component directory, and the file must exist there. The basename is the mount name, so two enabled components cannot share a basename.
 
 ```kdl
 helpers "lib/family.sh"
@@ -405,7 +405,7 @@ Accepts: *list of strings*
 
 ## `allow-verify` (optional, repeatable)
 
-`buildc validate-image` checks the systemd units of the finished image. If one unit of this component raises an expected diagnostic, then this accepts that one diagnostic on that one unit. The check still covers every other diagnostic and unit.
+The class must be one that `buildc validate-image` reports, and the same class on the same unit is accepted once.
 
 ```kdl
 allow-verify "man-page-missing" unit="plasmalogin.service"
@@ -421,7 +421,7 @@ Accepts: *string*
 
 ## `refuses` (optional, unique)
 
-A hardening rule can break what a component does. This records that the component leaves one rule unsatisfied on purpose, and `because=` says why. Remediation then does not set the rule, and the choice is visible to every image.
+The `because` reason states why the rule stays unsatisfied, and a refusal without one is reported. The same rule may be refused once in a component.
 
 ```kdl
 refuses "grub2_nousb_argument" because="it removes the keyboard"
@@ -440,7 +440,7 @@ Accepts: *string*
 
 ## `collects` (optional, repeatable)
 
-Builds one file from parts that many components ship, such as a list of Flatpak apps. This component claims the file name, every component that ships a file of that name contributes a part, and the finalize phase assembles the parts at `into=`.
+The filename is claimed once across the image, and `into` must be an absolute path. `buildc check` reports a shipped file that no enabled collector claims.
 
 ```kdl
 collects "flatpaks.list" into="/usr/share/flatpak-defaults/apps.list" priority=500
@@ -478,7 +478,7 @@ Accepts: *string*
 
 ## `fragment` (optional)
 
-A component whose needs the fields cannot express ships a `Containerfile.inc`, which the build adds verbatim. This places those lines relative to the generated layer.
+Shipping `Containerfile.inc` is what adds a fragment, so a component that ships none is refused. A `fragment` with `standard-layer #false` refuses `position`, because the fragment is then the whole layer.
 
 ```kdl
 fragment position="after"
@@ -486,7 +486,7 @@ fragment position="after"
 
 | Property | Accepts | Description |
 | --- | --- | --- |
-| `position=` (optional) | `before` or `after` or `tail` | Where the fragment goes. `before`, the default, puts it above the generated block. `after` puts it below the block. `tail` puts it below the finalize layer, where the lineage stage has ended and can be named. |
+| `position=` (optional) | `before` or `after` or `tail` | Where the fragment goes. `before`, the default, puts it above the generated block. `after` puts it below the block. `tail` puts it below the finalize layer, where the lineage stage has ended and can be named. If the component ships no finalize hook, then a witness of an `after` component is checked after the fragment, and a witness of a `tail` component is checked at the end of its own layer. |
 | `standard-layer=` (optional) | *boolean* | Whether the build emits the generated block. |
 
 > [!NOTE]
@@ -498,7 +498,7 @@ fragment position="after"
 
 ## `option` (optional, unique)
 
-Lets an image change how this component builds, such as which fonts it installs. The component declares the option with a type and a default, and each image can set its own value.
+The type decides the value the layer reads, and `buildc check` refuses a default that does not match it. A string value may hold none of `"`, `\`, `$`, a backtick or a newline, and a list value may hold no whitespace, because values reach the layer through a `RUN` env prefix.
 
 ```kdl
 option "version" type="string" {
@@ -559,7 +559,7 @@ Accepts: *list of strings*
 
 ### `renovate` (optional)
 
-Names where Renovate looks up new versions of the software that a `version` option installs. `buildc generate` writes one Renovate manager for each image entry that sets the option, so Renovate updates the value in the image file and the component stays as it is.
+The block names the Renovate datasource and the dependency name that the datasource knows. Only an option named `version` of type `string` may carry it, because that is the value Renovate rewrites.
 
 ```kdl
 option "version" type="string" {
@@ -577,7 +577,7 @@ option "version" type="string" {
 
 ## `variant` (optional, unique)
 
-Bundles option values under one name, so an image takes a whole configuration of the component with `variant=` in place of setting each option.
+An image selects the variant by name with `variant=` on the component entry. Every option that a `set` child names must be declared in the same manifest, and a variant name may appear once.
 
 ```kdl
 variant "wine-only"
@@ -627,7 +627,7 @@ Accepts: *string*
 
 ## `asset` (optional, unique)
 
-Downloads a pinned file from upstream, such as a release binary, while this component builds. The pin fixes the version and the hash, so every build gets the same bytes and Renovate can keep the version current.
+The name becomes the `ASSET_<NAME>` prefix of the environment that the component layer reads. It takes lowercase letters, digits and dashes, and one component may hold one asset of each name.
 
 ```kdl
 asset "starship" {
@@ -790,7 +790,7 @@ Accepts: *string*
 
 ## `network` (optional)
 
-Declares that the scripts of this component need the network. A repository with a `strict` script rule opens the network only for the components that declare it.
+The only value is `scripts`, because the package step already declares its network use. Only a `strict` script rule in `repo.kdl` reads the node.
 
 ```kdl
 network "scripts"
@@ -807,7 +807,7 @@ Accepts: `scripts`
 
 ## `packages` (optional, repeatable)
 
-Lists the distribution packages that this component installs with the package manager of the base family. A name can carry a version after one `=`, such as `firefox=$version`. The build spells it `firefox-<version>` for dnf and `firefox=<version>` for apt. Several names go on one line, as `packages "htop" "tmux"`, or in a block with one name on each line. Each `packages` node installs as one batch, so `enablerepo` sits on the node and covers every name in it.
+A package name is a literal, or a string option reference that resolves to one. The resolved name takes letters, digits and `. _ + : -`, with at most one `=` before a version.
 
 ```kdl
 packages "htop" "tmux"
@@ -875,7 +875,7 @@ Accepts: *string*
 
 ## `satisfies` (optional)
 
-Claims that this component meets rules of a hardening benchmark, such as STIG. The compliance scan checks each claim against the built image, so a false claim shows.
+Each child is one benchmark, and the child node name is the benchmark. Its string arguments are rule IDs, and a benchmark with none is refused.
 
 ```kdl
 satisfies
@@ -917,7 +917,7 @@ Accepts: *list of strings*
 
 ## `on` (optional, repeatable)
 
-Holds the declarations that differ by base family, such as package names that differ between Fedora and Debian. One `manifest.kdl` can then target several families.
+A gate names one or more of `fedora`, `rhel`, `debian` and `ubuntu`, and every named family must appear in `targets` when the component names any. Every gate is read, so a bad declaration is reported even where the image does not build that family.
 
 ```kdl
 on "debian" "ubuntu"
@@ -954,7 +954,7 @@ Accepts: *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;}
 
 ## `base` (optional)
 
-Names the upstream bootc image that a base stands for, and makes the component a base. A base provides `base-image` exclusively, so an image holds one. The reference usually reads the base's `version` option, as `base "quay.io/fedora/fedora-bootc:$version"` does, so the image sets the version on the base's entry. A block after the reference holds what the base states about itself. A base with no block is valid, and each field it leaves out takes the effect its own row states.
+The reference may carry a `$option` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.
 
 ```kdl
 base "quay.io/fedora/fedora-bootc:$version"
@@ -974,7 +974,7 @@ Accepts: *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;}
 
 ### `family` (optional)
 
-Names the base family, such as `fedora` or `debian`, which picks the package manager and the family's defaults. If a base names no family, then `buildc check` holds no component to its `targets` on that base.
+The family selects the package manager adapter and the installer recipe for the image. A component's `targets` is read against this value.
 
 ```kdl
 base "quay.io/fedora/fedora-bootc:$version" {
@@ -988,7 +988,7 @@ Accepts: *string*
 
 ### `bootloader` (optional)
 
-Lists the bootloaders that the base carries. `buildc create image` offers them when it writes the image's `layout`. If a base names none, then `buildc create image` chooses no bootloader, and the user names one in the `layout`.
+Each name must be `grub2` or `systemd`, the two bootloaders the installer writes.
 
 ```kdl
 base "quay.io/fedora/fedora-bootc:$version" {
@@ -1002,7 +1002,7 @@ Accepts: *list of strings*
 
 ### `scap-content` (optional)
 
-Names the SCAP datastream that remediates and measures an image on this base, and pins where it comes from. `buildc generate` fetches the pinned content, checks it against the pinned `sha256` and writes the datastream into `generated/`. The build, the remediation and the scan all read that one file. If the `url` names a `.zip`, then the datastream is the archive member with this filename. If the `url` names no scheme, then it is a path inside the repository. `buildc check` refuses an image that conforms to a benchmark while its base pins no content, so a conforming base writes the pin in the block: `scap-content "ssg-fedora-ds.xml" { pin { manual "why"; url "https://..."; sha256 "..." } }`.
+The value is a bare filename. The `pin` child states the `url` and the `sha256` that the fetched datastream must match.
 
 ```kdl
 base "quay.io/fedora/fedora-bootc:$version" {

@@ -81,11 +81,11 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
             continue;
         };
         let prelude = prelude(entry, component, &image.boot);
-        if !component.standard_layer {
+        if witness_step(root, entry, base_family, component) {
             let body = witnesses(component);
-            if !body.is_empty() {
-                out.push((witness_path(image, entry), format!("{prelude}{body}")));
-            }
+            out.push((witness_path(image, entry), format!("{prelude}{body}")));
+        }
+        if !component.standard_layer {
             continue;
         }
         let rest = rest(entry, component, collection, base_family, image, root);
@@ -135,7 +135,7 @@ pub fn witness_path(image: &Image, entry: &Entry) -> PathBuf {
     dir(image).join(format!("{}.witness.sh", file_name(entry)))
 }
 
-pub fn witnesses(component: &Component) -> String {
+pub(super) fn witnesses(component: &Component) -> String {
     let mut out = String::new();
     for file in component.files.iter().filter(|file| !file.build_only) {
         let path = shell(&file.file);
@@ -152,10 +152,22 @@ pub fn witnesses(component: &Component) -> String {
     out
 }
 
-pub fn witnesses_in_layer(component: &Component) -> String {
-    match component.fragment_position {
-        Position::After | Position::Tail => String::new(),
-        Position::Before => witnesses(component),
+pub fn witness_step(root: &Path, entry: &Entry, family: &str, component: &Component) -> bool {
+    let after_fragment = match component.fragment_position {
+        Position::After => true,
+        Position::Before | Position::Tail => false,
+    };
+    !witnesses(component).is_empty()
+        && !super::finalize::runs_hook(root, entry, family)
+        && (!component.standard_layer || after_fragment)
+}
+
+fn witnesses_in_layer(root: &Path, entry: &Entry, family: &str, component: &Component) -> String {
+    match witness_step(root, entry, family, component)
+        || super::finalize::runs_hook(root, entry, family)
+    {
+        true => String::new(),
+        false => witnesses(component),
     }
 }
 
@@ -428,7 +440,7 @@ fn rest(
         }
         None if overlay_prefixes(root, entry, base_family).is_empty() => {
             out.push_str(&collected(entry, collection, &dir));
-            out.push_str(&witnesses_in_layer(component));
+            out.push_str(&witnesses_in_layer(root, entry, base_family, component));
         }
         None => {}
     }
@@ -458,7 +470,7 @@ fn after_overlays(
     }
 
     out.push_str(&collected(entry, collection, &dir));
-    out.push_str(&witnesses_in_layer(component));
+    out.push_str(&witnesses_in_layer(root, entry, base_family, component));
     out
 }
 

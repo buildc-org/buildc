@@ -70,14 +70,14 @@ const PRIORITY: Say = Say::new(
 
 #[rustfmt::skip]
 const KEY: Node = Node::new("key",
-    "A key that `buildc create key` generates for this component.").about("A component that needs a key declares it here, such as a Secure Boot signing key. `buildc create key` generates the key from this declaration. The build installs the public half into the image at the path that `public` names. The private half stays in `keys/private/`, outside the image and outside git.").example("\"secureboot\"")
+    "A key that `buildc create key` generates for this component.").about("A complete block provides the `<kind>-key` capability and ships the public half as a witness. The public file must exist under `keys/public/` at the path that `public` names.").example("\"secureboot\"")
     .arg(Arg::Str, Say::new("`key` needs a kind", "no kind given",
         "`key \"cosign\" { ... }`, the kind being what `buildc create key` names"))
     .unique(Say::new("key `{}` is declared twice", "already declared above", ""))
     .props(&[], Say::new("unknown key property `{}`", "not part of the schema",
         "a key carries its kind, and everything else as child nodes"))
     .children(&[
-        Node::new("generator", "The generator that writes this key.").about("`buildc create key` offers every key that a component declares. `generator` names the tool that writes this key, and its properties set the key up for what the component uses it for.").example("\"openssl\" profile=\"module-signing\"")
+        Node::new("generator", "The generator that writes this key.").about("`openssl` needs a `profile`, and `bits` is its RSA key size. `cosign` and `ssh-keygen` take no profile.").example("\"openssl\" profile=\"module-signing\"")
             .arg(Arg::One(&GENERATORS), Say::new("`{}` is not a generator the tool has",
                 "not a generator",
                 "the generators are `cosign`, `openssl` and `ssh-keygen`; a manifest picks one \
@@ -97,7 +97,7 @@ const KEY: Node = Node::new("key",
                 "`generator` accepts `profile` and `bits`")),
         Node::new("public",
             "Where the public half ships, which witnesses the `<kind>-key` capability of this \
-             component.").about("Where the build installs the public half in the image. The file also witnesses the `<kind>-key` capability, so another component can `requires` the key.").example("\"/usr/share/secureboot/sb_cert.der\" format=\"der\"")
+             component.").about("The path is absolute and holds no `..` segment. The public file must exist under `keys/public/`, and a `pcr-signing` key takes PEM alone.").example("\"/usr/share/secureboot/sb_cert.der\" format=\"der\"")
             .arg(Arg::Str, Say::new("`public` needs an absolute path", "no path given", ""))
             .once("")
             .missing(NEEDED)
@@ -108,7 +108,7 @@ const KEY: Node = Node::new("key",
                     missing: Say::NONE },
             ], Say::new("unknown `public` property `{}`", "not part of the schema",
                 "`public` accepts `format`")),
-        Node::new("private", "The filename that the private half takes under `keys/private/`.").about("The file name of the private half under `keys/private/`, which git ignores. The build never copies the private half into the image.").example("\"MOK.priv\"")
+        Node::new("private", "The filename that the private half takes under `keys/private/`.").about("The value is a plain filename, so it carries no `/` and does not start with a dot. The scaffolded `.gitignore` keeps `keys/private/` out of the repository.").example("\"MOK.priv\"")
             .arg(Arg::Str, Say::new("`private` needs a filename", "no filename given", ""))
             .once("")
             .missing(NEEDED),
@@ -129,7 +129,9 @@ const GATED: &[Node] = &[
 const PROVIDES_PROPS: &[Prop] = &[
     Prop { name: "witness", kind: Kind::Str,
         desc: "The absolute path in the finished image that witnesses the capability. \
-            Without it, nothing witnesses the capability.",
+            Without it, nothing witnesses the capability. The build checks the path at the end \
+            of the component's layer. If the component ships a finalize hook for the base \
+            family, then the build checks the path after the finalize hooks.",
         say: Say::new("`witness` must be a string", "not a path", ""),
         missing: Say::NONE },
     Prop { name: "build-only", kind: Kind::Bool,
@@ -162,7 +164,7 @@ const CAPABILITY: Node = Node::new("",
 
 #[rustfmt::skip]
 const REQUIRES: Node = Node::new("requires",
-    "A capability that another component must provide, which also orders the build.").about("Names a capability that the image must have for this component to work. A component meets it by its own path, or by a `provides` name equal to it or below it, so `rpm/dnf5` meets `rpm`. The base, a component that the image lists or a component that an `imports` brings must meet it. If none does, then `buildc check` fails, and `buildc import component` offers the providers. `buildc` builds this component after each component that meets it.").example("\"kernel-devel\"")
+    "A capability that another component must provide, which also orders the build.").about("A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.").example("\"kernel-devel\"")
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
     .props(&[], Say::new("`{}` is not a `requires` property", "not part of the schema",
         "`requires` takes capability names alone; a component that chooses its provider \
@@ -171,7 +173,7 @@ const REQUIRES: Node = Node::new("requires",
 
 #[rustfmt::skip]
 const IMPORTS: Node = Node::new("imports",
-    "A component that builds in every image that holds this component.").about("Names a component under `components/` by its path. The imported component builds in every image that holds this component, so the image file does not list it. An image entry at an imported path fails `buildc check`. A path may read an option of this component as `$<name>`, so the image chooses the component in this component's block. Several paths go on one line, as `imports \"a\" \"b\"`, or in a block with one path on each line. In the block, a path's own block sets the imported component's options. A value may read this component's options the same way, and an option that the block does not set takes its default. If two components import one component with different values for one option, then `buildc check` fails.").example("\"container-runtime\"")
+    "A component that builds in every image that holds this component.").about("The value is a component path of lower-case segments joined by `/`, or a `$option` reference that resolves to one. The block of an imported path sets the options that this component passes to that component.").example("\"container-runtime\"")
     .arg(Arg::Names, Say::new("`{}` needs a component path", "nothing named",
         "`imports \"identity\"`, one path for each component that this component brings"))
     .props(&[], Say::new("`{}` is not an `imports` property", "not part of the schema",
@@ -193,14 +195,14 @@ const IMPORTED_OPTION: Node = Node::new("",
 
 #[rustfmt::skip]
 const AFTER: Node = Node::new("after",
-    "A capability that this component builds after, which the component does not require.").about("Names a capability that this component builds after. If an enabled component provides it, then `buildc` builds this component after that component. If no enabled component provides it, then the `after` orders nothing.").example("\"vfio\"")
+    "A capability that this component builds after, which the component does not require.").about("The name orders the build only when something in the image provides it. A name with no provider is allowed and adds no order.").example("\"vfio\"")
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
     .props(&[], Say::new("`{}` is not an `after` property", "not part of the schema",
         "`after` takes capability names alone"))
     .children(&[CAPABILITY], Say::NONE);
 
 #[rustfmt::skip]
-const PACKAGES: Node = Node::new("packages", "The packages that this component installs.").about("Lists the distribution packages that this component installs with the package manager of the base family. A name can carry a version after one `=`, such as `firefox=$version`. The build spells it `firefox-<version>` for dnf and `firefox=<version>` for apt. Several names go on one line, as `packages \"htop\" \"tmux\"`, or in a block with one name on each line. Each `packages` node installs as one batch, so `enablerepo` sits on the node and covers every name in it.").example("\"htop\" \"tmux\"")
+const PACKAGES: Node = Node::new("packages", "The packages that this component installs.").about("A package name is a literal, or a string option reference that resolves to one. The resolved name takes letters, digits and `. _ + : -`, with at most one `=` before a version.").example("\"htop\" \"tmux\"")
     .arg(Arg::Names, Say::new("`packages` needs at least one name", "nothing to install",
         "`packages \"htop\" \"tmux\"`, or `on \"fedora\" { packages \"vim-enhanced\" }` where \
          the names differ by family"))
@@ -251,7 +253,7 @@ const COPR: Node = Node::new("copr",
 #[rustfmt::skip]
 const SATISFIES: Node = Node::new("satisfies",
     "An audit declaration of the benchmarks and rules that this component claims to harden. `buildc` \
-     records the claim and certifies nothing, and the scan checks it after the build.").about("Claims that this component meets rules of a hardening benchmark, such as STIG. The compliance scan checks each claim against the built image, so a false claim shows.")
+     records the claim and certifies nothing, and the scan checks it after the build.").about("Each child is one benchmark, and the child node name is the benchmark. Its string arguments are rule IDs, and a benchmark with none is refused.")
     .once("a component makes one claim set per gate; two blocks in one place split it")
     .children(BENCHMARKS, Say::NONE)
     .lists(&[
@@ -279,7 +281,7 @@ pub(crate) const BENCHMARKS: &[Node] = &[
 
 #[rustfmt::skip]
 const ON: Node = Node::new("on",
-    "The declarations that the build takes only on the named base families.").about("Holds the declarations that differ by base family, such as package names that differ between Fedora and Debian. One `manifest.kdl` can then target several families.").example("\"debian\" \"ubuntu\"")
+    "The declarations that the build takes only on the named base families.").about("A gate names one or more of `fedora`, `rhel`, `debian` and `ubuntu`, and every named family must appear in `targets` when the component names any. Every gate is read, so a bad declaration is reported even where the image does not build that family.").example("\"debian\" \"ubuntu\"")
     .arg(Arg::Strs, Say::new("`on` needs at least one family name", "nothing named",
         "`on \"debian\" \"ubuntu\" { packages \"vim\" }`; one gate takes as many families as \
          share the declaration"))
@@ -307,7 +309,7 @@ const ON: Node = Node::new("on",
 
 #[rustfmt::skip]
 const BASE_FAMILY: Node = Node::new("family",
-    "The family that an image on this base installs as.").about("Names the base family, such as `fedora` or `debian`, which picks the package manager and the family's defaults. If a base names no family, then `buildc check` holds no component to its `targets` on that base.").example("\"fedora\"")
+    "The family that an image on this base installs as.").about("The family selects the package manager adapter and the installer recipe for the image. A component's `targets` is read against this value.").example("\"fedora\"")
     .arg(Arg::Str, Say::new("`family` needs a family name", "no family given",
         "`family \"fedora\"`, the family that an image on this base installs as"))
     .once("")
@@ -316,7 +318,7 @@ const BASE_FAMILY: Node = Node::new("family",
 
 #[rustfmt::skip]
 const BASE_BOOTLOADER: Node = Node::new("bootloader",
-    "The bootloaders that an image on this base can install, with the default first.").about("Lists the bootloaders that the base carries. `buildc create image` offers them when it writes the image's `layout`. If a base names none, then `buildc create image` chooses no bootloader, and the user names one in the `layout`.").example("\"grub2\"")
+    "The bootloaders that an image on this base can install, with the default first.").about("Each name must be `grub2` or `systemd`, the two bootloaders the installer writes.").example("\"grub2\"")
     .arg(Arg::Strs, Say::new("`bootloader` needs a name", "no bootloader given",
         "`bootloader \"grub2\"`, or `bootloader \"grub2\" \"systemd\"` where the base \
          carries both"))
@@ -324,7 +326,7 @@ const BASE_BOOTLOADER: Node = Node::new("bootloader",
 
 #[rustfmt::skip]
 const BASE_SCAP_CONTENT: Node = Node::new("scap-content",
-    "The SSG datastream file that remediates and measures an image on this base, and the pin it is fetched by.").about("Names the SCAP datastream that remediates and measures an image on this base, and pins where it comes from. `buildc generate` fetches the pinned content, checks it against the pinned `sha256` and writes the datastream into `generated/`. The build, the remediation and the scan all read that one file. If the `url` names a `.zip`, then the datastream is the archive member with this filename. If the `url` names no scheme, then it is a path inside the repository. `buildc check` refuses an image that conforms to a benchmark while its base pins no content, so a conforming base writes the pin in the block: `scap-content \"ssg-fedora-ds.xml\" { pin { manual \"why\"; url \"https://...\"; sha256 \"...\" } }`.").example("\"ssg-fedora-ds.xml\"")
+    "The SSG datastream file that remediates and measures an image on this base, and the pin it is fetched by.").about("The value is a bare filename. The `pin` child states the `url` and the `sha256` that the fetched datastream must match.").example("\"ssg-fedora-ds.xml\"")
     .arg(Arg::Str, Say::new("`scap-content` needs a filename", "no file given",
         "`scap-content \"ssg-cs10-ds.xml\"`, the datastream file the pin delivers"))
     .once("")
@@ -333,20 +335,20 @@ const BASE_SCAP_CONTENT: Node = Node::new("scap-content",
 
 #[rustfmt::skip]
 pub const COMPONENT: Node = Node::new("component",
-    "One component, which declares what it builds on, what it needs and what it installs.").about("A component is one reusable part of an image, such as a desktop, a kernel or a set of tools. `manifest.kdl` declares its schema version, what the component needs and provides, what it installs and which families it targets, and the files beside it do the work.").scaffolds(&["schema-version", "description", "targets", "packages"])
+    "One component, which declares what it builds on, what it needs and what it installs.").about("The directory under `components/` is the component's name, and the manifest sits at `manifest.kdl` in it. An image that defines a component inline names it with the path that the image lists.").scaffolds(&["schema-version", "description", "targets", "packages"])
     .children(&[
         FILE_SCHEMA_VERSION,
         Node::new("description", "One line that names the component in the resolved build summary.").example("\"Traditional CLI utilities\"")
             .arg(Arg::Str, Say::new("`description` needs a string", "no description given", ""))
             .once(""),
         Node::new("targets",
-            "The base families that this component builds on, which the image's `family` must match. Omit it to target every family.").about("Lists the base families that the component works on. `buildc check` refuses the component on an image whose base family is not in the list, so a portability gap shows before the build. A component with no `targets` declaration is base-agnostic and targets every family.").example("\"fedora\" \"debian\"")
+            "The base families that this component builds on, which the image's `family` must match. Omit it to target every family.").about("Each name must be `fedora`, `rhel`, `debian` or `ubuntu`. An image whose base family this node omits reports the component as unsupported.").example("\"fedora\" \"debian\"")
             .arg(Arg::Strs, Say::new("`{}` needs at least one family", "nothing named",
                 "`targets \"fedora\"`, one name for each base family the component builds on"))
             .props(&[], Say::new("`{}` is not a `targets` property", "not part of the schema",
                 "`targets` takes family names alone")),
 
-        Node::new("provides", "A capability that this component provides for the components that require it.").about("Names a capability that this component adds to the image, such as `flatpak`. Another component `requires` it by name. If a name declares `witness`, then the build checks the finished image for that file. A name may have `/`-separated segments, and `rpm/dnf5` also meets a requirement for `rpm`. Several names go on one line, as `provides \"a\" \"b\"`, or in a block with one name on each line, where each name carries its own properties.").example("\"flatpak\"")
+        Node::new("provides", "A capability that this component provides for the components that require it.").about("A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `base-image` is provided by a `base` node, so a manifest cannot declare it.").example("\"flatpak\"")
             .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
             .props(PROVIDES_PROPS, Say::new("unknown `provides` property `{}`", "not part of the schema",
                 "`provides` accepts `witness`, `build-only` and `exclusive`"))
@@ -376,18 +378,18 @@ pub const COMPONENT: Node = Node::new("component",
         REQUIRES,
         IMPORTS,
         AFTER,
-        Node::new("removes", "A capability that this component withdraws from the image.").about("Names a capability that the base or another component provides and that this component takes away, such as a tool that its script uninstalls. The image then no longer claims the capability. `buildc` builds this component after every provider of the name. `buildc check` refuses a `removes` that nothing in the image provides, and it refuses every component that requires a removed name. `buildc validate-image` checks that the witness of a removed name is absent from the finished image.").example("\"bootupctl\"")
+        Node::new("removes", "A capability that this component withdraws from the image.").about("A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.").example("\"bootupctl\"")
             .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named",
                 "`removes \"bootupctl\"`, one name for each capability this component takes away"))
             .props(&[], Say::new("`{}` is not a `removes` property", "not part of the schema",
                 "`removes` takes capability names alone"))
             .children(&[CAPABILITY], Say::NONE),
 
-        Node::new("overrides", "An absolute path that this component replaces on purpose.").about("Declares that this component replaces a file that an earlier component also ships. Without it, `buildc check` reports the two overlays as a collision. `buildc check` also reports an override that no earlier component collides with, so an override cannot outlive its reason.").example("\"/etc/containers/policy.json\"")
+        Node::new("overrides", "An absolute path that this component replaces on purpose.").about("The path is absolute, and it must name a file that an earlier component ships. `buildc check` reports an override that replaces nothing, so one cannot outlive the collision it was added for.").example("\"/etc/containers/policy.json\"")
             .arg(Arg::Strs, Say::NONE)
             .props(&[], Say::new("`{}` is not an `overrides` property", "not part of the schema",
                 "")),
-        Node::new("mode", "The octal file mode that one path in the overlay of this component takes.").about("Sets the file mode of one file that the `files/` overlay of the component installs, such as `0600` for a file that only root reads.").example("\"/etc/audit/rules.d/audit.rules\" \"0600\"")
+        Node::new("mode", "The octal file mode that one path in the overlay of this component takes.").about("The path must name a regular file that the component ships under `files/`, and the mode is an octal number up to `07777`. A `fragment` with `standard-layer #false` refuses the mode, because the fragment replaces the layer that would apply it.").example("\"/etc/audit/rules.d/audit.rules\" \"0600\"")
             .arg(Arg::StrPair("path", "octal mode"),
                 Say::new("`mode` needs one path and one octal file mode", "incomplete",
                     "`mode \"/etc/example.conf\" \"0644\"`"))
@@ -397,15 +399,15 @@ pub const COMPONENT: Node = Node::new("component",
 
         KEY,
 
-        Node::new("secret", "A build secret that the layer of this component mounts.").about("Names a build secret that the layer of this component reads, such as a signing key. The layer mounts it at `/run/secrets/<name>`, so the secret is there while the component builds and never lands in the image.").example("\"mok_privkey\"")
+        Node::new("secret", "A build secret that the layer of this component mounts.").about("Each name is the ID of a BuildKit secret that the component layer mounts at `/run/secrets/<name>`. The value comes from the build command, and a secret the build does not supply is not an error.").example("\"mok_privkey\"")
             .arg(Arg::Strs, Say::new("`{}` needs a name", "nothing named", "")),
-        Node::new("arg", "A build argument that the layer of this component reads.").about("Names a build argument that the layer of this component reads as an environment variable, such as the kernel version to install.").example("\"KERNEL\"")
+        Node::new("arg", "A build argument that the layer of this component reads.").about("Each name becomes an environment variable in the component's layer script. The value comes from a build argument, and the manifest does not hold it.").example("\"KERNEL\"")
             .arg(Arg::Strs, Say::new("`{}` needs a name", "nothing named", "")),
-        Node::new("helpers", "Files from this component that every component layer mounts by basename into `/ctx/lib`.").about("Shares shell helpers from this component with every other component. The build mounts each listed file by its basename into `/ctx/lib` in every component layer, so another component can source it.").example("\"lib/family.sh\"")
+        Node::new("helpers", "Files from this component that every component layer mounts by basename into `/ctx/lib`.").about("The path is relative to the component directory, and the file must exist there. The basename is the mount name, so two enabled components cannot share a basename.").example("\"lib/family.sh\"")
             .arg(Arg::Strs, Say::new("`helpers` needs a path", "nothing named", "")),
 
         Node::new("allow-verify",
-            "One `buildc validate-image` diagnostic that the check accepts on one unit, while the check still covers every other diagnostic and unit of the image.").about("`buildc validate-image` checks the systemd units of the finished image. If one unit of this component raises an expected diagnostic, then this accepts that one diagnostic on that one unit. The check still covers every other diagnostic and unit.").example("\"man-page-missing\" unit=\"plasmalogin.service\"")
+            "One `buildc validate-image` diagnostic that the check accepts on one unit, while the check still covers every other diagnostic and unit of the image.").about("The class must be one that `buildc validate-image` reports, and the same class on the same unit is accepted once.").example("\"man-page-missing\" unit=\"plasmalogin.service\"")
             .arg(Arg::Str, Say::NONE)
             .props(&[
                 Prop { name: "unit", kind: Kind::Str,
@@ -416,7 +418,7 @@ pub const COMPONENT: Node = Node::new("component",
                 "`allow-verify` accepts `unit`")),
 
         Node::new("refuses",
-            "One benchmark rule that this component leaves unsatisfied on purpose.").about("A hardening rule can break what a component does. This records that the component leaves one rule unsatisfied on purpose, and `because=` says why. Remediation then does not set the rule, and the choice is visible to every image.").example("\"grub2_nousb_argument\" because=\"it removes the keyboard\"")
+            "One benchmark rule that this component leaves unsatisfied on purpose.").about("The `because` reason states why the rule stays unsatisfied, and a refusal without one is reported. The same rule may be refused once in a component.").example("\"grub2_nousb_argument\" because=\"it removes the keyboard\"")
             .arg(Arg::Str, Say::new("`refuses` needs a rule ID", "nothing named",
                 "`refuses \"grub2_nousb_argument\" because=\"it removes the keyboard\"`"))
             .unique(Say::new("`{}` is refused twice", "already refused above", ""))
@@ -432,7 +434,7 @@ pub const COMPONENT: Node = Node::new("component",
                  `allow-remediation` for the rule, then remediation can set it.",
             ]),
 
-        Node::new("collects", "A filename that this component gathers from every component that ships one. A collector claims one filename across the image.").about("Builds one file from parts that many components ship, such as a list of Flatpak apps. This component claims the file name, every component that ships a file of that name contributes a part, and the finalize phase assembles the parts at `into=`.").example("\"flatpaks.list\" into=\"/usr/share/flatpak-defaults/apps.list\" priority=500")
+        Node::new("collects", "A filename that this component gathers from every component that ships one. A collector claims one filename across the image.").about("The filename is claimed once across the image, and `into` must be an absolute path. `buildc check` reports a shipped file that no enabled collector claims.").example("\"flatpaks.list\" into=\"/usr/share/flatpak-defaults/apps.list\" priority=500")
             .arg(Arg::Str, Say::NONE)
             .props(&[
                 Prop { name: "into", kind: Kind::Str,
@@ -463,7 +465,7 @@ pub const COMPONENT: Node = Node::new("component",
                 "`contributes` accepts `priority`")),
 
         Node::new("fragment",
-            "Where the component's `Containerfile.inc` goes in relation to the generated layer.").about("A component whose needs the fields cannot express ships a `Containerfile.inc`, which the build adds verbatim. This places those lines relative to the generated layer.").example("position=\"after\"")
+            "Where the component's `Containerfile.inc` goes in relation to the generated layer.").about("Shipping `Containerfile.inc` is what adds a fragment, so a component that ships none is refused. A `fragment` with `standard-layer #false` refuses `position`, because the fragment is then the whole layer.").example("position=\"after\"")
             .arg(Arg::None, Say::new("`fragment` takes no arguments", "unexpected value",
                 "`fragment position=\"after\"`"))
             .once("")
@@ -471,7 +473,10 @@ pub const COMPONENT: Node = Node::new("component",
                 Prop { name: "position", kind: Kind::One(&["before", "after", "tail"]),
                     desc: "Where the fragment goes. `before`, the default, puts it above the \
                         generated block. `after` puts it below the block. `tail` puts it below the \
-                        finalize layer, where the lineage stage has ended and can be named.",
+                        finalize layer, where the lineage stage has ended and can be named. If \
+                        the component ships no finalize hook, then a witness of an `after` \
+                        component is checked after the fragment, and a witness of a `tail` \
+                        component is checked at the end of its own layer.",
                     say: Say::new("`position` must be \"before\", \"after\" or \"tail\"", "not a position",
                         "before, the default, puts the fragment above the generated block; after \
                          puts it below; tail puts it below the finalize layer, where the lineage \
@@ -495,7 +500,7 @@ pub const COMPONENT: Node = Node::new("component",
         options::OPTION,
         options::VARIANT,
         asset::ASSET,
-        Node::new("network", "The declaration that the script step of this component reaches the network.").about("Declares that the scripts of this component need the network. A repository with a `strict` script rule opens the network only for the components that declare it.").example("\"scripts\"")
+        Node::new("network", "The declaration that the script step of this component reaches the network.").about("The only value is `scripts`, because the package step already declares its network use. Only a `strict` script rule in `repo.kdl` reads the node.").example("\"scripts\"")
             .arg(Arg::One(&["scripts"]), Say::new("`{}` is not a step this component declares",
                 "not a step",
                 "`network \"scripts\"`; a `packages`, `copr` or repo file already declares the \
@@ -514,7 +519,7 @@ pub const COMPONENT: Node = Node::new("component",
 
         ON,
 
-        Node::new("base", "The image reference that an image on this base builds from. It makes the component a base.").about("Names the upstream bootc image that a base stands for, and makes the component a base. A base provides `base-image` exclusively, so an image holds one. The reference usually reads the base's `version` option, as `base \"quay.io/fedora/fedora-bootc:$version\"` does, so the image sets the version on the base's entry. A block after the reference holds what the base states about itself. A base with no block is valid, and each field it leaves out takes the effect its own row states.").example("\"quay.io/fedora/fedora-bootc:$version\"")
+        Node::new("base", "The image reference that an image on this base builds from. It makes the component a base.").about("The reference may carry a `$option` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.").example("\"quay.io/fedora/fedora-bootc:$version\"")
             .arg(Arg::Str, Say::new("`base` needs an image reference", "no image given",
                 "`base \"quay.io/fedora/fedora-bootc:$version\"`, the reference a build on this base starts from"))
             .once("")
@@ -604,7 +609,7 @@ fn spread(
     src: &Source,
     issues: &mut Issues,
 ) {
-    let mut said: Option<Span> = None;
+    let mut last_span: Option<Span> = None;
     for mut batch in std::mem::take(batches) {
         let families: Vec<String> = match (batch.family.is_empty(), targets.is_empty()) {
             (false, _) => vec![std::mem::take(&mut batch.family)],
@@ -614,10 +619,11 @@ fn spread(
                 .map(|family| (*family).to_string())
                 .collect(),
         };
-        let first = said.replace(batch.span) != Some(batch.span);
+        let first_for_span = last_span != Some(batch.span);
+        last_span = Some(batch.span);
         if let Some(stray) = families.iter().find(|family| !rpm(family)) {
             if dnf_only {
-                if first {
+                if first_for_span {
                     issues.push(
                         Issue::new(format!("`{block}` is dnf's, and this one covers `{stray}`"), src)
                         .at(batch.span, "no group installer on this family")
@@ -627,7 +633,7 @@ fn spread(
                 continue;
             }
             if batch.enablerepo.is_some() {
-                if first {
+                if first_for_span {
                     issues.push(
                         Issue::new(format!("`enablerepo` is dnf's, and this batch covers `{stray}`"), src)
                             .at(batch.span, "no repo to enable on this family")

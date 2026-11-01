@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "buildc"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "clap",
  "common",

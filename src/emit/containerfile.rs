@@ -232,19 +232,12 @@ pub fn sections(
         if let Some(body) = at(Position::After) {
             blocks.push(fragment(image, entry, body));
         }
-        let witness_after_block = (!component.standard_layer
-            && component.fragment_position != Position::Tail)
-            || (component.standard_layer && component.fragment_position == Position::After);
-        if witness_after_block && !component_build::witnesses(component).is_empty() {
+        if component_build::witness_step(root, entry, family, component) {
             let script = component_build::witness_path(image, entry);
             blocks.push(witness_layer(entry, &script));
         }
         if let Some(body) = at(Position::Tail) {
             tails.push(fragment(image, entry, body));
-            if !component_build::witnesses(component).is_empty() {
-                let script = component_build::witness_path(image, entry);
-                tails.push(witness_layer(entry, &script));
-            }
         }
 
         if let Some(flavour) = &entry.flavour {

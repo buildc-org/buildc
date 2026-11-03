@@ -2278,7 +2278,12 @@ fn a_zip_without_the_named_datastream_refuses_the_generate() {
         .issues
         .plain();
     std::fs::remove_dir_all(&root).expect("the scratch repository goes");
-    assert!(said.contains("holds no ssg-cs10-ds.xml"), "{said}");
+    let flat = said
+        .replace('|', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(flat.contains("holds no ssg-cs10-ds.xml"), "{said}");
 }
 
 #[test]

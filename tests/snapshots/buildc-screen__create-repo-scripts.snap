@@ -10,7 +10,7 @@ Buffer {
         "  [ ] buildc.sh  fetches and runs the buildc release that repo.kdl pins         ",
         "  [ ] smoke.sh  boots a built image under qemu and waits for ssh                ",
         "  [ ] vm.sh  builds a disk image and boots it                                   ",
-        "                                                                                ",
+        "  [ ] media.sh  assembles the installer media and boots it                      ",
         "                                                                                ",
         "                                                                                ",
         "                                                                                ",
@@ -51,6 +51,8 @@ Buffer {
         x: 64, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 13, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 45, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 16, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 58, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 31, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 13, y: 31, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]

@@ -1,42 +1,5 @@
-# renovate: datasource=docker depName=docker.io/library/golang
-ARG GO_IMAGE=docker.io/library/golang:1.26
 # renovate: datasource=docker depName=quay.io/fedora/fedora-bootc
 ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44
-
-FROM ${GO_IMAGE} AS tools
-ARG TACKLEBOX_ORG=buildc-org
-ARG TACKLEBOX_COMMIT=a536788bac2eaeb1403cb2855a7f3b4bc2a1a029
-ARG TACKLEBOX_SHA256=9116d68d4bb2030398a1759ac6c029a0f4d8a2edb513e018a54aeaaf144e5ebc
-COPY efi-from-image.patch /tmp/efi-from-image.patch
-RUN set -eux; \
-    fetch() { \
-        curl --retry 3 -fsSLo "/tmp/$2.tar.gz" \
-            "https://github.com/$1/$2/archive/$3.tar.gz"; \
-        echo "$4  /tmp/$2.tar.gz" | sha256sum -c -; \
-        mkdir -p "/src/$2"; \
-        tar -xf "/tmp/$2.tar.gz" -C "/src/$2" --strip-components=1; \
-    }; \
-    fetch "${TACKLEBOX_ORG}" tacklebox "${TACKLEBOX_COMMIT}" "${TACKLEBOX_SHA256}"; \
-    git -C /src/tacklebox apply -p1 /tmp/efi-from-image.patch; \
-    mkdir -p /out; \
-    cd /src/tacklebox && CGO_ENABLED=0 go build -trimpath -o /out/tacklebox ./cmd/tacklebox
-
-ARG INSTALLER_VERSION=0.1.5
-ARG INSTALLER_SHA256_X86_64=ee8f0548545378e66161f427f514928cf35683b916b591550108f0cb8c42b7e8
-ARG INSTALLER_SHA256_AARCH64=0c2e3f6da8d13579d3d9e2b1c644cbde7611fdc0c28225a727105d336c488b29
-RUN set -eux; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-        x86_64) sha="${INSTALLER_SHA256_X86_64}";; \
-        aarch64) sha="${INSTALLER_SHA256_AARCH64}";; \
-        *) echo "the installer publishes no release for ${arch}" >&2; exit 1;; \
-    esac; \
-    asset="bootc-anywhere-v${INSTALLER_VERSION}-${arch}-linux-gnu.tar.gz"; \
-    curl --retry 3 -fsSLo /tmp/installer.tar.gz \
-        "https://github.com/buildc-org/bootc-anywhere/releases/download/v${INSTALLER_VERSION}/${asset}"; \
-    echo "${sha}  /tmp/installer.tar.gz" | sha256sum -c -; \
-    mkdir -p /out; \
-    tar -xf /tmp/installer.tar.gz -C /out bootc-anywhere
 
 FROM ${LIVE_BASE}
 
@@ -54,13 +17,13 @@ RUN set -eux; \
     if command -v apt-get > /dev/null 2>&1; then \
         apt-get update -y; \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            podman cryptsetup openssl fdisk util-linux passwd policycoreutils kbd \
+            podman cryptsetup openssl fdisk util-linux passwd policycoreutils kbd curl tar \
             dosfstools e2fsprogs xfsprogs btrfs-progs; \
         apt-get clean -y; \
         rm -rf /var/lib/apt/lists/*; \
     else \
         dnf install -y --setopt=install_weak_deps=False \
-            podman cryptsetup openssl util-linux shadow-utils policycoreutils kbd \
+            podman cryptsetup openssl util-linux shadow-utils policycoreutils kbd curl tar \
             dosfstools e2fsprogs xfsprogs; \
         if [ -s /usr/share/buildc/boot-chain ] && [ ! -d /usr/lib/efi/grub2 ]; then \
             if ! dnf reinstall -y --setopt=install_weak_deps=False grub2-efi-x64; then \
@@ -159,7 +122,21 @@ QUIET
 
 RUN systemctl enable var-lib-buildc-store.mount var-lib-containers-storage.mount
 
-COPY --from=tools /out/bootc-anywhere /usr/bin/bootc-anywhere
+ARG INSTALLER_VERSION=0.1.5
+ARG INSTALLER_SHA256_X86_64=ee8f0548545378e66161f427f514928cf35683b916b591550108f0cb8c42b7e8
+ARG INSTALLER_SHA256_AARCH64=0c2e3f6da8d13579d3d9e2b1c644cbde7611fdc0c28225a727105d336c488b29
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+        x86_64) sha="${INSTALLER_SHA256_X86_64}";; \
+        aarch64) sha="${INSTALLER_SHA256_AARCH64}";; \
+        *) echo "the installer publishes no release for ${arch}" >&2; exit 1;; \
+    esac; \
+    asset="bootc-anywhere-v${INSTALLER_VERSION}-${arch}-linux-gnu.tar.gz"; \
+    curl --retry 3 -fsSLo /tmp/installer.tar.gz \
+        "https://github.com/buildc-org/bootc-anywhere/releases/download/v${INSTALLER_VERSION}/${asset}"; \
+    echo "${sha}  /tmp/installer.tar.gz" | sha256sum -c -; \
+    tar -xf /tmp/installer.tar.gz -C /usr/bin bootc-anywhere
 RUN /usr/bin/bootc-anywhere --version
 
 # kmscon needs a DRM card to draw the installer on the console.

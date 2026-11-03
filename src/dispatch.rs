@@ -621,6 +621,20 @@ pub fn dispatch(
             )?;
             Ok(ExitCode::SUCCESS)
         }
+        Verb::MediaBuild | Verb::MediaRun => {
+            let root = repo_root(here)?;
+            let opts = crate::vm::Options {
+                target,
+                image: images.last().cloned(),
+                tag: tags.last().cloned(),
+                ram,
+                rebuild,
+            };
+            one_name(rest, name)?;
+            let noun = name.rsplit(' ').next().expect("a media command has a noun");
+            crate::media::run(&root, noun, &opts)?;
+            Ok(ExitCode::SUCCESS)
+        }
         Verb::RegistryNamespace => {
             println!("{}", crate::registry::namespace(&repo_root(here)?)?);
             Ok(ExitCode::SUCCESS)

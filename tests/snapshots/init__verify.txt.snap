@@ -31,10 +31,10 @@ source: tests/golden/harness.rs
   x `generated/snapshot.json` is not what this repository generates
    ,-[generated/snapshot.json:2:1]
  1 | {
- 2 |   "root": "169f9249c63864dc497e08d6073d1a014012aa8d3c45fb4bc156f6e10a3c54aa",
+ 2 |   "root": "af9b03b2fa30b48cad076bcf136467d042bd17da43c3cd80a94c9301d5b6f987",
    : ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   :                                       `-- generated:   "root": "aae92b921ea0f48dab0055fd585b8e2bf6f378b6daab0bfb0714b6484d647b54",
- 3 |   "files": 20
+   :                                       `-- generated:   "root": "8e6aba7d538b27a5a8d493ac3785e733bac6a334afda1888c017905e0e2a06ea",
+ 3 |   "files": 26
    `----
   help: run `buildc generate` and commit what it writes
 
@@ -51,6 +51,6 @@ source: tests/golden/harness.rs
 ==== and generated again
 smoke-test.yml is gone
 ==== never generated
-  x 20 generated files are not there
-  help: run `buildc generate` and commit what it writes; it writes all 20 of
+  x 26 generated files are not there
+  help: run `buildc generate` and commit what it writes; it writes all 26 of
         them

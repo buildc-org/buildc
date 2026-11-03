@@ -5,8 +5,13 @@ source: tests/golden/harness.rs
 ==== generated/lib/dkms-helpers.sh
 ==== generated/lib/fetch-helpers.sh
 ==== generated/lib/kernel-helpers.sh
+==== generated/lib/media/90buildc-live/module-setup.sh
+==== generated/lib/media/90buildc-live/parse-live.sh
+==== generated/lib/media/90buildc-live/live-generator.sh
+==== generated/lib/media/90buildc-live/live-root.sh
 ==== generated/lib/selinux-helpers.sh
 ==== generated/lib/sign-helpers.sh
+==== generated/lib/vm-helpers.sh
 ==== generated/lib/wrap-helpers.sh
 ==== generated/lib/build-record.sh
 ==== generated/scripts/lint.sh
@@ -297,11 +302,14 @@ done
 die "ssh did not answer in ten minutes; the serial console is ${dir}/console.log"
 ==== generated/scripts/vm.sh
 #!/usr/bin/env bash
+# shellcheck disable=SC2034,SC2154
 set -euo pipefail
 
 RENDERER=/usr/libexec/grub-menu-from-bls
-cd "$(dirname "$0")/.."
+here="$(cd "$(dirname "$0")" && pwd)"
+cd "$here/.."
 [ -f repo.kdl ] || cd ..
+source ./generated/lib/vm-helpers.sh
 
 die() {
     echo "vm: $*" >&2
@@ -310,29 +318,26 @@ die() {
 
 usage() {
     cat >&2 << 'EOF'
-usage: generated/scripts/vm.sh <command> <qcow2|raw|iso> [options]
+usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
 
   build     convert the container image into a disk image under out/
   run       boot that disk image under qemu, building it if it is missing
-  spawn     boot it with systemd-vmspawn instead (qcow2 or raw)
+  spawn     boot it with systemd-vmspawn instead
+
+  An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
                       the plan's ungated published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
   --target <image/flavour>
-                      what a rebuild builds and what an iso installs
-                      (default: the plan's ungated target)
+                      what a rebuild builds (default: the plan's ungated target)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
   --installer <which> what converts the image into a disk: `bib` for
                       bootc-image-builder, `bootc` for `bootc install to-disk`.
                       `buildc vm` passes this off the target's base family; the
-                      default here is bib, which is fedora-only. An iso is
-                      converted by neither and passes none.
-  --live-image <ref>  what the installer media boots, built here from
-                      out/bootiso/Containerfile. `buildc vm` names it, because
-                      this script has no JSON reader to find it with.
+                      default here is bib, which is fedora-only.
 
 Environment:
   BIB_IMAGE           bootc-image-builder image
@@ -360,9 +365,9 @@ esac
 type="${1:-}"
 shift || true
 case "${command}/${type}" in
-    */qcow2 | */raw | build/iso | run/iso) ;;
-    spawn/iso) die "systemd-vmspawn cannot boot an installer iso" ;;
-    *) die "'${command}' needs an image type (qcow2, raw or iso)" ;;
+    */qcow2 | */raw) ;;
+    */iso) die "an installer iso is \`buildc media build\`, not a vm disk" ;;
+    *) die "'${command}' needs an image type (qcow2 or raw)" ;;
 esac
 
 image=""
@@ -371,13 +376,12 @@ target=""
 rebuild=0
 ram=8G
 installer=bib
-live_image=""
 login=0
 ssh_key=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --image | --tag | --target | --ram | --installer | --ssh-key | --live-image)
+        --image | --tag | --target | --ram | --installer | --ssh-key)
             [ "$#" -ge 2 ] || die "$1 needs a value"
             case "$1" in
                 --image) image="$2" ;;
@@ -385,7 +389,6 @@ while [ $# -gt 0 ]; do
                 --target) target="$2" ;;
                 --ram) ram="$2" ;;
                 --ssh-key) ssh_key="$2" ;;
-                --live-image) live_image="$2" ;;
                 --installer)
                     case "$2" in
                         bib | bootc) installer="$2" ;;
@@ -420,39 +423,7 @@ else
     ref="$(IMAGE_REGISTRY=localhost ./generated/scripts/buildc.sh registry ref --tag "$tag")"
 fi
 
-staged=out/bootiso
 image_file="out/${type}/disk.${type}"
-[ "$type" != iso ] || image_file="${staged}/install.iso"
-
-sudoif() {
-    if [ "${UID}" -eq 0 ]; then
-        "$@"
-    elif [ -n "${SUDO_ASKPASS:-}${SSH_ASKPASS:-}" ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-        SUDO_ASKPASS="${SUDO_ASKPASS:-${SSH_ASKPASS}}" sudo --askpass "$@"
-    else
-        sudo "$@"
-    fi
-}
-
-# The disk builders run rootful and read root's store, so a rootless build's image is copied across when the image IDs differ.
-load_rootful() {
-    if [ "${UID}" -eq 0 ] || [ -n "${SUDO_USER:-}" ]; then
-        return 0
-    fi
-    if ! podman image exists "$ref"; then
-        sudoif podman image exists "$ref" || sudoif podman pull "$ref"
-        return 0
-    fi
-    local mine theirs tmp
-    mine="$(podman images --filter reference="$ref" --format '{{.ID}}')"
-    theirs="$(sudoif podman images --filter reference="$ref" --format '{{.ID}}')"
-    [ "$mine" != "$theirs" ] || return 0
-    mkdir -p out
-    tmp="$(mktemp -p "${PWD}/out" -d scp.XXXXXXXX)"
-    sudoif env "TMPDIR=${tmp}" podman image scp \
-        "${UID}@localhost::${ref}" "root@localhost::${ref}"
-    rm -rf "$tmp"
-}
 
 build_disk() {
     local config=disk_config/disk.toml tmp
@@ -565,135 +536,6 @@ install_disk() {
     fi
 }
 
-build_iso() {
-    local tools=localhost/bootc-anywhere-tools:latest tbx="${PWD}/${staged}/tacklebox"
-    local build="${PWD}/${staged}/build"
-    [ -n "$live_image" ] || die "--live-image names what the media boots; \`buildc vm\` passes it"
-    [ -f "${staged}/Containerfile" ] \
-        || die "${staged}/Containerfile is not there; \`buildc vm build iso\` stages it"
-
-    load_rootful
-
-    local manifest image_id
-    manifest="$(sudoif podman image inspect --format '{{.ManifestType}}' "$ref")" \
-        || die "cannot read the manifest type of ${ref} from root's store"
-    if [ "$manifest" != "application/vnd.oci.image.manifest.v1+json" ]; then
-        sudoif skopeo copy --quiet --format oci \
-            "containers-storage:${ref}" "containers-storage:${ref}" \
-            || die "cannot store ${ref} as OCI in root's store"
-    fi
-    image_id="$(sudoif podman image inspect --format '{{.Id}}' "$ref")" \
-        || die "cannot read the image ID of ${ref} from root's store"
-    if ! [[ "$image_id" =~ ^[0-9a-f]{64}$ ]]; then
-        die "podman named no image ID for ${ref}: ${image_id}"
-    fi
-    printf '%s\n' "$image_id" > "${staged}/image-id"
-
-    rm -f "${image_file}.part"
-
-    sudoif env HOME=/root \
-        TOOLS="$tools" LIVE="$live_image" STAGED="${PWD}/${staged}" TBX="$tbx" \
-        BUILD="$build" ISO="${PWD}/${image_file}.part" OWNER="$(id -u):$(id -g)" \
-        bash -s << 'ROOT' || die "the media could not be assembled; the staging is under ${build}"
-set -euo pipefail
-
-unmount_offline_store() {
-    if mountpoint -q "${BUILD}/tbox-offline-store/overlay" 2> /dev/null; then
-        umount "${BUILD}/tbox-offline-store/overlay"
-    fi
-}
-
-finish() {
-    unmount_offline_store
-    chown -R "$OWNER" "$STAGED"
-}
-trap finish EXIT
-
-podman build --target tools -t "$TOOLS" "$STAGED"
-cid="$(podman create "$TOOLS")"
-podman cp "${cid}:/out/tacklebox" "$TBX"
-podman rm "$cid" > /dev/null
-
-podman build -t "$LIVE" "$STAGED"
-
-unmount_offline_store
-env HOME=/root "$TBX" build "${STAGED}/media.json" --iso "$ISO" -b "$BUILD" \
-    --media-bootloader grub2 --offline-store-format oci
-ROOT
-
-    mv -f "${image_file}.part" "$image_file"
-}
-
-login_credentials() {
-    vm_user="${VM_USER:-buildc}"
-    # The name reaches a systemd credential key and a sysusers line, so it is held to the Linux account-name alphabet.
-    if ! [[ "$vm_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || [ "${#vm_user}" -gt 31 ]; then
-        die "VM_USER must be a Linux user name of at most 31 characters"
-    fi
-    vm_password_hash="${VM_PASSWORD_HASH:-}"
-    if [ -z "$vm_password_hash" ]; then
-        [ -t 0 ] || die "set VM_PASSWORD_HASH when no terminal can ask for a VM password"
-        command -v openssl > /dev/null 2>&1 \
-            || die "openssl is not installed, and it hashes the VM password"
-        read -rsp "vm: password for ${vm_user}: " vm_password
-        echo
-        [ -n "$vm_password" ] || die "the VM password cannot be empty"
-        read -rsp "vm: password again: " repeated
-        echo
-        [ "$vm_password" = "$repeated" ] || die "the VM passwords do not match"
-        vm_password_hash="$(printf '%s\n' "$vm_password" | openssl passwd -6 -stdin)"
-        unset vm_password repeated
-    fi
-    # The run path passes the hash in a space-separated string, so whitespace would split the credential.
-    [[ "$vm_password_hash" != *[[:space:]]* ]] \
-        || die "VM_PASSWORD_HASH must not contain whitespace"
-    sysusers="u ${vm_user} - \"VM user\" /var/home/${vm_user} /bin/bash"
-    echo "vm: login as ${vm_user}; credentials provision the account on its first boot"
-}
-
-partitioned() {
-    [ -f "$1" ] || return 1
-    [ "$(dd if="$1" bs=1 skip=510 count=2 2> /dev/null | od -An -tx1 | tr -d ' \n')" = "55aa" ]
-}
-
-run_qemu() {
-    local port=8006 arguments sysusers_base64 credential_args=() storage=() media=()
-    if [ "$type" = iso ]; then
-        mkdir -p "${staged}/storage"
-        storage=(--volume "${PWD}/${staged}/storage":/storage)
-    fi
-    media=(--volume "${PWD}/${image_file}":"/boot.${type}")
-    if [ "$type" = iso ] && partitioned "${staged}/storage/data.img"; then
-        media=()
-        echo "vm: the storage disk has a partition table; booting the disk"
-        echo "vm: remove ${staged}/storage to boot the installer again"
-    fi
-    while ss -tunal | grep -q ":${port} "; do
-        port=$((port + 1))
-    done
-    if [ "$login" = 1 ]; then
-        sysusers_base64="$(printf %s "$sysusers" | base64 -w0)"
-        arguments="-smbios type=11,value=io.systemd.credential.binary:sysusers.extra=${sysusers_base64}"
-        arguments+=" -smbios type=11,value=io.systemd.credential:passwd.hashed-password.${vm_user}=${vm_password_hash}"
-        credential_args=(--env "ARGUMENTS=${arguments}")
-    fi
-    echo "vm: connect to http://localhost:${port}"
-    (sleep 30 && xdg-open "http://localhost:${port}") &
-    podman run \
-        --rm --privileged --pull=newer \
-        --publish "127.0.0.1:${port}:8006" \
-        --env CPU_CORES=4 \
-        --env "RAM_SIZE=${ram}" \
-        --env DISK_SIZE=64G \
-        --env TPM=Y \
-        --env "GPU=${GPU:-N}" \
-        "${credential_args[@]}" \
-        "${storage[@]}" \
-        --device=/dev/kvm \
-        "${media[@]}" \
-        docker.io/qemux/qemu
-}
-
 if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
     if [ "$rebuild" = 1 ]; then
         ./generated/scripts/buildc.sh generate
@@ -701,14 +543,9 @@ if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
         [ -z "$target" ] || args+=(--target "$target")
         ./generated/scripts/buildc.sh build "${args[@]}"
     fi
-    case "$type" in
-        iso) build_iso ;;
-        *)
-            case "$installer" in
-                bib) build_disk ;;
-                *) install_disk ;;
-            esac
-            ;;
+    case "$installer" in
+        bib) build_disk ;;
+        *) install_disk ;;
     esac
 fi
 
@@ -736,6 +573,317 @@ case "$command" in
             "${spawn_args[@]}" \
             -i "$image_file"
         ;;
+esac
+==== generated/scripts/media.sh
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+cd "$here/.."
+[ -f repo.kdl ] || cd ..
+source ./generated/lib/vm-helpers.sh
+
+die() {
+    echo "media: $*" >&2
+    exit 1
+}
+
+usage() {
+    cat >&2 << 'EOF'
+usage: generated/scripts/media.sh <build|run> [options]
+
+  build     assemble the installer ISO under out/bootiso/
+  run       boot that ISO under qemu, building it if it is missing
+
+  --image <ref>       container image the media installs (default: localhost/
+                      and the plan's ungated published name)
+  --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
+  --target <image/flavour>
+                      the target the media installs (default: the plan's
+                      ungated target)
+  --rebuild           generate, then build the container image first. The one
+                      form of this that changes the repository.
+  --ram <size>        memory for the virtual machine (default: 8G)
+  --live-image <ref>  what the media boots, built here from out/bootiso/
+                      Containerfile. `buildc media` names it, because this
+                      script has no JSON reader to find it with.
+
+Environment:
+  VM_USER             console account passed as a systemd credential (default: buildc)
+  VM_PASSWORD_HASH    its crypt(5) hash; when unset, run asks for a password
+  GPU                 Y for hardware rendering in the qemu viewer (default: N)
+EOF
+}
+
+command="${1:-}"
+case "$command" in
+    build | run) shift ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        die "unknown command '${command}'"
+        ;;
+esac
+
+image=""
+tag="${DEFAULT_TAG:-latest}"
+target=""
+rebuild=0
+ram=8G
+live_image=""
+login=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --image | --tag | --target | --ram | --live-image)
+            [ "$#" -ge 2 ] || die "$1 needs a value"
+            case "$1" in
+                --image) image="$2" ;;
+                --tag) tag="$2" ;;
+                --target) target="$2" ;;
+                --ram) ram="$2" ;;
+                --live-image) live_image="$2" ;;
+            esac
+            shift 2
+            ;;
+        --rebuild)
+            rebuild=1
+            shift
+            ;;
+        --login)
+            login=1
+            shift
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage
+            die "unknown argument '$1'"
+            ;;
+    esac
+done
+
+if [ -n "$image" ]; then
+    ref="${image}:${tag}"
+else
+    ref="$(IMAGE_REGISTRY=localhost ./generated/scripts/buildc.sh registry ref --tag "$tag")"
+fi
+
+type=iso
+staged=out/bootiso
+image_file="${staged}/install.iso"
+
+build_media() {
+    [ -n "$live_image" ] || die "--live-image names what the media boots; \`buildc media\` passes it"
+    [ -f "${staged}/Containerfile" ] \
+        || die "${staged}/Containerfile is not there; \`buildc media build\` stages it"
+    [ -f "${staged}/media.json" ] \
+        || die "${staged}/media.json is not there; \`buildc media build\` stages it"
+
+    load_rootful
+    rm -f "${image_file}.part"
+
+    sudoif env HOME=/root LIVE="$live_image" PAYLOAD="$ref" \
+        STAGED="${PWD}/${staged}" BUILD="${PWD}/${staged}/build" \
+        ISO="${PWD}/${image_file}.part" OWNER="$(id -u):$(id -g)" \
+        MODULE="${PWD}/generated/lib/media/90buildc-live" \
+        bash -s << 'ROOT' || die "the media could not be assembled; the staging is under ${PWD}/${staged}/build"
+set -euo pipefail
+
+die() {
+    echo "media: $*" >&2
+    exit 1
+}
+
+for tool in jq podman skopeo mksquashfs mkfs.fat mcopy xorriso; do
+    command -v "$tool" > /dev/null 2>&1 \
+        || die "$tool is not installed, and it assembles the media"
+done
+
+mount_point=""
+cleanup() {
+    if mountpoint -q "${BUILD}/store/overlay" 2> /dev/null; then
+        umount "${BUILD}/store/overlay" 2> /dev/null || true
+    fi
+    if [ -n "$mount_point" ]; then
+        podman image unmount "$LIVE" > /dev/null 2>&1 || true
+    fi
+    chown -R "$OWNER" "$STAGED"
+}
+trap cleanup EXIT
+
+manifest="$(podman image inspect --format '{{.ManifestType}}' "$PAYLOAD")" \
+    || die "cannot read the manifest type of ${PAYLOAD} from root's store"
+if [ "$manifest" != "application/vnd.oci.image.manifest.v1+json" ]; then
+    skopeo copy --quiet --format oci \
+        "containers-storage:${PAYLOAD}" "containers-storage:${PAYLOAD}" \
+        || die "cannot store ${PAYLOAD} as OCI"
+fi
+
+image_id="$(podman image inspect --format '{{.Id}}' "$PAYLOAD")" \
+    || die "cannot read the image ID of ${PAYLOAD}"
+[[ "$image_id" =~ ^[0-9a-f]{64}$ ]] || die "podman named no image ID for ${PAYLOAD}"
+printf '%s\n' "$image_id" > "${STAGED}/image-id"
+
+media_name="$(jq -r '.media_name' "${STAGED}/media.json")"
+env_id="$(jq -r '.bootable_environments[0].id' "${STAGED}/media.json")"
+title="$(jq -r '.bootable_environments[0].title // .bootable_environments[0].id' "${STAGED}/media.json")"
+payload_source="$(jq -r '.offline_payloads[0].source' "${STAGED}/media.json")"
+payload_ref="$(jq -r '.offline_payloads[0].ref' "${STAGED}/media.json")"
+[ -n "$media_name" ] && [ -n "$env_id" ] || die "media.json names no media or environment"
+
+echo ">>> building the live environment ${LIVE}"
+podman build -t "$LIVE" "$STAGED"
+
+if mountpoint -q "${BUILD}/store/overlay" 2> /dev/null; then
+    umount "${BUILD}/store/overlay" 2> /dev/null || true
+fi
+rm -rf "$BUILD"
+iso_root="${BUILD}/iso/iso-root"
+esp="${BUILD}/iso/esp-staging"
+mkdir -p "$iso_root/LiveOS" "$iso_root/EFI/BOOT" "$iso_root/images/pxeboot" \
+    "$esp/EFI/BOOT" "$esp/loader/entries" "$esp/images/pxeboot/${env_id}"
+
+mount_point="$(podman image mount "$LIVE")" \
+    || die "cannot mount ${LIVE}"
+
+echo ">>> squashing the live root"
+mksquashfs "$mount_point" "${iso_root}/LiveOS/${env_id}.rootfs.sfs" \
+    -noappend -comp zstd -Xcompression-level 3 -b 131072 -processors 4 \
+    -e proc -e sys -e dev -e run -e tmp -e var/lib/containers/storage \
+    > /dev/null
+
+kver=""
+for dir in "$mount_point"/usr/lib/modules/*; do
+    [ -f "${dir}/vmlinuz" ] || continue
+    case "${dir##*/}" in
+        *debug*) continue ;;
+    esac
+    kver="${dir##*/}"
+    break
+done
+[ -n "$kver" ] || die "${LIVE} carries no non-debug kernel"
+
+echo ">>> rebuilding the initramfs for ${kver}"
+podman run --rm --privileged \
+    -v "${MODULE}:/usr/lib/dracut/modules.d/90buildc-live:ro" \
+    -v "${esp}/images/pxeboot/${env_id}:/out" \
+    "$LIVE" \
+    dracut --force --no-hostonly --add buildc-live --kver "$kver" /out/initrd.img \
+    || die "cannot rebuild the initramfs; does ${LIVE} ship dracut?"
+cp "${mount_point}/usr/lib/modules/${kver}/vmlinuz" \
+    "${esp}/images/pxeboot/${env_id}/vmlinuz"
+
+suffix=x64
+[ "$(uname -m)" != aarch64 ] || suffix=aa64
+shim="$(find "$mount_point/usr/lib/efi/shim" -path "*/EFI/*/shim${suffix}.efi" -type f 2> /dev/null | sort | head -n1)"
+grub="$(find "$mount_point/usr/lib/efi/grub2" -path "*/EFI/*/grub${suffix}.efi" -type f 2> /dev/null | sort | head -n1)"
+vendor=""
+if [ -n "$shim" ] && [ -n "$grub" ]; then
+    vendor="$(basename "$(dirname "$shim")")"
+else
+    shim="$mount_point/usr/lib/shim/shim${suffix}.efi.signed"
+    [ -f "$shim" ] || shim=""
+    grub="$(find "$mount_point/usr/lib/grub" -name "grub${suffix}.efi.signed" -type f 2> /dev/null | sort | head -n1)"
+    vendor="$(sed -n 's/^ID=//p' "$mount_point/etc/os-release" 2> /dev/null | tr -d '"' | head -n1)"
+fi
+[ -n "$shim" ] && [ -n "$grub" ] \
+    || die "${LIVE} ships no signed shim and GRUB pair"
+cp "$shim" "${esp}/EFI/BOOT/BOOT${suffix^^}.EFI"
+cp "$grub" "${esp}/EFI/BOOT/grub${suffix}.efi"
+mm="$(dirname "$shim")/mm${suffix}.efi"
+[ -f "$mm" ] || mm="$(dirname "$shim")/mm${suffix}.efi.signed"
+[ ! -f "$mm" ] || cp "$mm" "${esp}/EFI/BOOT/mm${suffix}.efi"
+
+options="root=buildc:CDLABEL=${media_name// /\\x20} buildc.live.squashimg=${env_id}.rootfs.sfs buildc.live.overlay.size=8192 enforcing=0 console=ttyS0,115200n8"
+menu() {
+    echo "set default=0"
+    echo "set timeout=3"
+    echo
+    echo "menuentry '${title} (live)' {"
+    echo "    linux /images/pxeboot/${env_id}/vmlinuz ${options}"
+    echo "    initrd /images/pxeboot/${env_id}/initrd.img"
+    echo "}"
+}
+menu > "${esp}/EFI/BOOT/grub.cfg"
+if [ -n "$vendor" ]; then
+    mkdir -p "${esp}/EFI/${vendor}"
+    menu > "${esp}/EFI/${vendor}/grub.cfg"
+fi
+
+{
+    echo "title ${title} (live)"
+    echo "sort-key 0-buildc-${env_id}"
+    echo "linux /images/pxeboot/${env_id}/vmlinuz"
+    echo "initrd /images/pxeboot/${env_id}/initrd.img"
+    echo "options ${options}"
+} > "${esp}/loader/entries/${env_id}.conf"
+printf 'timeout 5\ndefault *\nconsole-mode max\neditor no\n' > "${esp}/loader/loader.conf"
+
+cp -a "${esp}/EFI/." "${iso_root}/EFI/"
+cp -a "${esp}/images/pxeboot/." "${iso_root}/images/pxeboot/"
+
+kb="$(du -sk "$esp" | cut -f1)"
+mb=$(((kb * 12 / 10) / 1024 + 32))
+truncate -s "${mb}M" "${iso_root}/EFI/efi.img"
+mkfs.fat -F 32 -n ESP "${iso_root}/EFI/efi.img" > /dev/null
+MTOOLS_SKIP_CHECK=1
+for entry in "$esp"/*; do
+    mcopy -i "${iso_root}/EFI/efi.img" -s "$entry" ::/
+done
+
+echo ">>> packing the offline store"
+store="${BUILD}/store"
+store_run="${BUILD}/store-run"
+if mountpoint -q "${store}/overlay" 2> /dev/null; then
+    umount "${store}/overlay" 2> /dev/null || true
+fi
+rm -rf "$store" "$store_run"
+mkdir -p "${store}/etc/containers" "$store_run"
+printf '[storage]\ndriver = "overlay"\n' > "${store}/etc/containers/storage.conf"
+skopeo copy --remove-signatures \
+    "containers-storage:${payload_source}" \
+    "containers-storage:[overlay@${store}+${store_run}]${payload_ref}" \
+    || die "cannot copy ${payload_source} into the offline store"
+mksquashfs "$store" "${iso_root}/LiveOS/store.squashfs.img" \
+    -noappend -comp zstd -Xcompression-level 3 -b 131072 -processors 4 \
+    > /dev/null
+
+echo ">>> assembling the ISO"
+touch "$ISO"
+xorriso -dev "stdio:${ISO}" -volid "$media_name" \
+    -rockridge on -joliet on -map "$iso_root" / \
+    -boot_image any platform_id=0xef \
+    -boot_image any efi_path=EFI/efi.img \
+    -boot_image any part_like_isohybrid=on -commit \
+    || die "xorriso cannot assemble ${ISO}"
+ROOT
+
+    mv -f "${image_file}.part" "$image_file"
+}
+
+if [ "$command" = build ] || [ "$rebuild" = 1 ] || [ ! -f "$image_file" ]; then
+    if [ "$rebuild" = 1 ]; then
+        ./generated/scripts/buildc.sh generate
+        args=(--backend buildah --tag "$ref")
+        [ -z "$target" ] || args+=(--target "$target")
+        ./generated/scripts/buildc.sh build "${args[@]}"
+    fi
+    build_media
+fi
+
+if [ "$login" = 1 ]; then
+    login_credentials
+fi
+
+case "$command" in
+    run) run_qemu ;;
 esac
 ==== generated/broken-collect/Containerfile
 # GENERATED FILE, do not edit. Produced by `buildc generate` from
@@ -1054,6 +1202,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "ad3e64595f1e1a0811e1fb5cc13316780e20196e77a847014510f1b07d1b1fd6",
-  "files": 22
+  "root": "be599681453697a3e5652430ab54e037ec6bcaad013ddd9781c083d8b120c729",
+  "files": 28
 }

@@ -9,11 +9,7 @@ const SCRIPT: &str = "vm.sh";
 
 use crate::parse::component::rpm;
 
-const TYPES: [(&str, &str); 3] = [
-    ("qcow2", copy::DISK_QCOW2),
-    ("raw", copy::DISK_RAW),
-    ("iso", copy::DISK_ISO),
-];
+const TYPES: [(&str, &str); 2] = [("qcow2", copy::DISK_QCOW2), ("raw", copy::DISK_RAW)];
 
 pub struct Options {
     pub target: Option<String>,
@@ -41,11 +37,7 @@ pub fn run(
         return Ok(());
     };
     let installer = installer(root, noun, kind, opts);
-    let live = match kind == "iso" && converts(root, noun, kind, opts) {
-        true => Some(stage(root, opts)?),
-        false => None,
-    };
-    let access = access(root, kind, opts);
+    let access = access(root, opts);
     let script = root.join(crate::layout::script(root, SCRIPT));
     if !script.is_file() {
         return Err(format!(
@@ -57,98 +49,16 @@ pub fn run(
         "{}: {}",
         script.display(),
         Command::new(&script)
-            .args(argv(noun, kind, opts, installer, live.as_deref(), &access))
+            .args(argv(noun, kind, opts, installer, &access))
             .exec()
     ))
-}
-
-const BOOTISO: &str = "out/bootiso";
-
-type Documents = Vec<(&'static str, String)>;
-
-fn documents(
-    list: &crate::model::image::List,
-    name: &str,
-    image: &str,
-    imgref: &str,
-) -> Result<Documents, String> {
-    use crate::emit::recipe;
-    if imgref.starts_with("localhost/") {
-        return Err(format!(
-            "`{imgref}` is where the installed machine would look for its updates, \
-             and nothing serves it.\n\nhelp: set $IMAGE_REGISTRY to where `{name}` \
-             publishes"
-        ));
-    }
-    let refuse = || recipe::refusal(list, name);
-    let build = recipe::build(list, name, imgref, imgref, &[recipe::STORE.to_string()])
-        .ok_or_else(refuse)?;
-    let media = recipe::media(list, name, image, imgref).ok_or_else(refuse)?;
-    Ok(vec![
-        ("recipe.json", build.render()),
-        ("media.json", media.render()),
-        ("Containerfile", live_env(list, name, image)),
-        ("efi-from-image.patch", recipe::EFI_PATCH.to_string()),
-    ])
-}
-
-fn live_env(list: &crate::model::image::List, name: &str, image: &str) -> String {
-    let rpm = list
-        .targets()
-        .into_iter()
-        .find(|t| t.to_string() == name)
-        .and_then(|t| list.images.iter().find(|i| i.id == t.image))
-        .and_then(|i| i.base.as_ref())
-        .is_some_and(|base| rpm(&base.family));
-    let env = crate::emit::recipe::LIVE_ENV;
-    if !rpm {
-        return env.to_string();
-    }
-    env.lines()
-        .map(|line| match line.starts_with("ARG LIVE_BASE=") {
-            true => format!("ARG LIVE_BASE={image}\n"),
-            false => format!("{line}\n"),
-        })
-        .collect()
-}
-
-fn staged_list(root: &Path) -> crate::model::image::List {
-    crate::load(root).list
-}
-
-fn staged(root: &Path, opts: &Options) -> Result<(String, Documents), String> {
-    let list = staged_list(root);
-    let target = target(&list, opts)
-        .ok_or("no target to build an installer iso for; name one with `--target`")?;
-    let published = target.published();
-    let tag = crate::registry::tag(opts.tag.as_deref());
-    let imgref =
-        crate::registry::reference(&list, root, opts.target.as_deref(), opts.tag.as_deref())?;
-    let image = match &opts.image {
-        Some(named) => format!("{named}:{tag}"),
-        None => crate::registry::at("localhost", &published, &tag),
-    };
-    let documents = documents(&list, &target.to_string(), &image, &imgref)?;
-    Ok((crate::emit::recipe::live(&published), documents))
-}
-
-fn stage(root: &Path, opts: &Options) -> Result<String, String> {
-    let (live, documents) = staged(root, opts)?;
-    for (name, body) in documents {
-        crate::init::put(&root.join(BOOTISO).join(name), &body)?;
-    }
-    Ok(live)
 }
 
 fn converts(root: &Path, noun: &str, kind: &str, opts: &Options) -> bool {
     if noun == "build" || opts.rebuild {
         return true;
     }
-    let at = match kind {
-        "iso" => format!("{BOOTISO}/install.iso"),
-        kind => format!("out/{kind}/disk.{kind}"),
-    };
-    !root.join(at).is_file()
+    !root.join(format!("out/{kind}/disk.{kind}")).is_file()
 }
 
 fn family(root: &Path, opts: &Options) -> Option<String> {
@@ -165,15 +75,18 @@ fn family(root: &Path, opts: &Options) -> Option<String> {
         .filter(|family| !family.is_empty())
 }
 
-fn target(list: &crate::model::image::List, opts: &Options) -> Option<crate::model::image::Target> {
+pub(crate) fn target(
+    list: &crate::model::image::List,
+    opts: &Options,
+) -> Option<crate::model::image::Target> {
     match &opts.target {
         Some(named) => list.find_target(named).ok(),
         None => list.ungated_target(),
     }
 }
 
-fn access(root: &Path, kind: &str, opts: &Options) -> Access {
-    if kind == "iso" || opts.image.is_some() {
+fn access(root: &Path, opts: &Options) -> Access {
+    if opts.image.is_some() {
         return Access::default();
     }
     let list = crate::model::image::List::load(root).0;
@@ -229,7 +142,7 @@ fn imports_passwords(root: &Path, component: &str) -> bool {
 }
 
 fn installer(root: &Path, noun: &str, kind: &str, opts: &Options) -> Option<&'static str> {
-    if kind == "iso" || !converts(root, noun, kind, opts) {
+    if !converts(root, noun, kind, opts) {
         return None;
     }
     family(root, opts)
@@ -244,15 +157,11 @@ fn argv(
     kind: &str,
     opts: &Options,
     installer: Option<&str>,
-    live: Option<&str>,
     access: &Access,
 ) -> Vec<String> {
     let mut args = vec![noun.to_string(), kind.to_string()];
     if let Some(installer) = installer {
         args.extend(["--installer".to_string(), installer.to_string()]);
-    }
-    if let Some(live) = live {
-        args.extend(["--live-image".to_string(), live.to_string()]);
     }
     for (flag, value) in [
         ("--target", &opts.target),
@@ -292,6 +201,9 @@ fn kind(
         None => String::new(),
     };
     if let Some(named) = given {
+        if named == "iso" {
+            return Err("an installer iso is `buildc media build`, not a vm disk".to_string());
+        }
         return match TYPES.iter().find(|(name, _)| *name == named) {
             Some((name, _)) => Ok(Some(name)),
             None => Err(format!("`{}` takes {}, not `{named}`", name, names())),
@@ -305,13 +217,10 @@ fn kind(
         .map(|at| TYPES[at].0))
 }
 
-fn rows(noun: &str) -> Vec<Choice> {
+fn rows(_noun: &str) -> Vec<Choice> {
     TYPES
         .iter()
-        .map(|(name, about)| match (*name, noun) {
-            ("iso", "spawn") => Choice::new(*name, copy::NO_ISO_SPAWN).unavailable(),
-            _ => Choice::new(*name, *about),
-        })
+        .map(|(name, about)| Choice::new(*name, *about))
         .collect()
 }
 
@@ -336,7 +245,7 @@ mod tests {
             rebuild: true,
         };
         assert_eq!(
-            argv("run", "qcow2", &opts, None, None, &Access::default()),
+            argv("run", "qcow2", &opts, None, &Access::default()),
             [
                 "run",
                 "qcow2",
@@ -348,16 +257,16 @@ mod tests {
             ]
         );
         assert_eq!(
-            argv("build", "raw", &opts, Some(BOOTC), None, &Access::default())[..4],
+            argv("build", "raw", &opts, Some(BOOTC), &Access::default())[..4],
             ["build", "raw", "--installer", "bootc"]
         );
     }
 
     #[test]
-    fn spawn_shows_the_iso_it_cannot_boot_rather_than_hiding_it() {
-        let iso = |noun| rows(noun).pop().expect("iso is the last row");
-        assert!(!iso("spawn").available);
-        assert!(iso("run").available);
+    fn the_rows_are_the_two_disk_types_and_every_one_is_available() {
+        let rows = rows("spawn");
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.available));
     }
 
     #[test]
@@ -393,7 +302,7 @@ mod tests {
             rebuild: false,
         };
         assert_eq!(family(&root, &opts(None)).as_deref(), Some("debian"));
-        let declared = access(&root, "raw", &opts(None));
+        let declared = access(&root, &opts(None));
         assert!(!declared.login);
         assert!(declared.ssh_key.is_none());
         crate::init::put(
@@ -403,20 +312,19 @@ mod tests {
             "[Service]\nImportCredential=passwd.hashed-password.*\n",
         )
         .unwrap();
-        assert!(access(&root, "raw", &opts(None)).login);
+        assert!(access(&root, &opts(None)).login);
         crate::init::put(
             &crate::layout::public_key(&root, "/usr/lib/buildc/authorized_keys"),
             "ssh-ed25519 AAAA test\n",
         )
         .unwrap();
-        let recorded = access(&root, "raw", &opts(None));
+        let recorded = access(&root, &opts(None));
         assert!(recorded.login);
         assert!(recorded.ssh_key.is_some());
-        let args = argv("run", "raw", &opts(None), Some(BOOTC), None, &recorded);
+        let args = argv("run", "raw", &opts(None), Some(BOOTC), &recorded);
         assert!(args.contains(&"--login".to_string()));
         assert!(args.contains(&"--ssh-key".to_string()));
-        assert!(!access(&root, "raw", &opts(Some("localhost/other"))).login);
-        assert!(!access(&root, "iso", &opts(None)).login);
+        assert!(!access(&root, &opts(Some("localhost/other"))).login);
         let refuse = |kind, opts: &Options| {
             run(&root, "run", "vm run", Some(kind), opts, &Prompt::silent()).unwrap_err()
         };
@@ -427,14 +335,10 @@ mod tests {
         }
         let installed = refuse("qcow2", &opts(None));
         assert!(installed.contains("vm.sh is not there"), "{installed}");
-        assert_eq!(installer(&root, build, "iso", &opts(None)), None);
 
         let unasked =
             run(&root, "run", "vm run", None, &opts(None), &Prompt::silent()).unwrap_err();
-        assert!(
-            unasked.contains("takes `qcow2`, `raw` or `iso`"),
-            "{unasked}"
-        );
+        assert!(unasked.contains("takes `qcow2` or `raw`"), "{unasked}");
 
         crate::init::put(&root.join("out/raw/disk.raw"), "").unwrap();
         assert!(!converts(&root, "spawn", "raw", &opts(None)));
@@ -466,7 +370,7 @@ mod tests {
         assert_eq!(family(&root, &opts(None)).as_deref(), Some("fedora"));
         let fedora = refuse("qcow2", &opts(None));
         assert!(fedora.contains("vm.sh is not there"), "{fedora}");
-        for kind in ["qcow2", "raw", "iso"] {
+        for kind in ["qcow2", "raw"] {
             assert_eq!(installer(&root, build, kind, &opts(None)), None);
         }
 
@@ -474,126 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn an_iso_stages_both_recipes_and_refuses_a_local_update_origin() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/deb-families");
-        let list = crate::model::image::List::load(&root).0;
-        let staged = documents(
-            &list,
-            "forky",
-            "localhost/forky:latest",
-            "ghcr.io/someone/forky:latest",
-        )
-        .expect("a debian target has a measured recipe");
-        let named: Vec<_> = staged.iter().map(|(name, _)| *name).collect();
-        assert_eq!(
-            named,
-            [
-                "recipe.json",
-                "media.json",
-                "Containerfile",
-                "efi-from-image.patch"
-            ]
-        );
-        let at = |want| staged.iter().find(|(name, _)| *name == want).unwrap();
-        assert!(at("recipe.json").1.contains(crate::emit::recipe::STORE));
-        assert!(at("recipe.json")
-            .1
-            .contains("\"image\": \"ghcr.io/someone/forky:latest\""));
-        assert!(!at("recipe.json").1.contains("localhost/"));
-        assert!(at("Containerfile").1.contains(crate::emit::recipe::STORE));
-        assert!(at("media.json")
-            .1
-            .contains("\"source\": \"localhost/forky:latest\""));
-        assert!(at("media.json")
-            .1
-            .contains("\"ref\": \"ghcr.io/someone/forky:latest\""));
-
-        let local = documents(
-            &list,
-            "forky",
-            "localhost/forky:latest",
-            "localhost/forky:latest",
-        )
-        .unwrap_err();
-        assert!(local.contains("IMAGE_REGISTRY"), "{local}");
-        let unknown =
-            documents(&list, "not-a-target", "image", "ghcr.io/someone/x:latest").unwrap_err();
-        assert!(unknown.contains("not a target"), "{unknown}");
-    }
-
-    #[test]
-    fn a_component_provided_capability_reaches_the_staged_recipe() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/media-recipe");
-        let root = std::env::temp_dir().join(format!("buildc-media-recipe-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        for file in [
-            "repo.kdl",
-            "deb.image.kdl",
-            "components/core/luks/manifest.kdl",
-            "components/base-image/debian-forky/manifest.kdl",
-        ] {
-            let body = std::fs::read_to_string(fixture.join(file)).expect("the fixture file reads");
-            crate::init::put(&root.join(file), &body).expect("the fixture file writes");
-        }
-        let pinned = std::env::var("IMAGE_REGISTRY").ok();
-        std::env::set_var("IMAGE_REGISTRY", "ghcr.io/example");
-        let opts = Options {
-            target: Some("deb".to_string()),
-            image: None,
-            tag: None,
-            ram: None,
-            rebuild: false,
-        };
-        let answered = staged(&root, &opts);
-        match pinned {
-            Some(previous) => std::env::set_var("IMAGE_REGISTRY", previous),
-            None => std::env::remove_var("IMAGE_REGISTRY"),
-        }
-        let (_, files) = answered.expect("the fixture answers its recipe");
-        let recipe = files
-            .into_iter()
-            .find(|(name, _)| *name == "recipe.json")
-            .expect("recipe.json is staged")
-            .1;
-        assert!(recipe.contains("\"luksInitramfs\": true"), "{recipe}");
-        let bare = documents(
-            &crate::model::image::List::load(&root).0,
-            "deb",
-            "localhost/deb:latest",
-            "ghcr.io/example/deb:latest",
-        )
-        .expect("the fixture answers its recipe")
-        .into_iter()
-        .find(|(name, _)| *name == "recipe.json")
-        .expect("recipe.json is staged")
-        .1;
-        assert!(!bare.contains("luksInitramfs"), "{bare}");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn the_live_environment_is_the_payload_on_a_dnf_family() {
-        let base = |repo: &str| {
-            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/repos")
-                .join(repo);
-            let list = crate::model::image::List::load(&root).0;
-            let name = list.ungated_target().unwrap().to_string();
-            live_env(&list, &name, "localhost/payload:latest")
-                .lines()
-                .filter(|line| line.starts_with("ARG LIVE_BASE="))
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(base("minimal"), ["ARG LIVE_BASE=localhost/payload:latest"]);
-        assert_eq!(
-            base("deb-families"),
-            ["ARG LIVE_BASE=quay.io/fedora/fedora-bootc:44"]
-        );
-    }
-
-    #[test]
-    fn a_type_that_is_not_one_of_the_three_is_refused_by_name() {
+    fn a_type_that_is_not_a_disk_is_refused_by_name() {
         let silent = Prompt::silent();
         assert!(kind("build", "vm build", Some("vmdk"), &silent).is_err());
         assert_eq!(
@@ -601,5 +386,11 @@ mod tests {
             Some("raw")
         );
         assert!(kind("build", "vm build", None, &silent).is_err());
+    }
+
+    #[test]
+    fn an_iso_points_at_the_media_command() {
+        let refused = kind("build", "vm build", Some("iso"), &Prompt::silent()).unwrap_err();
+        assert!(refused.contains("buildc media build"), "{refused}");
     }
 }

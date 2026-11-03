@@ -131,8 +131,6 @@ pub fn key_provider(kind: &str) -> String {
 pub const WHICH_DISK: &str = "disk image type";
 pub const DISK_QCOW2: &str = "written to out/qcow2/";
 pub const DISK_RAW: &str = "written to out/raw/";
-pub const DISK_ISO: &str = "written to out/bootiso/";
-pub const NO_ISO_SPAWN: &str = "systemd-vmspawn cannot boot an ISO";
 
 pub const WHICH_COMMAND: &str = "command";
 

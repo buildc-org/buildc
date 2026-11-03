@@ -170,8 +170,6 @@ const SIZE: &str = "20G";
 
 pub const LIVE_ENV: &str = include_str!("installer.Containerfile");
 
-pub const EFI_PATCH: &str = include_str!("installer-efi-from-image.patch");
-
 pub fn live(published: &str) -> String {
     format!("localhost/{published}-installer:latest")
 }
@@ -450,7 +448,7 @@ mod tests {
 
     #[test]
     fn both_installer_units_hand_over_to_the_binary_the_live_environment_stages() {
-        const STAGES: &str = "COPY --from=tools /out/bootc-anywhere /usr/bin/bootc-anywhere";
+        const STAGES: &str = "tar -xf /tmp/installer.tar.gz -C /usr/bin bootc-anywhere";
         const RUNS: &str = "/usr/bin/bootc-anywhere";
         assert!(
             LIVE_ENV.contains(STAGES),

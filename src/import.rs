@@ -1836,9 +1836,14 @@ image {
             Err(err) => err.message().to_string(),
             Ok(_) => panic!("an incompatible import was accepted"),
         };
+        let flat = message
+            .replace('|', " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(message.contains("manifest.kdl declares"), "{message}");
         assert!(message.contains("version 2, but"), "{message}");
-        assert!(message.contains("repo.kdl declares 1"), "{message}");
+        assert!(flat.contains("repo.kdl declares 1"), "{message}");
         assert!(!root.join("components/new").exists());
         std::fs::remove_dir_all(root).unwrap();
     }

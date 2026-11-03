@@ -1846,7 +1846,7 @@ fn the_finalize_layer_carries_the_image_identity() {
         );
     }
     // The identity component owns os-release, so the finalize layer must not write the file.
-    assert!(!out.contains("os-release"), "{out}");
+    assert!(!out[finalize..].contains("os-release"), "{out}");
 }
 
 #[test]

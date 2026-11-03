@@ -37,7 +37,10 @@ def rebase(target: str) -> str:
 def on_files(files, config):
     root = Path(config.config_file_path).parent
     for source, page in PAGES.items():
-        text = (root / source).read_text(encoding="utf-8")
+        path = root / source
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
         text = LINK.sub(lambda m: f"]({rebase(m.group(1))})", text)
         files.append(File.generated(config, page, content=text))
     return files

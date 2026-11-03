@@ -35,7 +35,6 @@ nav:
           - manifest.kdl: schema/component.md
           - components.lock.kdl: schema/lock.md
   - Project:
-      - Changelog: changelog.md
       - Contributing: contributing.md
       - Threat model: threat-model.md
 

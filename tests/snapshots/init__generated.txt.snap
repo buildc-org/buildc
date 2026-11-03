@@ -1200,7 +1200,7 @@ graph LR
 ==== .github/workflows/update-components.yml
 ==== generated/snapshot.json
 {
-  "root": "e751964afae31736723f47c3133b3f4d3525a8a56a677fa6265f8692eb66a439",
+  "root": "169f9249c63864dc497e08d6073d1a014012aa8d3c45fb4bc156f6e10a3c54aa",
   "files": 20
 }
 ==== generated/example/components/fedora-family/lib/family.sh

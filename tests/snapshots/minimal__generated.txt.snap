@@ -1054,7 +1054,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "dda1eb1e6103a3a9fa57c1d280c0fd21ac61cec70f20e4c13531cbdb937f11b5",
+  "root": "5e6bb75d243721b65b0f707c61a84141c3e202dfef551be19407589086478edc",
   "files": 22
 }
 ==== generated/minimal/components/fedora-family/lib/family.sh

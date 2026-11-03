@@ -1000,6 +1000,6 @@ component "buildc-org/core/hello"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "f6d61967b42f65ba0fdde203d3109c4e973ac729b7afc5150b301a6253273c3d",
+  "root": "ba9c63210566deac89d41da5646cbcbb40bd34759f9589137cf269a97ae5a757",
   "files": 20
 }

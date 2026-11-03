@@ -1060,7 +1060,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "df734183fa8f49dd2abd23d0fe2df28c0940d496ead61d907746b61096e733f4",
+  "root": "879d3f9ff064069cdff634b77d59963cf12264866635431be68f5baec6e6af0f",
   "files": 24
 }
 ==== generated/collecting/components/core/power/justfile.inc

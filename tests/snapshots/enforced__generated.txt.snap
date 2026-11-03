@@ -1059,7 +1059,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "0f56a57da9ae9fc867162d1e3284e21f726d30f17fd423c7a9aa2177557271b7",
+  "root": "434e5c6c89f4cc05e0e0a5f8095a755d321a9fea1557076225dcf177c48d5d88",
   "files": 22
 }
 ==== generated/enforced/components/one/hello/component.sh

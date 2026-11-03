@@ -1131,7 +1131,7 @@ component "buildc-org/drivers" flavour="nvidia"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "45cc6c4e2cd88c996efd5675bd59480bce3ffb0e2bc0afd843e8e5282d7c62e7",
+  "root": "25b9da02557c400eaa2cc166574234cebea3e494fbbb33458efd2053745b9461",
   "files": 24
 }
 ==== generated/example/components/fedora-family/lib/family.sh

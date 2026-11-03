@@ -19,6 +19,7 @@ pub mod import;
 pub mod init;
 pub mod key;
 pub mod layout;
+pub mod media;
 pub mod model;
 pub mod parse;
 pub(crate) mod planned;

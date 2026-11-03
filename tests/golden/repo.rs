@@ -660,7 +660,7 @@ fn init() {
         !init.join("lib").exists(),
         "lib is generated; it must not land in the editable scaffold"
     );
-    for script in ["buildc.sh", "lint.sh", "vm.sh"] {
+    for script in ["buildc.sh", "lint.sh", "vm.sh", "media.sh"] {
         assert!(
             !init.join("scripts").join(script).exists(),
             "{script} is generated; it must not land in the editable scaffold"

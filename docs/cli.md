@@ -69,6 +69,8 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | [`buildc vm build [type]`](#buildc-vm-build) | make the disk for the target |  |
 | [`buildc vm run [type]`](#buildc-vm-run) | boot that disk under qemu and build it if missing |  |
 | [`buildc vm spawn [type]`](#buildc-vm-spawn) | boot the disk with systemd-vmspawn |  |
+| [`buildc media build`](#buildc-media-build) | assemble the installer media for the target |  |
+| [`buildc media run`](#buildc-media-run) | boot that media under qemu and build it if missing |  |
 | [`buildc validate <image>`](#buildc-validate) | check one built image with the tool that built it |  |
 | [`buildc attribute <image>`](#buildc-attribute) | map each layer of a built image to its component |  |
 
@@ -494,8 +496,8 @@ them. Git tracks each copy, the user can review and change it, and a `buildc`
 upgrade does not replace it. The scripts are:
 
 - `Containerfile.skeleton`, the Containerfile around the generated component layers
-- `lint.sh`, `buildc.sh`, `smoke.sh` and `vm.sh`, which `buildc generate` otherwise
-  writes into `generated/scripts/`
+- `lint.sh`, `buildc.sh`, `smoke.sh`, `vm.sh` and `media.sh`, which `buildc generate`
+  otherwise writes into `generated/scripts/`
 
 It asks which scripts to keep. The list holds only the scripts that `scripts/`
 does not hold yet.
@@ -911,9 +913,10 @@ digest when it runs.
 ## `buildc vm`
 
 Turns the built image into a disk and boots it, to try the image before it is
-published. `<type>` is `qcow2`, `raw` or `iso`. A terminal prompts for it.
+published. `<type>` is `qcow2` or `raw`. A terminal prompts for it.
 `build` makes the disk. `run` boots it under qemu, and makes it first if it is
-missing. `spawn` boots it with systemd-vmspawn, which cannot boot an `iso`.
+missing. `spawn` boots it with systemd-vmspawn. An installer ISO is media, and
+`buildc media` owns it.
 
 **Usage:** `buildc vm [COMMAND]`
 
@@ -930,11 +933,6 @@ missing. `spawn` boots it with systemd-vmspawn, which cannot boot an `iso`.
 > `disk_config/disk.toml` sets. Debian and Ubuntu disks use
 > `bootc install to-disk`, at `DISK_SIZE`, which is 20G by default, and need
 > `skopeo`.
->
-> An `iso` is a live installer for the target, which installs from the recipe
-> that `buildc recipe` prints. It needs a published reference, because the
-> installed machine updates from `$IMAGE_REGISTRY`. `run iso` keeps the installed disk
-> under `out/bootiso/storage/`, so a reboot tests what was installed.
 >
 > If a component imports `passwd.hashed-password.*`, then `run` and `spawn` add a
 > `buildc` account for the console and ask for its password. `VM_USER` changes the
@@ -986,6 +984,62 @@ boot the disk with systemd-vmspawn
 | Argument | Description |
 | --- | --- |
 | `<type>` | the disk type: `qcow2` or `raw` |
+
+| Option | Description |
+| --- | --- |
+| `--target <target>` |  |
+| `--image <ref>` |  |
+| `--tag <tag>` |  |
+| `--ram <size>` |  |
+| `--rebuild` |  |
+
+## `buildc media`
+
+Assembles the live installer media for the target and boots it, to try the
+install before the image is published. `build` writes `out/bootiso/install.iso`.
+`run` boots it under qemu, and makes it first if it is missing. The media
+installs from the recipe that `buildc recipe` prints.
+
+**Usage:** `buildc media [COMMAND]`
+
+> [!NOTE]
+> `--rebuild` runs `buildc generate` and `buildc build` in that order first.
+> Without it, nothing is fetched, written or built, and the existing media
+> boots.
+>
+> It runs `media.sh`, from `scripts/` if the repository keeps a copy, else from
+> `generated/scripts/`. The script asks for sudo, because it reads the image out
+> of rootful podman.
+>
+> The media needs a published reference, because the installed machine updates
+> from `$IMAGE_REGISTRY`. It carries the image, so an install needs no network.
+> `run` keeps the installed disk under `out/bootiso/storage/`, so a reboot
+> tests what was installed.
+>
+> If a component imports `passwd.hashed-password.*`, then `run` adds a `buildc`
+> account for the console and asks for its password. `VM_USER` changes the
+> account, and `VM_PASSWORD_HASH` gives a crypt(5) hash for a run with no
+> terminal. The account is set on the first boot only.
+
+## `buildc media build`
+
+assemble the installer media for the target
+
+**Usage:** `buildc media build [OPTIONS]`
+
+| Option | Description |
+| --- | --- |
+| `--target <target>` |  |
+| `--image <ref>` |  |
+| `--tag <tag>` |  |
+| `--ram <size>` |  |
+| `--rebuild` |  |
+
+## `buildc media run`
+
+boot that media under qemu and build it if missing
+
+**Usage:** `buildc media run [OPTIONS]`
 
 | Option | Description |
 | --- | --- |

@@ -29,6 +29,8 @@ pub enum Verb {
     VmBuild,
     VmRun,
     VmSpawn,
+    MediaBuild,
+    MediaRun,
     Section,
     Graph,
     Why,
@@ -103,6 +105,8 @@ impl Verb {
             | Self::VmBuild
             | Self::VmRun
             | Self::VmSpawn
+            | Self::MediaBuild
+            | Self::MediaRun
             | Self::Section
             | Self::Graph
             | Self::Why
@@ -147,6 +151,8 @@ pub const ALL: &[Verb] = &[
     Verb::VmBuild,
     Verb::VmRun,
     Verb::VmSpawn,
+    Verb::MediaBuild,
+    Verb::MediaRun,
     Verb::Section,
     Verb::Graph,
     Verb::Why,
@@ -337,6 +343,20 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
     ("vm build", Verb::VmBuild, Family::Repo, false, Topic::Build),
     ("vm run", Verb::VmRun, Family::Repo, false, Topic::Build),
     ("vm spawn", Verb::VmSpawn, Family::Repo, false, Topic::Build),
+    (
+        "media build",
+        Verb::MediaBuild,
+        Family::Repo,
+        false,
+        Topic::Build,
+    ),
+    (
+        "media run",
+        Verb::MediaRun,
+        Family::Repo,
+        false,
+        Topic::Build,
+    ),
     (
         "section",
         Verb::Section,
@@ -538,6 +558,12 @@ pub enum Surface {
     Vm {
         #[command(subcommand)]
         what: Option<VmWhat>,
+    },
+    /// assemble the installer media and boot it
+    #[command(long_about = help::MEDIA, after_long_help = help::MEDIA_NOTES)]
+    Media {
+        #[command(subcommand)]
+        what: Option<MediaWhat>,
     },
     /// print one image's generated Containerfile section
     #[command(long_about = help::SECTION)]
@@ -874,7 +900,21 @@ pub enum VmWhat {
     },
 }
 
-// The flags every `vm` noun takes, declared once so their help is too.
+#[derive(Subcommand)]
+pub enum MediaWhat {
+    /// assemble the installer media for the target
+    Build {
+        #[command(flatten)]
+        disk: Disk,
+    },
+    /// boot that media under qemu and build it if missing
+    Run {
+        #[command(flatten)]
+        disk: Disk,
+    },
+}
+
+// The flags every `vm` and `media` noun takes, declared once so their help is too.
 #[derive(clap::Args)]
 pub struct Disk {
     #[arg(long, value_name = "target")]
@@ -1448,6 +1488,8 @@ impl Verb {
             | Self::VmBuild
             | Self::VmRun
             | Self::VmSpawn
+            | Self::MediaBuild
+            | Self::MediaRun
             | Self::FetchModules
             | Self::Scap
             | Self::ScapContent
@@ -1496,7 +1538,7 @@ mod tests {
 
     #[test]
     fn a_word_whose_forms_all_take_a_noun_has_no_verb_of_its_own() {
-        for word in ["create", "import", "registry", "set", "vm"] {
+        for word in ["create", "import", "registry", "set", "vm", "media"] {
             assert!(verb(word).is_none(), "{word}");
         }
         for word in ["scap", "fetch", "check", "build"] {

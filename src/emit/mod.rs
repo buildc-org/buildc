@@ -34,12 +34,32 @@ pub(crate) const LIBRARIES: &[(&str, &str)] = &[
         include_str!("../../assets/lib/kernel-helpers.sh"),
     ),
     (
+        "media/90buildc-live/module-setup.sh",
+        include_str!("../../assets/lib/media/90buildc-live/module-setup.sh"),
+    ),
+    (
+        "media/90buildc-live/parse-live.sh",
+        include_str!("../../assets/lib/media/90buildc-live/parse-live.sh"),
+    ),
+    (
+        "media/90buildc-live/live-generator.sh",
+        include_str!("../../assets/lib/media/90buildc-live/live-generator.sh"),
+    ),
+    (
+        "media/90buildc-live/live-root.sh",
+        include_str!("../../assets/lib/media/90buildc-live/live-root.sh"),
+    ),
+    (
         "selinux-helpers.sh",
         include_str!("../../assets/lib/selinux-helpers.sh"),
     ),
     (
         "sign-helpers.sh",
         include_str!("../../assets/lib/sign-helpers.sh"),
+    ),
+    (
+        "vm-helpers.sh",
+        include_str!("../../assets/lib/vm-helpers.sh"),
     ),
     (
         "wrap-helpers.sh",
@@ -73,6 +93,11 @@ pub(crate) const SCRIPTS: &[Script] = &[
         name: "vm.sh",
         about: "builds a disk image and boots it",
         body: include_str!("../../assets/scripts/vm.sh"),
+    },
+    Script {
+        name: "media.sh",
+        about: "assembles the installer media and boots it",
+        body: include_str!("../../assets/scripts/media.sh"),
     },
 ];
 

@@ -153,8 +153,6 @@ uses to validate repositories.
 
 ## Releases
 
-[CHANGELOG.md](CHANGELOG.md) lists the changes in each release.
-
 Each release tarball has an accompanying SHA-256 checksum and CycloneDX SBOM.
 The binary embeds dependency metadata for scanners, and GitHub publishes build
 provenance attestations:

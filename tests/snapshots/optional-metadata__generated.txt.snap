@@ -1142,7 +1142,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "19759b2891b8353ef8487c205e2288dc7786c5b31a05b30567bfde9eebf5876d",
+  "root": "8c1cfcf1175df1d20f086d3ff462f392e2f96aacabc84d230ae86960ba6cf27d",
   "files": 26
 }
 ==== generated/custom-workstation/components/kde/component.sh

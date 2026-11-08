@@ -1348,7 +1348,7 @@ graph LR
 ==== .github/workflows/update-components.yml
 ==== generated/snapshot.json
 {
-  "root": "af9b03b2fa30b48cad076bcf136467d042bd17da43c3cd80a94c9301d5b6f987",
+  "root": "7a424e0c09503951636cc623b440f5fa5d33dcda68e4332b131eeebbda4e4168",
   "files": 26
 }
 ==== generated/example/components/fedora-family/lib/family.sh

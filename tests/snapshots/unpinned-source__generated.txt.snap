@@ -1181,7 +1181,7 @@ component "buildc-org/fedora-family"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "e3bfe045b89413eb35134dc77210ec781f6c93c49a480cf200063c0a8699e897",
+  "root": "40d94f3b9a2dd80ac7e5f2314a295b8e327a34b9c9949d5ff79921945036c2ac",
   "files": 27
 }
 ==== generated/example/components/fedora-family/lib/family.sh

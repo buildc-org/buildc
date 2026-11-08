@@ -51,9 +51,6 @@ source: tests/golden/harness.rs
           "initramfs-generation": [
             "/usr/bin/dracut"
           ],
-          "kernel-devel-helpers": [
-            "/usr/libexec/kernel-devel-helpers.sh"
-          ],
           "secureboot-key": [
             "/usr/share/secureboot/sb_cert.der"
           ]

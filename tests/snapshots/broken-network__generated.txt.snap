@@ -1268,7 +1268,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "4334f4113b1d6d91c3bdf3a424a52fc90d0f3f0ae014d63a6d0ecfb8c562800f",
+  "root": "97086f876a9d16d3247a7e26110cfebbcbaab673f9be178c36a0eaddc4f58136",
   "files": 35
 }
 ==== generated/broken-network/components/fedora-family/lib/family.sh

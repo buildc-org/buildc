@@ -209,6 +209,26 @@ pub(crate) fn run_loaded(
                 (*body).to_string(),
             )
         }));
+        let early = list
+            .images
+            .iter()
+            .any(|image| !emit::measure::early(image).is_empty());
+        let record = list
+            .images
+            .iter()
+            .any(|image| !emit::measure::record(image, false).is_empty());
+        files.extend(
+            emit::measure::libraries(early, record)
+                .into_iter()
+                .map(|(name, body)| {
+                    (
+                        PathBuf::from(layout::GENERATED)
+                            .join(layout::LIB)
+                            .join(name),
+                        body.to_string(),
+                    )
+                }),
+        );
         files.push((emit::record::path(), emit::record::script()));
         files.extend(
             emit::SCRIPTS

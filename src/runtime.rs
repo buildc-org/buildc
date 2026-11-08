@@ -1,3 +1,4 @@
+use crate::model::version::Version;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -643,6 +644,108 @@ fn validate_boot_chain(report: &mut Report) {
 const SIGNED_MARKER: &str = "/usr/share/secureboot/signed";
 const PCR_POLICY: &str = "/usr/share/secureboot/pcr-policy.pem";
 
+fn package_version(family: &str, package: &str) -> Option<String> {
+    let (program, args): (&str, Vec<&str>) = match family {
+        "fedora" | "rhel" => ("rpm", vec!["-q", "--qf", "%{VERSION}", "--", package]),
+        "debian" | "ubuntu" => ("dpkg-query", vec!["-W", "-f=${Version}", "--", package]),
+        _ => return None,
+    };
+    let (true, text) = output(program, &args).ok()? else {
+        return None;
+    };
+    let version = upstream_version(family, &text);
+    (!version.is_empty()).then_some(version)
+}
+
+fn upstream_version(family: &str, text: &str) -> String {
+    // A Debian package version carries an epoch and a revision that the upstream version does not. The comparison drops both.
+    let version = text.trim();
+    match family {
+        "debian" | "ubuntu" => {
+            let version = version.split_once(':').map_or(version, |(_, rest)| rest);
+            version
+                .rsplit_once('-')
+                .map_or(version, |(upstream, _)| upstream)
+                .to_string()
+        }
+        _ => version.to_string(),
+    }
+}
+
+fn check_versions(report: &mut Report) {
+    let versioned = env("VERSIONED").unwrap_or_default();
+    let floors = env("FLOORS").unwrap_or_default();
+    if versioned.is_empty() && floors.is_empty() {
+        return;
+    }
+    println!("==> capability versions");
+    let family = env("FAMILY").unwrap_or_default();
+    let mut measured: Vec<(String, String, String)> = Vec::new();
+    for entry in versioned.split_whitespace() {
+        let fields: Vec<&str> = entry.split('|').collect();
+        let [component, name, package] = fields[..] else {
+            report.fail(format!("`{entry}` is not a capability version entry"));
+            continue;
+        };
+        match package_version(&family, package) {
+            Some(version) => {
+                println!("    {component} {name} {version}");
+                measured.push((component.to_string(), name.to_string(), version));
+            }
+            None => report.fail(format!(
+                "`{component}` provides `{name}` from `{package}`. The package database has no such package."
+            )),
+        }
+    }
+    for entry in floors.split_whitespace() {
+        let fields: Vec<&str> = entry.split('|').collect();
+        let [name, minimum, owner] = fields[..] else {
+            report.fail(format!("`{entry}` is not a version floor"));
+            continue;
+        };
+        let Some(minimum) = Version::parse(minimum) else {
+            report.fail(format!("`{minimum}` is not a dotted version"));
+            continue;
+        };
+        if let Err(message) = check_floor(&measured, name, &minimum, owner) {
+            report.fail(message);
+        }
+    }
+}
+
+fn check_floor(
+    measured: &[(String, String, String)],
+    name: &str,
+    minimum: &Version,
+    owner: &str,
+) -> Result<(), String> {
+    let mut best: Option<(&str, &str, Version)> = None;
+    let mut found = false;
+    for (component, provided, version) in measured {
+        if !crate::resolve::meets(provided, name) {
+            continue;
+        }
+        found = true;
+        let version = Version::parse(version).ok_or_else(|| {
+            format!(
+                "`{component}` provides `{provided}` at {version}. That is not a dotted number. The floor {minimum} that `{owner}` requires cannot be compared."
+            )
+        })?;
+        if best.as_ref().is_none_or(|(_, _, held)| version > *held) {
+            best = Some((component, provided, version));
+        }
+    }
+    match (found, best) {
+        (false, _) => Err(format!(
+            "no measured provider of `{name}` exists. `{owner}` requires {minimum} or later."
+        )),
+        (true, Some((component, provided, version))) if version < *minimum => Err(format!(
+            "`{component}` provides `{provided}` at {version}. `{owner}` requires {minimum} or later."
+        )),
+        _ => Ok(()),
+    }
+}
+
 fn check_contracts(contracts: &str, relocated: &[Link], report: &mut Report) {
     if contracts.trim().is_empty() {
         println!("    (none declared)");
@@ -733,6 +836,8 @@ pub fn validate_image() -> Result<(), String> {
         &relocated,
         &mut report,
     );
+
+    check_versions(&mut report);
 
     let mut exceptions: Vec<(String, String)> = Vec::new();
     for token in env("VERIFY_EXCEPTIONS")
@@ -1011,6 +1116,70 @@ fn enablement_links(root: &Path, unit: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn version(text: &str) -> Version {
+        Version::parse(text).expect("a dotted version")
+    }
+
+    fn measured(entries: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
+        entries
+            .iter()
+            .map(|(component, name, version)| {
+                (component.to_string(), name.to_string(), version.to_string())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_floor_passes_when_any_provider_reaches_it() {
+        let measured = measured(&[
+            ("core/one", "runtime", "1.0"),
+            ("core/two", "runtime", "2.5"),
+        ]);
+        assert_eq!(
+            check_floor(&measured, "runtime", &version("2.0"), "core/app"),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_floor_names_the_highest_provider_when_every_one_is_below() {
+        let measured = measured(&[
+            ("core/one", "runtime", "1.0"),
+            ("core/two", "runtime", "1.5"),
+        ]);
+        let error = check_floor(&measured, "runtime", &version("2.0"), "core/app")
+            .expect_err("below the floor");
+        assert!(
+            error.contains("core/two") && error.contains("1.5"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_floor_with_no_provider_is_refused() {
+        let error =
+            check_floor(&[], "runtime", &version("2.0"), "core/app").expect_err("no provider");
+        assert!(
+            error.contains("no measured provider of `runtime`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_floor_with_a_non_dotted_version_is_refused() {
+        let measured = measured(&[("core/one", "runtime", "1.0-rc1")]);
+        let error =
+            check_floor(&measured, "runtime", &version("2.0"), "core/app").expect_err("not dotted");
+        assert!(error.contains("not a dotted number"), "{error}");
+    }
+
+    #[test]
+    fn a_debian_version_is_its_upstream_part() {
+        assert_eq!(upstream_version("debian", "1:2025.2-1"), "2025.2");
+        assert_eq!(upstream_version("fedora", "2025.3"), "2025.3");
+        assert_eq!(upstream_version("debian", "2:1.45.1-3~deb13"), "1.45.1");
+    }
 
     #[test]
     fn a_removed_name_whose_witness_is_still_present_fails() {

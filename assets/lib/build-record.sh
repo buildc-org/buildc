@@ -46,6 +46,23 @@ done
 enforce=false
 [ "${AUDIT_ENFORCE:-}" = "true" ] && enforce=true
 
+measurements="${VERSIONS:-}"
+if [ -z "$measurements" ] && [ -n "${VERSIONS_FILE:-}" ] && [ -f "$VERSIONS_FILE" ]; then
+    measurements="$(tr '\n' ' ' < "$VERSIONS_FILE")"
+fi
+
+versions=""
+for field in $measurements; do
+    IFS='|' read -r -a parts <<< "$field"
+    [ "${#parts[@]}" -eq 4 ] || continue
+    [ -z "$versions" ] || versions+=", "
+    versions+="$(printf '{"provider": %s, "name": %s, "package": %s, "version": %s}' \
+        "$(json_string "${parts[0]}")" \
+        "$(json_string "${parts[1]}")" \
+        "$(json_string "${parts[2]}")" \
+        "$(json_string "${parts[3]}")")"
+done
+
 text="$(
     printf '{\n'
     printf '  "schema_version": 1,\n'
@@ -55,8 +72,14 @@ text="$(
     printf '  "buildc": %s,\n' "$(json_string "${BUILDC_VERSION:?build-record: BUILDC_VERSION is unset}")"
     printf '  "backend": %s,\n' "$(optional "${BUILD_BACKEND:-}")"
     printf '  "source_commit": %s,\n' "$(optional "${SOURCE_COMMIT:-}")"
-    printf '  "base": {"declared": %s, "resolved": %s},\n' \
-        "$(optional "${BASE_DECLARED:-}")" "$(optional "${BASE:-}")"
+    # An unversioned image writes no `versions` key. A consumer sees the key only when the build measured one.
+    if [ -n "$versions" ]; then
+        printf '  "base": {"declared": %s, "resolved": %s, "versions": [%s]},\n' \
+            "$(optional "${BASE_DECLARED:-}")" "$(optional "${BASE:-}")" "$versions"
+    else
+        printf '  "base": {"declared": %s, "resolved": %s},\n' \
+            "$(optional "${BASE_DECLARED:-}")" "$(optional "${BASE:-}")"
+    fi
     printf '  "components": [%s],\n' "$components"
     printf '  "assets": [%s],\n' "$assets"
     printf '  "audit": {"enforce": %s},\n' "$enforce"

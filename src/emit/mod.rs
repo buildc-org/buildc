@@ -3,6 +3,7 @@ pub mod containerfile;
 pub mod coverage;
 pub mod finalize;
 pub mod graph;
+pub mod measure;
 pub mod plan;
 pub mod recipe;
 pub mod record;

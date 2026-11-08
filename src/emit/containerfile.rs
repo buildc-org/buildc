@@ -145,6 +145,16 @@ pub fn sections(
         let _ = write!(out, "### Base Image\nFROM ${{BASE}} AS {LINEAGE}\n\n");
     }
 
+    // The base measurement runs before the first component layer because a component can change the packages the base ships.
+    let early = super::measure::early(image);
+    if !early.is_empty() {
+        if !image.flavours.is_empty() {
+            let _ = write!(out, "{FLAVOUR_ARG}\n\n");
+            flavour_arg_emitted = true;
+        }
+        out.push_str(&early);
+    }
+
     let identity = identity(image);
     let mut identity_args = String::from("# ---- image identity ----\n");
     for (name, value) in &identity {
@@ -274,7 +284,13 @@ pub fn sections(
         finalize_layer(image, &identity_env, root, flavours, conforms, rules)
     );
 
-    let record = record_layer(audit_enforce);
+    // A base image can carry a versions file from an earlier build. The record measurement resets the file unless the early measurement already wrote it.
+    let early_measured = !early.is_empty();
+    let record = record_layer(
+        audit_enforce,
+        early_measured,
+        &super::measure::record(image, !early_measured),
+    );
     let validate = String::new();
 
     let mut tail_out = String::new();
@@ -306,7 +322,7 @@ pub fn section(image: &Image, root: &Path, audit_enforce: bool, collection: &Col
         .join("\n")
 }
 
-fn record_layer(audit_enforce: bool) -> String {
+fn record_layer(audit_enforce: bool, early: bool, measure: &str) -> String {
     let mut out = String::from(
         "COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json\n\n\
          ARG BASE\n\
@@ -321,6 +337,10 @@ fn record_layer(audit_enforce: bool) -> String {
     if audit_enforce {
         out.push_str("ARG AUDIT_ENFORCE=\"\"\n");
     }
+    if !measure.is_empty() {
+        out.push('\n');
+        out.push_str(measure);
+    }
     let _ = write!(
         out,
         "RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
@@ -329,6 +349,9 @@ fn record_layer(audit_enforce: bool) -> String {
          COMPONENT_HASHES=\"${{COMPONENT_HASHES}}\" \\\n    \
          ASSET_RESOLUTIONS=\"${{ASSET_RESOLUTIONS}}\" BUILDC_VERSION=\"${{BUILDC_VERSION}}\" "
     );
+    if early || !measure.is_empty() {
+        out.push_str("VERSIONS_FILE=/usr/share/buildc/versions ");
+    }
     if audit_enforce {
         out.push_str("AUDIT_ENFORCE=\"${AUDIT_ENFORCE}\" ");
     }

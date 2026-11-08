@@ -1211,7 +1211,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "f42a8f5d8ec1f57c7c9ed67c98fbfba8136ce21a0623b0e458b14872f7191064",
+  "root": "26222070bbe3e982777b1eb32d701888b7bddef9a8d088be73c8fe7f987ad34a",
   "files": 28
 }
 ==== generated/broken-fragment/components/core/early/hostname

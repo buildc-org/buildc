@@ -614,6 +614,7 @@ repo_cases! {
     uki => "uki",
     unmeasured_family => "unmeasured-family",
     unpinned_source => "unpinned-source",
+    versioned => "versioned",
     wrong_pin => "wrong-pin",
 }
 

@@ -1207,7 +1207,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "546073107656e30c5767cecf1413745b9b23922de297fab38a4ec92a063cc499",
+  "root": "fb969ada6c0146e7f3b711bc20ee58bcb4c94529f4207c2fd54711c4fd96138c",
   "files": 28
 }
 ==== generated/enforced/components/one/hello/component.sh

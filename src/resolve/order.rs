@@ -20,8 +20,13 @@ pub fn sort(image: &Image, issues: &mut Issues) -> Vec<usize> {
         let Some(component) = &entry.component else {
             continue;
         };
-        for decl in component.requires.iter().chain(&component.removes) {
-            for provider in offered(&decl.name) {
+        let hard = component
+            .requires
+            .iter()
+            .map(|decl| decl.name.as_str())
+            .chain(component.removes.iter().map(|decl| decl.name.as_str()));
+        for name in hard {
+            for provider in offered(name) {
                 if provider != index {
                     waits_on[index].push(provider);
                 }

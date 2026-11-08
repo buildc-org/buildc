@@ -437,6 +437,15 @@ fn build_facts(
     if provides(image, entries, crate::emit::recipe::LUKS_INITRAMFS) {
         validate.push("LUKS_INITRAMFS=true".to_string());
     }
+    let versioned = crate::emit::measure::versioned(&components);
+    if !versioned.is_empty() {
+        validate.push(format!("VERSIONED={}", versioned.join(" ")));
+    }
+    let offered = crate::emit::measure::provided(&components);
+    let floors = crate::emit::measure::required(image, &components, &offered);
+    if !floors.is_empty() {
+        validate.push(format!("FLOORS={}", floors.join(" ")));
+    }
 
     Json::object([
         (
@@ -542,8 +551,18 @@ fn component(
                     .map(|(name, value)| (name.clone(), Json::string(value))),
             ),
         ),
-        ("provides", Json::strings(decls(component, |m| &m.provides))),
-        ("requires", Json::strings(decls(component, |m| &m.requires))),
+        (
+            "provides",
+            Json::strings(decls(component, |m| {
+                m.provides.iter().map(|decl| decl.name.clone()).collect()
+            })),
+        ),
+        (
+            "requires",
+            Json::strings(decls(component, |m| {
+                m.requires.iter().map(|decl| decl.name.clone()).collect()
+            })),
+        ),
         ("met_by", met_by(entry, image, entries)),
         (
             "witnessed",
@@ -556,7 +575,12 @@ fn component(
                     .map(|file| file.file.clone()),
             ),
         ),
-        ("removes", Json::strings(decls(component, |m| &m.removes))),
+        (
+            "removes",
+            Json::strings(decls(component, |m| {
+                m.removes.iter().map(|decl| decl.name.clone()).collect()
+            })),
+        ),
         (
             "files",
             Json::map(
@@ -651,13 +675,8 @@ fn coprs(component: Option<&Component>, family: &str) -> Json {
     )
 }
 
-fn decls(
-    component: Option<&Component>,
-    of: impl Fn(&Component) -> &[crate::model::component::Decl],
-) -> Vec<String> {
-    component
-        .map(|m| of(m).iter().map(|d| d.name.clone()).collect())
-        .unwrap_or_default()
+fn decls(component: Option<&Component>, of: impl Fn(&Component) -> Vec<String>) -> Vec<String> {
+    component.map(of).unwrap_or_default()
 }
 
 fn provenance(entry: &Entry, resolved: &Resolved) -> Json {
@@ -756,6 +775,10 @@ fn witnesses(image: &Image) -> Json {
         .chain(components.flat_map(|component| &component.files));
     let mut paths: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
     for file in files {
+        // A build-only witness is gone from the finished image and cannot witness the capability in that image.
+        if file.build_only {
+            continue;
+        }
         let held = paths.entry(&file.name).or_default();
         if !held.contains(&file.file) {
             held.push(file.file.clone());

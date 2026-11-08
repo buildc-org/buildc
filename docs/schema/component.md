@@ -19,9 +19,9 @@ packages "htop" "tmux"
 | [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. |
 | [`targets`](#targets) (optional,&nbsp;repeatable) | *list of strings* | The base families that this component builds on, which the image's `family` must match. Omit it to target every family. |
 | [`provides`](#provides) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp;} | A capability that this component provides for the components that require it. |
-| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide, which also orders the build. |
+| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide. It also orders the build. |
 | [`imports`](#imports) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;} | A component that builds in every image that holds this component. |
-| [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after, which the component does not require. |
+| [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after. The component does not require it. |
 | [`removes`](#removes) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#removes-fields)&nbsp;} | A capability that this component withdraws from the image. |
 | [`overrides`](#overrides) (optional,&nbsp;repeatable) | *list of strings* | An absolute path that this component replaces on purpose. |
 | [`mode`](#mode) (optional,&nbsp;unique) | *path*, then *octal mode* | The octal file mode that one path in the overlay of this component takes. |
@@ -95,7 +95,7 @@ Accepts: *list of strings*
 
 ## `provides` (optional, repeatable)
 
-A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `base-image` is provided by a `base` node, so a manifest cannot declare it.
+A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `base-image` is provided by a `base` node. A manifest cannot declare it.
 
 ```kdl
 provides "flatpak"
@@ -108,6 +108,8 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp
 | `witness=` (optional) | *string* | The absolute path in the finished image that witnesses the capability. Without it, nothing witnesses the capability. The build checks the path at the end of the component's layer. If the component ships a finalize hook for the base family, then the build checks the path after the finalize hooks. |
 | `build-only=` (optional) | *boolean* | Whether the `witness` exists only while the build runs. |
 | `exclusive=` (optional) | *boolean* | Whether a second enabled provider of the capability conflicts with this one. |
+| `version=` (optional) | *string* | The version that the base probe or the build measured for this capability. |
+| `package=` (optional) | *string* | The package whose version measures this capability. |
 
 <a id="provides-fields"></a>
 
@@ -119,6 +121,8 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp
 > The build checks the finished image for the witness file.
 >
 > A `provides` without `witness`, such as `rechunking`, has no witness. `buildc` holds no default path for a name.
+>
+> A `version` is the measured result for this capability, not a value to write by hand. A `provides` that carries a `version` must also name the `package` it was measured from. A `version` without `package` is refused.
 >
 > `buildc validate-image` checks the finished image for the witness of each name that the base or a component provides with a `witness`. `base-sig-probe` reads those witnesses when it measures a base, except the ones of a component that meets a base requirement or that the base imports.
 >
@@ -147,36 +151,53 @@ provides {
 | `witness=` (optional) | *string* | The absolute path in the finished image that witnesses the capability. Without it, nothing witnesses the capability. The build checks the path at the end of the component's layer. If the component ships a finalize hook for the base family, then the build checks the path after the finalize hooks. |
 | `build-only=` (optional) | *boolean* | Whether the `witness` exists only while the build runs. |
 | `exclusive=` (optional) | *boolean* | Whether a second enabled provider of the capability conflicts with this one. |
+| `version=` (optional) | *string* | The version that the base probe or the build measured for this capability. |
+| `package=` (optional) | *string* | The package whose version measures this capability. |
 
 <a id="requires"></a>
 
 ## `requires` (optional, repeatable)
 
-A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.
+A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.
 
 ```kdl
-requires "kernel-devel"
+requires "libostree" min="2025.3"
 ```
 
 Accepts: *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;}
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `min=` (optional) | *string* | The lowest version of the capability that satisfies this requirement. |
 
 <a id="requires-fields"></a>
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`<name>`](#requires-name) (optional,&nbsp;repeatable) |  | One capability in the block, which the node name names. |
+| [`<name>`](#requires-name) (optional,&nbsp;repeatable) |  | One capability in a `requires` block, which the node name names. |
+
+> [!NOTE]
+> A `min` is opt-in. A requirement without one is satisfied by any provider. A versioned requirement needs a provider that names the `package` whose version measures the capability.
+>
+> A pinned base is checked before a build. It is refused when its recorded version is below the minimum and when it records no version. A moving base is measured in the build before the first component layer runs. The build stops when the measured version is below the minimum.
+>
+> A component's own version is measured after its layer. `buildc validate-image` checks the floor on it.
 
 <a id="requires-name"></a>
 
 ### `<name>` (optional, repeatable)
 
-One capability in the block, which the node name names.
+One capability in a `requires` block, which the node name names.
 
 ```kdl
 requires {
-    "kernel-devel"
+    "libostree" min="2025.3"
 }
 ```
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `min=` (optional) | *string* | The lowest version of the capability that satisfies this requirement. |
 
 <a id="imports"></a>
 
@@ -246,13 +267,25 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;}
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`<name>`](#requires-name) (optional,&nbsp;repeatable) |  | One capability in the block, which the node name names. |
+| [`<name>`](#after-name) (optional,&nbsp;repeatable) |  | One capability in the block, which the node name names. |
+
+<a id="after-name"></a>
+
+### `<name>` (optional, repeatable)
+
+One capability in the block, which the node name names.
+
+```kdl
+after {
+    "kernel-devel"
+}
+```
 
 <a id="removes"></a>
 
 ## `removes` (optional, repeatable)
 
-A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.
+A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.
 
 ```kdl
 removes "bootupctl"
@@ -264,7 +297,7 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#removes-fields)&nbsp;
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`<name>`](#requires-name) (optional,&nbsp;repeatable) |  | One capability in the block, which the node name names. |
+| [`<name>`](#after-name) (optional,&nbsp;repeatable) |  | One capability in the block, which the node name names. |
 
 <a id="overrides"></a>
 
@@ -932,9 +965,9 @@ Accepts: *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;}
 | [`packages`](#packages) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#packages-fields)&nbsp;} | The packages that this component installs. |
 | [`package-groups`](#package-groups) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#package-groups-fields)&nbsp;} | The package groups that this component installs. Package groups work with dnf only, so an ungated `package-groups` needs a component that targets only `fedora` or `rhel`. |
 | [`copr`](#copr) (optional,&nbsp;unique) | *string* | The `owner/project` name of a COPR repository that this component enables for its own installs. `copr` works on Fedora only. |
-| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide, which also orders the build. |
+| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide. It also orders the build. |
 | [`imports`](#imports) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;} | A component that builds in every image that holds this component. |
-| [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after, which the component does not require. |
+| [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after. The component does not require it. |
 | [`satisfies`](#satisfies) (optional) | optionally {&nbsp;[fields](#satisfies-fields)&nbsp;} | An audit declaration of the benchmarks and rules that this component claims to harden. `buildc` records the claim and certifies nothing, and the scan checks it after the build. |
 
 > [!NOTE]

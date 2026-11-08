@@ -1511,7 +1511,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "379f5744a94a444e6b11a5bea1e5f2078a61ed10d36a2cdd43f2b7b8376f7119",
+  "root": "2e498b0ade19e950e089f257434b5f0e217c2de7b9eee055103fde357cbdf1f9",
   "files": 36
 }
 ==== generated/server/components/core/shared/finalize.sh

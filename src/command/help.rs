@@ -649,9 +649,11 @@ pub(super) const WHY_NOTES: &str = r#"> [!NOTE]
 
 pub(super) const BUILD_RECORD: &str = r#"Writes `/usr/share/buildc/build.json`, the record of what the build resolved.
 The baked `manifest.json` beside it holds what the repository declared. The
-record holds the digest of the base, the commit of each cloned asset, the source
-commit, the `buildc` release, the target, the content hash of each component, and
-whether enforcement was on.
+record holds the digest of the base, the version the build measured for each
+capability from its package, the commit of each cloned asset, the source
+commit, the `buildc` release, the target, the content hash of each component,
+and whether enforcement was on. The versions sit in `base.versions`. That
+key is absent when the build measured none.
 
 No file under `generated/` holds the record, so `buildc verify` never compares
 it. The record changes with each build."#;

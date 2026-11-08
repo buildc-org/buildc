@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Source, Span};
-use crate::model::component::{Access, Component, Coverage, Refusal};
+use crate::model::component::{Access, Capability, Component, Coverage, Refusal, Requirement};
 use crate::model::options::Value;
 use crate::model::remote::Collection;
 
@@ -87,7 +87,7 @@ pub struct Image {
 }
 
 impl Base {
-    pub fn shipped(&self) -> impl Iterator<Item = &Decl> {
+    pub fn shipped(&self) -> impl Iterator<Item = &Capability> {
         self.provides
             .iter()
             .filter(|decl| decl.name != crate::parse::component::BASE_IMAGE)
@@ -105,6 +105,13 @@ impl Base {
         provides.peek().is_some()
             && provides.all(|name| self.provides.iter().any(|decl| decl.name == name))
     }
+
+    pub fn packages<'a>(&'a self, required: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        self.provides
+            .iter()
+            .filter(move |decl| crate::resolve::meets(&decl.name, required))
+            .filter_map(|decl| decl.package.as_deref())
+    }
 }
 
 pub struct BaseEntry {
@@ -117,8 +124,8 @@ pub struct Base {
     pub path: String,
     pub image: String,
     pub family: String,
-    pub provides: Vec<Decl>,
-    pub requires: Vec<Decl>,
+    pub provides: Vec<Capability>,
+    pub requires: Vec<Requirement>,
     pub imports: Vec<crate::model::component::Import>,
     pub src: Source,
     pub satisfies: Vec<Coverage>,

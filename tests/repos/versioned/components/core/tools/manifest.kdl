@@ -1,0 +1,6 @@
+schema-version 1
+
+targets "fedora"
+
+provides "package-manager/dnf5" witness="/usr/bin/dnf5" package="dnf5"
+provides "build-tool" witness="/usr/bin/build-tool" build-only=#true package="build-tool"

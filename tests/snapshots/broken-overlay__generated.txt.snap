@@ -1225,7 +1225,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "563b137e15dab72f268fc68787cf0cf3c83983241323b0592c7e4656a34c4b40",
+  "root": "bcc5a88ff01c5dfa1b0ebd784a64f4e538396bd74269827f500712af783fa26b",
   "files": 32
 }
 ==== generated/broken-overlay/components/core/first/files/etc/sudoers.d/99-hardening

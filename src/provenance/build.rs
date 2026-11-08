@@ -121,9 +121,38 @@ pub fn build() -> Json {
 
 pub const SCHEMA_VERSION: u32 = 1;
 
+fn versions(raw: &str) -> Vec<Json> {
+    raw.split_whitespace()
+        .filter_map(|field| {
+            let fields: Vec<&str> = field.split('|').collect();
+            let [provider, name, package, version] = fields[..] else {
+                return None;
+            };
+            Some(Json::object([
+                ("provider", Json::string(provider)),
+                ("name", Json::string(name)),
+                ("package", Json::string(package)),
+                ("version", Json::string(version)),
+            ]))
+        })
+        .collect()
+}
+
 fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
     let declared = env("BASE_DECLARED");
     let resolved = env("BASE");
+    let mut base = vec![
+        ("declared", Json::optional(declared)),
+        ("resolved", Json::optional(resolved)),
+    ];
+    let measured = env("VERSIONS")
+        .or_else(|| env("VERSIONS_FILE").and_then(|path| std::fs::read_to_string(path).ok()))
+        .map(|raw| versions(&raw))
+        .unwrap_or_default();
+    // An unversioned image writes no `versions` key. A consumer sees the key only when the build measured one.
+    if !measured.is_empty() {
+        base.push(("versions", Json::array(measured)));
+    }
     Json::object([
         ("schema_version", Json::number(SCHEMA_VERSION)),
         ("target", Json::optional(env("TARGET"))),
@@ -132,13 +161,7 @@ fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
         ("buildc", Json::string(env!("CARGO_PKG_VERSION"))),
         ("backend", Json::optional(env("BUILD_BACKEND"))),
         ("source_commit", Json::optional(env("SOURCE_COMMIT"))),
-        (
-            "base",
-            Json::object([
-                ("declared", Json::optional(declared)),
-                ("resolved", Json::optional(resolved)),
-            ]),
-        ),
+        ("base", Json::object(base)),
         (
             "components",
             Json::array(
@@ -270,6 +293,7 @@ mod tests {
                 "BUILD_BACKEND" => "buildah",
                 "COMPONENT_HASHES" => "core/hello|aaa apps/browser|bbb",
                 "ASSET_RESOLUTIONS" => "mods/xone|xone|B7|3484f60",
+                "VERSIONS" => "base|libostree|libostree-1-1|2025.2 core/bootc-base|dnf5|dnf5|5.4.7",
                 _ => return None,
             }))
         };
@@ -281,6 +305,8 @@ mod tests {
         assert!(out.contains("\"backend\": \"buildah\""));
         assert!(out.contains("\"path\": \"apps/browser\""));
         assert!(out.contains("\"selector\": \"B7\""));
+        assert!(out.contains("\"provider\": \"base\""));
+        assert!(out.contains("\"version\": \"2025.2\""));
         assert!(out.contains("\"enforce\": false"));
         assert!(out.contains("\"verified\": null"));
     }
@@ -300,6 +326,7 @@ mod tests {
                 "BUILD_BACKEND" => "buildah",
                 "COMPONENT_HASHES" => "core/hello|aaa apps/browser|bbb",
                 "ASSET_RESOLUTIONS" => "mods/xone|xone|B7|3484f60",
+                "VERSIONS" => "base|libostree|libostree-1-1|2025.2 core/bootc-base|dnf5|dnf5|5.4.7",
                 "AUDIT_ENFORCE" => "true",
                 "BUILDC_VERSION" => env!("CARGO_PKG_VERSION"),
                 _ => return None,
@@ -322,6 +349,7 @@ mod tests {
             "BUILD_BACKEND",
             "COMPONENT_HASHES",
             "ASSET_RESOLUTIONS",
+            "VERSIONS",
             "AUDIT_ENFORCE",
             "BUILDC_VERSION",
         ] {
@@ -341,6 +369,42 @@ mod tests {
             Json::parse(&text).expect("the script writes JSON").render(),
             record(&given).render()
         );
+    }
+
+    #[test]
+    fn the_emitted_script_reads_versions_from_the_file_it_is_given() {
+        let script = include_str!("../../assets/lib/build-record.sh");
+        let dir = scratch("record-versions-file");
+        let versions = dir.join("versions");
+        std::fs::write(&versions, "base|libostree|libostree-1-1|2025.2\n")
+            .expect("a versions file");
+        let record = |named: bool| -> String {
+            let file = dir.join(if named { "named.json" } else { "unnamed.json" });
+            let mut command = Command::new("bash");
+            command
+                .arg("-c")
+                .arg(script)
+                .arg("build-record")
+                .arg(&file)
+                .env_clear()
+                .env("PATH", std::env::var("PATH").unwrap_or_default())
+                .env("BUILDC_VERSION", env!("CARGO_PKG_VERSION"));
+            if named {
+                command.env("VERSIONS_FILE", &versions);
+            }
+            let out = command.output().expect("bash runs");
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            std::fs::read_to_string(&file).expect("the script writes its output")
+        };
+        let named = record(true);
+        let unnamed = record(false);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(named.contains("\"version\": \"2025.2\""), "{named}");
+        assert!(!unnamed.contains("\"version\": \"2025.2\""), "{unnamed}");
     }
 
     #[test]

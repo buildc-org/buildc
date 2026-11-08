@@ -1,6 +1,7 @@
 use crate::diag::{Source, Span};
 use crate::model::asset::Asset;
 use crate::model::options::{Opt, Value, Variant};
+use crate::model::version::Version;
 use crate::provenance::lock::Record;
 
 #[derive(Debug)]
@@ -56,6 +57,19 @@ pub struct Coverage {
 pub struct Decl {
     pub name: String,
     pub span: Span,
+}
+
+pub struct Capability {
+    pub name: String,
+    pub span: Span,
+    pub version: Option<Version>,
+    pub package: Option<String>,
+}
+
+pub struct Requirement {
+    pub name: String,
+    pub span: Span,
+    pub min: Option<Version>,
 }
 
 pub struct Import {
@@ -149,9 +163,9 @@ pub struct Component {
     pub src: Source,
     pub description: String,
     pub targets: Vec<String>,
-    pub provides: Vec<Decl>,
+    pub provides: Vec<Capability>,
     pub exclusive: Vec<String>,
-    pub requires: Vec<Decl>,
+    pub requires: Vec<Requirement>,
     pub base: Option<BaseFacts>,
     pub imports: Vec<Import>,
     pub removes: Vec<Decl>,
@@ -201,6 +215,12 @@ impl Component {
             self.provides.iter().map(|decl| decl.name.as_str()),
             required,
         )
+    }
+
+    pub fn builds_only(&self, name: &str) -> bool {
+        self.files
+            .iter()
+            .any(|file| file.name == name && file.build_only)
     }
 }
 

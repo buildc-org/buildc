@@ -542,8 +542,18 @@ fn component(
                     .map(|(name, value)| (name.clone(), Json::string(value))),
             ),
         ),
-        ("provides", Json::strings(decls(component, |m| &m.provides))),
-        ("requires", Json::strings(decls(component, |m| &m.requires))),
+        (
+            "provides",
+            Json::strings(decls(component, |m| {
+                m.provides.iter().map(|decl| decl.name.clone()).collect()
+            })),
+        ),
+        (
+            "requires",
+            Json::strings(decls(component, |m| {
+                m.requires.iter().map(|decl| decl.name.clone()).collect()
+            })),
+        ),
         ("met_by", met_by(entry, image, entries)),
         (
             "witnessed",
@@ -556,7 +566,12 @@ fn component(
                     .map(|file| file.file.clone()),
             ),
         ),
-        ("removes", Json::strings(decls(component, |m| &m.removes))),
+        (
+            "removes",
+            Json::strings(decls(component, |m| {
+                m.removes.iter().map(|decl| decl.name.clone()).collect()
+            })),
+        ),
         (
             "files",
             Json::map(
@@ -651,13 +666,8 @@ fn coprs(component: Option<&Component>, family: &str) -> Json {
     )
 }
 
-fn decls(
-    component: Option<&Component>,
-    of: impl Fn(&Component) -> &[crate::model::component::Decl],
-) -> Vec<String> {
-    component
-        .map(|m| of(m).iter().map(|d| d.name.clone()).collect())
-        .unwrap_or_default()
+fn decls(component: Option<&Component>, of: impl Fn(&Component) -> Vec<String>) -> Vec<String> {
+    component.map(of).unwrap_or_default()
 }
 
 fn provenance(entry: &Entry, resolved: &Resolved) -> Json {

@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues};
-use crate::model::component::{Component, Decl, Position};
+use crate::model::component::{Capability, Component, Position};
 use crate::model::image::{Entry, Image};
 use crate::provider::Index;
 use std::collections::{BTreeMap, BTreeSet};
@@ -24,10 +24,10 @@ pub fn suppress(image: &mut Image) {
     image.suppressed = suppressed;
 }
 
-fn names(decls: &[&Decl]) -> String {
+fn names<'a>(decls: impl IntoIterator<Item = &'a str>) -> String {
     decls
-        .iter()
-        .map(|decl| format!("`{}`", decl.name))
+        .into_iter()
+        .map(|name| format!("`{name}`"))
         .collect::<Vec<String>>()
         .join(", ")
 }
@@ -192,7 +192,7 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
         }
     }
 
-    let base_caps: BTreeMap<&str, &crate::model::component::Decl> = image
+    let base_caps: BTreeMap<&str, &Capability> = image
         .base
         .iter()
         .flat_map(|b| b.provides.iter())
@@ -223,7 +223,7 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
     }
 
     for component in image.components() {
-        let (covered, rest): (Vec<&Decl>, Vec<&Decl>) = component
+        let (covered, rest): (Vec<&Capability>, Vec<&Capability>) = component
             .provides
             .iter()
             .partition(|decl| base_caps.contains_key(decl.name.as_str()));
@@ -235,15 +235,15 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
                 format!(
                     "`{}` provides {}, which the base image already provides",
                     component.path,
-                    names(&covered)
+                    names(covered.iter().map(|decl| decl.name.as_str()))
                 ),
                 &component.src,
             )
             .at(first.span, "already provided by the base")
             .help(format!(
                 "a component the base covers entirely is suppressed instead. This one also provides {}, so its layer still builds and would provision {} a second time: split it, or drop the declaration",
-                names(&rest),
-                names(&covered)
+                names(rest.iter().map(|decl| decl.name.as_str())),
+                names(covered.iter().map(|decl| decl.name.as_str()))
             )),
         );
     }
@@ -492,6 +492,7 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             }
         }
     }
+
 }
 
 pub fn check_fragments(image: &Image, issues: &mut Issues) {

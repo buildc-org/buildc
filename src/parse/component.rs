@@ -1,11 +1,12 @@
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::layout;
 use crate::model::component::{
-    Access, BaseFacts, Collect, Component, Contribution, Copr, Coverage, Decl, FileMode, Import,
-    Key, Located, PackageGroup, Position, VerifyException,
+    Access, BaseFacts, Capability, Collect, Component, Contribution, Copr, Coverage, Decl,
+    FileMode, Import, Key, Located, PackageGroup, Position, Requirement, VerifyException,
 };
 use crate::model::image::{Entry, Image, List};
 use crate::model::options::{Opt, OptType};
+use crate::model::version::Version;
 use crate::parse::disk::Disk;
 use crate::parse::prop_span;
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say, FILE_SCHEMA_VERSION};
@@ -47,6 +48,42 @@ pub(crate) fn bad_package(value: &str) -> Option<&'static str> {
         Some((_, "")) => Some("has no version after its `=`"),
         Some((name, version)) => bad_token(name).or_else(|| bad_token(version)),
         None => bad_token(value),
+    }
+}
+
+fn version_prop(node: &KdlNode, name: &str, src: &Source, issues: &mut Issues) -> Option<Version> {
+    let text = prop(node, name)?;
+    match Version::parse(text) {
+        Some(version) => Some(version),
+        None => {
+            issues.push(
+                Issue::new(format!("`{text}` is not a dotted version"), src)
+                    .at(prop_span(node, name).unwrap_or_default(), "not a version")
+                    .help("write the version as numbers separated by dots, such as `2025.3`"),
+            );
+            None
+        }
+    }
+}
+
+fn package_prop(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<String> {
+    let text = prop(node, "package")?;
+    match bad_token(text) {
+        None => Some(text.to_string()),
+        Some(why) => {
+            issues.push(
+                Issue::new(
+                    format!("`{text}` is not a package name because it {why}"),
+                    src,
+                )
+                .at(
+                    prop_span(node, "package").unwrap_or_default(),
+                    "not a package name",
+                )
+                .help("a package name takes letters, digits and . _ + : -. It does not start with a dash and holds no spaces."),
+            );
+            None
+        }
     }
 }
 
@@ -142,6 +179,14 @@ const PROVIDES_PROPS: &[Prop] = &[
         desc: "Whether a second enabled provider of the capability conflicts with this one.",
         say: Say::new("`exclusive` takes #true or #false", "not a boolean", ""),
         missing: Say::NONE },
+    Prop { name: "version", kind: Kind::Str,
+        desc: "The version that the base probe or the build measured for this capability.",
+        say: Say::new("`version` must be a string, such as \"2025.3\"", "not a string", ""),
+        missing: Say::NONE },
+    Prop { name: "package", kind: Kind::Str,
+        desc: "The package whose version measures this capability.",
+        say: Say::new("`package` must be a package name", "not a package name", ""),
+        missing: Say::NONE },
 ];
 
 #[rustfmt::skip]
@@ -150,8 +195,14 @@ const PROVIDED: Node = Node::new("",
     .arg(Arg::None, Say::new("`{}` is a second name on one line of the block", "one name per line",
         "give each name its own line"))
     .props(PROVIDES_PROPS, Say::new("unknown `provides` property `{}`", "not part of the schema",
-        "a provided name accepts `witness`, `build-only` and `exclusive`"))
+        "a provided name accepts `witness`, `build-only`, `exclusive`, `version` and `package`"))
     .children(&[], Say::new("a provided name holds no `{}`", "not part of the schema", ""));
+
+#[rustfmt::skip]
+const MIN: Prop = Prop { name: "min", kind: Kind::Str,
+    desc: "The lowest version of the capability that satisfies this requirement.",
+    say: Say::new("`min` must be a string, such as \"2025.3\"", "not a string", ""),
+    missing: Say::NONE };
 
 #[rustfmt::skip]
 const CAPABILITY: Node = Node::new("",
@@ -163,13 +214,33 @@ const CAPABILITY: Node = Node::new("",
     .children(&[], Say::new("a capability name holds no `{}`", "not part of the schema", ""));
 
 #[rustfmt::skip]
+const REQUIRED: Node = Node::new("",
+    "One capability in a `requires` block, which the node name names.").example("\"libostree\" min=\"2025.3\"")
+    .arg(Arg::None, Say::new("`{}` is a second name on one line of the block", "one name per line",
+        "give each name its own line"))
+    .props(&[MIN], Say::new("`{}` is not a `requires` property", "not part of the schema",
+        "a required capability accepts `min`"))
+    .children(&[], Say::new("a capability name holds no `{}`", "not part of the schema", ""));
+
+#[rustfmt::skip]
 const REQUIRES: Node = Node::new("requires",
-    "A capability that another component must provide, which also orders the build.").about("A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.").example("\"kernel-devel\"")
+    "A capability that another component must provide. It also orders the build.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.").example("\"libostree\" min=\"2025.3\"")
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
-    .props(&[], Say::new("`{}` is not a `requires` property", "not part of the schema",
-        "`requires` takes capability names alone; a component that chooses its provider \
+    .props(&[MIN], Say::new("`{}` is not a `requires` property", "not part of the schema",
+        "`requires` accepts `min`; a component that chooses its provider \
          imports it, as `imports \"$container-runtime\"`"))
-    .children(&[CAPABILITY], Say::NONE);
+    .children(&[REQUIRED], Say::NONE)
+    .notes(&[
+        "A `min` is opt-in. A requirement without one is satisfied by any provider. A \
+         versioned requirement needs a provider that names the `package` whose version \
+         measures the capability.",
+        "A pinned base is checked before a build. It is refused when its recorded version \
+         is below the minimum and when it records no version. A moving base is measured \
+         in the build before the first component layer runs. The build stops when the \
+         measured version is below the minimum.",
+        "A component's own version is measured after its layer. `buildc validate-image` \
+         checks the floor on it.",
+    ]);
 
 #[rustfmt::skip]
 const IMPORTS: Node = Node::new("imports",
@@ -195,7 +266,7 @@ const IMPORTED_OPTION: Node = Node::new("",
 
 #[rustfmt::skip]
 const AFTER: Node = Node::new("after",
-    "A capability that this component builds after, which the component does not require.").about("The name orders the build only when something in the image provides it. A name with no provider is allowed and adds no order.").example("\"vfio\"")
+    "A capability that this component builds after. The component does not require it.").about("The name orders the build only when something in the image provides it. A name with no provider is allowed and adds no order.").example("\"vfio\"")
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
     .props(&[], Say::new("`{}` is not an `after` property", "not part of the schema",
         "`after` takes capability names alone"))
@@ -348,15 +419,19 @@ pub const COMPONENT: Node = Node::new("component",
             .props(&[], Say::new("`{}` is not a `targets` property", "not part of the schema",
                 "`targets` takes family names alone")),
 
-        Node::new("provides", "A capability that this component provides for the components that require it.").about("A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `base-image` is provided by a `base` node, so a manifest cannot declare it.").example("\"flatpak\"")
+        Node::new("provides", "A capability that this component provides for the components that require it.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `base-image` is provided by a `base` node. A manifest cannot declare it.").example("\"flatpak\"")
             .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
             .props(PROVIDES_PROPS, Say::new("unknown `provides` property `{}`", "not part of the schema",
-                "`provides` accepts `witness`, `build-only` and `exclusive`"))
+                "`provides` accepts `witness`, `build-only`, `exclusive`, `version` and `package`"))
             .children(&[PROVIDED], Say::NONE)
             .notes(&[
                 "The build checks the finished image for the witness file.",
-                "A `provides` without `witness`, such as `rechunking`, has no witness. `buildc` \
-                 holds no default path for a name.",
+                "A `provides` without `witness`, such as `rechunking`, has no witness. \
+                 `buildc` holds no default path for a name.",
+                "A `version` is the measured result for this capability, not a value to \
+                 write by hand. A `provides` that carries a `version` must also name the \
+                 `package` it was measured from. A `version` without `package` is \
+                 refused.",
                 "`buildc validate-image` checks the finished image for the witness of each name \
                  that the base or a component provides with a `witness`. `base-sig-probe` reads \
                  those witnesses when it measures a base, except the ones of a component that \
@@ -378,7 +453,7 @@ pub const COMPONENT: Node = Node::new("component",
         REQUIRES,
         IMPORTS,
         AFTER,
-        Node::new("removes", "A capability that this component withdraws from the image.").about("A name is one or more lower-case segments joined by `/`, and each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.").example("\"bootupctl\"")
+        Node::new("removes", "A capability that this component withdraws from the image.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.").example("\"bootupctl\"")
             .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named",
                 "`removes \"bootupctl\"`, one name for each capability this component takes away"))
             .props(&[], Say::new("`{}` is not a `removes` property", "not part of the schema",
@@ -923,9 +998,10 @@ impl Component {
         while !parts.is_empty() {
             let parent = parts.join("/");
             if disk.is_component(&parent) || image.defined.contains(&parent) {
-                component.requires.push(Decl {
+                component.requires.push(Requirement {
                     name: parent,
                     span: Span::default(),
+                    min: None,
                 });
                 break;
             }
@@ -1104,9 +1180,11 @@ impl Component {
         check_references(nodes, &component.options, src, issues);
         component.base = base_facts(nodes, src, issues);
         if component.base.is_some() {
-            component.provides.push(Decl {
+            component.provides.push(Capability {
                 name: BASE_IMAGE.to_string(),
                 span: Span::default(),
+                version: None,
+                package: None,
             });
             component.exclusive.push(BASE_IMAGE.to_string());
         }
@@ -1291,9 +1369,11 @@ impl Component {
         for key in &component.keys {
             let name = key_capability(&key.kind);
             if !component.provides.iter().any(|d| d.name == name) {
-                component.provides.push(Decl {
+                component.provides.push(Capability {
                     name: name.clone(),
                     span: key.span,
+                    version: None,
+                    package: None,
                 });
             }
             if !component.files.iter().any(|f| f.name == name) {
@@ -1487,27 +1567,59 @@ impl Component {
         issues: &mut Issues,
     ) {
         for named in names(node) {
+            let name = named.name.to_string();
+            check_capability(&name, named.span, src, issues);
             let decl = Decl {
-                name: named.name.to_string(),
+                name: name.clone(),
                 span: named.span,
             };
-            check_capability(&decl.name, decl.span, src, issues);
-            if kind == "provides" {
-                if decl.name == BASE_IMAGE {
-                    issues.push(
-                        Issue::new("`base-image` is what a `base` node provides", src)
-                            .at(decl.span, "declared by hand")
-                            .help("a base declares `base \"<image reference>\"`, which provides `base-image`"),
-                    );
-                }
-                self.locate(named.node, &decl, src, issues);
-                if flag(named.node, "exclusive") {
-                    self.exclusive.push(decl.name.clone());
-                }
-            }
             match kind {
-                "provides" => self.provides.push(decl),
-                "requires" => self.requires.push(decl),
+                "provides" => {
+                    if name == BASE_IMAGE {
+                        issues.push(
+                            Issue::new("`base-image` is what a `base` node provides", src)
+                                .at(decl.span, "declared by hand")
+                                .help("a base declares `base \"<image reference>\"`, which provides `base-image`"),
+                        );
+                    }
+                    let version = version_prop(named.node, "version", src, issues);
+                    let package = package_prop(named.node, src, issues);
+                    let version = match (&version, &package) {
+                        (Some(_), None) => {
+                            issues.push(
+                                Issue::new(
+                                    format!("`{name}` carries a `version` and no `package`"),
+                                    src,
+                                )
+                                .at(decl.span, "nothing names the package to measure")
+                                .help(
+                                    "a version is measured from a package. A `provides` \
+                                     that carries a `version` names its `package`.",
+                                ),
+                            );
+                            None
+                        }
+                        _ => version,
+                    };
+                    self.locate(named.node, &name, decl.span, src, issues);
+                    if flag(named.node, "exclusive") {
+                        self.exclusive.push(name.clone());
+                    }
+                    self.provides.push(Capability {
+                        name,
+                        span: decl.span,
+                        version,
+                        package,
+                    });
+                }
+                "requires" => {
+                    let min = version_prop(named.node, "min", src, issues);
+                    self.requires.push(Requirement {
+                        name,
+                        span: decl.span,
+                        min,
+                    });
+                }
                 "removes" => self.removes.push(decl),
                 _ => self.after.push(decl),
             }
@@ -1538,21 +1650,28 @@ impl Component {
         }
     }
 
-    fn locate(&mut self, node: &KdlNode, decl: &Decl, src: &Source, issues: &mut Issues) {
+    fn locate(
+        &mut self,
+        node: &KdlNode,
+        name: &str,
+        span: Span,
+        src: &Source,
+        issues: &mut Issues,
+    ) {
         let build_only = flag(node, "build-only");
         let Some(witness) = prop(node, "witness") else {
             if build_only {
                 issues.push(
                     Issue::new("`build-only` describes a `witness`, and none is given", src)
-                        .at(decl.span, "no `witness`")
+                        .at(span, "no `witness`")
                         .help("`provides \"x\" witness=\"/usr/libexec/x\" build-only=#true`"),
                 );
             }
             return;
         };
-        check_path(witness, decl.span, src, issues);
+        check_path(witness, span, src, issues);
         self.files.push(Located {
-            name: decl.name.clone(),
+            name: name.to_string(),
             file: witness.to_string(),
             build_only,
         });
@@ -2503,6 +2622,87 @@ refuses "grub2_nousb_argument" because="two"
         assert!(
             twice.iter().any(|m| m.contains("is refused twice")),
             "{twice:?}"
+        );
+    }
+
+    #[test]
+    fn a_version_is_read_from_a_named_package() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\nprovides \"libostree\" version=\"2025.3\" package=\"libostree-1-1\"\n";
+        let component = Component::parse(
+            "measured",
+            "measured",
+            Path::new("."),
+            text.to_string(),
+            None,
+            &mut issues,
+        )
+        .expect("a component");
+        assert!(issues.is_empty(), "{}", issues.plain());
+        assert_eq!(
+            component.provides[0].version.as_ref().map(Version::as_str),
+            Some("2025.3")
+        );
+        assert_eq!(
+            component.provides[0].package.as_deref(),
+            Some("libostree-1-1")
+        );
+    }
+
+    #[test]
+    fn a_version_without_a_package_is_refused_and_dropped() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\nprovides \"libostree\" version=\"2025.3\"\n";
+        let component = Component::parse(
+            "unmeasured",
+            "unmeasured",
+            Path::new("."),
+            text.to_string(),
+            None,
+            &mut issues,
+        )
+        .expect("a component");
+        assert!(
+            issues
+                .findings()
+                .iter()
+                .any(|m| m.contains("carries a `version` and no `package`")),
+            "{}",
+            issues.plain()
+        );
+        assert!(component.provides[0].version.is_none());
+    }
+
+    #[test]
+    fn a_minimum_parses_on_the_line_and_in_the_block() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\nrequires \"libostree\" min=\"2025.3\"\nrequires {\n    \"buildah\" min=\"1.44\"\n}\n";
+        let component = Component::parse(
+            "floors",
+            "floors",
+            Path::new("."),
+            text.to_string(),
+            None,
+            &mut issues,
+        )
+        .expect("a component");
+        assert!(issues.is_empty(), "{}", issues.plain());
+        assert_eq!(
+            component
+                .requires
+                .iter()
+                .map(|decl| (decl.name.as_str(), decl.min.as_ref().map(Version::as_str)))
+                .collect::<Vec<_>>(),
+            [("libostree", Some("2025.3")), ("buildah", Some("1.44")),]
+        );
+    }
+
+    #[test]
+    fn a_minimum_that_is_not_dotted_is_refused() {
+        let found = parsed("floor", "requires \"libostree\" min=\"2025.3-rc1\"\n");
+        assert!(
+            found.iter().any(|m| m.contains("is not a dotted version")),
+            "{found:?}"
         );
     }
 

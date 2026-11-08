@@ -1,0 +1,9 @@
+schema-version 1
+
+provides "libostree" version="2025.2" package="libostree-1-1"
+
+requires "package-manager/dnf5" min="5.0"
+
+base "example.invalid/versioned:1" {
+    family "fedora"
+}

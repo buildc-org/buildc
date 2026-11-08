@@ -1,0 +1,5 @@
+schema-version 1
+
+targets "fedora"
+
+requires "libostree" min="2025.3"

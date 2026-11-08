@@ -1,0 +1,472 @@
+---
+source: tests/golden/harness.rs
+---
+{
+  "schema_version": 1,
+  "default_image": "versioned",
+  "default_image_name": "Versioned",
+  "pr_image": "versioned",
+  "default_target": "versioned",
+  "default_published": "versioned",
+  "pr_target": "versioned",
+  "pr_published": "versioned",
+  "ungated_target": "versioned",
+  "ungated_published": "versioned",
+  "cache_image": "versioned-cache",
+  "backend": "buildah",
+  "manifest_label": false,
+  "workflows": [],
+  "audit": {
+    "enforce": false
+  },
+  "assets": [],
+  "images": [
+    {
+      "id": "versioned",
+      "name": "Versioned",
+      "pretty_name": "",
+      "file": "./image.kdl",
+      "url": "",
+      "issues_url": "",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "boot": "",
+      "allows": [],
+      "layout": null,
+      "base": {
+        "path": "base-image/pinned-base",
+        "defined": null,
+        "image": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "family": "fedora",
+        "scap_content": "",
+        "scap_pin": null,
+        "signed": false,
+        "provides": [
+          "libostree"
+        ],
+        "witnesses": {},
+        "requires": [
+          "package-manager/dnf5"
+        ],
+        "satisfies": []
+      },
+      "flavours": [],
+      "default_flavour": null,
+      "targets": [
+        {
+          "name": "versioned",
+          "image": "versioned",
+          "flavour": null,
+          "published": "versioned",
+          "conforms": "",
+          "allows": [],
+          "default": true,
+          "pr": true,
+          "siblings": [],
+          "components": [
+            {
+              "path": "core/needs",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [
+                "libostree"
+              ],
+              "met_by": {
+                "libostree": {
+                  "how": "base"
+                }
+              },
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "4c84b11f9b62ff58547efe8c4aacb73ea643fbde33d7e0afceb3dbde382ff9b9",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/tools",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [
+                "package-manager/dnf5",
+                "build-tool"
+              ],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [
+                "/usr/bin/dnf5"
+              ],
+              "removes": [],
+              "files": {
+                "package-manager/dnf5": "/usr/bin/dnf5",
+                "build-tool": "/usr/bin/build-tool"
+              },
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/needs-build-tool",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [
+                "build-tool"
+              ],
+              "met_by": {
+                "build-tool": {
+                  "how": "listed",
+                  "provider": "core/tools"
+                }
+              },
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "bf6700e2f59762eab1687f2df25644ce8a0118794544bc125ea59e502c809ebc",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/needs-dnf5",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [
+                "package-manager/dnf5"
+              ],
+              "met_by": {
+                "package-manager/dnf5": {
+                  "how": "listed",
+                  "provider": "core/tools"
+                }
+              },
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "4c061af88ecb533dfdea117ce9fc150dac0e9a589aebb047892f744b09b2c94f",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [
+            "/usr/bin/dnf5"
+          ],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/versioned/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "args": [
+              "TARGET=versioned",
+              "COMPONENT_HASHES=core/needs|4c84b11f9b62ff58547efe8c4aacb73ea643fbde33d7e0afceb3dbde382ff9b9 core/tools|79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2 core/needs-build-tool|bf6700e2f59762eab1687f2df25644ce8a0118794544bc125ea59e502c809ebc core/needs-dnf5|4c061af88ecb533dfdea117ce9fc150dac0e9a589aebb047892f744b09b2c94f",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/dnf5",
+              "VERSIONED=core/tools|package-manager/dnf5|dnf5",
+              "FLOORS=package-manager/dnf5|5.0|core/needs-dnf5 package-manager/dnf5|5.0|example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "measured",
+      "name": "Measured",
+      "pretty_name": "",
+      "file": "./image.kdl",
+      "url": "",
+      "issues_url": "",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "boot": "",
+      "allows": [],
+      "layout": null,
+      "base": {
+        "path": "base-image/pinned-base",
+        "defined": null,
+        "image": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "family": "fedora",
+        "scap_content": "",
+        "scap_pin": null,
+        "signed": false,
+        "provides": [
+          "libostree"
+        ],
+        "witnesses": {},
+        "requires": [
+          "package-manager/dnf5"
+        ],
+        "satisfies": []
+      },
+      "flavours": [],
+      "default_flavour": null,
+      "targets": [
+        {
+          "name": "measured",
+          "image": "measured",
+          "flavour": null,
+          "published": "measured",
+          "conforms": "",
+          "allows": [],
+          "default": false,
+          "pr": false,
+          "siblings": [],
+          "components": [
+            {
+              "path": "core/tools",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [
+                "package-manager/dnf5",
+                "build-tool"
+              ],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [
+                "/usr/bin/dnf5"
+              ],
+              "removes": [],
+              "files": {
+                "package-manager/dnf5": "/usr/bin/dnf5",
+                "build-tool": "/usr/bin/build-tool"
+              },
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [
+            "/usr/bin/dnf5"
+          ],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/measured/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "args": [
+              "TARGET=measured",
+              "COMPONENT_HASHES=core/tools|79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/dnf5",
+              "VERSIONED=core/tools|package-manager/dnf5|dnf5",
+              "FLOORS=package-manager/dnf5|5.0|example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recordonly",
+      "name": "RecordOnly",
+      "pretty_name": "",
+      "file": "./image.kdl",
+      "url": "",
+      "issues_url": "",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "boot": "",
+      "allows": [],
+      "layout": null,
+      "base": {
+        "path": "base-image/plain-base",
+        "defined": null,
+        "image": "example.invalid/plain:1",
+        "family": "fedora",
+        "scap_content": "",
+        "scap_pin": null,
+        "signed": false,
+        "provides": [],
+        "witnesses": {},
+        "requires": [
+          "package-manager/dnf5"
+        ],
+        "satisfies": []
+      },
+      "flavours": [],
+      "default_flavour": null,
+      "targets": [
+        {
+          "name": "recordonly",
+          "image": "recordonly",
+          "flavour": null,
+          "published": "recordonly",
+          "conforms": "",
+          "allows": [],
+          "default": false,
+          "pr": false,
+          "siblings": [],
+          "components": [
+            {
+              "path": "core/tools",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [
+                "package-manager/dnf5",
+                "build-tool"
+              ],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [
+                "/usr/bin/dnf5"
+              ],
+              "removes": [],
+              "files": {
+                "package-manager/dnf5": "/usr/bin/dnf5",
+                "build-tool": "/usr/bin/build-tool"
+              },
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [
+            "/usr/bin/dnf5"
+          ],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/recordonly/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "example.invalid/plain:1",
+            "args": [
+              "TARGET=recordonly",
+              "COMPONENT_HASHES=core/tools|79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=example.invalid/plain:1"
+            ],
+            "unresolved": [],
+            "validate": [
+              "CONTRACT_FILES=/usr/bin/dnf5",
+              "VERSIONED=core/tools|package-manager/dnf5|dnf5",
+              "FLOORS=package-manager/dnf5|5.0|example.invalid/plain:1"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

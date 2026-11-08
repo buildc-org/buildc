@@ -1,0 +1,46 @@
+schema-version 1
+
+image {
+    name "Versioned"
+
+    base-image {
+        pinned-base {
+            digest "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            signed #false
+        }
+    }
+
+    core {
+        needs
+        needs-build-tool
+        needs-dnf5
+        tools
+    }
+}
+
+image {
+    name "Measured"
+
+    base-image {
+        pinned-base {
+            digest "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            signed #false
+        }
+    }
+
+    core {
+        tools
+    }
+}
+
+image {
+    name "RecordOnly"
+
+    base-image {
+        plain-base
+    }
+
+    core {
+        tools
+    }
+}

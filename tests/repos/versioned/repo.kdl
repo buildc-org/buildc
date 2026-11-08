@@ -1,0 +1,4 @@
+schema-version 1
+name "Versioned"
+
+default-image "versioned"

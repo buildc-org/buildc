@@ -1,0 +1,5 @@
+schema-version 1
+
+targets "fedora"
+
+requires "package-manager/dnf5" min="5.0"

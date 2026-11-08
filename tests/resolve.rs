@@ -333,6 +333,20 @@ fn checked_on(name: &str, base: &str, components: &str, manifests: &[(&str, &str
 }
 
 #[test]
+fn a_moving_base_defers_its_version_floor_to_the_build() {
+    let issues = checked_on(
+        "moving-version",
+        "provides \"libostree\" version=\"2025.2\" package=\"libostree-1-1\"",
+        "        needs",
+        &[("needs", "requires \"libostree\" min=\"2025.3\"")],
+    );
+    assert!(
+        !issues.contains("requires `libostree` at or above"),
+        "{issues}"
+    );
+}
+
+#[test]
 fn a_component_builds_after_every_provider_of_what_it_requires() {
     let provider = "provides \"tool\" witness=\"/usr/share/tool\"";
     let root = written(

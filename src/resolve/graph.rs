@@ -1,6 +1,7 @@
-use crate::diag::{Issue, Issues};
-use crate::model::component::{Capability, Component, Position};
+use crate::diag::{Issue, Issues, Source};
+use crate::model::component::{Capability, Component, Position, Requirement};
 use crate::model::image::{Entry, Image};
+use crate::model::version::Version;
 use crate::provider::Index;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -493,6 +494,136 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
         }
     }
 
+    check_versions(image, issues);
+}
+
+fn check_versions(image: &Image, issues: &mut Issues) {
+    let Some(base) = &image.base else {
+        return;
+    };
+    // A digest pins the base and the recorded version belongs to that digest. A moving base resolves to a new digest on each build. Its recorded version is not trusted.
+    let pinned = base.image.contains('@');
+    let mut requirements: Vec<(&str, &Source, &Requirement)> = Vec::new();
+    for requirement in &base.requires {
+        requirements.push((&base.image, &base.src, requirement));
+    }
+    for component in image.components() {
+        for requirement in &component.requires {
+            requirements.push((&component.path, &component.src, requirement));
+        }
+    }
+
+    for (owner, src, requirement) in requirements {
+        let Some(min) = &requirement.min else {
+            continue;
+        };
+        let base_offers = base.answers(&requirement.name);
+        let providers: Vec<&Component> = image
+            .components()
+            .filter(|component| component.answers(&requirement.name))
+            .collect();
+        let mut known: Vec<(&str, &Version)> = Vec::new();
+        let mut measurable = false;
+        if base_offers {
+            for decl in base
+                .provides
+                .iter()
+                .filter(|decl| crate::resolve::meets(&decl.name, &requirement.name))
+            {
+                if pinned {
+                    if let Some(version) = &decl.version {
+                        known.push((&base.path, version));
+                    }
+                } else if decl.package.is_some() {
+                    measurable = true;
+                }
+            }
+        }
+        for component in &providers {
+            for decl in component
+                .provides
+                .iter()
+                .filter(|decl| crate::resolve::meets(&decl.name, &requirement.name))
+            {
+                if !component.builds_only(&decl.name) && decl.package.is_some() {
+                    measurable = true;
+                }
+            }
+        }
+        let all_build_only = !providers.is_empty()
+            && providers.iter().all(|component| {
+                component
+                    .provides
+                    .iter()
+                    .filter(|decl| crate::resolve::meets(&decl.name, &requirement.name))
+                    .all(|decl| component.builds_only(&decl.name))
+            });
+        if measurable || known.iter().any(|(_, version)| *version >= min) {
+            continue;
+        }
+        if let Some((provider, version)) = known.iter().max_by(|one, other| one.1.cmp(other.1)) {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{owner}` requires `{}` at or above `{min}`. `{provider}` carries `{version}`",
+                        requirement.name
+                    ),
+                    src,
+                )
+                .at(requirement.span, "below the minimum")
+                .help(
+                    "pin a newer base that carries the minimum",
+                ),
+            );
+        } else if pinned && base_offers {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{owner}` requires `{}` at or above `{min}`. The pinned base records no version",
+                        requirement.name
+                    ),
+                    src,
+                )
+                .at(requirement.span, "no measured version")
+                .help(
+                    "The base probe records the version of a capability beside its digest. A \
+                     pinned base without one cannot be checked.",
+                ),
+            );
+        } else if !base_offers && all_build_only {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{owner}` requires `{}` at or above `{min}`. Every provider declares it `build-only`",
+                        requirement.name
+                    ),
+                    src,
+                )
+                .at(requirement.span, "gone from the final image")
+                .help(
+                    "The capability exists only while the build runs. Its version is not in \
+                     the finished image. Drop the floor. Otherwise, provide the capability \
+                     from a package that the final image keeps.",
+                ),
+            );
+        } else if base_offers || !providers.is_empty() {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{owner}` requires `{}` at or above `{min}`. No provider that keeps it in the final image names a package to measure",
+                        requirement.name
+                    ),
+                    src,
+                )
+                .at(requirement.span, "no package named")
+                .help(
+                    "A versioned requirement needs a provider that keeps the capability in the \
+                     finished image and names the package whose version measures it. A \
+                     build-only provider cannot be measured.",
+                ),
+            );
+        }
+    }
 }
 
 pub fn check_fragments(image: &Image, issues: &mut Issues) {

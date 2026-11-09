@@ -1184,6 +1184,7 @@ graph LR
 |---|---|---|---|---|
 | `apparmor-policy` | capability |  | `core/one` | `core/one`, `core/two` |
 | `boot policy` | capability | `base` |  |  |
+| `bootc` | capability | `base` |  |  |
 | `nothing` | capability |  | `core/one` |  |
 | `package-manager` | capability |  | `core/one` |  |
 | `rechunking` | capability | `base` |  |  |
@@ -1208,6 +1209,14 @@ graph LR
     },
     {
       "name": "boot policy",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
+    {
+      "name": "bootc",
       "kind": "capability",
       "build_only": false,
       "provider": "base",
@@ -1268,7 +1277,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "519822d752c9934590a730f26293ec552f22f4a896dfbf82a67f2c3ef6ad9397",
+  "root": "6134228fb856a88eade4efb476f6cd81f6b5fbebbfb470b1cb33f68ef38bf0be",
   "files": 30
 }
 ==== generated/broken-graph/components/core/one/lib/one/shared.sh

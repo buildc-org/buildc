@@ -3,4 +3,4 @@ schema-version 1
 base "quay.io/fedora/fedora-bootc:44" {
     family "fedora"
 }
-provides "bootupctl" "luks-initramfs"
+provides "bootupctl" "luks-initramfs" "bootc"

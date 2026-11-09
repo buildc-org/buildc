@@ -1136,11 +1136,20 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/broken-options/graph.json
 {
   "image": "broken-options",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "rechunking",
       "kind": "capability",
@@ -1157,6 +1166,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "df4b0f9a720f51819f41cfbd804565a893f853f0d57a77eeb4f004c47737818e",
+  "root": "ac1528de4e29b8ddd31f9c375d812e7851ac108d46c2c1c189e294c50a9391b7",
   "files": 25
 }

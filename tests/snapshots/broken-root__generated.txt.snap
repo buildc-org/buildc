@@ -1156,12 +1156,21 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/same/graph.json
 {
   "image": "same",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "build-environment",
       "kind": "capability",
@@ -1454,12 +1463,21 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/same/graph.json
 {
   "image": "same",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "build-environment",
       "kind": "capability",
@@ -1484,7 +1502,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "89f27844f869a3bd48ae748cdf333f133061c9aa138bfbb286bb1973385d2b2e",
+  "root": "e39a8664d5dfedf2a34802dac1ddb614bba1dda919eb84e36a7bd99da0e4c83a",
   "files": 34
 }
 ==== generated/same/components/fedora-family/lib/family.sh

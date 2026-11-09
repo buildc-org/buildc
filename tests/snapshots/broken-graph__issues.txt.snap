@@ -2,11 +2,11 @@
 source: tests/golden/harness.rs
 ---
   x invalid capability name `boot policy`
-   ,-[tests/repos/broken-graph/components/base-image/fedora-bootc-44/manifest.kdl:6:23]
+   ,-[tests/repos/broken-graph/components/base-image/fedora-bootc-44/manifest.kdl:6:31]
  5 | }
- 6 | provides "rechunking" "boot policy" "selinux-policy"
-   :                       ^^^^^^|^^^^^^
-   :                             `-- lowercase, digits and dashes, starting with a letter
+ 6 | provides "rechunking" "bootc" "boot policy" "selinux-policy"
+   :                               ^^^^^^|^^^^^^
+   :                                     `-- lowercase, digits and dashes, starting with a letter
  7 | requires "bootc-base"
    `----
   help: a name is one or more segments joined by `/`, such as `rpm/dnf5`, and
@@ -72,12 +72,13 @@ source: tests/golden/harness.rs
 
   x `quay.io/fedora/fedora-bootc:44` requires `bootc-base`, which nothing
   | enabled provides
-    ,-[tests/repos/broken-graph/image.kdl:14:4]
+    ,-[tests/repos/broken-graph/image.kdl:14:12]
  13 |         core {
  14 | ,->         two
- 15 | |->     }
+ 15 | |       }
+ 16 | |->     core {
     : `---- the base is not usable without it
- 16 |         core {
+ 17 |             three
     `----
   help: no component in the repository declares `provides "bootc-base"`, and
         neither does the base `base-image/fedora-bootc-44`. repo.kdl declares

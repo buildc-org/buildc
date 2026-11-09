@@ -1117,11 +1117,20 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/minimal/graph.json
 {
   "image": "minimal",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "rechunking",
       "kind": "capability",
@@ -1138,6 +1147,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "7fb02e2cf54c23050d49287cb1ba7af2fbcc15e33e483ab57304fccf387fe9b8",
+  "root": "aa05421a55c907ccad9ecc0ea83e85da590555ab147cdaee1b8b78249d662459",
   "files": 24
 }

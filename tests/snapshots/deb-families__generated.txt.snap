@@ -987,8 +987,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
     ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
     IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
-
-RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- END GENERATED (build record) ----
 
 # ---- BEGIN GENERATED (tail fragments) ----
@@ -1366,8 +1364,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
     ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
     IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
-
-RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- END GENERATED (build record) ----
 
 # ---- BEGIN GENERATED (tail fragments) ----
@@ -1763,8 +1759,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
     ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
     IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
-
-RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- END GENERATED (build record) ----
 
 # ---- BEGIN GENERATED (tail fragments) ----
@@ -2017,7 +2011,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "5b67e7c988cead01f333aa36309de1ee5dfd931678e68e6d204e5ed032669481",
+  "root": "bdc09e8f1cc5dbfb4871adadc4ba0666a8064881a7074491dc7d034a3982b72f",
   "files": 68
 }
 ==== generated/debian/components/debian-family/lib/family.sh

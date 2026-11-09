@@ -4,6 +4,7 @@ base "ghcr.io/ublue-os/bazzite:stable" {
     family "fedora"
 }
 provides {
+    "bootc"
     "rechunking"
     "flatpak" witness="/usr/bin/flatpak"
 }

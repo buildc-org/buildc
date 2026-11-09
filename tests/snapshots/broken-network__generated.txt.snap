@@ -1238,12 +1238,21 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/broken-network/graph.json
 {
   "image": "broken-network",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "build-environment",
       "kind": "capability",
@@ -1268,7 +1277,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "97086f876a9d16d3247a7e26110cfebbcbaab673f9be178c36a0eaddc4f58136",
+  "root": "a5ad38a01f6097c7828e682dc2dddd5da0759ded2a67b9adae7b1bb0da638224",
   "files": 35
 }
 ==== generated/broken-network/components/fedora-family/lib/family.sh

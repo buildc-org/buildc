@@ -574,6 +574,7 @@ macro_rules! repo_cases {
 repo_cases! {
     bare_component => "bare-component",
     broken_asset => "broken-asset",
+    broken_bootc => "broken-bootc",
     broken_collect => "broken-collect",
     broken_cycle => "broken-cycle",
     broken_fetch => "broken-fetch",
@@ -603,6 +604,7 @@ repo_cases! {
     network => "network",
     no_default => "no-default",
     no_image => "no-image",
+    non_bootc => "non-bootc",
     one_file => "one-file",
     optional_metadata => "optional-metadata",
     past_schema => "past-schema",

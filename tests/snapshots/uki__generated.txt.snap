@@ -1156,6 +1156,7 @@ graph LR
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
 | `boot-chain-uki` | capability | `uki` |  |  |
+| `bootc` | capability | `base` |  |  |
 | `bootupctl` | capability | `base` |  |  |
 | `luks-initramfs` | capability | `base` |  |  |
 | `secureboot-enrolment` | capability | `enrolment` |  |  |
@@ -1168,6 +1169,14 @@ graph LR
       "kind": "capability",
       "build_only": false,
       "provider": "uki",
+      "required_by": [],
+      "after": []
+    },
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
       "required_by": [],
       "after": []
     },
@@ -1471,6 +1480,7 @@ graph LR
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
 | `boot-chain-uki` | capability | `uki` |  |  |
+| `bootc` | capability | `base` |  |  |
 | `bootupctl` | capability | `base` |  |  |
 | `luks-initramfs` | capability | `base` |  |  |
 | `secureboot-enrolment` | capability | `enrolment` |  |  |
@@ -1483,6 +1493,14 @@ graph LR
       "kind": "capability",
       "build_only": false,
       "provider": "uki",
+      "required_by": [],
+      "after": []
+    },
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
       "required_by": [],
       "after": []
     },
@@ -1749,12 +1767,21 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `bootupctl` | capability | `base` |  |  |
 | `luks-initramfs` | capability | `base` |  |  |
 ==== generated/missing/graph.json
 {
   "image": "missing",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "bootupctl",
       "kind": "capability",
@@ -1779,6 +1806,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "cf0fb3254ba16f94e321e337bae45631af9b91530fe716b3242df7ead9f311c6",
+  "root": "4a50e58d3f3062741c4cd05d283293a4e42272c14490005ffd5b56ebf7435df8",
   "files": 36
 }

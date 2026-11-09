@@ -45,6 +45,7 @@ source: tests/golden/harness.rs
         "signed": false,
         "provides": [
           "rechunking",
+          "bootc",
           "boot policy",
           "selinux-policy"
         ],

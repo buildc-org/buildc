@@ -45,7 +45,8 @@ source: tests/golden/harness.rs
         "signed": false,
         "provides": [
           "bootupctl",
-          "luks-initramfs"
+          "luks-initramfs",
+          "bootc"
         ],
         "witnesses": {},
         "requires": [],
@@ -179,7 +180,8 @@ source: tests/golden/harness.rs
         "signed": false,
         "provides": [
           "bootupctl",
-          "luks-initramfs"
+          "luks-initramfs",
+          "bootc"
         ],
         "witnesses": {},
         "requires": [],
@@ -313,7 +315,8 @@ source: tests/golden/harness.rs
         "signed": false,
         "provides": [
           "bootupctl",
-          "luks-initramfs"
+          "luks-initramfs",
+          "bootc"
         ],
         "witnesses": {},
         "requires": [],

@@ -1240,12 +1240,21 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/renovate/graph.json
 {
   "image": "renovate",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "build-environment",
       "kind": "capability",
@@ -1363,7 +1372,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "5650633d1adb4a9b3df3a9a02e13c6083af63acd8fe77a4b64ce4632466b52ac",
+  "root": "762535c1be7061573f3690039925911855314c11a631574cdd040e5e9df8f626",
   "files": 30
 }
 ==== generated/renovate/components/fedora-family/lib/family.sh

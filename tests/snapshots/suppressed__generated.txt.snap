@@ -1138,6 +1138,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `flatpak` | capability | `base` | `apps/browser` |  |
 | `rechunking` | capability | `base` |  |  |
 
@@ -1153,6 +1154,14 @@ them.
 {
   "image": "suppressed",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "flatpak",
       "kind": "capability",
@@ -1186,6 +1195,6 @@ them.
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "4ed75f65f11d5573253141257c7eee7a4c7e18c7a54d2a3746119f3f7ed7b616",
+  "root": "b4556b2d86bad15ade313226af37e374480e80a3c15c522bbf4da5cba4526c87",
   "files": 25
 }

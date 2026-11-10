@@ -27,7 +27,7 @@ pub const OPTION: Node = Node::new("option",
     .children(&[
         Node::new("description", "What the option does.").example("\"The Firefox release to install\"")
             .arg(Arg::Str, Say::NONE).once(""),
-        Node::new("default", "The value that the component builds with if no image sets one.").example("\"128.0\"")
+        Node::new("default", "The value that the component builds with if no image sets one. A string default may read `{image-id}` alone. `buildc generate` writes the id in place of the `{image-id}` reference.").example("\"128.0\"")
             .arg(Arg::Strs, Say::NONE)
             .once("")
             .missing(Say::new("this option declares no `{}`", "every option needs one",
@@ -60,13 +60,14 @@ pub const OPTION: Node = Node::new("option",
     ], Say::new("unknown node `{}` in an option", "not part of the schema",
         "an option holds `description`, `default` and `renovate`"))
     .notes(&[
-        "Every declared option reaches the layer of its component as `OPT_<NAME>`. `<NAME>` is the \
-         option name in upper case, and each dash becomes an underscore.",
+        "Every declared option reaches the layer of its component as `OPT_<NAME>`. `<NAME>` is \
+         the option name in upper case, and each dash becomes an underscore. A `finalize.sh` hook \
+         reads only its own component's options.",
         "A default reaches the layer too, so `component.sh` reads a variable and does not test \
          whether one is set.",
-        "A `string` option's value fills each `$<name>` that names it in a `packages`, \
-         `package-groups` or `provider` argument, as `packages \"firefox=$version\"` does. \
-         A `$<name>` that names a `bool` or a `list` option, or no option, fails `buildc check`.",
+        "A `string` option's value fills each `{<name>}` that names it in a `packages` or \
+         `package-groups` argument, as `packages \"firefox={version}\"` does. \
+         A `{<name>}` that names a `bool` or a `list` option, or no option, fails `buildc check`.",
     ]);
 
 #[rustfmt::skip]
@@ -83,7 +84,7 @@ pub const VARIANT: Node = Node::new("variant",
     .children(&[
         Node::new("description", "What the variant is for.").example("\"Skip the metadata and .NET payloads\"")
             .arg(Arg::Str, Say::NONE).once(""),
-        Node::new("set", "One option that this variant sets, where the option value follows the option name.").example("\"dotnet\" #false")
+        Node::new("set", "One option that this variant sets, where the option value follows the option name. A string value may read `{image-id}` alone.").example("\"dotnet\" #false")
             .arg(Arg::Str, Say::new("`set` needs an option name", "no option named", "")),
     ], Say::new("unknown node `{}` in a variant", "not part of the schema",
         "a variant holds `description` and `set`"))

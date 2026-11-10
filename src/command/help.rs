@@ -44,7 +44,9 @@ or uses the directory that `--root` names.
 
 It asks for the repository name, the host and account, the first image and its
 base, the base components, the CI workflows and schedule, and the scripts to
-keep in `scripts/`. It shows every answer on a review screen before it writes."#;
+keep in `scripts/`. When the user gives an owner, `repo.kdl` also declares
+`base-url`, the repository URL that image option values read as `{base-url}`.
+It shows every answer on a review screen before it writes."#;
 
 pub(super) const CREATE_REPO_NOTES: &str = r#"> [!WARNING]
 > The `buildc` source that `repo.kdl` declares is `unpinned`. Each
@@ -78,7 +80,13 @@ listed as it is. A base outside the catalog declares no family, so the tool
 offers no adapter and asks no family question.
 
 The components a library base imports are copied into `components/` beside
-it, and the image file lists none of them."#;
+it, and the image file lists none of them.
+
+If the base imports no `os-release` component, the command offers the library's
+`os-release`. When the user accepts, the command copies the component and sets
+its `name` option to the image name. When `repo.kdl` declares `base-url`, the
+command also sets `home-url` to `{base-url}` and `bug-report-url` to
+`{base-url}/issues`."#;
 
 pub(super) const CREATE_IMAGE_NOTES: &str = r#"> [!NOTE]
 > A base outside the catalog writes a base component with no `family` block.

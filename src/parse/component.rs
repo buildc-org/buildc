@@ -228,7 +228,7 @@ const REQUIRES: Node = Node::new("requires",
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
     .props(&[MIN], Say::new("`{}` is not a `requires` property", "not part of the schema",
         "`requires` accepts `min`; a component that chooses its provider \
-         imports it, as `imports \"$container-runtime\"`"))
+         imports it, as `imports \"{container-runtime}\"`"))
     .children(&[REQUIRED], Say::NONE)
     .notes(&[
         "A `min` is opt-in. A requirement without one is satisfied by any provider. A \
@@ -244,7 +244,7 @@ const REQUIRES: Node = Node::new("requires",
 
 #[rustfmt::skip]
 const IMPORTS: Node = Node::new("imports",
-    "A component that builds in every image that holds this component.").about("The value is a component path of lower-case segments joined by `/`, or a `$option` reference that resolves to one. The block of an imported path sets the options that this component passes to that component.").example("\"container-runtime\"")
+    "A component that builds in every image that holds this component.").about("The value is a component path of lowercase segments joined by `/`, or a `{option}` reference to a string option that resolves to one. The block of an imported path sets the options that the importing component passes to the imported component.").example("\"container-runtime\"")
     .arg(Arg::Names, Say::new("`{}` needs a component path", "nothing named",
         "`imports \"identity\"`, one path for each component that this component brings"))
     .props(&[], Say::new("`{}` is not an `imports` property", "not part of the schema",
@@ -262,7 +262,7 @@ const IMPORTED: Node = Node::new("",
 
 #[rustfmt::skip]
 const IMPORTED_OPTION: Node = Node::new("",
-    "One option value that the imported component takes, which the node name names.").example("storage-driver \"$storage-driver\"");
+    "One option value that the imported component takes, which the node name names.").example("storage-driver \"{storage-driver}\"");
 
 #[rustfmt::skip]
 const AFTER: Node = Node::new("after",
@@ -594,9 +594,9 @@ pub const COMPONENT: Node = Node::new("component",
 
         ON,
 
-        Node::new("base", "The image reference that an image on this base builds from. It makes the component a base.").about("The reference may carry a `$option` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.").example("\"quay.io/fedora/fedora-bootc:$version\"")
+        Node::new("base", "The image reference that an image on this base builds from. It makes the component a base.").about("The reference may carry a `{option}` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.").example("\"quay.io/fedora/fedora-bootc:{version}\"")
             .arg(Arg::Str, Say::new("`base` needs an image reference", "no image given",
-                "`base \"quay.io/fedora/fedora-bootc:$version\"`, the reference a build on this base starts from"))
+                "`base \"quay.io/fedora/fedora-bootc:{version}\"`, the reference a build on this base starts from"))
             .once("")
             .props(&[], Say::new("`{}` is not a `base` property", "not part of the schema",
                 "`base` takes its reference, and its block holds `family`, `bootloader` and `scap-content`"))
@@ -820,9 +820,9 @@ fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut
                 .map(|opt| opt.ty)
             {
                 Some(OptType::String) => continue,
-                Some(OptType::Bool) => format!("`${name}` reads a bool option"),
-                Some(OptType::List) => format!("`${name}` reads a list option"),
-                None => format!("`${name}` names no option of this component"),
+                Some(OptType::Bool) => format!("`{{{name}}}` reads a bool option"),
+                Some(OptType::List) => format!("`{{{name}}}` reads a list option"),
+                None => format!("`{{{name}}}` names no option of this component"),
             };
             issues.push(
                 Issue::new(problem, src)
@@ -1629,7 +1629,7 @@ impl Component {
     fn parse_imports(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
         for named in names(node) {
             let path = named.name;
-            if !path.contains('$') && !crate::model::image::is_local_path(path) {
+            if !path.contains('{') && !crate::model::image::is_local_path(path) {
                 issues.push(
                     Issue::new(format!("`{path}` is not a component path"), src)
                         .at(named.span, "not a path under components/")
@@ -2143,6 +2143,7 @@ pub struct Summary {
     pub imports: Vec<String>,
     pub keys: Vec<String>,
     pub args: Vec<String>,
+    pub options: Vec<String>,
     pub satisfies: Vec<String>,
 }
 
@@ -2204,6 +2205,7 @@ pub fn summary(file: &Path) -> Summary {
             .collect(),
         keys: strings("key"),
         args: strings("arg"),
+        options: strings("option"),
         satisfies: nodes
             .iter()
             .filter(|node| node.name().value() == "satisfies")

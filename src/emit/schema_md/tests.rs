@@ -62,9 +62,9 @@ fn the_page_opens_on_the_file_and_its_scaffold() {
     let start = out.find("```kdl\n").expect("the page has an example");
     let end = start + 7 + out[start + 7..].find("```").expect("the example closes");
     let top = &out[start..end];
+    assert!(top.contains("image \"workstation\" {\n"), "{out}");
     assert!(top.contains("    layout {\n        bootloader"), "{out}");
-    assert!(top.contains("    name \"Workstation\"\n"), "{out}");
-    assert!(!top.contains("    id "), "{out}");
+    assert!(!top.contains("    name "), "{out}");
     assert!(
         out[end..].contains("| [`image`](#image) (required,&nbsp;repeatable) |"),
         "{out}"
@@ -115,17 +115,13 @@ fn a_table_lists_one_level_and_links_each_row() {
 
 #[test]
 fn a_required_node_has_its_own_example() {
-    let out = page(Area::Image);
+    let out = page(Area::Component);
     let at = out
-        .find("### `name` (required)\n")
-        .expect("the name section");
-    assert!(
-        out[at..].starts_with("### `name` (required)\n\nos-release `NAME`."),
-        "{out}"
-    );
+        .find("### `generator` (required)\n")
+        .expect("the generator section");
     let next = at + out[at..].find("```kdl\n").expect("an example follows");
     assert!(
-        out[next..].starts_with("```kdl\nimage {\n    name \"Workstation\"\n}"),
+        out[next..].starts_with("```kdl\nkey \"secureboot\" {\n    generator \"openssl\""),
         "{out}"
     );
 }

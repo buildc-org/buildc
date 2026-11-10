@@ -16,9 +16,27 @@ pub fn resolve(
     let component_path = entry.path.as_str();
     let list_src = &image.src;
 
+    let image_id = [("image-id", image.id.as_str())];
+    let set_from = [
+        ("image-id", image.id.as_str()),
+        ("base-url", image.repo_base_url.as_str()),
+    ];
     let mut resolved: Vec<(String, Vec<Value>)> = options
         .iter()
-        .map(|o| (o.name.clone(), o.default.clone()))
+        .map(|o| {
+            let values = filled(&o.default, &image_id).unwrap_or_else(|name| {
+                issues.push(
+                    Issue::new(
+                        format!("the default of `{}` reads `{{{name}}}`, which a default cannot read", o.name),
+                        src,
+                    )
+                    .at(o.span, "an unknown reference")
+                    .help("a default may read `{image-id}`; an image passes any other value as the option"),
+                );
+                o.default.clone()
+            });
+            (o.name.clone(), values)
+        })
         .collect();
 
     let find = |name: &str| options.iter().find(|o| o.name == name);
@@ -38,9 +56,23 @@ pub fn resolve(
                         );
                         continue;
                     };
-                    if check_values(name, opt.ty, values, src, *span, issues) {
+                    let values = match filled(values, &image_id) {
+                        Ok(values) => values,
+                        Err(reference) => {
+                            issues.push(
+                                Issue::new(
+                                    format!("variant `{want}` sets `{name}` to a value that reads `{{{reference}}}`. A variant cannot read that value"),
+                                    src,
+                                )
+                                .at(*span, "an unknown reference")
+                                .help("a variant may read `{image-id}`; an image passes any other value as the option"),
+                            );
+                            continue;
+                        }
+                    };
+                    if check_values(name, opt.ty, &values, src, *span, issues) {
                         if let Some(slot) = resolved.iter_mut().find(|(n, _)| n == name) {
-                            slot.1 = values.clone();
+                            slot.1 = values;
                         }
                     }
                 }
@@ -93,6 +125,23 @@ pub fn resolve(
         }
         seen.push(name.as_str());
 
+        let values = &match filled(values, &set_from) {
+            Ok(values) => values,
+            Err(reference) => {
+                issues.push(
+                    Issue::new(
+                        format!("`{name}` on `{component_path}` reads `{{{reference}}}`, which nothing declares"),
+                        list_src,
+                    )
+                    .at(*span, "an unknown reference")
+                    .help(match reference.as_str() {
+                        "base-url" => "declare `base-url \"https://host/owner/repository\"` in repo.kdl".to_string(),
+                        _ => "an option value may read `{base-url}` and `{image-id}`".to_string(),
+                    }),
+                );
+                continue;
+            }
+        };
         if check_values(name, opt.ty, values, list_src, *span, issues) {
             if let Some(slot) = resolved.iter_mut().find(|(n, _)| n == name) {
                 slot.1 = values.clone();
@@ -113,26 +162,66 @@ pub fn resolve(
         .collect()
 }
 
+// An empty value counts as undeclared. A reference to an unset `base-url` is refused.
+fn filled(values: &[Value], known: &[(&str, &str)]) -> Result<Vec<Value>, String> {
+    let mut unknown = None;
+    let out = values
+        .iter()
+        .map(|held| match held {
+            Value::String(text) => Value::String(interpolate(text, |name| {
+                match known
+                    .iter()
+                    .find(|(have, value)| *have == name && !value.is_empty())
+                {
+                    Some((_, value)) => (*value).to_string(),
+                    None => {
+                        unknown.get_or_insert_with(|| name.to_string());
+                        String::new()
+                    }
+                }
+            })),
+            other => other.clone(),
+        })
+        .collect();
+    match unknown {
+        Some(name) => Err(name),
+        None => Ok(out),
+    }
+}
+
+// A doubled brace writes a literal brace. A value can hold one next to a reference.
 pub fn interpolate(text: &str, mut value: impl FnMut(&str) -> String) -> String {
     let mut out = String::new();
     let mut rest = text;
-    while let Some(at) = rest.find('$') {
+    while let Some(at) = rest.find(['{', '}']) {
         out.push_str(&rest[..at]);
         let after = &rest[at + 1..];
-        let len = match after.starts_with(|c: char| c.is_ascii_lowercase()) {
-            true => after
-                .find(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
-                .unwrap_or(after.len()),
-            false => 0,
-        };
-        match len {
-            0 => out.push('$'),
-            _ => out.push_str(&value(&after[..len])),
+        let brace = &rest[at..=at];
+        if after.starts_with(brace) {
+            out.push_str(brace);
+            rest = &after[1..];
+            continue;
         }
-        rest = &after[len..];
+        let name = match (brace, after.split_once('}')) {
+            ("{", Some((name, _))) if is_reference(name) => name,
+            _ => {
+                out.push_str(brace);
+                rest = after;
+                continue;
+            }
+        };
+        out.push_str(&value(name));
+        rest = &after[name.len() + 1..];
     }
     out.push_str(rest);
     out
+}
+
+fn is_reference(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 pub fn apply(component: &mut Component, entry: &Entry, image: &Image, issues: &mut Issues) {
@@ -192,18 +281,37 @@ mod tests {
 
     #[test]
     fn a_reference_reads_the_option_it_names() {
-        let written = interpolate("firefox=$version", |name| format!("<{name}>"));
+        let written = interpolate("firefox={version}", |name| format!("<{name}>"));
         assert_eq!(written, "firefox=<version>");
     }
 
     #[test]
-    fn a_reference_name_ends_at_the_first_character_outside_the_name_rule() {
-        let written = interpolate("$a-1.$b_c", |name| format!("<{name}>"));
+    fn a_reference_ends_at_its_closing_brace() {
+        let written = interpolate("{a-1}.{b}_c", |name| format!("<{name}>"));
         assert_eq!(written, "<a-1>.<b>_c");
     }
 
     #[test]
-    fn a_dollar_that_starts_no_name_stays() {
-        assert_eq!(interpolate("a$1$", |_| "x".to_string()), "a$1$");
+    fn a_doubled_brace_writes_one_brace() {
+        assert_eq!(interpolate("{{a}} {{", |_| "x".to_string()), "{a} {");
+    }
+
+    #[test]
+    fn a_brace_that_holds_no_name_stays() {
+        assert_eq!(interpolate("a{1} {B} {", |_| "x".to_string()), "a{1} {B} {");
+    }
+
+    #[test]
+    fn text_before_a_brace_does_not_hang() {
+        // A regression that loops would hang the suite. Wait from outside the loop.
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            interpolate("a{version}", |_| "x".to_string());
+            done.send(())
+                .expect("the test receiver outlives the worker");
+        });
+        finished
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("interpolation past leading text must terminate");
     }
 }

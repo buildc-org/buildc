@@ -27,7 +27,8 @@ fn write(path: &Path, text: &str) {
         .unwrap_or_else(|error| panic!("cannot write fuzz input {}: {error}", path.display()));
 }
 
-const IMAGE: &str = "schema-version 1\nimage {\n    name \"Fuzz\"\n    base-image {\n        fuzz\n    }\n    fuzz\n}\n";
+const IMAGE: &str =
+    "schema-version 1\nimage \"fuzz\" {\n    base-image {\n        fuzz\n    }\n    fuzz\n}\n";
 const BASE: &str = "components/base-image/fuzz/manifest.kdl";
 const BASE_MANIFEST: &str =
     "schema-version 1\nbase \"example.invalid/fuzz:1\" { family \"fedora\"; }\n";

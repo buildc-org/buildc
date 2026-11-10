@@ -722,10 +722,10 @@ pub enum CreateWhat {
         /// the repository directory name
         #[arg(value_name = "name")]
         name: Option<String>,
-        /// the repository host; `github.com` by default, and with `--owner` it forms the base of every image URL
+        /// the repository host; `github.com` by default, and with `--owner` it forms `base-url`
         #[arg(long, value_name = "domain")]
         host: Option<String>,
-        /// the account or organisation that owns the repository
+        /// the account or organisation that owns the repository; with `--host` it forms `base-url`
         #[arg(long, value_name = "name")]
         owner: Option<String>,
         /// also write a first image with this name
@@ -744,7 +744,7 @@ pub enum CreateWhat {
         /// the image name
         #[arg(value_name = "name")]
         name: Option<String>,
-        /// the account or organisation; used when no image already names one
+        /// the account or organisation for the seeded home URL; ignored when repo.kdl declares base-url
         #[arg(long, value_name = "name")]
         owner: Option<String>,
         /// a bootc image reference, catalogued or not; skips the base picker

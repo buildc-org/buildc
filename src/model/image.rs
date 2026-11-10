@@ -66,10 +66,7 @@ impl std::fmt::Display for Target {
 pub struct Image {
     pub src: Source,
     pub id: String,
-    pub name: String,
-    pub pretty_name: String,
-    pub url: String,
-    pub issues_url: String,
+    pub repo_base_url: String,
     pub description: String,
     pub keywords: Vec<String>,
     pub logo_url: String,
@@ -221,6 +218,7 @@ impl Backend {
 
 pub struct List {
     pub name: String,
+    pub base_url: String,
     pub id: String,
     pub images: Vec<Image>,
     pub workflows: Vec<Workflow>,

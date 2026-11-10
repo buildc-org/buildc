@@ -128,11 +128,11 @@ impl Coverage<'_> {
             n => format!(" {n} of them carry no number, so no `satisfies` can name them."),
         };
         let mut out = format!(
-            "# {} coverage of `{}`\n\n\
+            "# `{}` coverage of `{}`\n\n\
              {named} selects {} rules, and what `{}` installs or builds on claims {} of \
              them.{unnamed}\n\n\
              | Number | Rule | Claimed by | Would claim |\n|---|---|---|---|\n",
-            self.image.name,
+            self.image.id,
             self.profile.name(),
             self.rows.len(),
             self.image.id,

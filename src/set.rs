@@ -227,10 +227,7 @@ impl Conforms {
                 let options: Vec<Choice> = list
                     .images
                     .iter()
-                    .map(|image| match image.name == image.id {
-                        true => Choice::new(&image.id, ""),
-                        false => Choice::new(&image.id, &image.name),
-                    })
+                    .map(|image| Choice::new(&image.id, ""))
                     .collect();
                 match prompt.choose(copy::MEASURED_IMAGE, &options)? {
                     Some(at) => at,

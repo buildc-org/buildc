@@ -103,16 +103,8 @@ ARG IMAGE_VERSION=dev";
 
 fn identity(image: &Image) -> Vec<(&'static str, String)> {
     let mut vars: Vec<(&'static str, String)> = Vec::new();
-    for (name, value) in [
-        ("IMAGE_ID", &image.id),
-        ("IMAGE_NAME", &image.name),
-        ("IMAGE_PRETTY_NAME", &image.pretty_name),
-        ("IMAGE_URL", &image.url),
-        ("IMAGE_ISSUES_URL", &image.issues_url),
-    ] {
-        if !value.is_empty() {
-            vars.push((name, value.clone()));
-        }
+    if !image.id.is_empty() {
+        vars.push(("IMAGE_ID", image.id.clone()));
     }
     vars.push(("IMAGE_REGISTRY", String::new()));
     vars

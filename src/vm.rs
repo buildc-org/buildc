@@ -276,7 +276,7 @@ mod tests {
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\nname \"Deb\"\n").unwrap();
         crate::init::put(
             &root.join("deb.image.kdl"),
-            "schema-version 1\n\nimage {\n    name \"deb\"\n\n    base-image {\n        debian\n    }\n\n    login\n}\n",
+            "schema-version 1\n\nimage \"deb\" {\n    \n    base-image {\n        debian\n    }\n\n    login\n}\n",
         )
         .unwrap();
         for (path, image, family) in [
@@ -359,7 +359,7 @@ mod tests {
 
         crate::init::put(
             &root.join("fed.image.kdl"),
-            "schema-version 1\n\nimage {\n    name \"fed\"\n\n    base-image {\n        fedora\n    }\n\n}\n",
+            "schema-version 1\n\nimage \"fed\" {\n    \n    base-image {\n        fedora\n    }\n\n}\n",
         )
         .unwrap();
         crate::init::put(

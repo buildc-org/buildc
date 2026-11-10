@@ -46,6 +46,23 @@ fn gated(entry: &Entry, body: String) -> String {
     }
 }
 
+// A hook's options are unset before the next hook runs because every hook is sourced into one script.
+fn scoped_options(entry: &Entry) -> (String, String) {
+    let Some(component) = entry.component.as_ref() else {
+        return (String::new(), String::new());
+    };
+    let names: Vec<&str> = component
+        .resolved
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let unset = match names.is_empty() {
+        true => String::new(),
+        false => format!("unset {}\n", names.join(" ")),
+    };
+    (super::component_build::options(component), unset)
+}
+
 pub fn script(image: &Image, collection: &Collection, root: &Path) -> (PathBuf, String) {
     let hooks = hooks(image, root);
     let mut out = String::from(HEADER);
@@ -74,9 +91,10 @@ rm -rf {dest}.d
             .iter()
             .map(|script| format!("source {dir}/{script}\n"))
             .collect();
+        let (options, unset) = scoped_options(entry);
         let body = gated(
             entry,
-            format!("COMPONENT_DIR={dir}\nexport COMPONENT_DIR\n{sourced}"),
+            format!("COMPONENT_DIR={dir}\nexport COMPONENT_DIR\n{options}{sourced}{unset}"),
         );
         let _ = write!(out, "\n# ---- {} ----\n{body}", entry.path);
     }

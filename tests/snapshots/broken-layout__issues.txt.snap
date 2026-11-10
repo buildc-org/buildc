@@ -77,3 +77,27 @@ source: tests/golden/harness.rs
         for itself: a layout naming all of `filesystem`, `composefs`,
         `generic-image`, `admin-group` and `bootloader` builds install media,
         and no layout at all builds none
+
+  x `sealed` declares an install layout, and nothing in the image provides
+  | `bootc`
+    ,-[tests/repos/broken-layout/image.kdl:10:5]
+  9 | 
+ 10 |     layout {
+    :     ^^^|^^
+    :        `-- a bootc-only node
+ 11 |         filesystem "xfs" subvolumes=#true pool="rpool"
+    `----
+  help: an install layout describes how bootc installs the image: use a base
+        that provides `bootc`, or drop `layout`
+
+  x `halfway` declares an install layout, and nothing in the image provides
+  | `bootc`
+    ,-[tests/repos/broken-layout/image.kdl:24:5]
+ 23 | 
+ 24 |     layout {
+    :     ^^^|^^
+    :        `-- a bootc-only node
+ 25 |         filesystem "zfs"
+    `----
+  help: an install layout describes how bootc installs the image: use a base
+        that provides `bootc`, or drop `layout`

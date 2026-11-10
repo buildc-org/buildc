@@ -1193,6 +1193,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 
 ## Overrides
@@ -1204,6 +1205,14 @@ graph LR
 {
   "image": "broken-overlay",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "rechunking",
       "kind": "capability",
@@ -1225,7 +1234,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "bcc5a88ff01c5dfa1b0ebd784a64f4e538396bd74269827f500712af783fa26b",
+  "root": "8aee563d0c3defaa119904286cde337013095fe6182d1f51883b4a93a38a790c",
   "files": 32
 }
 ==== generated/broken-overlay/components/core/first/files/etc/sudoers.d/99-hardening

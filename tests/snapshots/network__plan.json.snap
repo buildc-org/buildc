@@ -63,6 +63,7 @@ source: tests/golden/harness.rs
         "scap_pin": null,
         "signed": false,
         "provides": [
+          "bootc",
           "rechunking",
           "selinux-policy"
         ],

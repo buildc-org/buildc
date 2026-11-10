@@ -288,6 +288,7 @@ pub fn sections(
     let early_measured = !early.is_empty();
     let record = record_layer(
         audit_enforce,
+        image.is_bootc(),
         early_measured,
         &super::measure::record(image, !early_measured),
     );
@@ -322,7 +323,7 @@ pub fn section(image: &Image, root: &Path, audit_enforce: bool, collection: &Col
         .join("\n")
 }
 
-fn record_layer(audit_enforce: bool, early: bool, measure: &str) -> String {
+fn record_layer(audit_enforce: bool, bootc: bool, early: bool, measure: &str) -> String {
     let mut out = String::from(
         "COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json\n\n\
          ARG BASE\n\
@@ -357,9 +358,11 @@ fn record_layer(audit_enforce: bool, early: bool, measure: &str) -> String {
     }
     out.push_str(
         "\\\n    \
-         IMAGE_ID=\"${IMAGE_ID}\" IMAGE_VERSION=\"${IMAGE_VERSION}\" bash /ctx/lib/build-record.sh\n\n\
-         RUN --mount=type=tmpfs,target=/run --network=none bootc container lint\n",
+         IMAGE_ID=\"${IMAGE_ID}\" IMAGE_VERSION=\"${IMAGE_VERSION}\" bash /ctx/lib/build-record.sh\n",
     );
+    if bootc {
+        out.push_str("\nRUN --mount=type=tmpfs,target=/run --network=none bootc container lint\n");
+    }
     out
 }
 

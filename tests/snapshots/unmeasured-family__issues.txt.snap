@@ -1,4 +1,14 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-
+  x `arch` declares an install layout, and nothing in the image provides
+  | `bootc`
+    ,-[tests/repos/unmeasured-family/image.kdl:10:5]
+  9 | 
+ 10 |     layout {
+    :     ^^^|^^
+    :        `-- a bootc-only node
+ 11 |         filesystem "btrfs"
+    `----
+  help: an install layout describes how bootc installs the image: use a base
+        that provides `bootc`, or drop `layout`

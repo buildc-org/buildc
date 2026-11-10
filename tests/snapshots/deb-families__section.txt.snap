@@ -90,5 +90,3 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
     ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
     IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
-
-RUN --mount=type=tmpfs,target=/run --network=none bootc container lint

@@ -1153,6 +1153,7 @@ graph LR
 |---|---|---|---|---|
 | `a` | capability | `core/a` | `core/b` |  |
 | `b` | capability | `core/b` | `core/a` |  |
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/broken-cycle/graph.json
 {
@@ -1179,6 +1180,14 @@ graph LR
       "after": []
     },
     {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
+    {
       "name": "rechunking",
       "kind": "capability",
       "build_only": false,
@@ -1194,6 +1203,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "8cab961628f6c034d9a353ad91ca3901fcbc9de0e7ad13cb178e24e298bf3a4d",
+  "root": "44d2c660a8be9574954c1bcd77d304faa3a7ac3c63c6aa1415aed7e22d5e9f54",
   "files": 26
 }

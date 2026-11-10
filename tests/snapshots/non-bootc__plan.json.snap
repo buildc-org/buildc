@@ -1,0 +1,160 @@
+---
+source: tests/golden/harness.rs
+---
+{
+  "schema_version": 1,
+  "default_image": "runner",
+  "default_image_name": "Runner",
+  "pr_image": "runner",
+  "default_target": "runner",
+  "default_published": "runner",
+  "pr_target": "runner",
+  "pr_published": "runner",
+  "ungated_target": "runner",
+  "ungated_published": "runner",
+  "cache_image": "runner-cache",
+  "backend": "buildah",
+  "manifest_label": false,
+  "workflows": [],
+  "audit": {
+    "enforce": false
+  },
+  "assets": [],
+  "images": [
+    {
+      "id": "runner",
+      "name": "Runner",
+      "pretty_name": "",
+      "file": "./image.kdl",
+      "url": "",
+      "issues_url": "",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "boot": "",
+      "allows": [],
+      "layout": null,
+      "base": {
+        "path": "base-image/fedora-44",
+        "defined": null,
+        "image": "registry.fedoraproject.org/fedora:44",
+        "family": "fedora",
+        "scap_content": "",
+        "scap_pin": null,
+        "signed": false,
+        "provides": [],
+        "witnesses": {},
+        "requires": [],
+        "satisfies": []
+      },
+      "flavours": [],
+      "default_flavour": null,
+      "targets": [
+        {
+          "name": "runner",
+          "image": "runner",
+          "flavour": null,
+          "published": "runner",
+          "conforms": "",
+          "allows": [],
+          "default": true,
+          "pr": true,
+          "siblings": [],
+          "components": [
+            {
+              "path": "fedora-family",
+              "flavour": null,
+              "variant": null,
+              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
+              "options": {},
+              "provides": [
+                "build-environment"
+              ],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "resolved": "747536ce6bd76b4c378eac22a391059879eaf1b7954cea454c3aa53a2a3f2a62",
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "tool/hello",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [
+                {
+                  "family": "fedora",
+                  "names": [
+                    "hello"
+                  ],
+                  "enablerepo": null
+                }
+              ],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "431d1b225de63c462498bffd1bb79bba514c7b7abd7ebcfa2be553c70b70691b",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/runner/Containerfile",
+            "uki": false,
+            "family": "fedora",
+            "base": "registry.fedoraproject.org/fedora:44",
+            "args": [
+              "TARGET=runner",
+              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb tool/hello|431d1b225de63c462498bffd1bb79bba514c7b7abd7ebcfa2be553c70b70691b",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=registry.fedoraproject.org/fedora:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1575,7 +1575,7 @@ image {
             owner: Some("ublue".to_string()),
             image: image.to_string(),
             family: "fedora".to_string(),
-            provides: vec!["rechunking".to_string()],
+            provides: vec!["rechunking".to_string(), "bootc".to_string()],
             requires: Vec::new(),
             imports: Vec::new(),
             about: format!("what {name} ships"),

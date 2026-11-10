@@ -1,0 +1,9 @@
+---
+source: tests/golden/harness.rs
+---
+2 components, the ungated set.
+
+| Component | Description | Options | Satisfies | Refuses |
+| --- | --- | --- | --- | --- |
+| `fedora-family` | dnf5 and its plugins, which every fedora build layer reaches for |  |  |  |
+| `tool/hello` |  |  |  |  |

@@ -2,6 +2,7 @@ schema-version 1
 
 description "KDE, gaming and hardware support over kinoite-main"
 provides {
+    "bootc"
     "rechunking"
     "flatpak" witness="/usr/bin/flatpak"
 }

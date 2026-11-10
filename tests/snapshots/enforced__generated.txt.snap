@@ -1175,12 +1175,21 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `hello` | capability | `one/hello` | `core/consumer` |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/enforced/graph.json
 {
   "image": "enforced",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "hello",
       "kind": "capability",
@@ -1207,7 +1216,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "fb969ada6c0146e7f3b711bc20ee58bcb4c94529f4207c2fd54711c4fd96138c",
+  "root": "652fd7aa4a28a9beae147d996f029aed0ce4acfc06f91b389d7e47eeab6b5b1f",
   "files": 28
 }
 ==== generated/enforced/components/one/hello/component.sh

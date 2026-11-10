@@ -44,7 +44,8 @@ source: tests/golden/harness.rs
         "scap_pin": null,
         "signed": false,
         "provides": [
-          "rechunking"
+          "rechunking",
+          "bootc"
         ],
         "witnesses": {},
         "requires": [],
@@ -146,7 +147,8 @@ source: tests/golden/harness.rs
         "scap_pin": null,
         "signed": false,
         "provides": [
-          "rechunking"
+          "rechunking",
+          "bootc"
         ],
         "witnesses": {},
         "requires": [],

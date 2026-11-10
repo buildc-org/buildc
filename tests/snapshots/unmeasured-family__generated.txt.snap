@@ -947,8 +947,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
     ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
     IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
-
-RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- END GENERATED (build record) ----
 
 # ---- BEGIN GENERATED (tail fragments) ----
@@ -1123,6 +1121,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "39fdae3defccd03c6985a0a88faa696df363655411c15d98a4f7e6610eeb5876",
+  "root": "99bd27ede93b215a93e8fdffa1c32d09accc82b67a1b4a570b3009e7be4774fa",
   "files": 24
 }

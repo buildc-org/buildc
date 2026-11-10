@@ -1,0 +1,5 @@
+schema-version 1
+
+base "registry.fedoraproject.org/fedora:44" {
+    family "fedora"
+}

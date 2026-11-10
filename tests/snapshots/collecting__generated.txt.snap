@@ -1187,11 +1187,20 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/collecting/graph.json
 {
   "image": "collecting",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "rechunking",
       "kind": "capability",
@@ -1208,7 +1217,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "91e18827c94697954c9a845289d3cecca229e68c007d3e99f4935fe5106f6d29",
+  "root": "5eede21f55636605e794ed1b45aa6826483aaf6599c8f396615ea71c39c4200f",
   "files": 30
 }
 ==== generated/collecting/components/core/power/justfile.inc

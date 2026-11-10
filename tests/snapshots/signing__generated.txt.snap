@@ -1170,6 +1170,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `initramfs-generation` | capability | `base` | `kernel/signed-kernel` |  |
 | `kernel-devel` | capability | `kernel/signed-kernel` | `drivers/kvmfr` |  |
 | `kernel-devel-helpers` | file, build only | `kernel/signed-kernel` | `drivers/kvmfr` |  |
@@ -1179,6 +1180,14 @@ graph LR
 {
   "image": "signing",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "initramfs-generation",
       "kind": "capability",
@@ -1233,6 +1242,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "a138f8b576b5a4314840abd56b90e18dc4b67007ce2ea68ec9fe67b7aa39c552",
+  "root": "e9c37d149d6456cef7ba7f5cf408ed18c2dc7a7dbb1b688e6a724617cac2863a",
   "files": 26
 }

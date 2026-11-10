@@ -261,6 +261,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
         let order = resolve::order::sort(image, &mut issues);
         resolve::order::apply(image, &order);
         resolve::graph::check_graph(image, &index, &mut issues);
+        image.check_bootc(&mut issues);
         resolve::graph::check_fragments(image, &mut issues);
         provenance::check_network(image, network.scripts, root, &mut issues);
         ungoverned.extend(provenance::ungoverned(image, network.scripts));

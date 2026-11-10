@@ -1220,6 +1220,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `flatpak` | file | `flatpak` |  |  |
 | `rechunking` | capability | `base` |  |  |
@@ -1227,6 +1228,14 @@ graph LR
 {
   "image": "example",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "build-environment",
       "kind": "capability",
@@ -1279,7 +1288,7 @@ component "buildc-org/drivers" flavour="nvidia"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "a1effb6b45e860e32172f591677feae8ac933cc74a875e79a00fb1bab7f5a2b2",
+  "root": "ce3e35ba1bddab45e0cfb5c69580fd3076bc56ab7ca18d3c8a4a665ec97d002a",
   "files": 30
 }
 ==== generated/example/components/fedora-family/lib/family.sh

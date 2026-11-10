@@ -1139,6 +1139,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `eza` | capability | `core/shared` |  |  |
 | `rechunking` | capability | `base` |  |  |
 | `shell-tools` | capability | `core/shared` |  |  |
@@ -1146,6 +1147,14 @@ graph LR
 {
   "image": "server",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "eza",
       "kind": "capability",
@@ -1470,6 +1479,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `eza` | capability | `core/shared` |  |  |
 | `rechunking` | capability | `base` |  |  |
 | `shell-tools` | capability | `core/shared` | `core/dev-tools` |  |
@@ -1477,6 +1487,14 @@ graph LR
 {
   "image": "workstation",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "eza",
       "kind": "capability",
@@ -1511,7 +1529,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "2e498b0ade19e950e089f257434b5f0e217c2de7b9eee055103fde357cbdf1f9",
+  "root": "b6adeb7d24c01dcafdde12db6a931282c71c0cf2463cd18e2306ea6c924ec741",
   "files": 36
 }
 ==== generated/server/components/core/shared/finalize.sh

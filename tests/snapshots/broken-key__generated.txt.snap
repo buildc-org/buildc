@@ -1162,6 +1162,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `cosign-key` | capability |  | `core/signer` |  |
 | `rechunking` | capability | `base` |  |  |
 | `secureboot-key` | file | `core/keys` |  |  |
@@ -1169,6 +1170,14 @@ graph LR
 {
   "image": "broken-key",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "cosign-key",
       "kind": "capability",
@@ -1203,6 +1212,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "98bfb77c649253b054f6510abe26e67130bb218b3320090cb818560c262cd7ef",
+  "root": "bad1284e294d44c964dc12613efee769310f19f3a895a15aebbed49ed21ca9f2",
   "files": 26
 }

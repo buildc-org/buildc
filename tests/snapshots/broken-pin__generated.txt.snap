@@ -1117,11 +1117,20 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/broken-pin/graph.json
 {
   "image": "broken-pin",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "rechunking",
       "kind": "capability",
@@ -1138,6 +1147,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "dc69cf11ed855893debf232017b275ada9d2932bab35c211a9b6dc0b7cccfc4f",
+  "root": "eb2fb6ca53a4e4f50d53049069971bec3dad68516fee8661a153d610ae285b7c",
   "files": 24
 }

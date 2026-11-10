@@ -1208,6 +1208,7 @@ graph LR
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
 | `apps` | capability | `apps` | `apps/editor` |  |
+| `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 ==== generated/bare-component/graph.json
 {
@@ -1221,6 +1222,14 @@ graph LR
       "required_by": [
         "apps/editor"
       ],
+      "after": []
+    },
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
       "after": []
     },
     {
@@ -1239,7 +1248,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "f5e05c0e6257c55dba2f35806977229e591fa770672c240e4ac58e8edc16515e",
+  "root": "38b801f7419bbd5b748ebefb7c5f1044c1e202faca9fa031c6edff95b97be8c2",
   "files": 32
 }
 ==== generated/bare-component/components/hello/component.sh

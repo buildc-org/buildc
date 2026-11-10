@@ -1,0 +1,19 @@
+schema-version 1
+
+image {
+    name "Runner"
+
+    base-image {
+        fedora-44
+    }
+
+    layout {
+        bootloader "grub2"
+    }
+
+    fedora-family
+
+    tool {
+        hello
+    }
+}

@@ -463,6 +463,10 @@ impl Image {
             logo_url: text(node, "logo-url"),
             conforms: text(node, "conforms"),
             boot: text(node, "boot-chain"),
+            boot_at: kids(node)
+                .iter()
+                .find(|kid| kid.name().value() == "boot-chain")
+                .map(|kid| kid.name().span().into()),
             base: None,
             base_entry: None,
             defined: Vec::new(),
@@ -579,6 +583,45 @@ impl Image {
                      declare `ext4` or `btrfs`, or drop `filesystem` and take the family's own",
                     base.family
                 )),
+            );
+        }
+    }
+
+    pub(crate) fn check_bootc(&self, issues: &mut Issues) {
+        if self.is_bootc() {
+            return;
+        }
+        let src = &self.src;
+        if let Some(span) = self.boot_at {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` declares a boot chain, and nothing in the image provides `bootc`",
+                        self.id
+                    ),
+                    src,
+                )
+                .at(span, "a bootc-only node")
+                .help(
+                    "a boot chain seals a bootc image: use a base that provides `bootc`, or drop \
+                     `boot-chain`",
+                ),
+            );
+        }
+        if let Some(layout) = &self.layout {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` declares an install layout, and nothing in the image provides `bootc`",
+                        self.id
+                    ),
+                    src,
+                )
+                .at(layout.span, "a bootc-only node")
+                .help(
+                    "an install layout describes how bootc installs the image: use a base that \
+                     provides `bootc`, or drop `layout`",
+                ),
             );
         }
     }
@@ -989,9 +1032,12 @@ image "stray" {
         let found = semantic_messages(
             "image {\n name \"X\"\n boot-chain \"uki-db\"\n x\n layout { filesystem \"xfs\"\n composefs #false\n generic-image #false\n bootloader \"grub2\" }\n}",
         );
-        assert!(found
-            .iter()
-            .any(|message| message.contains("conflicts with its UKI chain")));
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("conflicts with its UKI chain")),
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -1130,6 +1176,23 @@ image "stray" {
         assert!(
             found.iter().any(|message| message.contains(wanted)),
             "{wanted}: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_bootc_only_node_on_a_non_bootc_image_is_refused() {
+        let found = resolved(
+            "bootc-only",
+            "image {\n name \"X\"\n x\n boot-chain \"uki-db\"\n layout { bootloader \"grub2\" }\n}\n",
+            &[],
+        );
+        holds(
+            &found,
+            "`x` declares a boot chain, and nothing in the image provides `bootc`",
+        );
+        holds(
+            &found,
+            "`x` declares an install layout, and nothing in the image provides `bootc`",
         );
     }
 

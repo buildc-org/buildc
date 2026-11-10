@@ -75,6 +75,7 @@ pub struct Image {
     pub logo_url: String,
     pub conforms: String,
     pub boot: String,
+    pub boot_at: Option<Span>,
     pub base: Option<Base>,
     pub base_entry: Option<BaseEntry>,
     pub defined: Vec<String>,
@@ -306,6 +307,10 @@ impl Image {
                 required,
             )
         })
+    }
+
+    pub fn is_bootc(&self) -> bool {
+        self.answers("bootc")
     }
 
     pub fn remover(&self, name: &str, flavour: Option<&str>) -> Option<&Component> {

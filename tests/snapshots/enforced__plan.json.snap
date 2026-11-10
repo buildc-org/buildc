@@ -69,7 +69,8 @@ source: tests/golden/harness.rs
         },
         "signed": false,
         "provides": [
-          "rechunking"
+          "rechunking",
+          "bootc"
         ],
         "witnesses": {},
         "requires": [],

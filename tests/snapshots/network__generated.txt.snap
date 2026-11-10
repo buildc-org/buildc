@@ -1260,6 +1260,7 @@ graph LR
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
+| `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
 | `selinux-policy` | capability | `base` |  | `core/tools` |
@@ -1267,6 +1268,14 @@ graph LR
 {
   "image": "network",
   "capabilities": [
+    {
+      "name": "bootc",
+      "kind": "capability",
+      "build_only": false,
+      "provider": "base",
+      "required_by": [],
+      "after": []
+    },
     {
       "name": "build-environment",
       "kind": "capability",
@@ -1301,7 +1310,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "337009d2fa9011784d2f0a216c2b6b1fac0bc189e6c69479b8b8c140df9656d7",
+  "root": "4724b7175f602b3def0d18b522f137759e6373a8ee8b670e58f3bca5b3f0e022",
   "files": 36
 }
 ==== generated/network/components/fedora-family/lib/family.sh

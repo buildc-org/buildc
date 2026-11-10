@@ -426,7 +426,7 @@ fn why_unbuilt(root: &Path) {
 
     std::fs::write(
         temp.join("also.image.kdl"),
-        "schema-version 1\n\nimage {\n    name \"Also\"\n\n    base-image {\n        base \"ghcr.io/ublue-os/bazzite:stable\" { family \"fedora\"; }\n    }\n\n    apps {\n        flatpak\n    }\n}\n",
+        "schema-version 1\n\nimage \"also\" {\n    \n    base-image {\n        base \"ghcr.io/ublue-os/bazzite:stable\" { family \"fedora\"; }\n    }\n\n    apps {\n        flatpak\n    }\n}\n",
     )
     .unwrap();
     out.push_str("==== and the same component in an image that does build it\n");

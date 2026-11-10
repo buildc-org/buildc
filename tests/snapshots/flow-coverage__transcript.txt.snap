@@ -1,7 +1,7 @@
 ---
 source: tests/golden/harness.rs
 ---
-# Example coverage of `standard`
+# `example` coverage of `standard`
 
 `standard` (Standard System Security Profile for Fedora) selects 4 rules, and what `example` installs or builds on claims 0 of them. One of them carries no number, so no `satisfies` can name it.
 

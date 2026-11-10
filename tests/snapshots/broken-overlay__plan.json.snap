@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-overlay",
-  "default_image_name": "Broken Overlay",
   "pr_image": "broken-overlay",
   "default_target": "broken-overlay",
   "default_published": "broken-overlay",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-overlay",
-      "name": "Broken Overlay",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

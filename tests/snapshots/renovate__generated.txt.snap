@@ -965,7 +965,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="renovate"
-ARG IMAGE_NAME="Renovate"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -974,7 +973,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/renovate/finalize.sh,target=/ge
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/renovate/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/renovate/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1219,7 +1218,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/renovate/graph.md
-# Renovate capability graph
+# `renovate` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1372,7 +1371,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "762535c1be7061573f3690039925911855314c11a631574cdd040e5e9df8f626",
+  "root": "0943484abe7bdeb501273f7b8b4e1201aa79666204bb6d68a16e4eab0e2bebfd",
   "files": 30
 }
 ==== generated/renovate/components/fedora-family/lib/family.sh

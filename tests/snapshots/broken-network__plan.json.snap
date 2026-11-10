@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-network",
-  "default_image_name": "Broken network",
   "pr_image": "broken-network",
   "default_target": "broken-network",
   "default_published": "broken-network",
@@ -54,11 +53,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-network",
-      "name": "Broken network",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

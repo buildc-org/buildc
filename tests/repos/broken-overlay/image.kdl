@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Broken Overlay"
-
+image "broken-overlay" {
     base-image {
         fedora-bootc-44
     }

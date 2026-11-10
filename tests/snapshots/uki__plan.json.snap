@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "shim",
-  "default_image_name": "Shim",
   "pr_image": "shim",
   "default_target": "shim",
   "default_published": "shim",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "shim",
-      "name": "Shim",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -158,11 +153,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "db",
-      "name": "DB",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -293,11 +284,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "missing",
-      "name": "Missing",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

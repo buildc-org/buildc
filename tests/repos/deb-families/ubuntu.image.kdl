@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Ubuntu"
-
+image "ubuntu" {
     base-image {
         ubuntu-26-04
     }

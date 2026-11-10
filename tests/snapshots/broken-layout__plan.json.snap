@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "sealed",
-  "default_image_name": "Sealed",
   "pr_image": "sealed",
   "default_target": "sealed",
   "default_published": "sealed",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "sealed",
-      "name": "Sealed",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -94,11 +89,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "halfway",
-      "name": "Halfway",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

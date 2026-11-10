@@ -924,7 +924,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="server"
-ARG IMAGE_NAME="Server"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -934,7 +933,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/server/finalize.sh,target=/gene
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/server/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/server/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1121,7 +1120,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/server/graph.md
-# Server capability graph
+# `server` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1235,7 +1234,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="workstation"
-ARG IMAGE_NAME="Workstation"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1246,7 +1244,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/workstation/finalize.sh,target=
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/workstation/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/workstation/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1452,7 +1450,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/workstation/graph.md
-# Workstation capability graph
+# `workstation` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1522,7 +1520,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "8e2da91cc0a9cc409b2e7cbf204a8f163757864631d45e742b40f8f7d4f35cf2",
+  "root": "3f52f3e3d667e1011d501428d50e21931c5ecfdf6d0c862d00051fbcb181a059",
   "files": 34
 }
 ==== generated/server/components/core/shared/finalize.sh

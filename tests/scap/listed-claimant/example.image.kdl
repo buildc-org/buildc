@@ -1,7 +1,6 @@
 schema-version 1
 
-image {
-    name "Listed"
+image "listed" {
     conforms "standard"
 
     base-image {

@@ -34,7 +34,6 @@ ARG SCAP_REFUSED=
 
 # ---- image identity ----
 ARG IMAGE_ID="suppressed"
-ARG IMAGE_NAME="Suppressed"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -43,7 +42,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/suppressed/finalize.sh,target=/
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" SCAP_CLAIMED="${SCAP_CLAIMED}" SCAP_REFUSED="${SCAP_REFUSED}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/suppressed/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" SCAP_CLAIMED="${SCAP_CLAIMED}" SCAP_REFUSED="${SCAP_REFUSED}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/suppressed/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json

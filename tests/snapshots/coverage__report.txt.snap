@@ -1,8 +1,8 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
 ==== the read-out, with no scan behind it
-# Enforced coverage of `standard`
+# `enforced` coverage of `standard`
 
 `standard` (Standard System Security Profile for Fedora) selects 4 rules, and what `enforced` installs or builds on claims 2 of them. One of them carries no number, so no `satisfies` can name it.
 
@@ -70,10 +70,10 @@ buildc: 2 of 4 rules are unclaimed
   │ datastream carries
    ╭─[./example.image.kdl:3:1]
  2 │ 
- 3 │ image {
+ 3 │ image "enforced" {
    · ──┬──
    ·   ╰── this is what it is measured against
- 4 │     name "Enforced"
+ 4 │     conforms "nosuch"
    ╰────
   help: the datastream carries: standard, ospp
 
@@ -83,10 +83,10 @@ buildc: 1 problem in ./example.image.kdl; none in ./repo.kdl
   × `minimal` declares no `conforms`
    ╭─[./image.kdl:3:1]
  2 │ 
- 3 │ image {
+ 3 │ image "minimal" {
    · ──┬──
    ·   ╰── this image is measured against nothing
- 4 │     name "Minimal"
+ 4 │     base-image {
    ╰────
   help: `conforms "<profile>"` is the profile a scan measures it against, and
         what this read-out is coverage of

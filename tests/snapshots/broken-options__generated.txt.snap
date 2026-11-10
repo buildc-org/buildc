@@ -924,7 +924,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-options"
-ARG IMAGE_NAME="Broken Options"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -933,7 +932,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-options/finalize.sh,targ
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-options/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-options/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1118,7 +1117,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-options/graph.md
-# Broken Options capability graph
+# `broken-options` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1166,6 +1165,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "ac1528de4e29b8ddd31f9c375d812e7851ac108d46c2c1c189e294c50a9391b7",
+  "root": "6120dfe806af214433f82e393f6e7518100bbfa48ba97311aada8b7c4d67bb25",
   "files": 25
 }

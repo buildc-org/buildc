@@ -3,7 +3,7 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-  1) Add the local `browser` to `Example`
+  1) Add the local `browser` to `example`
   2) Import it under another name
 `browser` is already in this repository. [1-2, 0 for none]: 2
 

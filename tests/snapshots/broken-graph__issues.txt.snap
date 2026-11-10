@@ -50,10 +50,10 @@ source: tests/golden/harness.rs
   | component provides `build-environment` for that family
    ,-[tests/repos/broken-graph/image.kdl:3:1]
  2 | 
- 3 | image {
+ 3 | image "broken-graph" {
    : ^^|^^
    :   `-- missing family adapter
- 4 |     name "Broken Graph"
+ 4 |     base-image {
    `----
 
   x `core/three` does not support the `fedora` base family
@@ -72,13 +72,12 @@ source: tests/golden/harness.rs
 
   x `quay.io/fedora/fedora-bootc:44` requires `bootc-base`, which nothing
   | enabled provides
-    ,-[tests/repos/broken-graph/image.kdl:14:12]
- 13 |         core {
- 14 | ,->         two
- 15 | |       }
- 16 | |->     core {
+    ,-[tests/repos/broken-graph/image.kdl:14:4]
+ 13 |         }
+ 14 | ,->     core {
+ 15 | |->         three
     : `---- the base is not usable without it
- 17 |             three
+ 16 |         }
     `----
   help: no component in the repository declares `provides "bootc-base"`, and
         neither does the base `base-image/fedora-bootc-44`. repo.kdl declares

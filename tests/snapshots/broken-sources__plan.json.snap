@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-sources",
-  "default_image_name": "Broken Sources",
   "pr_image": "broken-sources",
   "default_target": "broken-sources",
   "default_published": "broken-sources",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-sources",
-      "name": "Broken Sources",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

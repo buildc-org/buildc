@@ -954,7 +954,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="bare-component"
-ARG IMAGE_NAME="Bare Component"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -963,7 +962,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/bare-component/finalize.sh,targ
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/bare-component/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/bare-component/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1185,7 +1184,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/bare-component/graph.md
-# Bare Component capability graph
+# `bare-component` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1248,7 +1247,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "38b801f7419bbd5b748ebefb7c5f1044c1e202faca9fa031c6edff95b97be8c2",
+  "root": "e7a50aef7766d3d95f236d7d0d471b5e4b450b20f4af09186c00f36f06c3b3c9",
   "files": 32
 }
 ==== generated/bare-component/components/hello/component.sh

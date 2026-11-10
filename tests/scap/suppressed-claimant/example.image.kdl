@@ -1,7 +1,6 @@
 schema-version 1
 
-image {
-    name "Suppressed"
+image "suppressed" {
     conforms "standard"
 
     base-image {

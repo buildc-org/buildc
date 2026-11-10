@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Arch"
-
+image "arch" {
     base-image {
         arch-bootc-latest
     }

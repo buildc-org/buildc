@@ -934,7 +934,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="runner"
-ARG IMAGE_NAME="Runner"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -943,7 +942,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/runner/finalize.sh,target=/gene
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/runner/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/runner/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1135,7 +1134,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/runner/graph.md
-# Runner capability graph
+# `runner` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1175,7 +1174,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "5cc300b24550c5632b431f22104d42964f2e98b5b5287e6e9245dc33519eafa3",
+  "root": "d40709d6249ede0f5987bddc0f157401823cd7235060fa97905e83e6c617a2c2",
   "files": 27
 }
 ==== generated/runner/components/fedora-family/lib/family.sh

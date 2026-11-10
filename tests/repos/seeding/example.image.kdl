@@ -1,10 +1,6 @@
 schema-version 1
 
-image {
-    name "Example"
-    url "https://github.com/someone/example"
-    issues-url "https://github.com/someone/example/issues"
-
+image "example" {
     base-image {
         fedora-bootc-44
     }

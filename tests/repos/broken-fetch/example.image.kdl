@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Broken Fetch"
-
+image "broken-fetch" {
     base-image {
         fedora-bootc-44
     }

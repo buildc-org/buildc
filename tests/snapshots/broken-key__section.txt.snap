@@ -43,7 +43,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-key"
-ARG IMAGE_NAME="Broken Key"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -52,7 +51,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-key/finalize.sh,target=/
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-key/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-key/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json

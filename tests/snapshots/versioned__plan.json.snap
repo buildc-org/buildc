@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "versioned",
-  "default_image_name": "Versioned",
   "pr_image": "versioned",
   "default_target": "versioned",
   "default_published": "versioned",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "versioned",
-      "name": "Versioned",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -242,11 +237,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "measured",
-      "name": "Measured",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -357,11 +348,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "recordonly",
-      "name": "RecordOnly",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

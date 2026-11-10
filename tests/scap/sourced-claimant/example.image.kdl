@@ -1,7 +1,6 @@
 schema-version 1
 
-image {
-    name "Sourced"
+image "sourced" {
     conforms "standard"
 
     base-image {

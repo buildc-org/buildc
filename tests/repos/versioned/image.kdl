@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Versioned"
-
+image "versioned" {
     base-image {
         pinned-base {
             digest "sha256:0000000000000000000000000000000000000000000000000000000000000000"
@@ -18,9 +16,7 @@ image {
     }
 }
 
-image {
-    name "Measured"
-
+image "measured" {
     base-image {
         pinned-base {
             digest "sha256:0000000000000000000000000000000000000000000000000000000000000000"
@@ -33,9 +29,7 @@ image {
     }
 }
 
-image {
-    name "RecordOnly"
-
+image "recordonly" {
     base-image {
         plain-base
     }

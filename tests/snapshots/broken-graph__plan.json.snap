@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-graph",
-  "default_image_name": "Broken Graph",
   "pr_image": "broken-graph",
   "default_target": "broken-graph",
   "default_published": "broken-graph",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-graph",
-      "name": "Broken Graph",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

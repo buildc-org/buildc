@@ -916,7 +916,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="minimal"
-ARG IMAGE_NAME="Minimal"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -925,7 +924,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/minimal/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/minimal/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/minimal/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1100,7 +1099,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/minimal/graph.md
-# Minimal capability graph
+# `minimal` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1147,6 +1146,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "aa05421a55c907ccad9ecc0ea83e85da590555ab147cdaee1b8b78249d662459",
+  "root": "8e1e42227ddbd95dad599a25be5505ac6b4b40cdfbe5a4b72c777ca12034825d",
   "files": 24
 }

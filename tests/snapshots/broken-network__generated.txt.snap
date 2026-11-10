@@ -969,7 +969,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-network"
-ARG IMAGE_NAME="Broken network"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -979,7 +978,7 @@ RUN --network=none --mount=type=bind,from=ctx,source=/generated/broken-network/f
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-network/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-network/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1215,7 +1214,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-network/graph.md
-# Broken network capability graph
+# `broken-network` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1277,7 +1276,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "a5ad38a01f6097c7828e682dc2dddd5da0759ded2a67b9adae7b1bb0da638224",
+  "root": "72a756f13e372b6067284f34051c6dd1091f1cc1483fd2543172830b15bebd56",
   "files": 35
 }
 ==== generated/broken-network/components/fedora-family/lib/family.sh

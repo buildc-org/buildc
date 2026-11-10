@@ -925,7 +925,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="example"
-ARG IMAGE_NAME="Example"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -934,7 +933,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/example/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1116,7 +1115,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/example/graph.md
-# Example capability graph
+# `example` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1190,7 +1189,7 @@ component "buildc-org/fedora-family"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "3449aa009ddc09abc186c82908846481d1d8937da9ebc4242be82c83f13fa8e4",
+  "root": "99190eb6f675a008d78960606fd66afb5174f343d5f9b0141b7dc83ceeb2b88b",
   "files": 27
 }
 ==== generated/example/components/fedora-family/lib/family.sh

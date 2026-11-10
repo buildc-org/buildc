@@ -1,7 +1,6 @@
 schema-version 1
 
-image {
-    name "Custom Workstation"
+image "custom-workstation" {
     base-image {
         fedora-bootc-44
     }

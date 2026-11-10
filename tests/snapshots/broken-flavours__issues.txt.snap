@@ -2,35 +2,35 @@
 source: tests/golden/harness.rs
 ---
   x `none` is reserved
-    ,-[tests/repos/broken-flavours/image.kdl:12:9]
- 11 |         dev
- 12 |         none
+    ,-[tests/repos/broken-flavours/image.kdl:10:9]
+  9 |         dev
+ 10 |         none
     :         ^^|^
     :           `-- not usable as a flavour name
- 13 |         dev
+ 11 |         dev
     `----
   help: `none` names the ungated build, which is published unsuffixed and
         needs no declaration
 
   x flavour `dev` is declared twice
-    ,-[tests/repos/broken-flavours/image.kdl:11:9]
- 10 |     flavours {
- 11 |         dev
+    ,-[tests/repos/broken-flavours/image.kdl:9:9]
+  8 |     flavours {
+  9 |         dev
     :         ^|^
     :          `-- first here
- 12 |         none
- 13 |         dev
+ 10 |         none
+ 11 |         dev
     :         ^|^
     :          `-- and again here
- 14 |     }
+ 12 |     }
     `----
 
   x `server` is not a declared flavour
-    ,-[tests/repos/broken-flavours/image.kdl:20:5]
- 19 | 
- 20 |     flavour "server" {
+    ,-[tests/repos/broken-flavours/image.kdl:18:5]
+ 17 | 
+ 18 |     flavour "server" {
     :     ^^^|^^^
     :        `-- no such flavour
- 21 |         core {
+ 19 |         core {
     `----
   help: declared flavours: dev, none

@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "alpha",
-  "default_image_name": "Alpha",
   "pr_image": "alpha",
   "default_target": "alpha",
   "default_published": "alpha",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "alpha",
-      "name": "Alpha",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -161,11 +156,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "beta",
-      "name": "Beta",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

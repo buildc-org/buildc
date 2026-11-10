@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Debian"
-
+image "debian" {
     base-image {
         debian-forky-debian
     }

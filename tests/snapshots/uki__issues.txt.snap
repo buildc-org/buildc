@@ -3,22 +3,22 @@ source: tests/golden/harness.rs
 ---
   x `missing` declares `boot-chain "uki-db"` but no ungated component provides
   | `boot-chain-uki`
-    ,-[tests/repos/uki/image.kdl:25:1]
- 24 | 
- 25 | image {
+    ,-[tests/repos/uki/image.kdl:21:1]
+ 20 | 
+ 21 | image "missing" {
     : ^^|^^
     :   `-- incomplete UKI chain
- 26 |     id "missing"
+ 22 |     boot-chain "uki-db"
     `----
   help: `uki` would satisfy it; add it to this image
 
   x `missing` declares `boot-chain "uki-db"` but no ungated component provides
   | `secureboot-enrolment`
-    ,-[tests/repos/uki/image.kdl:25:1]
- 24 | 
- 25 | image {
+    ,-[tests/repos/uki/image.kdl:21:1]
+ 20 | 
+ 21 | image "missing" {
     : ^^|^^
     :   `-- incomplete UKI chain
- 26 |     id "missing"
+ 22 |     boot-chain "uki-db"
     `----
   help: `enrolment` would satisfy it; add it to this image

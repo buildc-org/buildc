@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-options",
-  "default_image_name": "Broken Options",
   "pr_image": "broken-options",
   "default_target": "broken-options",
   "default_published": "broken-options",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-options",
-      "name": "Broken Options",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

@@ -924,7 +924,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="server"
-ARG IMAGE_NAME="Server"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -934,7 +933,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/server/finalize.sh,target=/gene
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/server/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/server/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1121,7 +1120,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/server/graph.md
-# Server capability graph
+# `server` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1241,7 +1240,6 @@ ARG SCAP_CONTENT=
 
 # ---- image identity ----
 ARG IMAGE_ID="workstation"
-ARG IMAGE_NAME="Workstation"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1253,7 +1251,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/workstation/finalize.sh,target=
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" CONFORMS="${CONFORMS}" SCAP_CONTENT="${SCAP_CONTENT}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/workstation/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" CONFORMS="${CONFORMS}" SCAP_CONTENT="${SCAP_CONTENT}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/workstation/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1459,7 +1457,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/workstation/graph.md
-# Workstation capability graph
+# `workstation` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1529,7 +1527,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "b6adeb7d24c01dcafdde12db6a931282c71c0cf2463cd18e2306ea6c924ec741",
+  "root": "b8b90e51cb82fd2da66e03a5dc96abff3f716f9c2a5092c62c22c4a5ff2d0762",
   "files": 36
 }
 ==== generated/server/components/core/shared/finalize.sh

@@ -5,42 +5,42 @@ source: tests/golden/harness.rs
   help: declared variants: lean
 
   x list value "Fira Code" on option `fonts` contains whitespace
-    ,-[tests/repos/broken-options/image.kdl:12:13]
- 11 |         configurable variant="nonexistent" {
- 12 |             fonts "Fira Code"
+    ,-[tests/repos/broken-options/image.kdl:10:13]
+  9 |         configurable variant="nonexistent" {
+ 10 |             fonts "Fira Code"
     :             ^^|^^
     :               `-- not usable as this option's value
- 13 |             starship "yes"
+ 11 |             starship "yes"
     `----
   help: list values join on spaces to reach the build, so one containing a
         space would arrive as two
 
   x option `starship` is a bool, so it takes one #true or #false
-    ,-[tests/repos/broken-options/image.kdl:13:13]
- 12 |             fonts "Fira Code"
- 13 |             starship "yes"
+    ,-[tests/repos/broken-options/image.kdl:11:13]
+ 10 |             fonts "Fira Code"
+ 11 |             starship "yes"
     :             ^^^^|^^^
     :                 `-- not usable as this option's value
- 14 |             colour "blue"
+ 12 |             colour "blue"
     `----
   help: bools reach the build as 1 or 0
 
   x `core/configurable` has no option `colour`
-    ,-[tests/repos/broken-options/image.kdl:14:13]
- 13 |             starship "yes"
- 14 |             colour "blue"
+    ,-[tests/repos/broken-options/image.kdl:12:13]
+ 11 |             starship "yes"
+ 12 |             colour "blue"
     :             ^^^|^^
     :                `-- not declared by this component
- 15 |             starship #true
+ 13 |             starship #true
     `----
   help: declared options: fonts, starship
 
   x `starship` is set twice on `core/configurable`
-    ,-[tests/repos/broken-options/image.kdl:15:13]
- 14 |             colour "blue"
- 15 |             starship #true
+    ,-[tests/repos/broken-options/image.kdl:13:13]
+ 12 |             colour "blue"
+ 13 |             starship #true
     :             ^^^^|^^^
     :                 `-- set again here
- 16 |         }
+ 14 |         }
     `----
   help: resolution is a single pass, so a second value is an error

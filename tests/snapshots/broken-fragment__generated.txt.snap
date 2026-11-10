@@ -955,7 +955,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-fragment"
-ARG IMAGE_NAME="Broken Fragment"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -964,7 +963,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-fragment/finalize.sh,tar
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-fragment/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-fragment/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1170,7 +1169,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-fragment/graph.md
-# Broken Fragment capability graph
+# `broken-fragment` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1220,7 +1219,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "51c0ca7f1022ea75579d2b35a5536680826e900a06cd65413d793adeeade701e",
+  "root": "d575784bad3aa8ebbb850eb56e5f1b3f29c0b48ab7a95d18d50524c8861617e5",
   "files": 28
 }
 ==== generated/broken-fragment/components/core/early/hostname

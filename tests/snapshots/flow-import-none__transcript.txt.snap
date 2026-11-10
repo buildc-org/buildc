@@ -3,7 +3,7 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-  1) example  Example
+  1) example
   2) None, only add it to the repository
 image or flavour [1-2, 0 for none]: 2
 

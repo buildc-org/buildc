@@ -1,7 +1,6 @@
 schema-version 1
 
-image {
-    name "Refused"
+image "refused" {
     conforms "standard"
 
     base-image {

@@ -40,7 +40,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="alpha"
-ARG IMAGE_NAME="Alpha"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -49,7 +48,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/alpha/finalize.sh,target=/gener
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/alpha/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/alpha/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json

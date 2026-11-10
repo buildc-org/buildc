@@ -932,7 +932,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-cycle"
-ARG IMAGE_NAME="Broken Cycle"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -941,7 +940,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-cycle/finalize.sh,target
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-cycle/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-cycle/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1130,7 +1129,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-cycle/graph.md
-# Broken Cycle capability graph
+# `broken-cycle` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1203,6 +1202,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "44d2c660a8be9574954c1bcd77d304faa3a7ac3c63c6aa1415aed7e22d5e9f54",
+  "root": "4114a3a884bb3995d0d8ea9914528dc15f1aec85e4ea1a7da71555fe2317ccaf",
   "files": 26
 }

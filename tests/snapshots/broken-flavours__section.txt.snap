@@ -42,7 +42,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-flavours"
-ARG IMAGE_NAME="Broken Flavours"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -51,7 +50,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-flavours/finalize.sh,tar
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-flavours/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-flavours/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json

@@ -34,11 +34,11 @@ fn generate_leaves_the_image_file_byte_identical() {
         ("repo.kdl", "schema-version 1\nname \"Checked\"\n"),
         (
             "image.kdl",
-            "schema-version 1\n\nimage {\n    name \"Checked\"\n    base-image {\n        example\n    }\n    consumer { runtime \"two\"; }\n}\n",
+            "schema-version 1\n\nimage \"checked\" {\n    base-image {\n        example\n    }\n    consumer { runtime \"two\"; }\n}\n",
         ),
         (
             "components/consumer/manifest.kdl",
-            "schema-version 1\nrequires \"tool\"\nimports \"$runtime\"\noption \"runtime\" type=\"string\" { default \"one\"; }\n",
+            "schema-version 1\nrequires \"tool\"\nimports \"{runtime}\"\noption \"runtime\" type=\"string\" { default \"one\"; }\n",
         ),
         (
             "components/base-image/example/manifest.kdl",

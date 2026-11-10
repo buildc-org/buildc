@@ -943,7 +943,6 @@ ARG SCAP_REFUSED=
 
 # ---- image identity ----
 ARG IMAGE_ID="enforced"
-ARG IMAGE_NAME="Enforced"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -953,7 +952,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/enforced/finalize.sh,target=/ge
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" CONFORMS="${CONFORMS}" SCAP_CONTENT="${SCAP_CONTENT}" FAMILY="${FAMILY}" SCAP_CLAIMED="${SCAP_CLAIMED}" SCAP_REFUSED="${SCAP_REFUSED}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/enforced/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" CONFORMS="${CONFORMS}" SCAP_CONTENT="${SCAP_CONTENT}" FAMILY="${FAMILY}" SCAP_CLAIMED="${SCAP_CLAIMED}" SCAP_REFUSED="${SCAP_REFUSED}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/enforced/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1155,7 +1154,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/enforced/graph.md
-# Enforced capability graph
+# `enforced` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1216,7 +1215,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "652fd7aa4a28a9beae147d996f029aed0ce4acfc06f91b389d7e47eeab6b5b1f",
+  "root": "e7863bac5eee364db8ed65a6623615ed58101a9c4d2c5fc113fd76b0e92dd2a3",
   "files": 28
 }
 ==== generated/enforced/components/one/hello/component.sh

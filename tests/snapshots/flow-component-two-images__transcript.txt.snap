@@ -14,8 +14,8 @@ yes
 
 package names, separated by spaces []: nano vim
 
-  1) example  Example
-  2) server  Server
+  1) example
+  2) server
 images and flavours that list it [1-2, several, 0 for none]: 1 2
 
 

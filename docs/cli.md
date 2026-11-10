@@ -185,7 +185,9 @@ or uses the directory that `--root` names.
 
 It asks for the repository name, the host and account, the first image and its
 base, the base components, the CI workflows and schedule, and the scripts to
-keep in `scripts/`. It shows every answer on a review screen before it writes.
+keep in `scripts/`. When the user gives an owner, `repo.kdl` also declares
+`base-url`, the repository URL that image option values read as `{base-url}`.
+It shows every answer on a review screen before it writes.
 
 **Usage:** `buildc create repo [OPTIONS] [name]`
 
@@ -195,8 +197,8 @@ keep in `scripts/`. It shows every answer on a review screen before it writes.
 
 | Option | Description |
 | --- | --- |
-| `--host <domain>` | the repository host; `github.com` by default, and with `--owner` it forms the base of every image URL |
-| `--owner <name>` | the account or organisation that owns the repository |
+| `--host <domain>` | the repository host; `github.com` by default, and with `--owner` it forms `base-url` |
+| `--owner <name>` | the account or organisation that owns the repository; with `--host` it forms `base-url` |
 | `--image <name>` | also write a first image with this name |
 | `--base <ref>` | the base image reference for the first image |
 
@@ -281,6 +283,12 @@ offers no adapter and asks no family question.
 The components a library base imports are copied into `components/` beside
 it, and the image file lists none of them.
 
+If the base imports no `os-release` component, the command offers the library's
+`os-release`. When the user accepts, the command copies the component and sets
+its `name` option to the image name. When `repo.kdl` declares `base-url`, the
+command also sets `home-url` to `{base-url}` and `bug-report-url` to
+`{base-url}/issues`.
+
 **Usage:** `buildc create image [OPTIONS] [name]`
 
 | Argument | Description |
@@ -289,7 +297,7 @@ it, and the image file lists none of them.
 
 | Option | Description |
 | --- | --- |
-| `--owner <name>` | the account or organisation; used when no image already names one |
+| `--owner <name>` | the account or organisation for the seeded home URL; ignored when repo.kdl declares base-url |
 | `--base <ref>` | a bootc image reference, catalogued or not; skips the base picker |
 
 **Schema:** [`image.kdl`](schema/image.md)
@@ -358,11 +366,7 @@ example/
 ```kdl
 schema-version 1
 
-image {
-    name "Example"
-    url "https://github.com/someone/example"
-    issues-url "https://github.com/someone/example/issues"
-
+image "example" {
     layout {
         bootloader "grub2"
     }

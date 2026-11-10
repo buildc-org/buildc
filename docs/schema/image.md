@@ -8,10 +8,7 @@ A file at the repository root holds one or more `image` blocks, and `buildc` rea
 
 ```kdl
 schema-version 1
-image {
-    name "Workstation"
-    url "https://github.com/owner/workstation"
-    issues-url "https://github.com/owner/workstation/issues"
+image "workstation" {
     layout {
         bootloader "grub2"
     }
@@ -22,7 +19,7 @@ image {
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this file is written against. |
-| [`image`](#image) (required,&nbsp;repeatable) | {&nbsp;[fields](#image-fields)&nbsp;} | One image, which declares its names and every component that it is made of, its base among them. |
+| [`image`](#image) (required,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#image-fields)&nbsp;} | One image, named by its id, which declares every component that it is made of, its base among them. |
 
 > [!NOTE]
 > A root `.kdl` file is an image file only if it is named `image.kdl` or ends in `.image.kdl`. `buildc` reports each other root `.kdl` file and does not read it.
@@ -50,25 +47,24 @@ Accepts: *number*
 
 ## `image` (required, repeatable)
 
-The block is the whole declaration of one published image. `buildc` reports two images with one `id`, and a flavour name that publishes as another image's `id`.
+The block is the whole declaration of one published image. `buildc` reports two images with one id, and a flavour name that publishes as another image's id. The `os-release` component sets the name that the boot menu and the desktop read. Its other options set the pretty name, hostname and URLs. An image that does not build `os-release` keeps the identity that its base image ships.
 
 ```kdl
-image {
-    name "Workstation"
-}
+image "workstation"
 ```
 
-Accepts: {&nbsp;[fields](#image-fields)&nbsp;}
+Accepts: *string*, then optionally {&nbsp;[fields](#image-fields)&nbsp;}
+
+The id names:
+
+- the published image;
+- the build target;
+- the cache tag.
 
 <a id="image-fields"></a>
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`id`](#image-id) (optional) | *string* | os-release `DEFAULT_HOSTNAME`. The machine name of the image. |
-| [`name`](#image-name) (required) | *string* | os-release `NAME`. The name that the boot menu and the desktop read. |
-| [`pretty-name`](#image-pretty-name) (optional) | *string* | os-release `PRETTY_NAME`. The full name that the user sees. |
-| [`url`](#image-url) (optional) | *string* | os-release `HOME_URL` and `DOCUMENTATION_URL`. The URL that serves the home page of the project. |
-| [`issues-url`](#image-issues-url) (optional) | *string* | os-release `SUPPORT_URL` and `BUG_REPORT_URL`. Where the user reports a problem with the image. |
 | [`description`](#image-description) (optional) | *string* | OCI label `org.opencontainers.image.description`. One line that summarises the image. |
 | [`keywords`](#image-keywords) (optional,&nbsp;repeatable) | *list of strings* | OCI label `io.artifacthub.package.keywords`. The keywords of the image, which the build joins with commas. |
 | [`logo-url`](#image-logo-url) (optional) | *string* | OCI label `io.artifacthub.package.logo-url`. The URL that points at the logo of the image. |
@@ -80,88 +76,8 @@ Accepts: {&nbsp;[fields](#image-fields)&nbsp;}
 | [`flavour`](#image-flavour) (optional,&nbsp;repeatable) | *string* | The components one flavour adds, which build only for that flavour. |
 | [`<name>`](#image-name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
 
-<a id="image-id"></a>
-
-### `id` (optional)
-
-os-release `DEFAULT_HOSTNAME`. The machine name of the image.
-
-```kdl
-image {
-    id "workstation"
-}
-```
-
-Accepts: *string*
-
-The `id` names:
-
-- the published image;
-- the build target;
-- the cache tag;
-- the os-release `DEFAULT_HOSTNAME`.
-
 > [!NOTE]
-> If `id` is absent, then `buildc` derives it from `name` in lower case and turns each space into a dash.
-
-<a id="image-name"></a>
-
-### `name` (required)
-
-os-release `NAME`. The name that the boot menu and the desktop read.
-
-```kdl
-image {
-    name "Workstation"
-}
-```
-
-Accepts: *string*
-
-> [!NOTE]
-> If `pretty-name` is absent, then `PRETTY_NAME` is `name` followed by the image version.
-
-<a id="image-pretty-name"></a>
-
-### `pretty-name` (optional)
-
-os-release `PRETTY_NAME`. The full name that the user sees.
-
-```kdl
-image {
-    pretty-name "Workstation 44"
-}
-```
-
-Accepts: *string*
-
-<a id="image-url"></a>
-
-### `url` (optional)
-
-os-release `HOME_URL` and `DOCUMENTATION_URL`. The URL that serves the home page of the project.
-
-```kdl
-image {
-    url "https://github.com/owner/workstation"
-}
-```
-
-Accepts: *string*
-
-<a id="image-issues-url"></a>
-
-### `issues-url` (optional)
-
-os-release `SUPPORT_URL` and `BUG_REPORT_URL`. Where the user reports a problem with the image.
-
-```kdl
-image {
-    issues-url "https://github.com/owner/workstation/issues"
-}
-```
-
-Accepts: *string*
+> An image that builds `os-release` takes the id as its default hostname. The image can set the component's `default-hostname` option to another value.
 
 <a id="image-description"></a>
 
@@ -170,7 +86,7 @@ Accepts: *string*
 OCI label `org.opencontainers.image.description`. One line that summarises the image.
 
 ```kdl
-image {
+image "workstation" {
     description "A KDE desktop for daily work"
 }
 ```
@@ -184,7 +100,7 @@ Accepts: *string*
 OCI label `io.artifacthub.package.keywords`. The keywords of the image, which the build joins with commas.
 
 ```kdl
-image {
+image "workstation" {
     keywords "desktop" "kde"
 }
 ```
@@ -198,7 +114,7 @@ Accepts: *list of strings*
 OCI label `io.artifacthub.package.logo-url`. The URL that points at the logo of the image.
 
 ```kdl
-image {
+image "workstation" {
     logo-url "https://github.com/owner/workstation/raw/main/logo.svg"
 }
 ```
@@ -212,7 +128,7 @@ Accepts: *string*
 The name selects a profile in the SSG datastream that the base pins, and `buildc scap` measures the target against its rules. `buildc scap` refuses a name the datastream does not carry.
 
 ```kdl
-image {
+image "workstation" {
     conforms "standard"
 }
 ```
@@ -229,7 +145,7 @@ Accepts: *string*
 A declared chain builds a UKI and settles the install layout, so `buildc check` refuses a `layout` row that contradicts it. A `buildx` backend cannot build the image, because `buildc build` reads the sealed composefs digest from the local buildah store.
 
 ```kdl
-image {
+image "workstation" {
     boot-chain "uki-shim"
 }
 ```
@@ -243,7 +159,7 @@ Accepts: `uki-shim` or `uki-db`
 A layout answers the install questions that the base family leaves open. If the family and a `boot-chain` both leave an answer open, then the image builds no install media unless the block gives it.
 
 ```kdl
-image {
+image "workstation" {
     layout {
         filesystem "btrfs"
     }
@@ -269,7 +185,7 @@ Accepts: {&nbsp;[fields](#image-layout-fields)&nbsp;}
 The root filesystem that the installer formats in place of the one that the base family settles.
 
 ```kdl
-image {
+image "workstation" {
     layout {
         filesystem "btrfs"
     }
@@ -285,7 +201,7 @@ Accepts: `xfs` or `ext4` or `btrfs`
 Whether the install seals the deployment, which replaces the answer of the base family.
 
 ```kdl
-image {
+image "workstation" {
     layout {
         composefs #true
     }
@@ -301,7 +217,7 @@ Accepts: *boolean*
 Whether the install skips the bootupd check, which replaces the answer of the base family.
 
 ```kdl
-image {
+image "workstation" {
     layout {
         generic-image #false
     }
@@ -317,7 +233,7 @@ Accepts: *boolean*
 The group that the installer creates an administrator in, which replaces the group of the base family.
 
 ```kdl
-image {
+image "workstation" {
     layout {
         admin-group "wheel"
     }
@@ -333,7 +249,7 @@ Accepts: *string*
 No family answers this row, so a layout declares a bootloader unless a `boot-chain` settles it as `systemd`.
 
 ```kdl
-image {
+image "workstation" {
     layout {
         bootloader "grub2"
     }
@@ -349,7 +265,7 @@ Accepts: `grub2` or `systemd`
 The rule must be one that a component the image installs refuses, or the allowance lifts nothing and `buildc scap` reports it.
 
 ```kdl
-image {
+image "workstation" {
     allow-remediation "grub2_nousb_argument" because="this machine has no USB keyboard"
 }
 ```
@@ -367,7 +283,7 @@ Accepts: *string*
 The block publishes each child as `<id>-<flavour>`, and it reserves `none` for the ungated build. One flavour at most carries `default=#true`, and one flavour at most carries `pr-build=#true`.
 
 ```kdl
-image {
+image "workstation" {
     flavours {
         dev
     }
@@ -396,7 +312,7 @@ Accepts: {&nbsp;[fields](#image-flavours-fields)&nbsp;}
 One flavour that publishes a gated component set as `<id>-<flavour>`, where `<flavour>` is the node name.
 
 ```kdl
-image {
+image "workstation" {
     flavours {
         dev
     }
@@ -416,7 +332,7 @@ image {
 The argument names one flavour of the `flavours` block, and every component below the node is gated to that target. `buildc check` refuses a name that no flavour declares.
 
 ```kdl
-image {
+image "workstation" {
     flavour "dev"
 }
 ```
@@ -427,10 +343,10 @@ Accepts: *string*
 
 ### `<name>` (optional, repeatable)
 
-A segment takes no argument, and its name takes lowercase letters, digits and dashes, with one `@<tag>` allowed on the last part. `variant=` is its only property, and every other setting is a child node.
+A segment takes no argument. Its name takes lowercase letters, digits and dashes, with one `@<tag>` allowed on the last part. `variant=` is its only property, and every other setting is a child node. A child with an argument sets an option of the component. The option value may read `{image-id}` and `{base-url}`.
 
 ```kdl
-image {
+image "workstation" {
     desktop-environment
 }
 ```

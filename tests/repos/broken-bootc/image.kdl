@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Runner"
-
+image "runner" {
     base-image {
         fedora-44
     }

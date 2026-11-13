@@ -1,9 +1,6 @@
 schema-version 1
 
-image {
-    name "Server"
-    id "server"
-
+image "server" {
     base-image {
         fedora-bootc-44
     }

@@ -3,11 +3,7 @@ source: tests/golden/harness.rs
 ---
 schema-version 1
 
-image {
-    name "Example"
-    url "https://github.com/someone/example"
-    issues-url "https://github.com/someone/example/issues"
-
+image "example" {
     layout {
         bootloader "grub2"
     }

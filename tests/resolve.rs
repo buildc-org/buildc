@@ -14,8 +14,7 @@ fn after_rejects_a_provider_on_another_target() {
         root.join("image.kdl"),
         r#"schema-version 1
 
-image {
-    name "After"
+image "after" {
     base-image {
         example
     }
@@ -86,8 +85,7 @@ fn unprovided(dir: &str, line: &str) -> PathBuf {
         root.join("image.kdl"),
         r#"schema-version 1
 
-image {
-    name "After"
+image "after" {
     base-image {
         example
     }
@@ -176,8 +174,7 @@ fn shipped_policy_orders_a_component_after_the_mac_that_installs_it() {
         root.join("image.kdl"),
         r#"schema-version 1
 
-image {
-    name "Mac"
+image "mac" {
     base-image {
         example
     }
@@ -238,7 +235,7 @@ fn a_capability_conflicts_only_where_a_provider_declares_it_exclusive() {
     write_base(&root, "fedora", "");
     std::fs::write(
         root.join("image.kdl"),
-        "schema-version 1\n\nimage {\n    name \"Two\"\n    base-image {\n        example\n    }\n    one\n    two\n}\n",
+        "schema-version 1\n\nimage \"two\" {\n    base-image {\n        example\n    }\n    one\n    two\n}\n",
     )
     .unwrap();
     let provider = |name: &str, provides: &str| {
@@ -293,7 +290,7 @@ fn written_on(name: &str, base: &str, components: &str, manifests: &[(&str, &str
     std::fs::write(
         root.join("image.kdl"),
         format!(
-            "schema-version 1\n\nimage {{\n    name \"Checked\"\n    base-image {{ example }}\n    flavours {{\n        dev\n        prod\n    }}\n{components}\n}}\n"
+            "schema-version 1\n\nimage \"checked\" {{\n    base-image {{ example }}\n    flavours {{\n        dev\n        prod\n    }}\n{components}\n}}\n"
         ),
     )
     .expect("the test repository is writable");
@@ -851,7 +848,7 @@ fn an_option_import_left_empty_is_refused() {
         "        consumer",
         &[(
             "consumer",
-            "imports \"$runtime\"\noption \"runtime\" type=\"string\"",
+            "imports \"{runtime}\"\noption \"runtime\" type=\"string\"",
         )],
     );
     assert!(
@@ -1027,7 +1024,7 @@ fn squashed(json: &str) -> String {
     json.split_whitespace().collect()
 }
 
-const CHOOSER: &str = "requires \"tool\"\nimports \"$runtime\"\noption \"runtime\" type=\"string\" { default \"one\"; }";
+const CHOOSER: &str = "requires \"tool\"\nimports \"{runtime}\"\noption \"runtime\" type=\"string\" { default \"one\"; }";
 
 #[test]
 fn an_option_import_takes_the_path_the_image_sets() {
@@ -1080,12 +1077,12 @@ fn a_reference_to_an_option_that_is_not_a_string_fails_at_its_node() {
         "        consumer",
         &[(
             "consumer",
-            "option \"fast\" type=\"bool\" { default #false; }\npackages \"tool=$fast\" \"other=$absent\"",
+            "option \"fast\" type=\"bool\" { default #false; }\npackages \"tool={fast}\" \"other={absent}\"",
         )],
     );
-    assert!(issues.contains("`$fast` reads a bool option"), "{issues}");
+    assert!(issues.contains("`{fast}` reads a bool option"), "{issues}");
     assert!(
-        issues.contains("`$absent` names no option of this component"),
+        issues.contains("`{absent}` names no option of this component"),
         "{issues}"
     );
 }
@@ -1098,7 +1095,7 @@ fn an_image_entry_version_reaches_the_package_line() {
         &[
             (
                 "browser",
-                "option \"version\" type=\"string\" { default \"1\"; }\npackages \"firefox=$version\"",
+                "option \"version\" type=\"string\" { default \"1\"; }\npackages \"firefox={version}\"",
             ),
             ("adapter", "provides \"build-environment\""),
         ],
@@ -1124,11 +1121,11 @@ fn an_option_value_that_spoils_a_package_name_fails_at_the_entry() {
         "        browser { version \"1 2\"; }",
         &[(
             "browser",
-            "option \"version\" type=\"string\" { default \"1\"; }\npackages \"firefox=$version\"",
+            "option \"version\" type=\"string\" { default \"1\"; }\npackages \"firefox={version}\"",
         )],
     );
     assert!(
-        issues.contains("`browser` installs `firefox=$version` as `firefox=1 2`"),
+        issues.contains("`browser` installs `firefox={version}` as `firefox=1 2`"),
         "{issues}"
     );
 }
@@ -1777,7 +1774,7 @@ fn listing_a_child_includes_the_component_that_holds_it() {
     let parent = buildc::run(Command::Plan, None, &{
         std::fs::write(
             root.join("image.kdl"),
-            "schema-version 1\n\nimage {\n    name \"Checked\"\n    base-image {\n        example\n    }\n    desktop\n}\n",
+            "schema-version 1\n\nimage \"checked\" {\n    base-image {\n        example\n    }\n    desktop\n}\n",
         )
         .expect("the test repository is writable");
         root.clone()
@@ -1796,12 +1793,12 @@ fn a_base_component_resolves_its_reference_from_the_entry() {
     let root = written("base-component", "", &[]);
     std::fs::write(
         root.join("components/base-image/example/manifest.kdl"),
-        "schema-version 1\n\nprovides \"bootc\"\nbase \"quay.io/fedora/fedora-bootc:$version\" { family \"fedora\"; }\noption \"version\" type=\"string\" { default \"44\"; }\n",
+        "schema-version 1\n\nprovides \"bootc\"\nbase \"quay.io/fedora/fedora-bootc:{version}\" { family \"fedora\"; }\noption \"version\" type=\"string\" { default \"44\"; }\n",
     )
     .expect("the test repository is writable");
     std::fs::write(
         root.join("image.kdl"),
-        "schema-version 1\n\nimage {\n    name \"Checked\"\n    base-image {\n        example {\n            version \"45\"\n            digest \"sha256:abc\"\n            signed #true\n        }\n    }\n}\n",
+        "schema-version 1\n\nimage \"checked\" {\n    base-image {\n        example {\n            version \"45\"\n            digest \"sha256:abc\"\n            signed #true\n        }\n    }\n}\n",
     )
     .expect("the test repository is writable");
     let plan = buildc::run(Command::Plan, None, &root).report.stdout;
@@ -1824,7 +1821,7 @@ fn an_image_that_lists_no_component_declaring_base_fails() {
     let root = written("base-not-a-base", "", &[("plain", "")]);
     std::fs::write(
         root.join("image.kdl"),
-        "schema-version 1\n\nimage {\n    name \"Checked\"\n    plain\n}\n",
+        "schema-version 1\n\nimage \"checked\" {\n    plain\n}\n",
     )
     .expect("the test repository is writable");
     let issues = buildc::run(Command::Check, None, &root)
@@ -1846,21 +1843,230 @@ fn a_family_outside_a_base_block_is_unknown() {
 }
 
 #[test]
-fn the_finalize_layer_carries_the_image_identity() {
+fn the_finalize_layer_carries_the_image_id_and_no_os_release_field() {
     let root = written("identity-env", "        later", &[("later", "")]);
     let out = generated(&root);
     let _ = std::fs::remove_dir_all(&root);
     let at = |line: &str| out.find(line).unwrap_or_else(|| panic!("{line}: {out}"));
     let finalize = at("# ---- finalize ----");
-    assert!(at("ARG IMAGE_NAME=") < finalize, "{out}");
-    for name in ["IMAGE_ID", "IMAGE_NAME", "IMAGE_VERSION"] {
+    assert!(at("ARG IMAGE_ID=\"checked\"") < finalize, "{out}");
+    for name in ["IMAGE_ID", "IMAGE_VERSION"] {
         assert!(
             out[finalize..].contains(&format!("{name}=\"${{{name}}}\"")),
             "{name}: {out}"
         );
     }
-    // The identity component owns os-release, so the finalize layer must not write the file.
+    for gone in [
+        "IMAGE_NAME",
+        "IMAGE_PRETTY_NAME",
+        "IMAGE_URL",
+        "IMAGE_ISSUES_URL",
+    ] {
+        assert!(!out.contains(gone), "{gone}: {out}");
+    }
+    // The finalize layer must not write os-release because the os-release component owns the file.
     assert!(!out[finalize..].contains("os-release"), "{out}");
+}
+
+fn reference_repo(name: &str, repo: &str, entry: &str, manifest: &str) -> std::path::PathBuf {
+    let root = written(name, entry, &[("stamp", manifest)]);
+    std::fs::write(
+        root.join("repo.kdl"),
+        format!("schema-version 1\nname \"Checked\"\n{repo}"),
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/stamp/finalize.sh"),
+        "echo \"${OPT_HOME}\"\n",
+    )
+    .expect("the test repository is writable");
+    root
+}
+
+fn referenced(name: &str, repo: &str, entry: &str, manifest: &str) -> buildc::Run {
+    let root = reference_repo(name, repo, entry, manifest);
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    run
+}
+
+fn finalize_of(run: &buildc::Run) -> &str {
+    run.files
+        .iter()
+        .find(|(path, _)| path.ends_with("finalize.sh") && path.starts_with("generated/checked"))
+        .map(|(_, text)| text.as_str())
+        .unwrap_or_else(|| panic!("{}", run.problems.issues.plain()))
+}
+
+const STAMP: &str = "option \"home\" type=\"string\" {\n    default \"\"\n}";
+
+#[test]
+fn an_option_value_reads_the_repository_url_and_the_image_id() {
+    let run = referenced(
+        "references-set",
+        "base-url \"https://example.org/checked\"\n",
+        "        stamp {\n            home \"{base-url}/tree/{image-id}\"\n        }",
+        STAMP,
+    );
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let script = finalize_of(&run);
+    assert!(
+        script.contains("export OPT_HOME=\"https://example.org/checked/tree/checked\""),
+        "{script}"
+    );
+}
+
+#[test]
+fn a_default_reads_the_image_id() {
+    let run = referenced(
+        "references-default",
+        "",
+        "        stamp",
+        "option \"home\" type=\"string\" {\n    default \"{image-id}-host\"\n}",
+    );
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    assert!(finalize_of(&run).contains("export OPT_HOME=\"checked-host\""));
+}
+
+#[test]
+fn a_value_that_reads_an_undeclared_base_url_is_refused() {
+    let run = referenced(
+        "references-undeclared",
+        "",
+        "        stamp {\n            home \"{base-url}\"\n        }",
+        STAMP,
+    );
+    let issues = run.problems.issues.plain();
+    assert!(
+        issues.contains("reads `{base-url}`, which nothing declares"),
+        "{issues}"
+    );
+    assert!(issues.contains("declare `base-url"), "{issues}");
+}
+
+#[test]
+fn a_default_that_reads_the_repository_url_is_refused() {
+    let run = referenced(
+        "references-default-url",
+        "base-url \"https://example.org/checked\"\n",
+        "        stamp",
+        "option \"home\" type=\"string\" {\n    default \"{base-url}\"\n}",
+    );
+    let issues = run.problems.issues.plain();
+    assert!(
+        issues.contains("reads `{base-url}`, which a default cannot read"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_base_url_that_is_not_https_is_refused() {
+    let run = referenced(
+        "references-http",
+        "base-url \"http://example.org\"\n",
+        "        stamp",
+        STAMP,
+    );
+    let issues = run.problems.issues.plain();
+    assert!(issues.contains("is not a usable `base-url`"), "{issues}");
+}
+
+#[test]
+fn a_variant_that_reads_the_repository_url_is_refused() {
+    let root = reference_repo(
+        "references-variant-url",
+        "base-url \"https://example.org/checked\"\n",
+        "        stamp variant=\"remote\"",
+        "option \"home\" type=\"string\" {\n    default \"\"\n}\nvariant \"remote\" {\n    set \"home\" \"{base-url}\"\n}",
+    );
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        issues.contains("variant `remote` sets `home` to a value that reads `{base-url}`"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_base_entry_option_reads_the_repository_url() {
+    let root = written("base-entry-reference", "", &[]);
+    std::fs::write(
+        root.join("repo.kdl"),
+        "schema-version 1\nname \"Checked\"\nbase-url \"https://example.org/checked\"\n",
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/base-image/example/manifest.kdl"),
+        "schema-version 1\n\nbase \"example\" {\n    family \"fedora\"\n}\noption \"tag\" type=\"string\" {\n    default \"latest\"\n}\n",
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("image.kdl"),
+        "schema-version 1\n\nimage \"checked\" {\n    base-image {\n        example {\n            tag \"{base-url}/tree/{image-id}\"\n        }\n    }\n    flavours {\n        dev\n        prod\n    }\n}\n",
+    )
+    .expect("the test repository is writable");
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(issues.is_empty(), "{issues}");
+}
+
+#[test]
+fn a_finalize_hook_reads_its_own_options_and_the_next_hook_does_not() {
+    let root = written(
+        "hook-options",
+        "        stamp {\n            label \"Checked\"\n        }\n        later",
+        &[
+            (
+                "stamp",
+                "option \"label\" type=\"string\" {\n    default \"\"\n}",
+            ),
+            ("later", ""),
+        ],
+    );
+    std::fs::write(
+        root.join("components/stamp/finalize.sh"),
+        "echo \"${OPT_LABEL}\"\n",
+    )
+    .expect("the test repository is writable");
+    std::fs::write(root.join("components/later/finalize.sh"), "echo later\n")
+        .expect("the test repository is writable");
+    let run = buildc::run(Command::Generate, None, &root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        run.problems.issues.is_empty(),
+        "{}",
+        run.problems.issues.plain()
+    );
+    let (_, script) = run
+        .files
+        .iter()
+        .find(|(path, _)| path.ends_with("finalize.sh") && path.starts_with("generated/checked"))
+        .expect("the image has a finalize script");
+    let stamp = script.find("# ---- stamp ----").expect("the stamp hook");
+    let later = script.find("# ---- later ----").expect("the later hook");
+    let hook = &script[stamp..later];
+    let exported = hook
+        .find("export OPT_LABEL=\"Checked\"")
+        .expect("the option is exported");
+    let sourced = hook
+        .find("source /ctx/components/stamp/finalize.sh")
+        .expect("the hook is sourced");
+    let unset = hook.find("unset OPT_LABEL").expect("the option is unset");
+    assert!(exported < sourced && sourced < unset, "{hook}");
 }
 
 #[test]
@@ -1916,20 +2122,20 @@ fn a_reference_is_checked_in_a_gate_an_image_and_an_import() {
         "        consumer",
         &[(
             "consumer",
-            "on \"fedora\" { packages \"a=$gated\"; }\nimports \"$chosen\"\nimports { \"tool\" { driver \"$passed\"; }; }",
+            "on \"fedora\" { packages \"a={gated}\"; }\nimports \"{chosen}\"\nimports { \"tool\" { driver \"{passed}\"; }; }",
         )],
     );
-    assert!(issues.contains("`$gated` names no option"), "{issues}");
-    assert!(issues.contains("`$chosen` names no option"), "{issues}");
-    assert!(issues.contains("`$passed` names no option"), "{issues}");
+    assert!(issues.contains("`{gated}` names no option"), "{issues}");
+    assert!(issues.contains("`{chosen}` names no option"), "{issues}");
+    assert!(issues.contains("`{passed}` names no option"), "{issues}");
     let root = written("reference-image", "", &[]);
-    write_base(&root, "fedora", "base \"x:$tag\"");
+    write_base(&root, "fedora", "base \"x:{tag}\"");
     let issues = buildc::run(Command::Check, None, &root)
         .problems
         .issues
         .plain();
     let _ = std::fs::remove_dir_all(&root);
-    assert!(issues.contains("`$tag` names no option"), "{issues}");
+    assert!(issues.contains("`{tag}` names no option"), "{issues}");
 }
 
 #[test]
@@ -2114,7 +2320,7 @@ fn a_base_version_tracker_of_its_own_reaches_renovate() {
     let root = written("base-own-tracker", "", &[]);
     std::fs::write(
         root.join("components/base-image/example/manifest.kdl"),
-        "schema-version 1\n\nbase \"example.invalid/base:$version\" { family \"fedora\"; }\n\
+        "schema-version 1\n\nbase \"example.invalid/base:{version}\" { family \"fedora\"; }\n\
          option \"arch\" type=\"string\" { default \"x\"; }\n\
          option \"version\" type=\"string\" { default \"1\"; renovate datasource=\"github-releases\" depName=\"owner/base\"; }\n",
     )
@@ -2156,7 +2362,7 @@ fn an_inline_provider_answers_only_its_own_image() {
     let root = written("inline-scope", "", &[("needs", "requires \"tool\"")]);
     std::fs::write(
         root.join("image.kdl"),
-        "schema-version 1\n\nimage {\n    name \"a\"\n    base-image { example }\n    tools {\n        provides \"tool\"\n    }\n}\n\nimage {\n    name \"b\"\n    base-image { example }\n    needs\n}\n",
+        "schema-version 1\n\nimage \"a\" {\n    base-image { example }\n    tools {\n        provides \"tool\"\n    }\n}\n\nimage \"b\" {\n    base-image { example }\n    needs\n}\n",
     )
     .expect("the test repository is writable");
     let issues = buildc::run(Command::Check, None, &root)

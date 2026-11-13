@@ -1,7 +1,6 @@
 schema-version 1
 
-image {
-    name "Workstation"
+image "workstation" {
     conforms "standard"
 
     base-image {

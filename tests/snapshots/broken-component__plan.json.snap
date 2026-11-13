@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-component",
-  "default_image_name": "Broken Component",
   "pr_image": "broken-component",
   "default_target": "broken-component",
   "default_published": "broken-component",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-component",
-      "name": "Broken Component",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

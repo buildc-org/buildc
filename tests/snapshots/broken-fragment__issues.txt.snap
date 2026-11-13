@@ -2,32 +2,32 @@
 source: tests/golden/harness.rs
 ---
   x `core/early` expands FLAVOUR above the flavour gate
-    ,-[tests/repos/broken-fragment/image.kdl:15:9]
- 14 |     core {
- 15 |         early
+    ,-[tests/repos/broken-fragment/image.kdl:13:9]
+ 12 |     core {
+ 13 |         early
     :         ^^|^^
     :           `-- listed above the first flavour-gated component
- 16 |     }
+ 14 |     }
     `----
   help: ARG FLAVOUR is declared directly above the first gated entry, so a
         fragment before it would expand to an empty string
 
   x `core/silent` is listed under `dev` but its fragment sets no FLAVOUR_GATE
-    ,-[tests/repos/broken-fragment/image.kdl:20:13]
- 19 |         core {
- 20 |             silent
+    ,-[tests/repos/broken-fragment/image.kdl:18:13]
+ 17 |         core {
+ 18 |             silent
     :             ^^^|^^
     :                `-- the flavour gate would be silently ignored
- 21 |         }
+ 19 |         }
     `----
   help: a fragment is emitted unconditionally, so anything it runs has to
         carry the gate itself
 
   x `core/mismatched` is listed under `dev` but its fragment gates on `server`
-    ,-[tests/repos/broken-fragment/image.kdl:23:13]
- 22 |         core {
- 23 |             mismatched
+    ,-[tests/repos/broken-fragment/image.kdl:21:13]
+ 20 |         core {
+ 21 |             mismatched
     :             ^^^^^|^^^^
     :                  `-- listed here
- 24 |         }
+ 22 |         }
     `----

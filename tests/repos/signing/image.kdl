@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Signing"
-
+image "signing" {
     base-image {
         fedora-bootc-44
     }

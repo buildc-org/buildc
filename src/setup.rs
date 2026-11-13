@@ -106,7 +106,7 @@ impl Listed {
             .expect("a target names an image the list holds");
         Self {
             file: PathBuf::from(image.src.name()),
-            image: image.name.clone(),
+            image: image.id.clone(),
             flavour: match target.flavour == crate::model::image::NO_FLAVOUR {
                 true => None,
                 false => Some(target.flavour.clone()),
@@ -139,7 +139,7 @@ impl Listing {
                     )
                 })?,
             None => {
-                let mut rows = target_rows(&list, &targets);
+                let mut rows = target_rows(&targets);
                 rows.push(Choice::new(copy::TARGET_NONE, ""));
                 match prompt.choose(copy::TARGET_IMAGE, &rows)? {
                     None => return Ok(Self::Declined { asked: false }),
@@ -163,7 +163,7 @@ impl Listing {
         let named: Vec<String> = targets.iter().map(ToString::to_string).collect();
 
         let chosen: Vec<usize> = match given.is_empty() {
-            true => match ask(list, &targets, prompt)? {
+            true => match ask(&targets, prompt)? {
                 common::ui::Answer::Cancelled => return Ok(Self::Cancelled),
                 common::ui::Answer::Chosen(chosen) => chosen,
             },
@@ -368,7 +368,7 @@ fn holds<'a>(
     &'a crate::model::image::Image,
     &'a crate::model::image::Entry,
 )> {
-    let image = list.images.iter().find(|image| image.name == into.image)?;
+    let image = list.images.iter().find(|image| image.id == into.image)?;
     let entry = image.entries.iter().find(|entry| {
         entry.path == name
             && crate::resolve::meet(into.flavour.as_deref(), entry.flavour.as_deref())
@@ -377,7 +377,6 @@ fn holds<'a>(
 }
 
 fn ask(
-    list: &crate::model::image::List,
     targets: &[crate::model::image::Target],
     prompt: &Prompt,
 ) -> Result<common::ui::Answer, String> {
@@ -388,13 +387,10 @@ fn ask(
             false => Vec::new(),
         }));
     }
-    prompt.choose_many(copy::LIST_IN_IMAGES, &target_rows(list, targets), &[])
+    prompt.choose_many(copy::LIST_IN_IMAGES, &target_rows(targets), &[])
 }
 
-fn target_rows(
-    list: &crate::model::image::List,
-    targets: &[crate::model::image::Target],
-) -> Vec<Choice> {
+fn target_rows(targets: &[crate::model::image::Target]) -> Vec<Choice> {
     let mut ungated_row = 0;
     let mut rows: Vec<Choice> = Vec::new();
     for (at, target) in targets.iter().enumerate() {
@@ -404,15 +400,7 @@ fn target_rows(
             continue;
         }
         ungated_row = at;
-        let named = list
-            .images
-            .iter()
-            .find(|image| image.id == target.image)
-            .map_or("", |image| match image.name == image.id {
-                true => "",
-                false => image.name.as_str(),
-            });
-        rows.push(Choice::new(label, named));
+        rows.push(Choice::new(label, ""));
     }
     rows
 }

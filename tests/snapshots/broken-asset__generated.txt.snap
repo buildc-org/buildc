@@ -924,7 +924,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-asset"
-ARG IMAGE_NAME="Broken Asset"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -933,7 +932,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-asset/finalize.sh,target
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-asset/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-asset/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1121,7 +1120,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-asset/graph.md
-# Broken Asset capability graph
+# `broken-asset` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1169,6 +1168,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "4da47c6a8c649274b5bfe7206030fbdc514e65106c5fbf13302c350f9e477643",
+  "root": "ca8fef248ef2e75ae715b8af8471d17bf6b9c202a42dfd27aa61384da98357a6",
   "files": 25
 }

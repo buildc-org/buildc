@@ -203,7 +203,7 @@ requires {
 
 ## `imports` (optional, repeatable)
 
-The value is a component path of lower-case segments joined by `/`, or a `$option` reference that resolves to one. The block of an imported path sets the options that this component passes to that component.
+The value is a component path of lowercase segments joined by `/`, or a `{option}` reference to a string option that resolves to one. The block of an imported path sets the options that the importing component passes to the imported component.
 
 ```kdl
 imports "container-runtime"
@@ -246,7 +246,7 @@ One option value that the imported component takes, which the node name names.
 ```kdl
 imports {
     "container-runtime" {
-        storage-driver "$storage-driver"
+        storage-driver "{storage-driver}"
     }
 }
 ```
@@ -550,15 +550,15 @@ Accepts: *string*, then {&nbsp;[fields](#option-fields)&nbsp;}
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`description`](#option-description) (optional) | *string* | What the option does. |
-| [`default`](#option-default) (required) | *list of strings* | The value that the component builds with if no image sets one. |
+| [`default`](#option-default) (required) | *list of strings* | The value that the component builds with if no image sets one. A string default may read `{image-id}` alone. `buildc generate` writes the id in place of the `{image-id}` reference. |
 | [`renovate`](#option-renovate) (optional) |  | What keeps the value of a `version` option current. |
 
 > [!NOTE]
-> Every declared option reaches the layer of its component as `OPT_<NAME>`. `<NAME>` is the option name in upper case, and each dash becomes an underscore.
+> Every declared option reaches the layer of its component as `OPT_<NAME>`. `<NAME>` is the option name in upper case, and each dash becomes an underscore. A `finalize.sh` hook reads only its own component's options.
 >
 > A default reaches the layer too, so `component.sh` reads a variable and does not test whether one is set.
 >
-> A `string` option's value fills each `$<name>` that names it in a `packages`, `package-groups` or `provider` argument, as `packages "firefox=$version"` does. A `$<name>` that names a `bool` or a `list` option, or no option, fails `buildc check`.
+> A `string` option's value fills each `{<name>}` that names it in a `packages` or `package-groups` argument, as `packages "firefox={version}"` does. A `{<name>}` that names a `bool` or a `list` option, or no option, fails `buildc check`.
 
 <a id="option-description"></a>
 
@@ -578,7 +578,7 @@ Accepts: *string*
 
 ### `default` (required)
 
-The value that the component builds with if no image sets one.
+The value that the component builds with if no image sets one. A string default may read `{image-id}` alone. `buildc generate` writes the id in place of the `{image-id}` reference.
 
 ```kdl
 option "version" type="string" {
@@ -623,7 +623,7 @@ Accepts: *string*, then optionally {&nbsp;[fields](#variant-fields)&nbsp;}
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`description`](#variant-description) (optional) | *string* | What the variant is for. |
-| [`set`](#variant-set) (optional,&nbsp;repeatable) | *string* | One option that this variant sets, where the option value follows the option name. |
+| [`set`](#variant-set) (optional,&nbsp;repeatable) | *string* | One option that this variant sets, where the option value follows the option name. A string value may read `{image-id}` alone. |
 
 > [!NOTE]
 > An image can still set an option on an entry that selects a variant. The option that the image sets wins.
@@ -646,7 +646,7 @@ Accepts: *string*
 
 ### `set` (optional, repeatable)
 
-One option that this variant sets, where the option value follows the option name.
+One option that this variant sets, where the option value follows the option name. A string value may read `{image-id}` alone.
 
 ```kdl
 variant "wine-only" {
@@ -987,10 +987,10 @@ Accepts: *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;}
 
 ## `base` (optional)
 
-The reference may carry a `$option` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.
+The reference may carry a `{option}` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.
 
 ```kdl
-base "quay.io/fedora/fedora-bootc:$version"
+base "quay.io/fedora/fedora-bootc:{version}"
 ```
 
 Accepts: *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;}
@@ -1010,7 +1010,7 @@ Accepts: *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;}
 The family selects the package manager adapter and the installer recipe for the image. A component's `targets` is read against this value.
 
 ```kdl
-base "quay.io/fedora/fedora-bootc:$version" {
+base "quay.io/fedora/fedora-bootc:{version}" {
     family "fedora"
 }
 ```
@@ -1024,7 +1024,7 @@ Accepts: *string*
 Each name must be `grub2` or `systemd`, the two bootloaders the installer writes.
 
 ```kdl
-base "quay.io/fedora/fedora-bootc:$version" {
+base "quay.io/fedora/fedora-bootc:{version}" {
     bootloader "grub2"
 }
 ```
@@ -1038,7 +1038,7 @@ Accepts: *list of strings*
 The value is a bare filename. The `pin` child states the `url` and the `sha256` that the fetched datastream must match.
 
 ```kdl
-base "quay.io/fedora/fedora-bootc:$version" {
+base "quay.io/fedora/fedora-bootc:{version}" {
     scap-content "ssg-fedora-ds.xml"
 }
 ```

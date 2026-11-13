@@ -34,10 +34,6 @@ pub fn build(list: &List, resolved: &[Resolved], workflows: &[Declared]) -> Json
             Json::optional(list.default_image().map(|i| i.id.clone())),
         ),
         (
-            "default_image_name",
-            Json::optional(list.default_image().map(|i| i.name.clone())),
-        ),
-        (
             "pr_image",
             Json::optional(list.pr_image().map(|i| i.id.clone())),
         ),
@@ -107,11 +103,7 @@ fn declared_in(src: &str) -> String {
 fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
     Json::object([
         ("id", Json::string(&image.id)),
-        ("name", Json::string(&image.name)),
-        ("pretty_name", Json::string(&image.pretty_name)),
         ("file", Json::string(declared_in(image.src.name()))),
-        ("url", Json::string(&image.url)),
-        ("issues_url", Json::string(&image.issues_url)),
         ("description", Json::string(&image.description)),
         ("keywords", Json::strings(image.keywords.iter().cloned())),
         ("logo_url", Json::string(&image.logo_url)),

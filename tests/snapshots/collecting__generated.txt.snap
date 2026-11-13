@@ -945,7 +945,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="collecting"
-ARG IMAGE_NAME="Collecting"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -954,7 +953,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/collecting/finalize.sh,target=/
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/collecting/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/collecting/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1167,7 +1166,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/collecting/graph.md
-# Collecting capability graph
+# `collecting` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1217,7 +1216,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "5eede21f55636605e794ed1b45aa6826483aaf6599c8f396615ea71c39c4200f",
+  "root": "b038015201882ff8696e259d0d6209b6c2fe936ba5aa8471568d7b0f7ab6ca94",
   "files": 30
 }
 ==== generated/collecting/components/core/power/justfile.inc

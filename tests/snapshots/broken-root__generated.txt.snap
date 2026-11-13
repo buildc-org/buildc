@@ -934,7 +934,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="same"
-ARG IMAGE_NAME="Same"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -943,7 +942,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/same/finalize.sh,target=/genera
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/same/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/same/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1137,7 +1136,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/same/graph.md
-# Same capability graph
+# `same` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1241,7 +1240,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="same"
-ARG IMAGE_NAME="Same"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1250,7 +1248,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/same/finalize.sh,target=/genera
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/same/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/same/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1444,7 +1442,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/same/graph.md
-# Same capability graph
+# `same` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1502,7 +1500,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "e39a8664d5dfedf2a34802dac1ddb614bba1dda919eb84e36a7bd99da0e4c83a",
+  "root": "f1675b1e08d736aae5069c4caab6efce73626204d689de5b8632376812b105ec",
   "files": 34
 }
 ==== generated/same/components/fedora-family/lib/family.sh

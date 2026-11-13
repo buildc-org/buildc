@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-lock",
-  "default_image_name": "Broken lock",
   "pr_image": "broken-lock",
   "default_target": "broken-lock",
   "default_published": "broken-lock",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-lock",
-      "name": "Broken lock",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

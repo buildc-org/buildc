@@ -10,9 +10,10 @@ use kdl::{KdlDocument, KdlNode};
 
 #[rustfmt::skip]
 const SEGMENT: Node = Node::new("", "One part of a component path, which lists the component at that path or holds further parts.")
-    .about("A segment takes no argument, and its name takes lowercase letters, digits and dashes, \
-        with one `@<tag>` allowed on the last part. `variant=` is its only property, and every \
-        other setting is a child node.")
+    .about("A segment takes no argument. Its name takes lowercase letters, digits and dashes, with \
+        one `@<tag>` allowed on the last part. `variant=` is its only property, and every \
+        other setting is a child node. A child with an argument sets an option of the component. \
+        The option value may read `{image-id}` and `{base-url}`.")
     .example("desktop-environment")
     .notes(&[
         "A component that the image file defines inline must not also be a component under \
@@ -32,40 +33,29 @@ pub(crate) const BOOT_CHAINS: &[&str] = &["uki-shim", "uki-db"];
 
 #[rustfmt::skip]
 pub const IMAGE: Node = Node::new("image",
-    "One image, which declares its names and every component that it is made of, its base among them.")
+    "One image, named by its id, which declares every component that it is made of, its base among them.")
     .about("The block is the whole declaration of one published image. `buildc` reports two images \
-        with one `id`, and a flavour name that publishes as another image's `id`.")
-    .scaffolds(&["name", "url", "issues-url", "layout", ""])
+        with one id, and a flavour name that publishes as another image's id. The `os-release` \
+        component sets the name that the boot menu and the desktop read. Its other options set \
+        the pretty name, hostname and URLs. An image that does not build `os-release` keeps the \
+        identity that its base image ships.")
+    .notes(&[
+        "An image that builds `os-release` takes the id as its default hostname. The image can \
+         set the component's `default-hostname` option to another value.",
+    ])
+    .scaffolds(&["layout", ""])
     .minimal()
-    .arg(Arg::None, Say::new("`image` takes no argument", "the name belongs in the block",
-        "`image { id \"{}\" }` is the machine name, and `name` is the human one it derives from \
-         when absent"))
+    .example("\"workstation\"")
+    .arg(Arg::Str, Say::new("`image` needs its id", "no id",
+        "`image \"workstation\" { … }`: lowercase letters, digits and dashes, starting with a letter"))
+    .lists(&[
+        ("The id names:", &[
+            "the published image;",
+            "the build target;",
+            "the cache tag.",
+        ]),
+    ])
     .children(&[
-        Node::new("id", "os-release `DEFAULT_HOSTNAME`. The machine name of the image.").example("\"workstation\"")
-            .arg(Arg::Str, NEEDS_VALUE).once("")
-            .lists(&[
-                ("The `id` names:", &[
-                    "the published image;",
-                    "the build target;",
-                    "the cache tag;",
-                    "the os-release `DEFAULT_HOSTNAME`.",
-                ]),
-            ])
-            .notes(&[
-                "If `id` is absent, then `buildc` derives it from `name` in lower case and turns \
-                 each space into a dash.",
-            ]),
-        Node::new("name", "os-release `NAME`. The name that the boot menu and the desktop read.").example("\"Workstation\"")
-            .arg(Arg::Str, NEEDS_VALUE).once("")
-            .notes(&["If `pretty-name` is absent, then `PRETTY_NAME` is `name` followed by the image version."])
-            .missing(Say::new("`image` declares no `name`", "no name",
-                "`name \"Buildc\"` is os-release NAME, which the boot menu and the desktop read")),
-        Node::new("pretty-name", "os-release `PRETTY_NAME`. The full name that the user sees.").example("\"Workstation 44\"")
-            .arg(Arg::Str, NEEDS_VALUE).once(""),
-        Node::new("url", "os-release `HOME_URL` and `DOCUMENTATION_URL`. The URL that serves the home page of the project.").example("\"https://github.com/owner/workstation\"")
-            .arg(Arg::Str, NEEDS_VALUE).once(""),
-        Node::new("issues-url", "os-release `SUPPORT_URL` and `BUG_REPORT_URL`. Where the user reports a problem with the image.").example("\"https://github.com/owner/workstation/issues\"")
-            .arg(Arg::Str, NEEDS_VALUE).once(""),
         Node::new("description", "OCI label `org.opencontainers.image.description`. One line that summarises the image.").example("\"A KDE desktop for daily work\"")
             .arg(Arg::Str, NEEDS_VALUE).once(""),
         Node::new("keywords", "OCI label `io.artifacthub.package.keywords`. The keywords of the image, which the build joins with commas.").example("\"desktop\" \"kde\"")
@@ -238,7 +228,7 @@ fn descend<'a>(
         .nodes()
         .iter()
         .filter(|node| node.name().value() == "image")
-        .find(|node| text(node, "name") == image)?;
+        .find(|node| string_arg(node) == Some(image))?;
     Some(trail(image, chain)?.pop().unwrap_or(image))
 }
 
@@ -276,7 +266,7 @@ pub fn unlisted(
         .nodes()
         .iter()
         .filter(|node| node.name().value() == "image")
-        .find(|node| text(node, "name") == image)
+        .find(|node| string_arg(node) == Some(image))
         .and_then(|node| trail(node, chain))
         .ok_or_else(|| format!("does not list `{named}` in `{image}`"))?;
     let target = nodes
@@ -450,11 +440,8 @@ impl Image {
     fn parse(node: &KdlNode, src: &Source, issues: &mut Issues) -> Self {
         let mut image = Image {
             src: src.clone(),
-            id: text(node, "id"),
-            name: text(node, "name"),
-            pretty_name: text(node, "pretty-name"),
-            url: text(node, "url"),
-            issues_url: text(node, "issues-url"),
+            id: string_arg(node).unwrap_or_default().to_string(),
+            repo_base_url: String::new(),
             description: text(node, "description"),
             keywords: decls(node, "keywords")
                 .into_iter()
@@ -628,31 +615,21 @@ impl Image {
 
     fn check_id(&mut self, issues: &mut Issues) {
         let src = &self.src;
-        if self.id.is_empty() {
-            self.id = self.name.to_lowercase().replace(' ', "-");
-            if !self.name.is_empty() && !is_name(&self.id) {
-                issues.push(
-                    Issue::new(
-                        format!("`{}` does not derive a usable image name", self.name),
-                        src,
-                    )
-                    .at(self.span, "no `id`, and `name` does not lowercase into one")
-                    .help("declare `id \"something\"`: lowercase letters, digits and dashes, starting with a letter"),
-                );
-                self.id = String::new();
-            }
-        } else if !is_name(&self.id) {
+        if !self.id.is_empty() && !is_name(&self.id) {
             issues.push(
-                Issue::new(format!("invalid image name `{}`", self.id), src)
-                    .at(self.span, "must be lowercase letters, digits and dashes, starting with a letter")
-                    .help("it becomes an image tag, a cache tag and the default hostname, all of which restrict it"),
+                Issue::new(format!("invalid image id `{}`", self.id), src)
+                    .at(
+                        self.span,
+                        "must be lowercase letters, digits and dashes, starting with a letter",
+                    )
+                    .help("it becomes an image tag and a cache tag, both of which restrict it"),
             );
         }
         if self.id == crate::layout::LIB {
             issues.push(
-                Issue::new(format!("`{}` is not available as an image name", self.id), src)
+                Issue::new(format!("`{}` is not available as an image id", self.id), src)
                     .at(self.span, "generated/lib/ is the shared helper library")
-                    .help("declare `id \"something\"`: everything else this image generates lands in generated/<id>/, which would be that directory"),
+                    .help("use another id. Everything else this image generates would land in the shared helper directory"),
             );
             self.id = String::new();
         }
@@ -673,7 +650,7 @@ impl Image {
                 issues.push(
                     Issue::new(format!("invalid flavour name `{}`", flavour.name), src)
                         .at(flavour.span, "must be lowercase letters, digits and dashes, starting with a letter")
-                        .help("a flavour name reaches an image name, a cache tag and a build arg, all of which restrict it"),
+                        .help("a flavour name reaches an image id, a cache tag and a build arg. All of them restrict it"),
                 );
             } else if flavour.name == NO_FLAVOUR {
                 issues.push(
@@ -741,12 +718,25 @@ impl Image {
         };
         let span: Span = node.name().span().into();
         if node.entries().iter().any(|entry| entry.name().is_none()) {
-            let help = match parent.is_empty() {
-                true => format!(
+            let help = match (parent.is_empty(), name) {
+                (true, "id") => {
+                    "the id is the image node's argument, as in `image \"workstation\" { … }`"
+                        .to_string()
+                }
+                (true, "name" | "pretty-name" | "url" | "issues-url") => format!(
+                    "the os-release fields are options of the `os-release` component; list \
+                     `os-release` in the image and set {} in its block",
+                    match name {
+                        "url" => "`home-url` and `documentation-url`".to_string(),
+                        "issues-url" => "`support-url` and `bug-report-url`".to_string(),
+                        other => format!("`{other}`"),
+                    }
+                ),
+                (true, _) => format!(
                     "`{name}` is no image node, so it reads as a component path, and a path \
                      segment takes no argument"
                 ),
-                false => format!(
+                (false, _) => format!(
                     "a child with an argument sets an option of `{parent}`, and `{name}` is \
                      one of those inside a segment of its own"
                 ),
@@ -919,31 +909,30 @@ mod tests {
 
     #[test]
     fn the_span_a_conforms_takes_is_the_node_or_where_the_next_one_goes() {
-        let held = "image {\n    name \"E\"\n    conforms \"standard\"\n    x\n}\n";
-        let span = conforms_span(held, "E").expect("the image is there");
+        let held = "image \"e\" {\n    conforms \"standard\"\n    x\n}\n";
+        let span = conforms_span(held, "e").expect("the image is there");
         assert_eq!(
             &held[span.offset..span.offset + span.len],
             "conforms \"standard\""
         );
 
-        let bare = "image {\n    name \"E\"\n    layout { bootloader \"grub2\" }\n\n    x\n}\n";
-        let span = conforms_span(bare, "E").expect("the image is there");
+        let bare = "image \"e\" {\n    layout { bootloader \"grub2\" }\n\n    x\n}\n";
+        let span = conforms_span(bare, "e").expect("the image is there");
         assert_eq!(span.len, 0);
         assert!(bare[span.offset..].starts_with("x\n"));
 
-        let empty = "image {\n    name \"E\"\n}\n";
-        let span = conforms_span(empty, "E").expect("the image is there");
+        let empty = "image \"e\" {\n    }\n";
+        let span = conforms_span(empty, "e").expect("the image is there");
         assert_eq!((span.len, &empty[span.offset..]), (0, "}\n"));
 
-        assert!(conforms_span(held, "Other").is_none());
+        assert!(conforms_span(held, "other").is_none());
     }
 
     #[test]
     fn the_table_catches_what_the_corpus_does_not() {
         let found = messages(
             r#"
-image "stray" {
-    id
+image {
     boot-chain "uki-db"
     boot-chain "uki-shim"
     flavours {
@@ -958,14 +947,12 @@ image "stray" {
         assert_eq!(
             found,
             [
-                "`image` takes no argument",
-                "`id` needs a value",
+                "`image` needs its id",
                 "`boot-chain` is declared twice",
                 "unknown flavour property `sparkle`",
                 "`default` must be #true or #false",
                 "a flavour takes no arguments",
                 "`flavour` needs a flavour name",
-                "`image` declares no `name`",
             ]
         );
     }
@@ -973,7 +960,7 @@ image "stray" {
     #[test]
     fn a_segment_takes_no_argument_and_a_name_the_path_rule_allows() {
         let found = semantic_messages(
-            "image {\n name \"X\"\n x\n palette \"red\"\n Bad_Name\n tools flavor=\"x\"\n}",
+            "image \"x\" {\n x\n palette \"red\"\n Bad_Name\n tools flavor=\"x\"\n}",
         );
         for wanted in [
             "`palette` takes no argument",
@@ -989,40 +976,39 @@ image "stray" {
 
     #[test]
     fn the_image_block_ends_at_a_closing_brace() {
-        let text = "image {\n    name \"X\"\n    tools {\n        one\n    }\n}\n";
-        let at = block_close(text, "X", &[("tools", None)]).expect("a tools block");
+        let text = "image \"x\" {\n    tools {\n        one\n    }\n}\n";
+        let at = block_close(text, "x", &[("tools", None)]).expect("a tools block");
         assert_eq!(&text[at..=at], "}");
         assert_eq!(&text[at - 5..at], "\n    ");
-        assert!(block_close(text, "X", &[("tools", None), ("one", None)]).is_none());
+        assert!(block_close(text, "x", &[("tools", None), ("one", None)]).is_none());
     }
 
     #[test]
     fn a_block_is_found_under_the_image_that_was_named() {
-        let text = "image {\n    name \"A\"\n    flavour \"dev\" { }\n}\nimage {\n    name \"B\"\n    flavour \"dev\" {\n    }\n}\n";
+        let text = "image \"a\" {\n    flavour \"dev\" { }\n}\nimage \"b\" {\n    flavour \"dev\" {\n    }\n}\n";
         let chain = [("flavour", Some("dev"))];
-        let at = block_close(text, "B", &chain).expect("B's flavour block");
+        let at = block_close(text, "b", &chain).expect("b's flavour block");
         assert!(text[..at].ends_with("flavour \"dev\" {\n    "), "{at}");
-        assert!(block_close(text, "C", &chain).is_none());
-        let whole = block_close(text, "A", &[]).expect("A's own brace");
+        assert!(block_close(text, "c", &chain).is_none());
+        let whole = block_close(text, "a", &[]).expect("a's own brace");
         assert!(whole < at);
     }
 
     #[test]
     fn an_empty_flavours_block_is_a_block_with_nothing_in_it() {
-        let found = messages("image {\n    name \"X\"\n    flavours { }\n    x\n}\n");
+        let found = messages("image \"x\" {\n    flavours { }\n    x\n}\n");
         assert_eq!(found, ["`flavours` has no flavours in it"]);
     }
 
     #[test]
     fn boot_chain_accepts_only_one_known_chain() {
         for chain in BOOT_CHAINS {
-            assert!(messages(&format!(
-                "image {{\n name \"X\"\n boot-chain \"{chain}\"\n x\n}}"
-            ))
-            .is_empty());
+            assert!(
+                messages(&format!("image \"x\" {{\n boot-chain \"{chain}\"\n x\n}}")).is_empty()
+            );
         }
         assert_eq!(
-            messages("image {\n name \"X\"\n boot-chain \"grub\"\n x\n}"),
+            messages("image \"x\" {\n boot-chain \"grub\"\n x\n}"),
             ["`grub` is not a boot chain"]
         );
     }
@@ -1030,7 +1016,7 @@ image "stray" {
     #[test]
     fn a_uki_chain_refuses_a_conflicting_layout() {
         let found = semantic_messages(
-            "image {\n name \"X\"\n boot-chain \"uki-db\"\n x\n layout { filesystem \"xfs\"\n composefs #false\n generic-image #false\n bootloader \"grub2\" }\n}",
+            "image \"x\" {\n boot-chain \"uki-db\"\n x\n layout { filesystem \"xfs\"\n composefs #false\n generic-image #false\n bootloader \"grub2\" }\n}",
         );
         assert!(
             found
@@ -1044,7 +1030,7 @@ image "stray" {
     fn an_inline_base_at_an_organising_directory_builds_on_its_reference() {
         let root = repository(
             "inline-base",
-            "image {\n name \"X\"\n base-image {\n  base \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\"; }\n  digest \"sha256:abc\"\n }\n}\n",
+            "image \"x\" {\n base-image {\n  base \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\"; }\n  digest \"sha256:abc\"\n }\n}\n",
             &[("base-image/fedora-bootc", "base \"quay.io/fedora/fedora-bootc:44\"\n")],
         );
         let (list, issues) = List::load(&root);
@@ -1064,7 +1050,7 @@ image "stray" {
     fn an_inline_definition_that_meets_a_component_is_refused_naming_both() {
         let root = repository(
             "inline-clash",
-            "image {\n name \"X\"\n x\n tools {\n  packages \"vim\"\n }\n}\n",
+            "image \"x\" {\n x\n tools {\n  packages \"vim\"\n }\n}\n",
             &[
                 ("x", "base \"x\" { family \"fedora\"; }\n"),
                 ("tools", "packages \"vim\"\n"),
@@ -1083,7 +1069,7 @@ image "stray" {
     fn a_second_base_is_refused() {
         let root = repository(
             "two-bases",
-            "image {\n name \"X\"\n x\n y\n}\n",
+            "image \"x\" {\n x\n y\n}\n",
             &[("x", "base \"x\"\n"), ("y", "base \"y\"\n")],
         );
         let (_, issues) = List::load(&root);
@@ -1102,7 +1088,7 @@ image "stray" {
     fn a_top_level_component_named_after_an_image_node_is_refused() {
         let root = repository(
             "keyword-dir",
-            "image {\n name \"X\"\n x\n}\n",
+            "image \"x\" {\n x\n}\n",
             &[
                 ("x", "base \"x\"\n"),
                 ("boot-chain/uki", "packages \"a\"\n"),
@@ -1125,7 +1111,7 @@ image "stray" {
     fn an_organising_segment_lists_nothing_and_may_repeat() {
         let root = repository(
             "organise",
-            "image {\n name \"X\"\n x\n hardware { nvidia }\n hardware { audio }\n}\n",
+            "image \"x\" {\n x\n hardware { nvidia }\n hardware { audio }\n}\n",
             &[
                 ("x", "base \"x\"\n"),
                 ("hardware/nvidia", "packages \"a\"\n"),
@@ -1147,7 +1133,7 @@ image "stray" {
     fn a_child_with_an_argument_sets_an_option_and_one_without_is_a_segment() {
         let root = repository(
             "options",
-            "image {\n name \"X\"\n x\n hardware {\n  nvidia {\n   version \"550\"\n   cuda\n  }\n }\n}\n",
+            "image \"x\" {\n x\n hardware {\n  nvidia {\n   version \"550\"\n   cuda\n  }\n }\n}\n",
             &[("x", "base \"x\"\n")],
         );
         let (list, _) = List::load(&root);
@@ -1183,7 +1169,7 @@ image "stray" {
     fn a_bootc_only_node_on_a_non_bootc_image_is_refused() {
         let found = resolved(
             "bootc-only",
-            "image {\n name \"X\"\n x\n boot-chain \"uki-db\"\n layout { bootloader \"grub2\" }\n}\n",
+            "image \"x\" {\n x\n boot-chain \"uki-db\"\n layout { bootloader \"grub2\" }\n}\n",
             &[],
         );
         holds(
@@ -1200,7 +1186,7 @@ image "stray" {
     fn an_inline_definition_is_held_to_the_manifest_grammar() {
         let found = resolved(
             "inline-grammar",
-            "image {\n name \"X\"\n x\n tools {\n  packages \"vim\"\n  palette \"red\"\n }\n}\n",
+            "image \"x\" {\n x\n tools {\n  packages \"vim\"\n  palette \"red\"\n }\n}\n",
             &[],
         );
         holds(&found, "unknown node `palette`");
@@ -1210,7 +1196,7 @@ image "stray" {
     fn a_block_under_base_is_refused() {
         let found = resolved(
             "base-block",
-            "image {\n name \"X\"\n base-image {\n  base \"quay.io/x:1\" { digest \"sha256:ab\" }\n }\n}\n",
+            "image \"x\" {\n base-image {\n  base \"quay.io/x:1\" { digest \"sha256:ab\" }\n }\n}\n",
             &[],
         );
         holds(&found, "`base` holds no `digest`");
@@ -1220,7 +1206,7 @@ image "stray" {
     fn a_hand_written_base_image_capability_is_refused() {
         let found = resolved(
             "base-image-by-hand",
-            "image {\n name \"X\"\n x\n tools {\n  provides \"base-image\"\n }\n}\n",
+            "image \"x\" {\n x\n tools {\n  provides \"base-image\"\n }\n}\n",
             &[],
         );
         holds(&found, "`base-image` is what a `base` node provides");
@@ -1229,7 +1215,7 @@ image "stray" {
     #[test]
     fn a_malformed_signed_and_a_second_digest_are_refused() {
         let found = semantic_messages(
-            "image {\n name \"X\"\n x {\n  signed \"true\"\n  digest \"sha256:ab\"\n  digest \"sha256:cd\"\n }\n}",
+            "image \"x\" {\n x {\n  signed \"true\"\n  digest \"sha256:ab\"\n  digest \"sha256:cd\"\n }\n}",
         );
         holds(&found, "`signed` needs #true or #false");
         holds(&found, "`digest` is declared twice");
@@ -1239,7 +1225,7 @@ image "stray" {
     fn a_seed_refuses_an_inline_definition() {
         let root = repository(
             "seed-inline",
-            "image {\n name \"example\"\n x\n tools {\n  packages \"vim\"\n }\n}\n",
+            "image \"example\" {\n x\n tools {\n  packages \"vim\"\n }\n}\n",
             &[("x", "base \"x\" { family \"fedora\"; }\n")],
         );
         std::fs::write(
@@ -1259,7 +1245,7 @@ image "stray" {
     fn a_manifest_node_with_a_property_alone_defines_inline() {
         let found = resolved(
             "inline-fragment",
-            "image {\n name \"X\"\n x\n tools {\n  fragment position=\"after\"\n }\n}\n",
+            "image \"x\" {\n x\n tools {\n  fragment position=\"after\"\n }\n}\n",
             &[],
         );
         holds(

@@ -956,9 +956,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="example"
-ARG IMAGE_NAME="Example"
-ARG IMAGE_URL="https://github.com/someone/example"
-ARG IMAGE_ISSUES_URL="https://github.com/someone/example/issues"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -967,7 +964,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/example/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_URL="${IMAGE_URL}" IMAGE_ISSUES_URL="${IMAGE_ISSUES_URL}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1199,7 +1196,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/example/graph.md
-# Example capability graph
+# `example` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1288,7 +1285,7 @@ component "buildc-org/drivers" flavour="nvidia"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "ce3e35ba1bddab45e0cfb5c69580fd3076bc56ab7ca18d3c8a4a665ec97d002a",
+  "root": "8d64f621b7e210609ad793ffe672615547db2ea174aad632dbbf0681da0e4c03",
   "files": 30
 }
 ==== generated/example/components/fedora-family/lib/family.sh

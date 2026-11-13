@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-pin",
-  "default_image_name": "Broken Pin",
   "pr_image": "broken-pin",
   "default_target": "broken-pin",
   "default_published": "broken-pin",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-pin",
-      "name": "Broken Pin",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

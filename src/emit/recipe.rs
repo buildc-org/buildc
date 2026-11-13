@@ -192,10 +192,7 @@ pub fn media(list: &List, name: &str, image: &str, imgref: &str) -> Option<Json>
             Json::array([Json::object([
                 ("id", Json::string("installer")),
                 ("image", Json::string(live(&published))),
-                (
-                    "title",
-                    Json::string(format!("{} installer", declared.name)),
-                ),
+                ("title", Json::string(format!("{} installer", declared.id))),
                 ("modes", Json::strings(["live"])),
             ])]),
         ),
@@ -423,7 +420,7 @@ mod tests {
             "{\n  \"media_name\": \"forky-install\",\n  \"size\": \"20G\",\n  \
              \"bootable_environments\": [\n    {\n      \"id\": \"installer\",\n      \
              \"image\": \"localhost/forky-installer:latest\",\n      \"title\": \
-             \"Forky installer\",\n      \"modes\": [\n        \"live\"\n      ]\n    }\n  ],\n  \"offline_payloads\": [\n    {\n      \"source\": \
+             \"forky installer\",\n      \"modes\": [\n        \"live\"\n      ]\n    }\n  ],\n  \"offline_payloads\": [\n    {\n      \"source\": \
              \"localhost/forky:latest\",\n      \"ref\": \
              \"ghcr.io/someone/forky:latest\"\n    }\n  ]\n}\n"
         );

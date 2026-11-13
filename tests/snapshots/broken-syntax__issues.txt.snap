@@ -2,13 +2,11 @@
 source: tests/golden/harness.rs
 ---
   x tests/repos/broken-syntax/image.kdl is not valid KDL
-   ,-[tests/repos/broken-syntax/image.kdl:3:7]
- 2 |     
- 3 | ,-> image {
-   : |         |
-   : |         `-- No closing '}' for child block
- 4 | |->     name "Broken Syntax"
-   : `---- Closing '}' was not found after nodes
+   ,-[tests/repos/broken-syntax/image.kdl:3:23]
+ 2 | 
+ 3 | image "broken-syntax" {
+   :                       |
+   :                       `-- No closing '}' for child block
    `----
 
   x unknown node `colour` in repo.kdl
@@ -36,5 +34,5 @@ source: tests/golden/harness.rs
         node
 
   x tests/repos/broken-syntax/second.image.kdl declares no image
-  help: an image file holds at least one `image` node: `image { name "Name" }
-        `, what the image calls itself in os-release and what it publishes as
+  help: an image file holds at least one `image` node, as in `image
+        "workstation" { }`, and its id is what the image publishes as

@@ -934,7 +934,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="alpha"
-ARG IMAGE_NAME="Alpha"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -943,7 +942,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/alpha/finalize.sh,target=/gener
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/alpha/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/alpha/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1145,7 +1144,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/alpha/graph.md
-# Alpha capability graph
+# `alpha` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1249,7 +1248,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="beta"
-ARG IMAGE_NAME="Beta"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1258,7 +1256,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/beta/finalize.sh,target=/genera
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/beta/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/beta/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1460,7 +1458,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/beta/graph.md
-# Beta capability graph
+# `beta` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1518,7 +1516,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "d354eea0dd03188f6755bcbc0a42c1cf71956676ec3ca2401599d7e32049760e",
+  "root": "cbcb2554fed32c3430332f1d6438e5b0aadd3dbaca1b8a02835876323209b024",
   "files": 34
 }
 ==== generated/alpha/components/fedora-family/lib/family.sh

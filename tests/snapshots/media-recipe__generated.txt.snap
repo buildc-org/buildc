@@ -924,7 +924,6 @@ ARG FAMILY=debian
 
 # ---- image identity ----
 ARG IMAGE_ID="deb"
-ARG IMAGE_NAME="Deb"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -933,7 +932,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/deb/finalize.sh,target=/generat
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/deb/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/deb/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1113,7 +1112,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/deb/graph.md
-# Deb capability graph
+# `deb` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1152,6 +1151,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "8b6e0d22cbaa4e4bb27ef4105ea413fdd86b03efdc5d2edb7407f0ffbf5f1dee",
+  "root": "e589dc9623166b730fb75264a3dc8ae6a005a837360dff3266bb61761ce57929",
   "files": 25
 }

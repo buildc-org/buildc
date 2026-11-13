@@ -2072,7 +2072,7 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
         None,
         true,
     );
-    assert!(graph.contains("# Enforced capability graph"), "{graph}");
+    assert!(graph.contains("# `enforced` capability graph"), "{graph}");
     assert!(!graph.contains('\u{250c}'), "{graph}");
     let why = run(
         &format!("stty cols 40 rows 24; '{buildc}' --root . why one/hello"),
@@ -2084,7 +2084,7 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
 
     let graph = run(&format!("'{buildc}' --root . graph"), Some("40"), false);
     assert!(
-        graph.contains("# Enforced capability graph") && !graph.contains('\u{250c}'),
+        graph.contains("# `enforced` capability graph") && !graph.contains('\u{250c}'),
         "{graph}"
     );
     let why = run(

@@ -12,7 +12,7 @@ provides {
     "podman" witness="/usr/bin/podman"
     "crun" witness="/usr/bin/crun"
 }
-base "quay.io/fedora/fedora-bootc:$version" {
+base "quay.io/fedora/fedora-bootc:{version}" {
     family "fedora"
     scap-content "ssg-fedora-ds.xml" {
         pin {

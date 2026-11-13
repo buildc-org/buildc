@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Collecting"
-
+image "collecting" {
     base-image {
         fedora-bootc-44
     }

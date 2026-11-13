@@ -43,7 +43,7 @@ component "base-image/fedora" {
     library "buildc"
     path "base-image/fedora"
     url "https://github.com/buildc-org/library"
-    content "0967eb6389e396653ea9fb844a9e254d4eeb5aea7623594841157ec05d188c02"
+    content "2a4dfa8762a792bcddcb833f986dd701dccb4a0b50678d8a8561833e9f9bbf86"
     track
 }
 

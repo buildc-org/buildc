@@ -44,7 +44,7 @@ impl Conforms {
     ) -> Self {
         Self {
             file: PathBuf::from(image.src.name()),
-            image: image.name.clone(),
+            image: image.id.clone(),
             profile: profile.to_string(),
             brought,
         }
@@ -92,7 +92,7 @@ mod tests {
     fn conforms(profile: &str) -> Conforms {
         Conforms {
             file: PathBuf::from("example.image.kdl"),
-            image: "Example".to_string(),
+            image: "example".to_string(),
             profile: profile.to_string(),
             brought: Vec::new(),
         }
@@ -100,8 +100,7 @@ mod tests {
 
     #[test]
     fn the_profile_replaces_the_one_that_was_there() {
-        let text =
-            "image {\n    name \"Example\"\n\n    conforms \"standard\"\n\n    x {\n    }\n}\n";
+        let text = "image \"example\" {\n    conforms \"standard\"\n\n    x {\n    }\n}\n";
         assert_eq!(
             conforms("ospp").spliced(text).unwrap(),
             text.replace("\"standard\"", "\"ospp\"")
@@ -112,9 +111,9 @@ mod tests {
     fn an_image_with_nothing_to_stand_in_front_of_still_takes_one() {
         assert_eq!(
             conforms("standard")
-                .spliced("image {\n    name \"Example\"\n}\n")
+                .spliced("image \"example\" {\n}\n")
                 .unwrap(),
-            "image {\n    name \"Example\"\nconforms \"standard\"\n\n}\n"
+            "image \"example\" {\nconforms \"standard\"\n\n}\n"
         );
     }
 }

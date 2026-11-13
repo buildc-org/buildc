@@ -317,13 +317,13 @@ impl<'a> Graph<'a> {
             false => "A thick arrow points from a component to what it imports.\n",
         };
         let mut out = format!(
-            "# {} capability graph\n\n\
+            "# `{}` capability graph\n\n\
              GENERATED FILE, do not edit.\n\n\
              An arrow points from a provider to what needs it, dotted for `after`,\n\
              which orders the build without requiring anything. Layers build left to\n\
              right.\n{imports}\n\
              ```mermaid\ngraph LR\n",
-            self.image.name
+            self.image.id
         );
         for node in &self.nodes {
             let _ = writeln!(out, "    {}[\"{}\"]", node.id, node.label);

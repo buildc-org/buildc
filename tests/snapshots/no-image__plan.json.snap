@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": null,
-  "default_image_name": null,
   "pr_image": null,
   "default_target": null,
   "default_published": null,

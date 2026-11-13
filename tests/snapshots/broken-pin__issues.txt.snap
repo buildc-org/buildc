@@ -2,23 +2,23 @@
 source: tests/golden/harness.rs
 ---
   x `source` takes no argument
-    ,-[tests/repos/broken-pin/image.kdl:16:5]
- 15 |     }
- 16 |     source "one" {
+    ,-[tests/repos/broken-pin/image.kdl:14:5]
+ 13 |     }
+ 14 |     source "one" {
     :     ^^^|^^
     :        `-- a path segment
- 17 |         remote
+ 15 |         remote
     `----
   help: `source` is no image node, so it reads as a component path, and a path
         segment takes no argument
 
   x `loose/pin` is not a component
-    ,-[tests/repos/broken-pin/image.kdl:11:9]
- 10 |     loose {
- 11 |         pin {
+    ,-[tests/repos/broken-pin/image.kdl:9:9]
+  8 |     loose {
+  9 |         pin {
     :         ^|^
     :          `-- nothing to build
- 12 |             url "http://example.com/components.zip"
+ 10 |             url "http://example.com/components.zip"
     `----
   help: give components/loose/pin a manifest.kdl, a component.sh, a repo.sh, a
         packages.sh, a finalize.sh, a files/ directory, a Containerfile.inc or

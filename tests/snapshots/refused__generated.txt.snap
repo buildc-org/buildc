@@ -942,7 +942,6 @@ ARG SCAP_REFUSED=
 
 # ---- image identity ----
 ARG IMAGE_ID="refused"
-ARG IMAGE_NAME="Refused"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -952,7 +951,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/refused/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" CONFORMS="${CONFORMS}" SCAP_CONTENT="${SCAP_CONTENT}" FAMILY="${FAMILY}" SCAP_CLAIMED="${SCAP_CLAIMED}" SCAP_REFUSED="${SCAP_REFUSED}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/refused/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" CONFORMS="${CONFORMS}" SCAP_CONTENT="${SCAP_CONTENT}" FAMILY="${FAMILY}" SCAP_CLAIMED="${SCAP_CLAIMED}" SCAP_REFUSED="${SCAP_REFUSED}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/refused/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1141,7 +1140,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/refused/graph.md
-# Refused capability graph
+# `refused` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1190,6 +1189,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "e2d6d4508f46f33be1df52cd319b0a6d9bedcabd1a3c9f96bc525cb1393fd5a2",
+  "root": "ca1b21699cc2e91f3ebf5522fe50e093c99ca014a40d8b2157556b7a6dfcc2c1",
   "files": 26
 }

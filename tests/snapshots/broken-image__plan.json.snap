@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "Not An Id",
-  "default_image_name": "",
   "pr_image": "Not An Id",
   "default_target": "Not An Id",
   "default_published": "Not An Id",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "Not An Id",
-      "name": "",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

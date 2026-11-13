@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "example",
-  "default_image_name": "Example",
   "pr_image": "example",
   "default_target": "example",
   "default_published": "example",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "example",
-      "name": "Example",
-      "pretty_name": "",
       "file": "./example.image.kdl",
-      "url": "https://github.com/someone/example",
-      "issues_url": "https://github.com/someone/example/issues",
       "description": "",
       "keywords": [],
       "logo_url": "",

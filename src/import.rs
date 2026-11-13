@@ -182,7 +182,7 @@ impl<'a> Fit<'a> {
         listing: &'a Listing,
     ) -> Option<Self> {
         let (named, flavour) = listing.targets().into_iter().next()?;
-        let image = list.images.iter().find(|image| image.name == named)?;
+        let image = list.images.iter().find(|image| image.id == named)?;
         let disk = crate::parse::disk::Disk::scan(root);
         Some(Self {
             image,
@@ -268,7 +268,7 @@ impl<'a> Fit<'a> {
         ];
         let answer = match prompt.asks() {
             true => prompt.choose(
-                &copy::exclusive_clash(capability, &holder, &self.image.name),
+                &copy::exclusive_clash(capability, &holder, &self.image.id),
                 &options,
             )?,
             false => None,
@@ -278,19 +278,19 @@ impl<'a> Fit<'a> {
                 .iter()
                 .map(|entry| Unlisted {
                     file: PathBuf::from(self.image.src.name()),
-                    image: self.image.name.clone(),
+                    image: self.image.id.clone(),
                     flavour: entry.flavour.clone(),
                     name: entry.path.clone(),
                 })
                 .collect()),
             Some(_) => Err(format!(
                 "nothing imported: `{capability}` is exclusive to `{holder}` in `{}`",
-                self.image.name
+                self.image.id
             )),
             None => Err(format!(
                 "`{capability}` is exclusive, and `{holder}` already provides it in `{}`; run \
                  `buildc import component` in a terminal to replace it",
-                self.image.name
+                self.image.id
             )),
         }
     }
@@ -893,7 +893,7 @@ fn short(
         .filter_map(|(named, flavour)| {
             list.images
                 .iter()
-                .find(|image| image.name == *named)
+                .find(|image| image.id == *named)
                 .map(|image| (image, *flavour))
         })
         .collect();
@@ -1191,7 +1191,7 @@ fn measured(
     let images: Vec<&crate::model::image::Image> = listing
         .images()
         .iter()
-        .filter_map(|named| list.images.iter().find(|image| image.name == *named))
+        .filter_map(|named| list.images.iter().find(|image| image.id == *named))
         .filter(|image| image.conforms.is_empty())
         .collect();
     let Some(first) = images.first() else {
@@ -1345,7 +1345,7 @@ mod tests {
         .unwrap();
         crate::init::put(
             &root.join(layout::IMAGE_FILE),
-            "schema-version 1\n\nimage {\n    name \"example\"\n    base-image {\n        example\n    }\n    flathub\n}\n",
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n    flathub\n}\n",
         )
         .unwrap();
         crate::init::put(
@@ -1391,7 +1391,7 @@ mod tests {
         let base = "base-image { example }";
         crate::init::put(
             &root.join(layout::IMAGE_FILE),
-            &format!("schema-version 1\n\nimage {{\n    name \"example\"\n    {base}\n    flavours {{\n        dev\n        prod\n    }}\n    flavour \"dev\" {{ flathub }}\n}}\n"),
+            &format!("schema-version 1\n\nimage \"example\" {{\n    {base}\n    flavours {{\n        dev\n        prod\n    }}\n    flavour \"dev\" {{ flathub }}\n}}\n"),
         )
         .unwrap();
         root
@@ -1435,7 +1435,7 @@ mod tests {
         let root = targeted("clash-plain");
         crate::init::put(
             &root.join(layout::IMAGE_FILE),
-            "schema-version 1\n\nimage {\n    name \"example\"\n    base-image {\n        example\n    }\n    flavours {\n        dev\n        prod\n    }\n    flavour \"prod\" { plain }\n    flavour \"dev\" { flathub }\n}\n",
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n    flavours {\n        dev\n        prod\n    }\n    flavour \"prod\" { plain }\n    flavour \"dev\" { flathub }\n}\n",
         )
         .unwrap();
         crate::init::put(
@@ -1607,8 +1607,7 @@ mod tests {
             &root.join("image.kdl"),
             r#"schema-version 1
 
-image {
-    name "Example"
+image "example" {
     base-image {
         example
     }
@@ -1643,7 +1642,7 @@ image {
         let root = std::env::temp_dir().join(format!("buildc-owed-{}", std::process::id()));
         crate::init::put(
             &root.join("image.kdl"),
-            "schema-version 1\n\nimage {\n    name \"Example\"\n    base-image {\n        example\n    }\n}\n",
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n}\n",
         )
         .unwrap();
         base_at(&root, "");
@@ -1675,7 +1674,7 @@ image {
         let root = std::env::temp_dir().join(format!("buildc-owed-base-{}", std::process::id()));
         crate::init::put(
             &root.join("image.kdl"),
-            "schema-version 1\n\nimage {\n    name \"Example\"\n    base-image {\n        example\n    }\n}\n",
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n}\n",
         )
         .unwrap();
         base_at(&root, "imports \"apps/flatpak\"\n");
@@ -1697,7 +1696,7 @@ image {
         let root = std::env::temp_dir().join(format!("buildc-owed-inline-{}", std::process::id()));
         crate::init::put(
             &root.join("image.kdl"),
-            "schema-version 1\n\nimage {\n    name \"Example\"\n    base-image {\n        base \"example\" { family \"fedora\"; }\n        imports \"apps/flatpak\"\n    }\n}\n",
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        base \"example\" { family \"fedora\"; }\n        imports \"apps/flatpak\"\n    }\n}\n",
         )
         .unwrap();
         crate::init::put(
@@ -1720,7 +1719,7 @@ image {
         let file = root.join("manifest.kdl");
         crate::init::put(
             &file,
-            "schema-version 1\n\nimports \"$runtime\" \"fixed\"\noption \"other\" type=\"string\" {\n    default \"docker\"\n}\noption \"runtime\" type=\"string\" {\n    default \"podman\"\n}\n",
+            "schema-version 1\n\nimports \"{runtime}\" \"fixed\"\noption \"other\" type=\"string\" {\n    default \"docker\"\n}\noption \"runtime\" type=\"string\" {\n    default \"podman\"\n}\n",
         )
         .unwrap();
         let imports = crate::parse::component::summary(&file).imports;
@@ -1809,7 +1808,7 @@ image {
         .unwrap();
         crate::init::put(
             &root.join(layout::IMAGE_FILE),
-            "schema-version 1\n\nimage { name \"Example\"; example;  }\n",
+            "schema-version 1\n\nimage \"example\" { example;  }\n",
         )
         .unwrap();
         crate::init::put(
@@ -1855,7 +1854,7 @@ image {
             ("repo.kdl", "schema-version 1\nname \"Example\"\n".to_string()),
             (
                 "image.kdl",
-                "schema-version 1\n\nimage {\n    name \"example\"\n    base-image {\n        example\n    }\n}\n".to_string(),
+                "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n}\n".to_string(),
             ),
             ("library/consumer/manifest.kdl", format!("schema-version 1\n\n{consumer}\n")),
             ("library/docker/manifest.kdl", "schema-version 1\n\nprovides \"runtime\"\n".to_string()),
@@ -1980,7 +1979,7 @@ image {
         let root = targeted("refused-unlist");
         base_at(&root, "");
         let file = root.join(layout::IMAGE_FILE);
-        let image = "schema-version 1\n\nimage {\n    name \"example\"\n    base-image {\n        example\n    }\n    flathub\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
+        let image = "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n    flathub\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
         crate::init::put(&file, image).unwrap();
         let gone = |name: &str| Unlisted {
             file: PathBuf::from(layout::IMAGE_FILE),
@@ -2012,7 +2011,7 @@ image {
         let file = root.join(layout::IMAGE_FILE);
         crate::init::put(
             &file,
-            "schema-version 1\n\nimage {\n    name \"example\"\n    base-image {\n        example\n    }\n    flathub\n    other\n    kept\n}\n",
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n    flathub\n    other\n    kept\n}\n",
         )
         .unwrap();
         let gone = |name: &str| Unlisted {
@@ -2036,7 +2035,7 @@ image {
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             after,
-            "schema-version 1\n\nimage {\n    name \"example\"\n    base-image {\n        example\n    }\n    kept\n}\n"
+            "schema-version 1\n\nimage \"example\" {\n    base-image {\n        example\n    }\n    kept\n}\n"
         );
     }
 }

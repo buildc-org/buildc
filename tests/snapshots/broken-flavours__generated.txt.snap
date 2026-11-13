@@ -936,7 +936,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-flavours"
-ARG IMAGE_NAME="Broken Flavours"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -945,7 +944,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-flavours/finalize.sh,tar
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-flavours/finalize.sh
+    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-flavours/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1139,7 +1138,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-flavours/graph.md
-# Broken Flavours capability graph
+# `broken-flavours` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1187,6 +1186,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "247c8d8150bd88b6873d97992eb29e17f4fb16904571e32e914f5c4bd5e83878",
+  "root": "307975bcba4a62dd108fcbd5a3d8e98ed768f9874859e4cca8c39bacdf68b770",
   "files": 26
 }

@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "workstation",
-  "default_image_name": "Workstation",
   "pr_image": "workstation",
   "default_target": "workstation/base",
   "default_published": "workstation-base",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "server",
-      "name": "Server",
-      "pretty_name": "",
       "file": "./server.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -135,11 +130,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "workstation",
-      "name": "Workstation",
-      "pretty_name": "",
       "file": "./workstation.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

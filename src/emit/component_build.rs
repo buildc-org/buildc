@@ -241,24 +241,30 @@ fn prelude(entry: &Entry, component: &Component, boot: &str) -> String {
         );
     }
 
+    if !component.resolved.is_empty() || !component.assets.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&options(component));
+    for asset in &component.assets {
+        for (name, value) in asset.env() {
+            let _ = writeln!(out, "export {name}=\"{value}\"");
+        }
+    }
+    out
+}
+
+pub(super) fn options(component: &Component) -> String {
     let lists: Vec<String> = component
         .options
         .iter()
         .filter(|o| o.ty == OptType::List)
         .map(|o| env_name(&o.name))
         .collect();
-    if !component.resolved.is_empty() || !component.assets.is_empty() {
-        out.push('\n');
-    }
+    let mut out = String::new();
     for (name, value) in &component.resolved {
         if lists.contains(name) {
             let _ = writeln!(out, "{name}=({value})");
         } else {
-            let _ = writeln!(out, "export {name}=\"{value}\"");
-        }
-    }
-    for asset in &component.assets {
-        for (name, value) in asset.env() {
             let _ = writeln!(out, "export {name}=\"{value}\"");
         }
     }

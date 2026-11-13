@@ -16,6 +16,7 @@ const GH_INSTALL: &str = "install gh from https://github.com/cli/cli";
 const BUILD_ENVIRONMENT: &str = "build-environment";
 
 const OS_RELEASE: &str = "os-release";
+const BASE_URL_REFERENCE: &str = "{base-url}";
 
 #[derive(Default)]
 struct Given {
@@ -220,9 +221,7 @@ impl Repo {
                 }
             }
         }
-        let url = owner
-            .as_deref()
-            .map(|owner| format!("{}/{id}", forge::origin(&host, owner)));
+        let url = owner.as_deref().map(|_| BASE_URL_REFERENCE.to_string());
         let libraries = match prev {
             Some(prev) if from > Field::Libraries => prev.libraries.clone(),
             _ => Libraries::collect(prev.map(|prev| &prev.libraries), prompt)?,
@@ -353,9 +352,14 @@ impl Repo {
     }
 
     pub fn apply(&self) -> Result<(), String> {
+        let base_url = self
+            .owner
+            .as_deref()
+            .map(|owner| format!("{}/{}", forge::origin(&self.host, owner), self.id.as_str()));
         let mut wrote: Vec<(PathBuf, Change)> = crate::init::write(
             &self.root,
             self.name.as_str(),
+            base_url.as_deref(),
             &self.assets,
             &crate::init::sources_block(&self.libraries.chosen),
         )?
@@ -618,12 +622,6 @@ impl Image {
         }
         let (list, _) = crate::model::image::List::load(root);
         let names_default = implicit_default(&list).filter(|was| *was != id);
-        let url = url.or_else(|| {
-            list.images
-                .iter()
-                .find(|image| !image.url.is_empty())
-                .map(|image| image.url.clone())
-        });
 
         // `create repo` collects the image before it writes `repo.kdl`.
         // Until that file exists, the sources come from the block this run will write.
@@ -685,8 +683,9 @@ impl Image {
             true => true,
             false => offer(&base, &wanted, prompt, takes_components)?,
         };
+        let url = seeded_home_url(&list, url, &index);
         let seed = match take_wanted {
-            true => seeded(&wanted),
+            true => seeded(&wanted, name.as_str(), url.as_deref()),
             false => Vec::new(),
         };
         let holds = |provider: &crate::provider::Provider| {
@@ -774,8 +773,7 @@ impl Image {
             .and_then(|prev| prev.bootloader.as_deref());
         let bootloader = choose_bootloader(known, held, prompt)?;
         let text = image_kdl(
-            name.as_str(),
-            url.as_deref(),
+            &id,
             &BaseLine {
                 path: &component,
                 version: version.as_deref(),
@@ -888,10 +886,7 @@ impl Flavour {
                 let options: Vec<Choice> = list
                     .images
                     .iter()
-                    .map(|image| match image.name == image.id {
-                        true => Choice::new(&image.id, ""),
-                        false => Choice::new(&image.id, &image.name),
-                    })
+                    .map(|image| Choice::new(&image.id, ""))
                     .collect();
                 match prompt.choose(copy::FLAVOUR_IMAGE, &options)? {
                     Some(at) => at,
@@ -931,7 +926,7 @@ impl Flavour {
 
         Ok(Self {
             name,
-            image: image.name.to_string(),
+            image: image.id.to_string(),
             file: PathBuf::from(image.src.name()),
         })
     }
@@ -989,7 +984,7 @@ fn own_base(root: &Path, image: &str) -> Result<OwnBase, String> {
     }
     let reference = match &version {
         Some(tag) => format!(
-            "base \"{repository}:$version\"\n\noption \"version\" type=\"string\" {{\n    default \"{tag}\"\n}}\n"
+            "base \"{repository}:{{version}}\"\n\noption \"version\" type=\"string\" {{\n    default \"{tag}\"\n}}\n"
         ),
         None => format!("base \"{repository}\"\n"),
     };
@@ -1280,10 +1275,36 @@ fn yes_no_options() -> [Choice; 2] {
     [Choice::new(copy::YES, ""), Choice::new(copy::NO, "")]
 }
 
-fn seeded(wanted: &[&crate::provider::Provider]) -> Vec<String> {
+fn seeded(
+    wanted: &[&crate::provider::Provider],
+    name: &str,
+    url: Option<&str>,
+) -> Vec<(String, Vec<String>)> {
+    let issues = url.map(|url| format!("{url}/issues"));
+    let fields = [
+        ("name", Some(name)),
+        ("home-url", url),
+        ("bug-report-url", issues.as_deref()),
+    ];
     wanted
         .iter()
-        .map(|provider| provider.name.clone())
+        .map(|provider| {
+            // The image name and URLs belong to the os-release component. Another component's `name` option is not the image name.
+            let lines = match provider
+                .declares
+                .provides
+                .iter()
+                .any(|has| has == OS_RELEASE)
+            {
+                true => fields
+                    .iter()
+                    .filter(|(option, _)| provider.declares.options.iter().any(|has| has == option))
+                    .filter_map(|(option, value)| Some(format!("{option} \"{}\"", (*value)?)))
+                    .collect(),
+                false => Vec::new(),
+            };
+            (provider.name.clone(), lines)
+        })
         .collect()
 }
 
@@ -1328,11 +1349,10 @@ struct BaseLine<'a> {
 }
 
 fn image_kdl(
-    name: &str,
-    url: Option<&str>,
+    id: &str,
     base: &BaseLine,
     bootloader: Option<&str>,
-    components: &[String],
+    components: &[(String, Vec<String>)],
 ) -> String {
     let layout = match bootloader {
         Some(bootloader) => format!(
@@ -1343,13 +1363,6 @@ fn image_kdl(
         ),
         None => String::new(),
     };
-    let urls = match url {
-        Some(url) => format!(
-            "\x20   url \"{url}\"\n\
-             \x20   issues-url \"{url}/issues\"\n"
-        ),
-        None => String::new(),
-    };
     let pins: Vec<String> = [("version", base.version), ("digest", base.digest)]
         .into_iter()
         .filter_map(|(node, value)| Some(format!("{node} \"{}\"", value?)))
@@ -1357,7 +1370,11 @@ fn image_kdl(
         .chain(std::iter::once("signed #false".to_string()))
         .collect();
     let entries: Vec<(&str, Vec<String>)> = std::iter::once((base.path, pins))
-        .chain(components.iter().map(|path| (path.as_str(), Vec::new())))
+        .chain(
+            components
+                .iter()
+                .map(|(path, lines)| (path.as_str(), lines.clone())),
+        )
         .collect();
     let members: String = tree(&entries)
         .lines()
@@ -1366,14 +1383,38 @@ fn image_kdl(
     format!(
         "schema-version {}\n\
          \n\
-         image {{\n\
-         \x20   name \"{name}\"\n\
-         {urls}\n\
+         image \"{id}\" {{\n\
          {layout}\
          {members}\
          }}\n",
         crate::model::image::SCHEMA_VERSION
     )
+}
+
+fn seeded_home_url(
+    list: &crate::model::image::List,
+    url: Option<String>,
+    index: &crate::provider::Index,
+) -> Option<String> {
+    match list.base_url.is_empty() {
+        true => url.or_else(|| home_url(list, index)),
+        false => Some(BASE_URL_REFERENCE.to_string()),
+    }
+}
+
+fn home_url(list: &crate::model::image::List, index: &crate::provider::Index) -> Option<String> {
+    list.images
+        .iter()
+        .flat_map(|image| &image.entries)
+        .filter(|entry| {
+            index
+                .of(OS_RELEASE)
+                .iter()
+                .any(|provider| provider.name == entry.path)
+        })
+        .flat_map(|entry| &entry.options)
+        .find(|(option, _, _)| option == "home-url")
+        .and_then(|(_, values, _)| values.first()?.as_string().map(str::to_string))
 }
 
 fn refuse_nesting(root: &Path) -> Result<(), String> {
@@ -1516,8 +1557,7 @@ mod tests {
             &root.join("image.kdl"),
             r#"schema-version 1
 
-image {
-    name "Example"
+image "example" {
     example { base "example" { family "fedora"; }; }
     flavours {
         dev
@@ -1619,10 +1659,135 @@ image {
     }
 
     #[test]
+    fn a_new_image_without_a_repository_url_uses_the_flag_or_another_image() {
+        let root = std::env::temp_dir().join(format!("buildc-home-url-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("image.kdl"),
+            "schema-version 1\n\nimage \"first\" {\n    os-release {\n        name \"First\"\n        home-url \"https://example.org/first\"\n    }\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("components/os-release/manifest.kdl"),
+            "schema-version 1\n\nprovides \"os-release\"\n\noption \"name\" type=\"string\" {\n    default \"\"\n}\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
+        )
+        .unwrap();
+        let (list, _) = crate::model::image::List::load(&root);
+        let index =
+            crate::provider::Index::local(&root, &[], &crate::parse::disk::Disk::scan(&root));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            seeded_home_url(&list, None, &index).as_deref(),
+            Some("https://example.org/first")
+        );
+        assert_eq!(
+            seeded_home_url(&list, Some("https://example.org/named".to_string()), &index)
+                .as_deref(),
+            Some("https://example.org/named")
+        );
+    }
+
+    #[test]
+    fn a_new_image_takes_the_home_url_from_os_release_alone() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-home-url-filter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("image.kdl"),
+            "schema-version 1\n\nimage \"first\" {\n    browser {\n        home-url \"https://browser.example\"\n    }\n    os-release {\n        home-url \"https://example.org/first\"\n    }\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("components/browser/manifest.kdl"),
+            "schema-version 1\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("components/os-release/manifest.kdl"),
+            "schema-version 1\n\nprovides \"os-release\"\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
+        )
+        .unwrap();
+        let (list, _) = crate::model::image::List::load(&root);
+        let index =
+            crate::provider::Index::local(&root, &[], &crate::parse::disk::Disk::scan(&root));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            seeded_home_url(&list, None, &index).as_deref(),
+            Some("https://example.org/first")
+        );
+    }
+
+    #[test]
+    fn a_new_image_seeds_the_repository_url() {
+        let root = std::env::temp_dir().join(format!("buildc-base-url-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\nbase-url \"https://example.org/example\"\n",
+        )
+        .unwrap();
+        let (list, _) = crate::model::image::List::load(&root);
+        let index =
+            crate::provider::Index::local(&root, &[], &crate::parse::disk::Disk::scan(&root));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            seeded_home_url(&list, Some("https://example.org/named".to_string()), &index)
+                .as_deref(),
+            Some("{base-url}")
+        );
+    }
+
+    #[test]
+    fn a_new_image_writes_the_repository_url_into_os_release() {
+        let root = std::env::temp_dir().join(format!("buildc-seed-url-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\nname \"Example\"\nbase-url \"https://example.org/example\"\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("components/base-image/own/manifest.kdl"),
+            "schema-version 1\n\ndescription \"A base\"\n\nbase \"example.invalid/base:1\" {\n    family \"fedora\"\n}\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("components/os-release/manifest.kdl"),
+            "schema-version 1\n\ndescription \"Image name and URLs\"\n\nprovides \"os-release\" exclusive=#true\n\noption \"name\" type=\"string\" {\n    default \"\"\n}\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n\noption \"bug-report-url\" type=\"string\" {\n    default \"\"\n}\n",
+        )
+        .unwrap();
+        let image = Image::collect(
+            Home {
+                root: &root,
+                repo: "example",
+                url: Some("https://example.org/named".to_string()),
+                sources_text: "",
+            },
+            Some("Second".into()),
+            Some("base-image/own".into()),
+            "a name argument",
+            Field::Image,
+            None,
+            &Prompt::silent(),
+        )
+        .expect("the image is collected");
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(
+            image.text.contains("home-url \"{base-url}\""),
+            "{}",
+            image.text
+        );
+        assert!(
+            image.text.contains("bug-report-url \"{base-url}/issues\""),
+            "{}",
+            image.text
+        );
+    }
+
+    #[test]
     fn an_image_names_its_base_component_and_sets_its_version() {
         let known = image_kdl(
-            "Bazzite",
-            None,
+            "bazzite",
             &BaseLine {
                 path: "base-image/bazzite",
                 version: Some("stable"),
@@ -1632,7 +1797,7 @@ image {
             &[],
         );
         assert!(
-            known.starts_with("schema-version 1\n\nimage {\n"),
+            known.starts_with("schema-version 1\n\nimage \"bazzite\" {\n"),
             "{known}"
         );
         assert!(
@@ -1646,23 +1811,37 @@ image {
             "{known}"
         );
 
+        let os_release = crate::provider::Provider {
+            owner: Some("buildc".to_string()),
+            name: "os-release".to_string(),
+            here: true,
+            declares: crate::parse::component::Summary {
+                provides: vec![OS_RELEASE.to_string()],
+                options: vec!["name".to_string(), "home-url".to_string()],
+                ..Default::default()
+            },
+        };
         let shared = image_kdl(
-            "Server",
-            Some("https://github.com/someone/example"),
+            "server",
             &BaseLine {
                 path: "base-image/own",
                 version: None,
                 digest: None,
             },
             None,
-            &[],
+            &seeded(
+                &[&os_release],
+                "Server",
+                Some("https://github.com/someone/example"),
+            ),
         );
         assert!(
-            shared.contains("    url \"https://github.com/someone/example\"\n")
-                && shared
-                    .contains("    issues-url \"https://github.com/someone/example/issues\"\n"),
+            shared.contains(
+                "    os-release {\n        name \"Server\"\n        home-url \"https://github.com/someone/example\"\n    }\n"
+            ),
             "{shared}"
         );
+        assert!(!shared.contains("bug-report-url"), "{shared}");
         assert!(!shared.contains("        version"), "{shared}");
         assert!(!shared.contains("layout"), "{shared}");
 
@@ -1743,7 +1922,7 @@ image {
         assert_eq!(own.digest.as_deref(), Some("sha256:abc"));
         assert_eq!(
             own.manifest,
-            "schema-version 1\n\nbase \"ghcr.io/other/Unknown_Base:$version\"\n\noption \"version\" type=\"string\" {\n    default \"1.2\"\n}\n"
+            "schema-version 1\n\nbase \"ghcr.io/other/Unknown_Base:{version}\"\n\noption \"version\" type=\"string\" {\n    default \"1.2\"\n}\n"
         );
         let untagged = own_base(&root, "localhost:5000/own").expect("nothing is in the way");
         assert_eq!(untagged.version, None);
@@ -1811,8 +1990,7 @@ image {
         std::fs::write(
             &file,
             image_kdl(
-                "Example",
-                None,
+                "example",
                 &BaseLine {
                     path: "base-image/fedora",
                     version: None,
@@ -1825,7 +2003,7 @@ image {
         .unwrap();
 
         let (chain, line) = placed(Some("dx"), "tools/dev-tools", "");
-        append(&file, "Example", &chain, &line).unwrap();
+        append(&file, "example", &chain, &line).unwrap();
         let written = std::fs::read_to_string(&file).unwrap();
         let nested = [
             "    flavour \"dx\" {",
@@ -1838,7 +2016,7 @@ image {
         assert!(written.contains(&nested), "{written}");
 
         let (chain, line) = placed(Some("dx"), "tools/editor", " { theme \"dark\"; }");
-        append(&file, "Example", &chain, &line).unwrap();
+        append(&file, "example", &chain, &line).unwrap();
         let written = std::fs::read_to_string(&file).unwrap();
         assert_eq!(written.matches("flavour \"dx\"").count(), 1);
         assert_eq!(written.matches("tools {").count(), 1);
@@ -1847,7 +2025,7 @@ image {
             "{written}"
         );
 
-        append(&file, "Example", &[("flavours", None)], "dx").unwrap();
+        append(&file, "example", &[("flavours", None)], "dx").unwrap();
         let written = std::fs::read_to_string(&file).unwrap();
         assert!(
             written.contains("    flavours {\n        dx\n    }\n"),
@@ -1862,7 +2040,7 @@ image {
         let file = root.join("image.kdl");
         crate::init::put(
             &file,
-            "image {\n    name \"one\"\n    kept; trailing\n    apps {\n        gone\n    }\n    flavour \"dev\" { inline; also }\n}\n",
+            "image \"one\" {\n    kept; trailing\n    apps {\n        gone\n    }\n    flavour \"dev\" { inline; also }\n}\n",
         )
         .unwrap();
 
@@ -1895,7 +2073,7 @@ image {
         crate::init::put(&file, &text).unwrap();
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
-            "image {\n    name \"one\"\n    kept;\n    flavour \"dev\" { also }\n}\n"
+            "image \"one\" {\n    kept;\n    flavour \"dev\" { also }\n}\n"
         );
         assert!(unlisting(
             &file,
@@ -1926,71 +2104,71 @@ image {
 
     #[test]
     fn unlisting_keeps_a_parent_that_holds_another_segment() {
-        let image = "image {\n    name \"one\"\n    apps {\n        gone\n        kept\n    }\n}\n";
+        let image = "image \"one\" {\n    apps {\n        gone\n        kept\n    }\n}\n";
         assert_eq!(
             unlisted("kept", image, None, "apps/gone").unwrap(),
-            "image {\n    name \"one\"\n    apps {\n        kept\n    }\n}\n"
+            "image \"one\" {\n    apps {\n        kept\n    }\n}\n"
         );
     }
 
     #[test]
     fn unlisting_removes_every_parent_it_empties() {
-        let image = "image {\n    name \"one\"\n    a {\n        b {\n            c\n        }\n    }\n    kept\n}\n";
+        let image =
+            "image \"one\" {\n    a {\n        b {\n            c\n        }\n    }\n    kept\n}\n";
         assert_eq!(
             unlisted("deep", image, None, "a/b/c").unwrap(),
-            "image {\n    name \"one\"\n    kept\n}\n"
+            "image \"one\" {\n    kept\n}\n"
         );
     }
 
     #[test]
     fn unlisting_a_flavour_s_last_entry_keeps_the_flavour_block() {
-        let image = "image {\n    name \"one\"\n    flavour \"dev\" {\n        tools {\n            gone\n        }\n    }\n}\n";
+        let image = "image \"one\" {\n    flavour \"dev\" {\n        tools {\n            gone\n        }\n    }\n}\n";
         assert_eq!(
             unlisted("flavour", image, Some("dev"), "tools/gone").unwrap(),
-            "image {\n    name \"one\"\n    flavour \"dev\" {\n    }\n}\n"
+            "image \"one\" {\n    flavour \"dev\" {\n    }\n}\n"
         );
     }
 
     #[test]
     fn unlisting_finds_a_path_through_a_repeated_parent() {
-        let image =
-            "image {\n    name \"one\"\n    hardware { audio-a }\n    hardware { audio-b }\n}\n";
+        let image = "image \"one\" {\n    hardware { audio-a }\n    hardware { audio-b }\n}\n";
         assert_eq!(
             unlisted("repeated", image, None, "hardware/audio-b").unwrap(),
-            "image {\n    name \"one\"\n    hardware { audio-a }\n}\n"
+            "image \"one\" {\n    hardware { audio-a }\n}\n"
         );
     }
 
     #[test]
     fn unlisting_keeps_a_parent_that_is_a_component() {
-        let image = "image {\n    name \"one\"\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
+        let image = "image \"one\" {\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
         assert_eq!(
             unlisted("component", image, None, "hardware/nvidia/cuda").unwrap(),
-            "image {\n    name \"one\"\n    hardware {\n        nvidia\n    }\n}\n"
+            "image \"one\" {\n    hardware {\n        nvidia\n    }\n}\n"
         );
     }
 
     #[test]
     fn unlisting_keeps_the_properties_of_a_component_parent() {
-        let image = "image {\n    name \"one\"\n    hardware {\n        nvidia variant=\"lean\" {\n            cuda\n        }\n    }\n}\n";
+        let image = "image \"one\" {\n    hardware {\n        nvidia variant=\"lean\" {\n            cuda\n        }\n    }\n}\n";
         assert_eq!(
             unlisted("variant", image, None, "hardware/nvidia/cuda").unwrap(),
-            "image {\n    name \"one\"\n    hardware {\n        nvidia variant=\"lean\"\n    }\n}\n"
+            "image \"one\" {\n    hardware {\n        nvidia variant=\"lean\"\n    }\n}\n"
         );
     }
 
     #[test]
     fn unlisting_an_inline_definition_removes_it() {
-        let image = "image {\n    name \"one\"\n    tools {\n        fragment position=\"after\"\n    }\n    kept\n}\n";
+        let image = "image \"one\" {\n    tools {\n        fragment position=\"after\"\n    }\n    kept\n}\n";
         assert_eq!(
             unlisted("inline", image, None, "tools").unwrap(),
-            "image {\n    name \"one\"\n    kept\n}\n"
+            "image \"one\" {\n    kept\n}\n"
         );
     }
 
     #[test]
     fn unlisting_a_segment_that_holds_segments_is_refused() {
-        let image = "image {\n    name \"one\"\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
+        let image = "image \"one\" {\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
         let refused = unlisted("holds", image, None, "hardware/nvidia").unwrap_err();
         assert!(refused.contains("with cuda below it"), "{refused}");
     }

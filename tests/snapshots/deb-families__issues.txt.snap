@@ -3,36 +3,36 @@ source: tests/golden/harness.rs
 ---
   x `debian` declares an install layout, and nothing in the image provides
   | `bootc`
-    ,-[tests/repos/deb-families/debian.image.kdl:10:5]
-  9 | 
- 10 |     layout {
-    :     ^^^|^^
-    :        `-- a bootc-only node
- 11 |         filesystem "btrfs"
-    `----
+   ,-[tests/repos/deb-families/debian.image.kdl:8:5]
+ 7 | 
+ 8 |     layout {
+   :     ^^^|^^
+   :        `-- a bootc-only node
+ 9 |         filesystem "btrfs"
+   `----
   help: an install layout describes how bootc installs the image: use a base
         that provides `bootc`, or drop `layout`
 
   x `forky` declares an install layout, and nothing in the image provides
   | `bootc`
-    ,-[tests/repos/deb-families/forky.image.kdl:10:5]
-  9 | 
- 10 |     layout {
-    :     ^^^|^^
-    :        `-- a bootc-only node
- 11 |         bootloader "grub2"
-    `----
+   ,-[tests/repos/deb-families/forky.image.kdl:8:5]
+ 7 | 
+ 8 |     layout {
+   :     ^^^|^^
+   :        `-- a bootc-only node
+ 9 |         bootloader "grub2"
+   `----
   help: an install layout describes how bootc installs the image: use a base
         that provides `bootc`, or drop `layout`
 
   x `ubuntu` declares an install layout, and nothing in the image provides
   | `bootc`
-    ,-[tests/repos/deb-families/ubuntu.image.kdl:10:5]
-  9 | 
- 10 |     layout {
-    :     ^^^|^^
-    :        `-- a bootc-only node
- 11 |         bootloader "grub2"
-    `----
+   ,-[tests/repos/deb-families/ubuntu.image.kdl:8:5]
+ 7 | 
+ 8 |     layout {
+   :     ^^^|^^
+   :        `-- a bootc-only node
+ 9 |         bootloader "grub2"
+   `----
   help: an install layout describes how bootc installs the image: use a base
         that provides `bootc`, or drop `layout`

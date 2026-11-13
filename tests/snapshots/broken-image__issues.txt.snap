@@ -1,46 +1,34 @@
 ---
 source: tests/golden/harness.rs
 ---
-  x `image` takes no argument
-   ,-[tests/repos/broken-image/image.kdl:3:1]
- 2 | 
- 3 | image "argument" {
-   : ^^|^^
-   :   `-- the name belongs in the block
- 4 |     id "Not An Id"
+  x `name` takes no argument
+   ,-[tests/repos/broken-image/image.kdl:4:5]
+ 3 | image "Not An Id" {
+ 4 |     name "Broken Image"
+   :     ^^|^
+   :       `-- a path segment
+ 5 | }
    `----
-  help: `image { id "argument" }` is the machine name, and `name` is the human
-        one it derives from when absent
+  help: the os-release fields are options of the `os-release` component; list
+        `os-release` in the image and set `name` in its block
 
-  x `image` declares no `name`
+  x invalid image id `Not An Id`
    ,-[tests/repos/broken-image/image.kdl:3:1]
  2 | 
- 3 | image "argument" {
-   : ^^|^^
-   :   `-- no name
- 4 |     id "Not An Id"
-   `----
-  help: `name "Buildc"` is os-release NAME, which the boot menu and the
-        desktop read
-
-  x invalid image name `Not An Id`
-   ,-[tests/repos/broken-image/image.kdl:3:1]
- 2 | 
- 3 | image "argument" {
+ 3 | image "Not An Id" {
    : ^^|^^
    :   `-- must be lowercase letters, digits and dashes, starting with a letter
- 4 |     id "Not An Id"
+ 4 |     name "Broken Image"
    `----
-  help: it becomes an image tag, a cache tag and the default hostname, all of
-        which restrict it
+  help: it becomes an image tag and a cache tag, both of which restrict it
 
   x `Not An Id` lists no base
    ,-[tests/repos/broken-image/image.kdl:3:1]
  2 | 
- 3 | image "argument" {
+ 3 | image "Not An Id" {
    : ^^|^^
    :   `-- nothing to build on
- 4 |     id "Not An Id"
+ 4 |     name "Broken Image"
    `----
   help: list a base component, such as `base-image { fedora-bootc { version
         "44" } }`, or define one inline with `base "<image reference>"`

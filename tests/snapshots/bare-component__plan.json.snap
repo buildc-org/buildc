@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "bare-component",
-  "default_image_name": "Bare Component",
   "pr_image": "bare-component",
   "default_target": "bare-component",
   "default_published": "bare-component",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "bare-component",
-      "name": "Bare Component",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

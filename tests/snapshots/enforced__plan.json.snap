@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "enforced",
-  "default_image_name": "Enforced",
   "pr_image": "enforced",
   "default_target": "enforced",
   "default_published": "enforced",
@@ -39,11 +38,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "enforced",
-      "name": "Enforced",
-      "pretty_name": "",
       "file": "./example.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

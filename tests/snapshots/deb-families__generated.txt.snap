@@ -955,7 +955,6 @@ ARG FAMILY=debian
 
 # ---- image identity ----
 ARG IMAGE_ID="debian"
-ARG IMAGE_NAME="Debian"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -965,7 +964,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/debian/finalize.sh,target=/gene
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/debian/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/debian/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1205,7 +1204,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/debian/graph.md
-# Debian capability graph
+# `debian` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1332,7 +1331,6 @@ ARG FAMILY=debian
 
 # ---- image identity ----
 ARG IMAGE_ID="forky"
-ARG IMAGE_NAME="Forky"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1342,7 +1340,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/forky/finalize.sh,target=/gener
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/forky/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/forky/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1599,7 +1597,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/forky/graph.md
-# Forky capability graph
+# `forky` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1728,7 +1726,6 @@ ARG FAMILY=ubuntu
 
 # ---- image identity ----
 ARG IMAGE_ID="ubuntu"
-ARG IMAGE_NAME="Ubuntu"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1737,7 +1734,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/ubuntu/finalize.sh,target=/gene
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/ubuntu/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/ubuntu/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1970,7 +1967,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/ubuntu/graph.md
-# Ubuntu capability graph
+# `ubuntu` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -2011,7 +2008,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "bdc09e8f1cc5dbfb4871adadc4ba0666a8064881a7074491dc7d034a3982b72f",
+  "root": "5aacf39b8b68524226b68cc972fbcaf8f5aef31e23f336e40d82739e60b6512e",
   "files": 68
 }
 ==== generated/debian/components/debian-family/lib/family.sh

@@ -10,7 +10,7 @@ next:
   commit keys/public/etc/pki/containers/cosign.pub
   gh secret set SIGNING_SECRET < keys/private/cosign.key
 ==== buildc graph
-# workstation-1 capability graph
+# `workstation-1` capability graph
 
 GENERATED FILE, do not edit.
 

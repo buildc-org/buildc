@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Broken Sources"
-
+image "broken-sources" {
     base-image {
         fedora-bootc-44
     }

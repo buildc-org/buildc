@@ -48,7 +48,7 @@ const FEDORA: &str = r#"schema-version 1
 
 description "Fedora bootc"
 provides "rechunking" "bootc"
-base "quay.io/fedora/fedora-bootc:$version" {
+base "quay.io/fedora/fedora-bootc:{version}" {
     family "fedora"
     bootloader "grub2" "systemd"
 }

@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-collect",
-  "default_image_name": "Broken Collect",
   "pr_image": "broken-collect",
   "default_target": "broken-collect",
   "default_published": "broken-collect",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-collect",
-      "name": "Broken Collect",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

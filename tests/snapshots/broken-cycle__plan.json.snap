@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-cycle",
-  "default_image_name": "Broken Cycle",
   "pr_image": "broken-cycle",
   "default_target": "broken-cycle",
   "default_published": "broken-cycle",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-cycle",
-      "name": "Broken Cycle",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

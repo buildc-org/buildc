@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Broken Key"
-
+image "broken-key" {
     base-image {
         fedora-bootc-44
     }

@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Sealed"
-
+image "sealed" {
     base-image {
         debian-forky
     }
@@ -14,9 +12,7 @@ image {
 
 }
 
-image {
-    name "Halfway"
-
+image "halfway" {
     base-image {
         arch-bootc-latest
     }

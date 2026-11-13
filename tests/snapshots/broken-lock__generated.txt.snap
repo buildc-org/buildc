@@ -943,7 +943,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-lock"
-ARG IMAGE_NAME="Broken lock"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -952,7 +951,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-lock/finalize.sh,target=
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-lock/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-lock/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1156,7 +1155,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-lock/graph.md
-# Broken lock capability graph
+# `broken-lock` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1197,7 +1196,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "f1e59873ff51c34a86edc5cd5ee2b8856931223b552be450d9c38e27494ec224",
+  "root": "377094e66de9926468d7b3f7885bba9689cdad2433d2d654055d613154508d8d",
   "files": 28
 }
 ==== generated/broken-lock/components/fedora-family/lib/family.sh

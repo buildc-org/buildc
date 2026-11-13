@@ -78,7 +78,7 @@ pub const REPO: Node = Node::new("repo",
     .about("The file holds at most one of each repository setting, and `buildc` reports an unknown \
         node rather than ignoring it. It must declare `schema-version`, and each image lives in \
         an image file.")
-    .scaffolds(&["schema-version", "name", "sources", "workflows", "renovate"])
+    .scaffolds(&["schema-version", "name", "base-url", "sources", "workflows", "renovate"])
     .children(&[
         Node::new("schema-version", "The schema release that this repository is written against.")
             .about("The number names the schema release the repository uses, and `buildc` stops at \
@@ -137,17 +137,23 @@ pub const REPO: Node = Node::new("repo",
             .arg(Arg::Str, Say::new("`{}` needs a name", "no name given",
                 "`name \"Workstation\"`, which the directory is free to disagree with"))
             .once(""),
+        Node::new("base-url", "The HTTPS URL of the repository, which an image option value reads as `{base-url}`.")
+            .about("`buildc` writes the value in place of each `{base-url}` reference when it generates. The generated files hold the URL itself. The value must start with `https://` and hold none of `\"`, `\\`, `$`, a backtick or a brace. An image option value that reads `{base-url}` fails `buildc check` when the repository declares no `base-url`.")
+            .example("\"https://github.com/owner/workstation\"")
+            .arg(Arg::Str, Say::new("`{}` needs a URL", "no URL given",
+                "`base-url \"https://github.com/owner/workstation\"`"))
+            .once(""),
         Node::new("default-image",
             "The image that a command with no image, or a build with no target, uses.")
-            .about("The name must be an image declared in the repository, and `buildc` refuses a \
-                name that no image declares. A repository with more than one image and no \
-                `default-image` has no target for a command that names none.")
+            .about("The id must name an image declared in the repository, and `buildc` refuses an \
+                id that no image declares. A repository with more than one image and no \
+                `default-image` has no target for a command that names no image.")
             .example("\"workstation\"")
-            .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
+            .arg(Arg::Str, Say::new("`{}` needs an image id", "no image given",
                 "`default-image \"workstation\"`, naming one of the images declared at the root"))
             .once(""),
         Node::new("pr-image", "The image a pull request builds.").example("\"workstation\"")
-            .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
+            .arg(Arg::Str, Say::new("`{}` needs an image id", "no image given",
                 "`pr-image \"workstation\"`, since a pull request builds one target"))
             .once(""),
         Node::new("backend", "The container build tool that `buildc build` runs and that the generated `build.yml` sets up.")
@@ -179,7 +185,7 @@ pub const REPO: Node = Node::new("repo",
                 fetched through that collection, so an inline definition leaves the seed \
                 unbuildable.")
             .example("\"workstation\" collection=\"owner\"")
-            .arg(Arg::Str, Say::new("`{}` needs an image name", "no image given",
+            .arg(Arg::Str, Say::new("`{}` needs an image id", "no image given",
                 "`seed \"workstation\" collection=\"owner\"`, naming one of the images declared \
                  at the root"))
             .once("a repository publishes one seed")
@@ -517,6 +523,7 @@ impl List {
     pub(super) fn empty(root: &Path) -> Self {
         Self {
             name: String::new(),
+            base_url: String::new(),
             id: String::new(),
             images: Vec::new(),
             workflows: Vec::new(),
@@ -614,6 +621,9 @@ impl List {
             list.parse_file(&src, &text, name == layout::REPO_FILE, &mut issues);
         }
 
+        for image in &mut list.images {
+            image.repo_base_url.clone_from(&list.base_url);
+        }
         list.load_bases(root, &mut issues);
         list.check_images(&mut issues);
         (list, issues)
@@ -708,6 +718,17 @@ impl List {
                     self.name = string_arg(node).unwrap_or_default().to_string();
                     self.id = self.name.to_lowercase().replace(' ', "-");
                 }
+                (true, "base-url") => {
+                    let url = string_arg(node).unwrap_or_default();
+                    match url.starts_with("https://") && !url.contains(['"', '\\', '$', '`', '{', '}']) {
+                        true => self.base_url = url.to_string(),
+                        false => issues.push(
+                            Issue::new(format!("`{url}` is not a usable `base-url`"), src)
+                                .at(node.name().span(), "not an HTTPS URL that a value can hold")
+                                .help("`base-url \"https://host/owner/repository\"`: an HTTPS URL with none of `\"`, `\\`, `$`, a backtick or a brace"),
+                        ),
+                    }
+                }
                 (true, "audit") => {
                     self.audit_enforce = child(node, "enforce").and_then(bool_arg).unwrap_or(false)
                 }
@@ -724,9 +745,8 @@ impl List {
         if !is_repo && !doc.nodes().iter().any(|n| n.name().value() == "image") {
             issues.push(
                 Issue::new(format!("{} declares no image", src.name()), src).help(
-                    "an image file holds at least one `image` node: \
-                     `image { name \"Name\" }`, what the image calls itself in os-release \
-                     and what it publishes as",
+                    "an image file holds at least one `image` node, as in \
+                     `image \"workstation\" { }`, and its id is what the image publishes as",
                 ),
             );
         }
@@ -756,7 +776,7 @@ impl List {
                             },
                         )
                         .help(
-                            "two images cannot publish under one name; declare `id` on one of them",
+                            "two images cannot publish under one id. Give one of them another id",
                         ),
                     );
                 }
@@ -1441,7 +1461,7 @@ fn based(
         .find(|opt| opt.name == "version")
         .and_then(|opt| opt.renovate)
         .or_else(|| {
-            facts.template.strip_suffix(":$version").map(|repository| {
+            facts.template.strip_suffix(":{version}").map(|repository| {
                 crate::model::options::VersionTracker {
                     datasource: "docker".to_string(),
                     dep_name: repository.to_string(),
@@ -1533,7 +1553,7 @@ mod tests {
 
         std::fs::write(
             dir.join(layout::IMAGE_FILE),
-            "schema-version 1\n\nimage { name \"Example\"; example; hello }\n",
+            "schema-version 1\n\nimage \"example\" { example; hello }\n",
         )
         .unwrap();
         std::fs::create_dir_all(dir.join("components/hello")).unwrap();
@@ -1630,8 +1650,8 @@ colour "blue"
                 "`sha256` must be a hash",
                 "unknown buildc-version property `wat`",
                 "`buildc-version` is declared twice",
-                "`default-image` needs an image name",
-                "`pr-image` needs an image name",
+                "`default-image` needs an image id",
+                "`pr-image` needs an image id",
                 "unknown workflows property `every`",
                 "a workflow takes no arguments",
                 "unknown workflow property `trigger`",
@@ -1857,8 +1877,7 @@ colour "blue"
                 true,
                 &mut issues,
             );
-            let images =
-                "schema-version 1\nimage {\n    name \"One\"\n}\nimage {\n    name \"Two\"\n}\n";
+            let images = "schema-version 1\nimage \"one\" {\n}\nimage \"two\" {\n}\n";
             list.parse_file(
                 &Source::new("image.kdl", images),
                 images,
@@ -1885,7 +1904,7 @@ colour "blue"
                 true,
                 &mut issues,
             );
-            let image = format!("schema-version 1\nimage {{\n    name \"Sealed\"\n{boot}}}\n");
+            let image = format!("schema-version 1\nimage \"sealed\" {{\n{boot}}}\n");
             list.parse_file(
                 &Source::new("image.kdl", &image),
                 &image,

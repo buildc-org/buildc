@@ -925,9 +925,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="example"
-ARG IMAGE_NAME="Example"
-ARG IMAGE_URL="https://github.com/someone/example"
-ARG IMAGE_ISSUES_URL="https://github.com/someone/example/issues"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -936,7 +933,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/example/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_URL="${IMAGE_URL}" IMAGE_ISSUES_URL="${IMAGE_ISSUES_URL}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1118,7 +1115,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/example/graph.md
-# Example capability graph
+# `example` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1348,7 +1345,7 @@ graph LR
 ==== .github/workflows/update-components.yml
 ==== generated/snapshot.json
 {
-  "root": "7a424e0c09503951636cc623b440f5fa5d33dcda68e4332b131eeebbda4e4168",
+  "root": "b0b9266103f6d6935f0e9de4762fa77b4afde660498a2a52cae0c607814836ff",
   "files": 26
 }
 ==== generated/example/components/fedora-family/lib/family.sh

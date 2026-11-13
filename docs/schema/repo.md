@@ -9,6 +9,7 @@ The file holds at most one of each repository setting, and `buildc` reports an u
 ```kdl
 schema-version 1
 name "Workstation"
+base-url "https://github.com/owner/workstation"
 workflows at="12:30" {
     build
 }
@@ -28,6 +29,7 @@ sources {
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this repository is written against. |
 | [`buildc-version`](#buildc-version) (optional) | *string* | The `buildc` release that builds this repository. |
 | [`name`](#name) (optional) | *string* | An optional human-readable label for the repository. |
+| [`base-url`](#base-url) (optional) | *string* | The HTTPS URL of the repository, which an image option value reads as `{base-url}`. |
 | [`default-image`](#default-image) (optional) | *string* | The image that a command with no image, or a build with no target, uses. |
 | [`pr-image`](#pr-image) (optional) | *string* | The image a pull request builds. |
 | [`backend`](#backend) (optional) | `buildah` or `buildx` | The container build tool that `buildc build` runs and that the generated `build.yml` sets up. |
@@ -100,11 +102,23 @@ name "Workstation"
 
 Accepts: *string*
 
+<a id="base-url"></a>
+
+## `base-url` (optional)
+
+`buildc` writes the value in place of each `{base-url}` reference when it generates. The generated files hold the URL itself. The value must start with `https://` and hold none of `"`, `\`, `$`, a backtick or a brace. An image option value that reads `{base-url}` fails `buildc check` when the repository declares no `base-url`.
+
+```kdl
+base-url "https://github.com/owner/workstation"
+```
+
+Accepts: *string*
+
 <a id="default-image"></a>
 
 ## `default-image` (optional)
 
-The name must be an image declared in the repository, and `buildc` refuses a name that no image declares. A repository with more than one image and no `default-image` has no target for a command that names none.
+The id must name an image declared in the repository, and `buildc` refuses an id that no image declares. A repository with more than one image and no `default-image` has no target for a command that names no image.
 
 ```kdl
 default-image "workstation"

@@ -6,11 +6,11 @@ source: tests/golden/harness.rs
         `notes.image.kdl`, or move it out of the repository root
 
   x `same` is declared twice
-    ,-[tests/repos/broken-root/image.kdl:16:1]
- 15 | 
- 16 | image {
+    ,-[tests/repos/broken-root/image.kdl:14:1]
+ 13 | 
+ 14 | image "same" {
     : ^^|^^
     :   `-- also declared above
- 17 |     name "Same"
+ 15 |     base-image {
     `----
-  help: two images cannot publish under one name; declare `id` on one of them
+  help: two images cannot publish under one id. Give one of them another id

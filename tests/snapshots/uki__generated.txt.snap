@@ -934,7 +934,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="shim"
-ARG IMAGE_NAME="Shim"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -943,7 +942,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/shim/finalize.sh,target=/genera
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/shim/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/shim/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1136,7 +1135,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/shim/graph.md
-# Shim capability graph
+# `shim` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1258,7 +1257,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="db"
-ARG IMAGE_NAME="DB"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1267,7 +1265,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/db/finalize.sh,target=/generate
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/db/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/db/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1460,7 +1458,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/db/graph.md
-# DB capability graph
+# `db` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1566,7 +1564,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="missing"
-ARG IMAGE_NAME="Missing"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -1575,7 +1572,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/missing/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/missing/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/missing/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1750,7 +1747,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/missing/graph.md
-# Missing capability graph
+# `missing` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1806,6 +1803,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "4a50e58d3f3062741c4cd05d283293a4e42272c14490005ffd5b56ebf7435df8",
+  "root": "107f5b2ed48e02ba7a36f34e5e4b0c8c3175f11dcce6ea882c65a5bd8b9db309",
   "files": 36
 }

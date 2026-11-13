@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    id "shim"
-    name "Shim"
+image "shim" {
     boot-chain "uki-shim"
     base-image {
         fedora-bootc-44
@@ -11,9 +9,7 @@ image {
     enrolment
 }
 
-image {
-    id "db"
-    name "DB"
+image "db" {
     boot-chain "uki-db"
     base-image {
         fedora-bootc-44
@@ -22,9 +18,7 @@ image {
     enrolment
 }
 
-image {
-    id "missing"
-    name "Missing"
+image "missing" {
     boot-chain "uki-db"
     base-image {
         fedora-bootc-44

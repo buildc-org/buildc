@@ -1,8 +1,6 @@
 schema-version 1
 
-image {
-    name "Broken Pin"
-
+image "broken-pin" {
     base-image {
         fedora-bootc-44
     }

@@ -12,11 +12,7 @@ schema-version 1
 ==== example.image.kdl
 schema-version 1
 
-image {
-    name "Example"
-    url "https://github.com/someone/example"
-    issues-url "https://github.com/someone/example/issues"
-
+image "example" {
     layout {
         bootloader "grub2"
     }
@@ -32,11 +28,7 @@ image {
 ==== server.image.kdl
 schema-version 1
 
-image {
-    name "Server"
-    url "https://github.com/someone/example"
-    issues-url "https://github.com/someone/example/issues"
-
+image "server" {
     layout {
         bootloader "grub2"
     }

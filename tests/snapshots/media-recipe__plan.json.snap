@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "deb",
-  "default_image_name": "Deb",
   "pr_image": "deb",
   "default_target": "deb",
   "default_published": "deb",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "deb",
-      "name": "Deb",
-      "pretty_name": "",
       "file": "./deb.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

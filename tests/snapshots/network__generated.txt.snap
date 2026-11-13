@@ -977,7 +977,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="network"
-ARG IMAGE_NAME="Network"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -987,7 +986,7 @@ RUN --network=none --mount=type=bind,from=ctx,source=/generated/network/finalize
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/network/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/network/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1237,7 +1236,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/network/graph.md
-# Network capability graph
+# `network` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1310,7 +1309,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "4724b7175f602b3def0d18b522f137759e6373a8ee8b670e58f3bca5b3f0e022",
+  "root": "9904a7b9dec374f051afe7e848e7fae2305bc6012901c71c02724c9c5045895b",
   "files": 36
 }
 ==== generated/network/components/fedora-family/lib/family.sh

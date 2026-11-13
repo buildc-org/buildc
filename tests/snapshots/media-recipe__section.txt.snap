@@ -30,7 +30,6 @@ ARG FAMILY=debian
 
 # ---- image identity ----
 ARG IMAGE_ID="deb"
-ARG IMAGE_NAME="Deb"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -39,7 +38,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/deb/finalize.sh,target=/generat
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/deb/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/deb/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json

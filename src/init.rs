@@ -149,6 +149,7 @@ pub fn id(name: &str) -> Result<String, String> {
 pub fn write(
     root: &Path,
     name: &str,
+    base_url: Option<&str>,
     assets: &Path,
     sources: &str,
 ) -> Result<Vec<PathBuf>, String> {
@@ -166,6 +167,9 @@ pub fn write(
         ],
     )?;
 
+    let base_url = base_url
+        .map(|url| format!("base-url \"{url}\"\n"))
+        .unwrap_or_default();
     let sources = match sources.is_empty() {
         true => String::new(),
         false => format!("\n{sources}\n"),
@@ -175,7 +179,7 @@ pub fn write(
         &format!(
             "schema-version {SCHEMA_VERSION}\n\
              name \"{name}\"\n\
-             {sources}\n{RENOVATE}"
+             {base_url}{sources}\n{RENOVATE}"
         ),
     )?;
     put(&root.join("README.md"), &format!("# {name}\n"))?;
@@ -344,7 +348,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-scaffold-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
-        let mut wrote: Vec<String> = write(&root, "Example", &assets, "")
+        let mut wrote: Vec<String> = write(&root, "Example", None, &assets, "")
             .unwrap()
             .iter()
             .map(|path| path.display().to_string())
@@ -381,7 +385,7 @@ mod tests {
             put(&root.join(path), "mine\n").unwrap();
         }
         let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
-        write(&root, "Example", &assets, "").unwrap();
+        write(&root, "Example", None, &assets, "").unwrap();
         for path in mine {
             assert_eq!(
                 fs::read_to_string(root.join(path)).unwrap(),

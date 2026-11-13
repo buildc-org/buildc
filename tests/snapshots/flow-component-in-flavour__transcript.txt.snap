@@ -12,7 +12,7 @@ supported base families, separated by spaces (optional) []: fedora
 Does this component install packages? (Yes/No)
 No
 
-  1) example  Example
+  1) example
   2) example/dx
 images and flavours that list it [1-2, several, 0 for none]: 2
 

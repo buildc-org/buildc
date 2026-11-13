@@ -109,8 +109,7 @@ Add the following to `image.kdl` in the repository root:
 ```kdl
 schema-version 1
 
-image {
-    name "workstation-1"
+image "workstation-1" {
     base-image {
         base "quay.io/fedora/fedora-bootc:44" {
             family "fedora"
@@ -138,8 +137,43 @@ tells components which package manager and package names the base has.
 
 An `image` node defines a single image and its flavours.
 
-Within the image node, `name` is required. It is the os-release name of the
-image.
+The node's argument is the image's id, which is required. The id names the
+published image, the build target and the cache tag. It takes lowercase
+letters, digits and dashes, and it starts with a letter.
+
+The image's own name is not an image field. To name the image, list the
+`os-release` component in the image and set its `name` option. The component
+writes the name into `/usr/lib/os-release`, where the boot menu and the desktop
+read it. If an image does not build `os-release`, or builds the component with
+no `name`, it keeps the name that its base image ships. When the
+image builds the component, its `default-hostname` option defaults to the
+image id. The id is therefore the default hostname unless the image sets that
+option.
+
+A reference is written `{name}` in a base image reference, an import, a package
+name and an option value. An option value that an image sets can read two
+values that `buildc` supplies. `{image-id}` is the image's id. `{base-url}` is
+the repository URL that `repo.kdl` declares as `base-url`. `buildc generate`
+writes each value in place of its reference. The generated files hold the text
+itself. A doubled brace writes a literal brace. A dollar sign is not a
+reference. An empty `os-release` option writes no line, and the base image's
+value stays.
+
+If `repo.kdl` sets no `base-url`, then `buildc check` refuses the fragment
+below. `buildc create repo` writes the declaration from the forge when the user
+gives an owner. In a repository written by hand, you add
+`base-url "https://github.com/you/your-repository"` to `repo.kdl`. A component's
+option default may read `{image-id}` alone. It has no repository URL to read
+because a component is shared across repositories.
+
+<!-- kdl-fragment -->
+```kdl
+os-release {
+    name "Workstation"
+    home-url "{base-url}"
+    bug-report-url "{base-url}/issues"
+}
+```
 
 Every other node in the image that is not a property of the image names a
 component by its path under `components/`, one segment per node. A segment
@@ -180,16 +214,21 @@ AlmaLinux, Rocky Linux, Debian, Ubuntu and the Universal Blue images under
 
 #### Creating an image with the CLI
 
-To skip the prompts, add the image name and a `--base` argument to the
-command. Run the following within the repository:
+To name the image and the base without their pickers, add the image name and a
+`--base` argument to the command. The command derives the image id by
+lowercasing the name and turning each space into a dash. Run the following
+within the repository:
 
 ```sh
 buildc create image workstation-2 --base base-image/fedora-bootc
 ```
 
 This copies the library's `base-image/fedora-bootc` component, and the
-components it imports, into `components/`, and writes a new
-`workstation-2.image.kdl` file that lists only the base. Because the
+components it imports, into `components/`. The base imports no `os-release`
+component. `buildc create image` therefore offers the library's `os-release`.
+When you accept, the command copies the component and sets its `name` option
+to the image name. It writes a new `workstation-2.image.kdl` file
+that lists the base and `os-release`. Because the
 repository now has two images, `buildc` also records `default-image
 "workstation-1"` in `repo.kdl`.
 
@@ -223,9 +262,9 @@ provides {
     // and the rest of what the base image ships
 }
 
-imports "fedora/build-environment" "identity"
+imports "fedora/build-environment"
 
-base "quay.io/fedora/fedora-bootc:$version" {
+base "quay.io/fedora/fedora-bootc:{version}" {
     family "fedora"
     bootloader "grub2"
     scap-content "ssg-fedora-ds.xml" {
@@ -247,10 +286,9 @@ can go on one line instead, as `provides "rechunking" "luks-initramfs"`. A
 `witness` names the path that proves the capability is there, and the build
 checks the finished image for it. The `imports` node names the components
 every image on this base needs. `buildc create image` copied
-`fedora/build-environment` and `identity` into `components/`. The image lists
-none of them, because the base's import builds each one into every image on
-it. `identity` provides `os-release`. Its finalize hook writes the image's own
-name into `/usr/lib/os-release`. `scap-content` names the benchmark content
+`fedora/build-environment` into `components/`. The image does not list it,
+because the base's import builds it into every image on the base. `scap-content`
+names the benchmark content
 that remediates the image and that a compliance scan of it reads. Its `pin`
 says where `buildc generate` fetches that file from, and the hash the file must
 match.
@@ -342,8 +380,7 @@ Include the `kde` component in the `workstation-1` image node in `image.kdl`:
 ```kdl
 schema-version 1
 
-image {
-    name "workstation-1"
+image "workstation-1" {
     base-image {
         base "quay.io/fedora/fedora-bootc:44" {
             family "fedora"
@@ -414,9 +451,7 @@ This adds the imported component to `workstation-2.image.kdl`:
 ```kdl
 schema-version 1
 
-image {
-    name "workstation-2"
-
+image "workstation-2" {
     layout {
         bootloader "grub2"
     }
@@ -426,6 +461,9 @@ image {
             version "44"
             signed #false
         }
+    }
+    os-release {
+        name "workstation-2"
     }
     desktop-environment {
         kde-plasma
@@ -741,7 +779,7 @@ buildc graph
 
 <!-- transcript-output: buildc graph -->
 ````markdown
-# workstation-1 capability graph
+# `workstation-1` capability graph
 
 GENERATED FILE, do not edit.
 

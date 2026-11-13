@@ -947,7 +947,6 @@ ARG FAMILY=fedora
 
 # ---- image identity ----
 ARG IMAGE_ID="broken-graph"
-ARG IMAGE_NAME="Broken Graph"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
@@ -956,7 +955,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-graph/finalize.sh,target
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_NAME="${IMAGE_NAME}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-graph/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-graph/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1161,7 +1160,7 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
     fi
 done
 ==== generated/broken-graph/graph.md
-# Broken Graph capability graph
+# `broken-graph` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1277,7 +1276,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "6134228fb856a88eade4efb476f6cd81f6b5fbebbfb470b1cb33f68ef38bf0be",
+  "root": "04a15ca61d8c6d566a9ca257e9436b2d6d3236d2d4722f7261204dfaf031fb4e",
   "files": 30
 }
 ==== generated/broken-graph/components/core/one/lib/one/shared.sh

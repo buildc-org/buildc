@@ -1311,7 +1311,7 @@ mod tests {
             "schema-version 1\nname \"Example\"\n",
         )
         .unwrap();
-        let image = "schema-version 1\n\nimage {\n    name \"Example\"\n    conforms \"standard\"\n    base-image {\n        centos\n    }\n}\n";
+        let image = "schema-version 1\n\nimage \"example\" {\n    conforms \"standard\"\n    base-image {\n        centos\n    }\n}\n";
         crate::init::put(&root.join("image.kdl"), image).unwrap();
         let base = |content: &str| {
             crate::init::put(

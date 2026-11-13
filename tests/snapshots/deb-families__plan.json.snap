@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "debian",
-  "default_image_name": "Debian",
   "pr_image": "debian",
   "default_target": "debian",
   "default_published": "debian",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "debian",
-      "name": "Debian",
-      "pretty_name": "",
       "file": "./debian.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -208,11 +203,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "forky",
-      "name": "Forky",
-      "pretty_name": "",
       "file": "./forky.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",
@@ -454,11 +445,7 @@ source: tests/golden/harness.rs
     },
     {
       "id": "ubuntu",
-      "name": "Ubuntu",
-      "pretty_name": "",
       "file": "./ubuntu.image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

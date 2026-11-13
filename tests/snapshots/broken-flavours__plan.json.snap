@@ -4,7 +4,6 @@ source: tests/golden/harness.rs
 {
   "schema_version": 1,
   "default_image": "broken-flavours",
-  "default_image_name": "Broken Flavours",
   "pr_image": "broken-flavours",
   "default_target": "broken-flavours",
   "default_published": "broken-flavours",
@@ -23,11 +22,7 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-flavours",
-      "name": "Broken Flavours",
-      "pretty_name": "",
       "file": "./image.kdl",
-      "url": "",
-      "issues_url": "",
       "description": "",
       "keywords": [],
       "logo_url": "",

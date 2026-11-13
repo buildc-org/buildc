@@ -139,7 +139,6 @@ fn create_into(name: &str, root: &Path) {
     buildc::create::Component::collect(
         &here,
         Some("My Editor".into()),
-        vec!["nano".into()],
         vec![("provides".into(), "editor".into())],
         vec!["example".into(), "server".into()],
         false,
@@ -148,10 +147,20 @@ fn create_into(name: &str, root: &Path) {
     .unwrap()
     .apply(&here)
     .unwrap();
+    buildc::add::Packages::collect(
+        &here,
+        vec!["nano".into()],
+        Some("my-editor".into()),
+        None,
+        &silent,
+    )
+    .unwrap()
+    .unwrap()
+    .apply(&here)
+    .unwrap();
     buildc::create::Component::collect(
         &here,
         Some("plain".into()),
-        Vec::new(),
         Vec::new(),
         Vec::new(),
         false,

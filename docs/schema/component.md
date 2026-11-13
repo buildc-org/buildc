@@ -10,7 +10,6 @@ The directory under `components/` is the component's name, and the manifest sits
 schema-version 1
 description "Traditional CLI utilities"
 targets "fedora" "debian"
-packages "htop" "tmux"
 ```
 
 | Field | Accepts | Description |

@@ -456,6 +456,7 @@ fn flow_case(flow: &Flow) {
         "flow-create-component" | "flow-component-taken" | "flow-unanswered" => {
             setup_component(flow)
         }
+        "flow-add-packages" => setup_add_packages(flow),
         "flow-component-two-images" => setup_component_two_images(flow),
         "flow-create-flavour" => setup_create_flavour(flow),
         "flow-component-in-flavour" => setup_component_in_flavour(flow),
@@ -701,6 +702,115 @@ fn setup_component_two_images(flow: &Flow) {
         None,
         &["--root", ".", "create", "component"],
     );
+}
+
+fn setup_add_packages(flow: &Flow) {
+    let target = flow.target;
+    let root = flow.repo("flow-add-packages");
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "create",
+            "component",
+            "apps",
+            "--inline",
+            "--image",
+            "example",
+            "--with",
+            "description=Applications",
+        ],
+    );
+    flow.run(
+        target,
+        &root,
+        None,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "add",
+            "packages",
+            "firefox",
+            "wireguard-tools",
+            "--component",
+            "apps",
+            "--image",
+            "example",
+        ],
+    );
+    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains("        packages \"firefox\" \"wireguard-tools\"\n"),
+        "{image}"
+    );
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "add",
+            "packages",
+            "htop",
+            "--component",
+            "apps",
+            "--image",
+            "example",
+        ],
+    );
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "add",
+            "packages",
+            "firefox",
+            "--component",
+            "apps",
+            "--image",
+            "example",
+        ],
+    );
+    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    assert!(
+        image.contains("        packages \"firefox\" \"wireguard-tools\" \"htop\"\n"),
+        "{image}"
+    );
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "create",
+            "component",
+            "local-tools",
+            "--with",
+            "description=Local tools",
+        ],
+    );
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "add",
+            "packages",
+            "nano",
+            "--component",
+            "local-tools",
+        ],
+    );
+    let manifest =
+        std::fs::read_to_string(root.join("components/local-tools/manifest.kdl")).unwrap();
+    assert!(manifest.ends_with("\npackages \"nano\"\n"), "{manifest}");
+    flow.buildc(&root, &["--root", ".", "check"]);
 }
 
 fn setup_create_flavour(flow: &Flow) {
@@ -1531,10 +1641,8 @@ fn setup_import_default(flow: &Flow) {
             "create",
             "component",
             "local-tool",
-            "--pkg",
-            "hello",
             "--with",
-            "description=",
+            "description=Local tools",
             "--with",
             "targets=",
             "--image",
@@ -1959,6 +2067,7 @@ flow_cases! {
     flow_create_image => "flow-create-image",
     flow_create_component => "flow-create-component",
     flow_create_component_with_schema_issues => "flow-create-component-with-schema-issues",
+    flow_add_packages => "flow-add-packages",
     flow_create_repo => "flow-create-repo",
     flow_create_repo_forgejo => "flow-create-repo-forgejo",
     flow_create_repo_no_gh => "flow-create-repo-no-gh",

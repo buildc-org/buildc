@@ -355,9 +355,7 @@ fn cut(text: &mut String, span: Span) {
 pub fn block_close(kdl: &str, image: &str, chain: &[(&str, Option<&str>)]) -> Option<usize> {
     let doc: KdlDocument = kdl.parse().ok()?;
     let node = descend(&doc, image, chain)?;
-    node.children()?;
-    let span: Span = node.span().into();
-    kdl[..span.offset + span.len].rfind('}')
+    super::block_close(node, kdl)
 }
 
 pub fn listings(kdl: &str, path: &str) -> Vec<Option<String>> {

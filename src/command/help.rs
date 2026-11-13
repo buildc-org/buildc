@@ -131,19 +131,12 @@ The name can be a path. As a directory component, `apps/firefox` writes
 
 The command asks for the component name. For an inline component it then asks
 for the image or flavour that holds the block. For both kinds it asks for an
-optional description, optional base family restrictions and whether the
-component installs packages. If the component installs packages, then the
-command asks for the package names. For a directory component it then asks
-which images and flavours list the component."#;
+optional description and optional base family restrictions. For a directory
+component it then asks which images and flavours list the component. The
+command writes no packages. `buildc add packages` adds them once the
+component exists."#;
 
 pub(super) const CREATE_COMPONENT_NOTES: &str = r#"> [!NOTE]
-> With no `targets` declaration, a component targets every base family. It
-> writes packages outside a family gate so every targeted family installs
-> them. A package name that differs by family goes in a `family` block.
-> The build installs them through the family adapter, with `dnf install -y` on
-> Fedora and RHEL, and with `apt-get update`, `apt-get install -y` and
-> `apt-get clean` on Debian and Ubuntu.
->
 > An image and one of its own flavours cannot both list the component. The image
 > entry already reaches every flavour of that image.
 >
@@ -156,14 +149,68 @@ pub(super) const CREATE_COMPONENT_NOTES: &str = r#"> [!NOTE]
 > chooses no image.
 >
 > An inline component needs at least one manifest line. A description, a
-> `targets` restriction, a package or a `--with` line each counts.
+> `targets` restriction or a `--with` line each counts.
 >
 > One name cannot be a directory component and an inline component at once.
 > The command refuses an inline component when `components/<name>/` already
 > holds a component. It refuses a directory component when an image file
 > already defines the name inline.
 >
+> `--with packages=...` is refused. `buildc add packages <names...> --component
+> <name>` adds the packages after the component exists.
+>
 > The command writes a directory component unless `--inline` is given."#;
+
+pub(super) const ADD_PACKAGES: &str = r#"Adds package names to a component that already exists. The component is a
+directory under `components/` or a block inside an image file.
+
+The names are arguments and the command asks for them when none is given.
+`--component` takes the component's path, such as `apps` or `apps/firefox`.
+Without it the command asks with a picker of the components this repository
+holds. If the repository holds one component, then the command takes it
+without asking. If no terminal is watching, then the command refuses and names
+`--component`.
+
+`--image` names the image that holds an inline component, or the flavour as
+`<image>/<flavour>`. It is needed only when the same path is inline in more
+than one image or flavour. If `--image` is left out for such a path, then the
+command asks with a picker of those places.
+
+A component with no `packages` node gains one. A component directory that
+holds only scripts gains a `manifest.kdl`. Otherwise the names join the first
+top-level `packages` node in the shape it already uses. If the node lists its
+names on one line, then the new names go after its last name. If the node
+holds its names in a block, then each new name goes on its own line inside
+the block. A repeat call writes only the names the component does not list
+yet."#;
+
+pub(super) const ADD_PACKAGES_NOTES: &str = r#"> [!NOTE]
+> A name inside a family-gated `on` block counts as listed. The command does
+> not add it again at the top level.
+>
+> The command writes each name outside any `on` gate. Every base family that
+> the component targets then installs it. A name that differs by family
+> belongs in an `on` block. The user writes that block in the manifest or
+> image file.
+>
+> If the `packages` node carries `enablerepo=`, then the new names install with
+> that repository enabled too.
+>
+> A name takes letters, digits and `. _ + : -`, with at most one `=` before a
+> version. An option reference such as `firefox={version}` is accepted in place
+> of literal text. The rule holds because the build writes the name straight
+> into its RUN line. A name that breaks the rule is refused before anything is
+> written. An install that needs other characters belongs in `component.sh`.
+>
+> A directory component that tracks its library is refused because an edit
+> would no longer match its lock entry. Run `buildc set component <path>
+> --untracked` first to end the tracking.
+>
+> A path that is both a directory component and an inline component is
+> refused the same way `buildc check` refuses it.
+>
+> `buildc create component` writes no packages. Run this command after it, or
+> write the `packages` line in the manifest or image file by hand."#;
 
 pub(super) const IMPORT_COMPONENT: &str = r#"Copies a component from a library into `components/<name>`, and records it in
 `components/components.lock.kdl`: the library, the component's path there, the

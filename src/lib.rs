@@ -1,3 +1,4 @@
+pub mod add;
 pub mod attribute;
 pub mod bases;
 pub mod build;

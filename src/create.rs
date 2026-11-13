@@ -1088,10 +1088,10 @@ enum Written {
 fn inline_target(
     list: &crate::model::image::List,
     path: &str,
-    images: &mut Vec<String>,
+    images: &[String],
     prompt: &Prompt,
 ) -> Result<Listing, String> {
-    let top = path.split('/').next().unwrap_or(path);
+    let top = path.split_once('/').map_or(path, |(top, _)| top);
     if crate::parse::image::is_keyword(top) {
         return Err(format!(
             "`{top}` means itself inside `image`; an inline component cannot start with `{top}`"
@@ -1106,14 +1106,18 @@ fn inline_target(
              reads it as a manifest line; give `{path}` another name"
         ));
     }
-    if images.len() > 1 {
-        return Err(format!(
-            "an inline component belongs to one image and takes one `--image`; the command \
-             line names {}",
-            images.join(", ")
-        ));
-    }
-    match Listing::target_from(list, images.pop(), prompt)? {
+    let image = match images {
+        [] => None,
+        [one] => Some(one.as_str()),
+        many => {
+            return Err(format!(
+                "an inline component belongs to one image and takes one `--image`; the command \
+                 line names {}",
+                many.join(", ")
+            ))
+        }
+    };
+    match Listing::target_from(list, image, prompt)? {
         Listing::NoImage => Err(
             "there is no image to hold an inline component; `buildc create image <name>` writes one"
                 .to_string(),
@@ -1134,9 +1138,8 @@ impl Component {
     pub fn collect(
         root: &Path,
         name: Option<String>,
-        pkgs: Vec<String>,
         with: Vec<(String, String)>,
-        mut images: Vec<String>,
+        images: Vec<String>,
         inline: bool,
         prompt: &Prompt,
     ) -> Result<Self, String> {
@@ -1150,6 +1153,12 @@ impl Component {
         let file = layout::manifest(root, &path);
         if file.exists() && !inline {
             return Err(format!("components/{path} is already there"));
+        }
+        if with.iter().any(|(verb, _)| verb == "packages") {
+            return Err(format!(
+                "`--with packages=...` writes no package list; create `{path}` without it and \
+                 run `buildc add packages <names...> --component {path}` after"
+            ));
         }
         let defined = list.images.iter().find(|image| {
             image
@@ -1174,7 +1183,7 @@ impl Component {
                      define it a second time"
                 ))
             }
-            true => Some(inline_target(&list, &path, &mut images, prompt)?),
+            true => Some(inline_target(&list, &path, &images, prompt)?),
         };
 
         let description = match with.iter().any(|(verb, _)| verb == "description") {
@@ -1199,23 +1208,13 @@ impl Component {
                 .map(str::to_string)
                 .collect(),
         };
-        let pkgs = match pkgs.is_empty()
-            && prompt.confirm(copy::COMPONENT_PACKAGES, copy::YES, copy::NO)?
-        {
-            true => prompt
-                .text(None, copy::PACKAGE_NAMES, "`--pkg`", Some(""))?
-                .split_whitespace()
-                .map(str::to_string)
-                .collect(),
-            false => pkgs,
-        };
 
-        let sections = manifest_sections(&description, &targets, &pkgs, &with)?;
+        let sections = manifest_sections(&description, &targets, &with)?;
         let (written, listing) = match inline_listing {
             Some(_) if sections.is_empty() => {
                 return Err(
                     "an inline component needs a manifest line; give it a description, \
-                     packages or a `--with` line"
+                     supported base families or a `--with` line"
                         .to_string(),
                 )
             }
@@ -1278,7 +1277,6 @@ impl Component {
 fn manifest_sections(
     description: &str,
     targets: &[String],
-    pkgs: &[String],
     with: &[(String, String)],
 ) -> Result<Vec<String>, String> {
     let mut sections: Vec<String> = Vec::new();
@@ -1299,14 +1297,6 @@ fn manifest_sections(
     }
     if !declarations.is_empty() {
         sections.push(declarations.join("\n"));
-    }
-    if !pkgs.is_empty() {
-        let listed = pkgs
-            .iter()
-            .map(|pkg| Ok(format!("\"{}\"", quotable(pkg)?)))
-            .collect::<Result<Vec<_>, String>>()?
-            .join(" ");
-        sections.push(format!("packages {listed}"));
     }
     Ok(sections)
 }
@@ -1958,7 +1948,7 @@ image "example" {
         assert!(!shared.contains("        version"), "{shared}");
         assert!(!shared.contains("layout"), "{shared}");
 
-        assert!(manifest_sections("", &[], &[], &[]).unwrap().is_empty());
+        assert!(manifest_sections("", &[], &[]).unwrap().is_empty());
 
         let one = base("base-image/one", "example.invalid/one:1", None, &["grub2"]);
         let described = base(
@@ -2316,7 +2306,6 @@ image "example" {
     fn inline(
         root: &Path,
         name: &str,
-        pkgs: &[&str],
         with: &[(&str, &str)],
         images: &[&str],
         prompt: &Prompt,
@@ -2324,7 +2313,6 @@ image "example" {
         Component::collect(
             root,
             Some(name.into()),
-            pkgs.iter().map(|pkg| (*pkg).to_string()).collect(),
             with.iter()
                 .map(|(verb, value)| ((*verb).to_string(), (*value).to_string()))
                 .collect(),
@@ -2339,12 +2327,11 @@ image "example" {
     #[test]
     fn the_inline_flag_lands_in_the_chosen_image() {
         let root = inline_repo("asked");
-        // The script answers the image, the description, the families, the packages question and the package names in that order.
-        let prompt = Prompt::scripted(["1", "", "", "Yes", "firefox"].map(str::to_string).to_vec());
+        // The script answers the image, the description and the families in that order.
+        let prompt = Prompt::scripted(["1", "Apps", ""].map(str::to_string).to_vec());
         let wrote = Component::collect(
             &root,
             Some("apps".into()),
-            Vec::new(),
             Vec::new(),
             Vec::new(),
             true,
@@ -2359,7 +2346,7 @@ image "example" {
         assert_eq!(wrote.len(), 1);
         assert_eq!(
             image,
-            "schema-version 1\n\nimage \"one\" {\n    kept\n    apps {\n        packages \"firefox\"\n    }\n}\n\nimage \"two\" { kept }\n"
+            "schema-version 1\n\nimage \"one\" {\n    kept\n    apps {\n        description \"Apps\"\n    }\n}\n\nimage \"two\" { kept }\n"
         );
         assert!(!directory);
     }
@@ -2370,8 +2357,7 @@ image "example" {
         inline(
             &root,
             "tools",
-            &["htop"],
-            &[("description", "Tools")],
+            &[("description", "Tools"), ("provides", "tools")],
             &["two"],
             &Prompt::silent(),
         )
@@ -2380,7 +2366,7 @@ image "example" {
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
             image.ends_with(
-                "image \"two\" { kept; tools { description \"Tools\"; packages \"htop\" } }\n"
+                "image \"two\" { kept; tools { description \"Tools\"; provides \"tools\" } }\n"
             ),
             "{image}"
         );
@@ -2397,8 +2383,7 @@ image "example" {
         let refused = inline(
             &root,
             "apps",
-            &["firefox"],
-            &[],
+            &[("description", "Apps")],
             &["one"],
             &Prompt::silent(),
         );
@@ -2414,8 +2399,7 @@ image "example" {
         let refused = inline(
             &root,
             "apps",
-            &["firefox"],
-            &[],
+            &[("description", "Apps")],
             &["one", "two"],
             &Prompt::silent(),
         );
@@ -2431,8 +2415,7 @@ image "example" {
         let refused = inline(
             &root,
             "tools/packages",
-            &["htop"],
-            &[],
+            &[("description", "Tools")],
             &["one"],
             &Prompt::silent(),
         );
@@ -2445,7 +2428,13 @@ image "example" {
     #[test]
     fn an_inline_component_named_after_an_image_keyword_is_refused() {
         let root = inline_repo("keyword-name");
-        let refused = inline(&root, "layout", &["htop"], &[], &["one"], &Prompt::silent());
+        let refused = inline(
+            &root,
+            "layout",
+            &[("description", "Layout")],
+            &["one"],
+            &Prompt::silent(),
+        );
         let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.unwrap_err().contains("`layout` means itself"));
@@ -2458,8 +2447,7 @@ image "example" {
         inline(
             &root,
             "apps",
-            &["firefox"],
-            &[],
+            &[("description", "Apps")],
             &["one"],
             &Prompt::silent(),
         )
@@ -2467,7 +2455,6 @@ image "example" {
         let refused = Component::collect(
             &root,
             Some("apps".into()),
-            vec!["vim".into()],
             Vec::new(),
             Vec::new(),
             false,
@@ -2487,11 +2474,17 @@ image "example" {
     #[test]
     fn a_directory_component_beside_another_inline_definition_is_written() {
         let root = inline_repo("beside-inline");
-        inline(&root, "tools", &["htop"], &[], &["one"], &Prompt::silent()).unwrap();
+        inline(
+            &root,
+            "tools",
+            &[("description", "Tools")],
+            &["one"],
+            &Prompt::silent(),
+        )
+        .unwrap();
         Component::collect(
             &root,
             Some("apps".into()),
-            vec!["vim".into()],
             Vec::new(),
             Vec::new(),
             false,
@@ -2518,8 +2511,7 @@ image "example" {
         inline(
             &root,
             "tools",
-            &["htop"],
-            &[],
+            &[("description", "Tools")],
             &["one/dev"],
             &Prompt::silent(),
         )
@@ -2540,7 +2532,6 @@ image "example" {
         let refused = Component::collect(
             &root,
             Some("apps".into()),
-            vec!["firefox".into()],
             Vec::new(),
             Vec::new(),
             true,
@@ -2552,9 +2543,25 @@ image "example" {
     }
 
     #[test]
+    fn a_packages_line_through_with_is_refused() {
+        let root = inline_repo("with-packages");
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            vec![("packages".into(), "firefox".into())],
+            vec!["one".into()],
+            false,
+            &Prompt::silent(),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the packages line is refused");
+        assert!(refused.contains("buildc add packages"), "{refused}");
+    }
+
+    #[test]
     fn an_inline_component_with_no_manifest_line_is_refused() {
         let root = inline_repo("empty");
-        let refused = inline(&root, "apps", &[], &[], &["one"], &Prompt::silent());
+        let refused = inline(&root, "apps", &[], &["one"], &Prompt::silent());
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.unwrap_err().contains("needs a manifest line"));
     }

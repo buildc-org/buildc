@@ -8,6 +8,15 @@ fn listed_in(flavour: Option<&str>) -> Vec<(&str, Option<&str>)> {
         .collect()
 }
 
+pub(crate) fn chain<'a>(
+    flavour: Option<&'a str>,
+    name: &'a str,
+) -> Vec<(&'a str, Option<&'a str>)> {
+    let mut chain = listed_in(flavour);
+    chain.extend(crate::parse::image::segments(name));
+    chain
+}
+
 pub(crate) fn placed<'a>(
     flavour: Option<&'a str>,
     name: &'a str,
@@ -41,8 +50,7 @@ pub(crate) fn append(
     chain: &[(&str, Option<&str>)],
     leaf: &str,
 ) -> Result<(), String> {
-    let mut text =
-        std::fs::read_to_string(file).map_err(|err| format!("{}: {err}", file.display()))?;
+    let text = std::fs::read_to_string(file).map_err(|err| format!("{}: {err}", file.display()))?;
     let (kept, close) = (0..=chain.len())
         .rev()
         .find_map(|kept| {
@@ -50,7 +58,13 @@ pub(crate) fn append(
         })
         .ok_or_else(|| format!("{} declares no image `{image}`", file.display()))?;
     let declaration = wrap(&chain[kept..], leaf);
+    let out = inside(&text, close, &declaration);
+    std::fs::write(file, out).map_err(|err| format!("{}: {err}", file.display()))
+}
 
+/// `close` is the byte offset of a block's closing brace in `text`.
+pub(crate) fn inside(text: &str, close: usize, declaration: &str) -> String {
+    let mut out = text.to_string();
     let start = text[..close].rfind('\n').map_or(0, |at| at + 1);
     let indent = &text[start..close];
     let (at, line) = match indent.trim().is_empty() {
@@ -67,11 +81,11 @@ pub(crate) fn append(
                 true => " ",
                 false => "; ",
             };
-            (end, format!("{gap}{}", one_line(&declaration)))
+            (end, format!("{gap}{}", one_line(declaration)))
         }
     };
-    text.insert_str(at, &line);
-    std::fs::write(file, text).map_err(|err| format!("{}: {err}", file.display()))
+    out.insert_str(at, &line);
+    out
 }
 
 // KDL needs a semicolon between two nodes on one line.
@@ -97,8 +111,7 @@ pub(crate) fn unlisting(
     name: &str,
 ) -> Result<String, String> {
     let root = file.parent().unwrap_or(Path::new("."));
-    let mut chain = listed_in(flavour);
-    chain.extend(crate::parse::image::segments(name));
+    let chain = chain(flavour, name);
     crate::parse::image::unlisted(text, image, &chain, |path| {
         layout::is_component(&layout::component(root, path))
     })

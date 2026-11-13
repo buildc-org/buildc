@@ -104,6 +104,7 @@ fn flags(matches: &ArgMatches) -> Result<dispatch::Flags, Error> {
         rebuild: switch("rebuild"),
         dependencies: switch("dependencies"),
         untracked: switch("untracked"),
+        inline: switch("inline"),
     })
 }
 

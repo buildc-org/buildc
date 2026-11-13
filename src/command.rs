@@ -761,7 +761,7 @@ pub enum CreateWhat {
         #[arg(long, value_name = "name")]
         image: Vec<String>,
     },
-    /// write a component and offer to list it in an image
+    /// write a new component in components/ or inline in an image
     #[command(long_about = help::CREATE_COMPONENT, after_long_help = help::CREATE_COMPONENT_NOTES)]
     Component {
         /// the component name or path
@@ -776,6 +776,9 @@ pub enum CreateWhat {
         /// one more manifest line, such as `provides=browser`; repeatable
         #[arg(long, value_name = "verb=value")]
         with: Vec<String>,
+        /// write the component as a block in one image file
+        #[arg(long)]
+        inline: bool,
     },
     /// generate a key that a component declares
     #[command(long_about = help::CREATE_KEY, after_long_help = help::CREATE_KEY_NOTES)]

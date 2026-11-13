@@ -1076,9 +1076,58 @@ fn bootloader_options(offered: &[String]) -> Vec<Choice> {
 
 pub struct Component {
     path: String,
-    file: PathBuf,
-    text: String,
+    written: Written,
     listing: Listing,
+}
+
+enum Written {
+    Directory { file: PathBuf, text: String },
+    Inline { block: String },
+}
+
+fn inline_target(
+    list: &crate::model::image::List,
+    path: &str,
+    images: &mut Vec<String>,
+    prompt: &Prompt,
+) -> Result<Listing, String> {
+    let top = path.split('/').next().unwrap_or(path);
+    if crate::parse::image::is_keyword(top) {
+        return Err(format!(
+            "`{top}` means itself inside `image`; an inline component cannot start with `{top}`"
+        ));
+    }
+    if let Some(segment) = path
+        .split('/')
+        .find(|segment| crate::parse::image::is_manifest_node(segment))
+    {
+        return Err(format!(
+            "an inline component cannot hold the segment `{segment}` because an image file \
+             reads it as a manifest line; give `{path}` another name"
+        ));
+    }
+    if images.len() > 1 {
+        return Err(format!(
+            "an inline component belongs to one image and takes one `--image`; the command \
+             line names {}",
+            images.join(", ")
+        ));
+    }
+    match Listing::target_from(list, images.pop(), prompt)? {
+        Listing::NoImage => Err(
+            "there is no image to hold an inline component; `buildc create image <name>` writes one"
+                .to_string(),
+        ),
+        Listing::Declined { asked: true } => Err(
+            "an inline component lives in an image file and needs one; choose an image or \
+             flavour"
+                .to_string(),
+        ),
+        Listing::Declined { asked: false } | Listing::Cancelled => Err(
+            "an inline component lives in an image file; name the image with `--image`".to_string(),
+        ),
+        listing @ Listing::In(_) => Ok(listing),
+    }
 }
 
 impl Component {
@@ -1087,7 +1136,8 @@ impl Component {
         name: Option<String>,
         pkgs: Vec<String>,
         with: Vec<(String, String)>,
-        images: Vec<String>,
+        mut images: Vec<String>,
+        inline: bool,
         prompt: &Prompt,
     ) -> Result<Self, String> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
@@ -1098,9 +1148,34 @@ impl Component {
             .collect::<Result<Vec<_>, _>>()?
             .join("/");
         let file = layout::manifest(root, &path);
-        if file.exists() {
+        if file.exists() && !inline {
             return Err(format!("components/{path} is already there"));
         }
+        let defined = list.images.iter().find(|image| {
+            image
+                .entries
+                .iter()
+                .any(|entry| entry.path == path && entry.inline.is_some())
+        });
+        let inline_listing = match inline {
+            false => match defined {
+                Some(image) => {
+                    return Err(format!(
+                        "{} defines `{path}` inline; components/{path} would define it a \
+                         second time",
+                        image.src.name()
+                    ))
+                }
+                None => None,
+            },
+            true if layout::is_component(&layout::component(root, &path)) => {
+                return Err(format!(
+                    "components/{path} is already a component; an inline `{path}` would \
+                     define it a second time"
+                ))
+            }
+            true => Some(inline_target(&list, &path, &mut images, prompt)?),
+        };
 
         let description = match with.iter().any(|(verb, _)| verb == "description") {
             true => String::new(),
@@ -1135,13 +1210,47 @@ impl Component {
             false => pkgs,
         };
 
-        let text = component_kdl(&description, &targets, &pkgs, &with)?;
-        let listing = Listing::collect_from(&list, images, prompt)?;
+        let sections = manifest_sections(&description, &targets, &pkgs, &with)?;
+        let (written, listing) = match inline_listing {
+            Some(_) if sections.is_empty() => {
+                return Err(
+                    "an inline component needs a manifest line; give it a description, \
+                     packages or a `--with` line"
+                        .to_string(),
+                )
+            }
+            Some(listing) => {
+                let body: String = sections
+                    .join("\n")
+                    .lines()
+                    .map(|line| format!("    {line}\n"))
+                    .collect();
+                (
+                    Written::Inline {
+                        block: format!(" {{\n{body}}}"),
+                    },
+                    listing,
+                )
+            }
+            None => {
+                let mut text = vec![format!(
+                    "schema-version {}",
+                    crate::model::image::SCHEMA_VERSION
+                )];
+                text.extend(sections);
+                (
+                    Written::Directory {
+                        file,
+                        text: format!("{}\n", text.join("\n\n")),
+                    },
+                    Listing::collect_from(&list, images, prompt)?,
+                )
+            }
+        };
         listing.refuse_duplicate(&list, &path)?;
         Ok(Self {
             path,
-            file,
-            text,
+            written,
             listing,
         })
     }
@@ -1152,23 +1261,27 @@ impl Component {
         }
         self.listing.validate()?;
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
-        crate::init::put(&self.file, &self.text)?;
-        let mut wrote = vec![(under(root, &self.file), Change::Created)];
-        wrote.extend(self.listing.apply(&list, &self.path)?);
-        Ok(wrote)
+        match &self.written {
+            Written::Directory { file, text } => {
+                crate::init::put(file, text)?;
+                let mut wrote = vec![(under(root, file), Change::Created)];
+                wrote.extend(self.listing.apply(&list, &self.path)?);
+                Ok(wrote)
+            }
+            Written::Inline { block } => self
+                .listing
+                .apply_declaration(&list, &[(self.path.as_str(), block.as_str())]),
+        }
     }
 }
 
-fn component_kdl(
+fn manifest_sections(
     description: &str,
     targets: &[String],
     pkgs: &[String],
     with: &[(String, String)],
-) -> Result<String, String> {
-    let mut sections: Vec<String> = vec![format!(
-        "schema-version {}",
-        crate::model::image::SCHEMA_VERSION
-    )];
+) -> Result<Vec<String>, String> {
+    let mut sections: Vec<String> = Vec::new();
     if !description.is_empty() {
         sections.push(format!("description \"{}\"", quotable(description)?));
     }
@@ -1195,7 +1308,7 @@ fn component_kdl(
             .join(" ");
         sections.push(format!("packages {listed}"));
     }
-    Ok(format!("{}\n", sections.join("\n\n")))
+    Ok(sections)
 }
 
 fn quotable(value: &str) -> Result<&str, String> {
@@ -1845,10 +1958,7 @@ image "example" {
         assert!(!shared.contains("        version"), "{shared}");
         assert!(!shared.contains("layout"), "{shared}");
 
-        assert_eq!(
-            component_kdl("", &[], &[], &[]).unwrap(),
-            "schema-version 1\n"
-        );
+        assert!(manifest_sections("", &[], &[], &[]).unwrap().is_empty());
 
         let one = base("base-image/one", "example.invalid/one:1", None, &["grub2"]);
         let described = base(
@@ -2177,15 +2287,276 @@ image "example" {
     fn a_cancelled_listing_does_not_create_a_component() {
         let root =
             std::env::temp_dir().join(format!("buildc-cancel-component-{}", std::process::id()));
+        let file = root.join("components/hello/manifest.kdl");
         let component = Component {
             path: "hello".into(),
-            file: root.join("components/hello/manifest.kdl"),
-            text: "description \"hello\"\n".into(),
+            written: Written::Directory {
+                file: file.clone(),
+                text: "description \"hello\"\n".into(),
+            },
             listing: Listing::Cancelled,
         };
         assert!(component.apply(&root).unwrap().is_empty());
-        assert!(!component.file.exists());
+        assert!(!file.exists());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn inline_repo(case: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("buildc-inline-{case}-{}", std::process::id()));
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(
+            &root.join("image.kdl"),
+            "schema-version 1\n\nimage \"one\" {\n    kept\n}\n\nimage \"two\" { kept }\n",
+        )
+        .unwrap();
+        root
+    }
+
+    fn inline(
+        root: &Path,
+        name: &str,
+        pkgs: &[&str],
+        with: &[(&str, &str)],
+        images: &[&str],
+        prompt: &Prompt,
+    ) -> Result<(), String> {
+        Component::collect(
+            root,
+            Some(name.into()),
+            pkgs.iter().map(|pkg| (*pkg).to_string()).collect(),
+            with.iter()
+                .map(|(verb, value)| ((*verb).to_string(), (*value).to_string()))
+                .collect(),
+            images.iter().map(|image| (*image).to_string()).collect(),
+            true,
+            prompt,
+        )?
+        .apply(root)
+        .map(drop)
+    }
+
+    #[test]
+    fn the_inline_flag_lands_in_the_chosen_image() {
+        let root = inline_repo("asked");
+        // The script answers the image, the description, the families, the packages question and the package names in that order.
+        let prompt = Prompt::scripted(["1", "", "", "Yes", "firefox"].map(str::to_string).to_vec());
+        let wrote = Component::collect(
+            &root,
+            Some("apps".into()),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            true,
+            &prompt,
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        let directory = root.join("components/apps").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(wrote.len(), 1);
+        assert_eq!(
+            image,
+            "schema-version 1\n\nimage \"one\" {\n    kept\n    apps {\n        packages \"firefox\"\n    }\n}\n\nimage \"two\" { kept }\n"
+        );
+        assert!(!directory);
+    }
+
+    #[test]
+    fn an_inline_block_in_a_one_line_image_parts_its_children_with_semicolons() {
+        let root = inline_repo("one-line");
+        inline(
+            &root,
+            "tools",
+            &["htop"],
+            &[("description", "Tools")],
+            &["two"],
+            &Prompt::silent(),
+        )
+        .unwrap();
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            image.ends_with(
+                "image \"two\" { kept; tools { description \"Tools\"; packages \"htop\" } }\n"
+            ),
+            "{image}"
+        );
+    }
+
+    #[test]
+    fn an_inline_component_that_meets_a_directory_component_is_refused_naming_both() {
+        let root = inline_repo("clash");
+        crate::init::put(
+            &root.join("components/apps/manifest.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
+        let refused = inline(
+            &root,
+            "apps",
+            &["firefox"],
+            &[],
+            &["one"],
+            &Prompt::silent(),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.unwrap_err();
+        assert!(refused.contains("inline `apps`"), "{refused}");
+        assert!(refused.contains("components/apps"), "{refused}");
+    }
+
+    #[test]
+    fn an_inline_component_listed_in_two_images_is_refused() {
+        let root = inline_repo("two-images");
+        let refused = inline(
+            &root,
+            "apps",
+            &["firefox"],
+            &[],
+            &["one", "two"],
+            &Prompt::silent(),
+        );
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.unwrap_err().contains("one `--image`"));
+        assert!(!image.contains("apps"), "{image}");
+    }
+
+    #[test]
+    fn an_inline_path_holding_a_manifest_node_name_is_refused() {
+        let root = inline_repo("manifest-segment");
+        let refused = inline(
+            &root,
+            "tools/packages",
+            &["htop"],
+            &[],
+            &["one"],
+            &Prompt::silent(),
+        );
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.unwrap_err().contains("the segment `packages`"));
+        assert!(!image.contains("tools"), "{image}");
+    }
+
+    #[test]
+    fn an_inline_component_named_after_an_image_keyword_is_refused() {
+        let root = inline_repo("keyword-name");
+        let refused = inline(&root, "layout", &["htop"], &[], &["one"], &Prompt::silent());
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.unwrap_err().contains("`layout` means itself"));
+        assert!(!image.contains("layout"), "{image}");
+    }
+
+    #[test]
+    fn a_directory_component_that_an_image_defines_inline_is_refused_naming_both() {
+        let root = inline_repo("defined-inline");
+        inline(
+            &root,
+            "apps",
+            &["firefox"],
+            &[],
+            &["one"],
+            &Prompt::silent(),
+        )
+        .unwrap();
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            vec!["vim".into()],
+            Vec::new(),
+            Vec::new(),
+            false,
+            &Prompt::silent(),
+        );
+        let directory = root.join("components/apps").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the directory component is refused");
+        assert!(
+            refused.contains("image.kdl defines `apps` inline"),
+            "{refused}"
+        );
+        assert!(refused.contains("components/apps"), "{refused}");
+        assert!(!directory);
+    }
+
+    #[test]
+    fn a_directory_component_beside_another_inline_definition_is_written() {
+        let root = inline_repo("beside-inline");
+        inline(&root, "tools", &["htop"], &[], &["one"], &Prompt::silent()).unwrap();
+        Component::collect(
+            &root,
+            Some("apps".into()),
+            vec!["vim".into()],
+            Vec::new(),
+            Vec::new(),
+            false,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let written = root.join("components/apps/manifest.kdl").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(written);
+    }
+
+    #[test]
+    fn an_inline_component_lands_in_the_named_flavour() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-inline-flavour-{}", std::process::id()));
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(
+            &root.join("image.kdl"),
+            "schema-version 1\n\nimage \"one\" {\n    kept\n    flavours { dev; }\n}\n",
+        )
+        .unwrap();
+        inline(
+            &root,
+            "tools",
+            &["htop"],
+            &[],
+            &["one/dev"],
+            &Prompt::silent(),
+        )
+        .unwrap();
+        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            crate::parse::image::listings(&image, "tools"),
+            [Some("dev".to_string())],
+            "{image}"
+        );
+    }
+
+    #[test]
+    fn declining_the_image_of_an_inline_component_is_refused() {
+        let root = inline_repo("declined");
+        // The script picks the row after both images, which declines.
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            vec!["firefox".into()],
+            Vec::new(),
+            Vec::new(),
+            true,
+            &Prompt::scripted(["3"].map(str::to_string).to_vec()),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the declined image is refused");
+        assert!(refused.contains("an image file and needs one"), "{refused}");
+    }
+
+    #[test]
+    fn an_inline_component_with_no_manifest_line_is_refused() {
+        let root = inline_repo("empty");
+        let refused = inline(&root, "apps", &[], &[], &["one"], &Prompt::silent());
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.unwrap_err().contains("needs a manifest line"));
     }
 
     #[test]

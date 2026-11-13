@@ -41,7 +41,7 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create component [name]`](#buildc-create-component) | write a component and offer to list it in an image | [`manifest.kdl`](schema/component.md) |
+| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in an image | [`manifest.kdl`](schema/component.md) |
 | [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc set component [path]`](#buildc-set-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
@@ -392,13 +392,21 @@ image "example" {
 
 ## `buildc create component`
 
-Writes a new component to `components/<name>/manifest.kdl` and offers to list
-it in an image. The name can be a path, so `apps/firefox` writes
-`components/apps/firefox/manifest.kdl`.
+Writes a new component. A directory component is a manifest at
+`components/<name>/manifest.kdl`. The command offers to list it in images.
+`--inline` writes it as a block inside one image file instead, and the block
+defines the component and lists it in that image or flavour.
 
-It asks for the component name, an optional description, optional base family
-restrictions, whether it installs packages and their names, and the images and
-flavours that list it.
+The name can be a path. As a directory component, `apps/firefox` writes
+`components/apps/firefox/manifest.kdl`. As an inline component, it writes a
+`firefox` block inside an `apps` block.
+
+The command asks for the component name. For an inline component it then asks
+for the image or flavour that holds the block. For both kinds it asks for an
+optional description, optional base family restrictions and whether the
+component installs packages. If the component installs packages, then the
+command asks for the package names. For a directory component it then asks
+which images and flavours list the component.
 
 **Usage:** `buildc create component [OPTIONS] [name]`
 
@@ -411,6 +419,7 @@ flavours that list it.
 | `--image <name>` | an image that lists the component |
 | `--pkg <name>` | a package the component installs |
 | `--with <verb=value>` | one more manifest line, such as `provides=browser`; repeatable |
+| `--inline` | write the component as a block in one image file |
 
 **Schema:** [`manifest.kdl`](schema/component.md)
 
@@ -435,8 +444,23 @@ example/
 > An image and one of its own flavours cannot both list the component. The image
 > entry already reaches every flavour of that image.
 >
-> Choosing no image is valid. The component exists with no listing. Leaving the
-> picker writes nothing.
+> Choosing no image is valid for a directory component. The component then
+> exists with no listing. Leaving the picker writes nothing.
+>
+> An inline component belongs to one image or flavour. `--inline` therefore
+> takes one `--image`. If nothing can be asked, then an inline component needs
+> that `--image`. The command refuses an inline component when the user
+> chooses no image.
+>
+> An inline component needs at least one manifest line. A description, a
+> `targets` restriction, a package or a `--with` line each counts.
+>
+> One name cannot be a directory component and an inline component at once.
+> The command refuses an inline component when `components/<name>/` already
+> holds a component. It refuses a directory component when an image file
+> already defines the name inline.
+>
+> The command writes a directory component unless `--inline` is given.
 
 ## `buildc create key`
 

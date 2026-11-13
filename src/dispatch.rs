@@ -39,6 +39,7 @@ pub struct Flags {
     pub rebuild: bool,
     pub dependencies: bool,
     pub untracked: bool,
+    pub inline: bool,
 }
 
 fn one_name(rest: &[&str], name: &str) -> Result<Option<String>, Error> {
@@ -292,6 +293,7 @@ pub fn dispatch(
         rebuild,
         dependencies,
         untracked,
+        inline,
     } = flags;
     if *here == Context::Host && command::on_host(verb) {
         return on_host(
@@ -372,8 +374,9 @@ pub fn dispatch(
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            let wrote = crate::create::Component::collect(&root, name, pkgs, with, images, prompt)?
-                .apply(&root)?;
+            let wrote =
+                crate::create::Component::collect(&root, name, pkgs, with, images, inline, prompt)?
+                    .apply(&root)?;
             crate::report::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }

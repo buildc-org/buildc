@@ -67,11 +67,26 @@ pub(crate) fn append(
                 true => " ",
                 false => "; ",
             };
-            (end, format!("{gap}{}", declaration.replace('\n', " ")))
+            (end, format!("{gap}{}", one_line(&declaration)))
         }
     };
     text.insert_str(at, &line);
     std::fs::write(file, text).map_err(|err| format!("{}: {err}", file.display()))
+}
+
+// KDL needs a semicolon between two nodes on one line.
+fn one_line(declaration: &str) -> String {
+    let mut out = String::new();
+    for line in declaration.lines().map(str::trim) {
+        if !out.is_empty() {
+            out.push_str(match out.ends_with('{') || line.starts_with('}') {
+                true => " ",
+                false => "; ",
+            });
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 pub(crate) fn unlisting(

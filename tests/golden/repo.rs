@@ -142,6 +142,7 @@ fn create_into(name: &str, root: &Path) {
         vec!["nano".into()],
         vec![("provides".into(), "editor".into())],
         vec!["example".into(), "server".into()],
+        false,
         &silent,
     )
     .unwrap()
@@ -153,6 +154,7 @@ fn create_into(name: &str, root: &Path) {
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        false,
         &silent,
     )
     .unwrap()

@@ -204,7 +204,7 @@ pub fn is_keyword(name: &str) -> bool {
         .any(|node| !node.name.is_empty() && node.name == name)
 }
 
-fn is_manifest_node(name: &str) -> bool {
+pub(crate) fn is_manifest_node(name: &str) -> bool {
     crate::parse::component::COMPONENT
         .children
         .iter()

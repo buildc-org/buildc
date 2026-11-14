@@ -378,7 +378,7 @@ pub fn dispatch(
             crate::report::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }
-        Verb::AddPackages => {
+        Verb::AddPackage => {
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };

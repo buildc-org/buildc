@@ -456,7 +456,7 @@ fn flow_case(flow: &Flow) {
         "flow-create-component" | "flow-component-taken" | "flow-unanswered" => {
             setup_component(flow)
         }
-        "flow-add-packages" => setup_add_packages(flow),
+        "flow-add-package" => setup_add_package(flow),
         "flow-component-two-images" => setup_component_two_images(flow),
         "flow-create-flavour" => setup_create_flavour(flow),
         "flow-component-in-flavour" => setup_component_in_flavour(flow),
@@ -704,9 +704,9 @@ fn setup_component_two_images(flow: &Flow) {
     );
 }
 
-fn setup_add_packages(flow: &Flow) {
+fn setup_add_package(flow: &Flow) {
     let target = flow.target;
-    let root = flow.repo("flow-add-packages");
+    let root = flow.repo("flow-add-package");
     flow.buildc(
         &root,
         &[
@@ -732,7 +732,7 @@ fn setup_add_packages(flow: &Flow) {
             "--root",
             ".",
             "add",
-            "packages",
+            "package",
             "firefox",
             "wireguard-tools",
             "--component",
@@ -753,7 +753,7 @@ fn setup_add_packages(flow: &Flow) {
             "--root",
             ".",
             "add",
-            "packages",
+            "package",
             "htop",
             "--component",
             "apps",
@@ -768,7 +768,7 @@ fn setup_add_packages(flow: &Flow) {
             "--root",
             ".",
             "add",
-            "packages",
+            "package",
             "firefox",
             "--component",
             "apps",
@@ -801,7 +801,7 @@ fn setup_add_packages(flow: &Flow) {
             "--root",
             ".",
             "add",
-            "packages",
+            "package",
             "nano",
             "--component",
             "local-tools",
@@ -2067,7 +2067,7 @@ flow_cases! {
     flow_create_image => "flow-create-image",
     flow_create_component => "flow-create-component",
     flow_create_component_with_schema_issues => "flow-create-component-with-schema-issues",
-    flow_add_packages => "flow-add-packages",
+    flow_add_package => "flow-add-package",
     flow_create_repo => "flow-create-repo",
     flow_create_repo_forgejo => "flow-create-repo-forgejo",
     flow_create_repo_no_gh => "flow-create-repo-no-gh",

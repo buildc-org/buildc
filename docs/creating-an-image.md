@@ -589,16 +589,16 @@ buildc create component browser --image workstation-2
 This creates the same empty `browser` component without asking you
 anything.
 
-Now give it a package. `buildc add packages` is the one command that puts
+Now give it a package. `buildc add package` is the one command that puts
 packages on a component, whether that component lives in its own
 `components/browser/` directory or as a block declared inline inside an
 image file:
 
 ```sh
-buildc add packages firefox --component browser
+buildc add package firefox --component browser
 ```
 
-Run `buildc add packages` again whenever you want to add more names later.
+Run `buildc add package` again whenever you want to add more names later.
 It only adds the names the component does not already list. It is safe to
 repeat on a component you have already added packages to.
 
@@ -619,7 +619,7 @@ it fails and names the flag you were missing.
   component. Prompted for if left out.
 - **`--no-tui`**: fail instead of prompting, naming the missing argument.
 
-#### `buildc add packages` arguments
+#### `buildc add package` arguments
 
 - **names** (positional, one or more): the package names to add.
 - **`--component <path>`**: the component to add them to. Leave it out to

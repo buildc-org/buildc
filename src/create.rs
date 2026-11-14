@@ -1157,7 +1157,7 @@ impl Component {
         if with.iter().any(|(verb, _)| verb == "packages") {
             return Err(format!(
                 "`--with packages=...` writes no package list; create `{path}` without it and \
-                 run `buildc add packages <names...> --component {path}` after"
+                 run `buildc add package <names...> --component {path}` after"
             ));
         }
         let defined = list.images.iter().find(|image| {
@@ -2555,7 +2555,7 @@ image "example" {
         );
         std::fs::remove_dir_all(&root).unwrap();
         let refused = refused.err().expect("the packages line is refused");
-        assert!(refused.contains("buildc add packages"), "{refused}");
+        assert!(refused.contains("buildc add package"), "{refused}");
     }
 
     #[test]

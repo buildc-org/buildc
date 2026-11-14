@@ -206,8 +206,8 @@ const WRITTEN: &[Written] = &[
         file: None,
     },
     Written {
-        words: "add packages",
-        flow: "flow-add-packages",
+        words: "add package",
+        flow: "flow-add-package",
         file: None,
     },
     Written {

@@ -133,7 +133,7 @@ The command asks for the component name. For an inline component it then asks
 for the image or flavour that holds the block. For both kinds it asks for an
 optional description and optional base family restrictions. For a directory
 component it then asks which images and flavours list the component. The
-command writes no packages. `buildc add packages` adds them once the
+command writes no packages. `buildc add package` adds them once the
 component exists."#;
 
 pub(super) const CREATE_COMPONENT_NOTES: &str = r#"> [!NOTE]
@@ -156,12 +156,12 @@ pub(super) const CREATE_COMPONENT_NOTES: &str = r#"> [!NOTE]
 > holds a component. It refuses a directory component when an image file
 > already defines the name inline.
 >
-> `--with packages=...` is refused. `buildc add packages <names...> --component
+> `--with packages=...` is refused. `buildc add package <names...> --component
 > <name>` adds the packages after the component exists.
 >
 > The command writes a directory component unless `--inline` is given."#;
 
-pub(super) const ADD_PACKAGES: &str = r#"Adds package names to a component that already exists. The component is a
+pub(super) const ADD_PACKAGE: &str = r#"Adds package names to a component that already exists. The component is a
 directory under `components/` or a block inside an image file.
 
 The names are arguments and the command asks for them when none is given.
@@ -184,7 +184,7 @@ holds its names in a block, then each new name goes on its own line inside
 the block. A repeat call writes only the names the component does not list
 yet."#;
 
-pub(super) const ADD_PACKAGES_NOTES: &str = r#"> [!NOTE]
+pub(super) const ADD_PACKAGE_NOTES: &str = r#"> [!NOTE]
 > A name inside a family-gated `on` block counts as listed. The command does
 > not add it again at the top level.
 >

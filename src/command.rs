@@ -16,7 +16,7 @@ pub enum Verb {
     CreateModule,
     CreateKey,
     CreateScripts,
-    AddPackages,
+    AddPackage,
     ImportModule,
     SetWorkflows,
     SetLibrary,
@@ -66,7 +66,7 @@ impl Verb {
                 "image-flavours",
             )),
             Self::CreateModule => Some(("`manifest.kdl`", Area::Component, "")),
-            Self::AddPackages => Some((
+            Self::AddPackage => Some((
                 "`manifest.kdl`&nbsp;›&nbsp;`packages`",
                 Area::Component,
                 "packages",
@@ -144,7 +144,7 @@ pub const ALL: &[Verb] = &[
     Verb::CreateModule,
     Verb::CreateKey,
     Verb::CreateScripts,
-    Verb::AddPackages,
+    Verb::AddPackage,
     Verb::ImportModule,
     Verb::SetWorkflows,
     Verb::SetLibrary,
@@ -296,8 +296,8 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Topic::Repository,
     ),
     (
-        "add packages",
-        Verb::AddPackages,
+        "add package",
+        Verb::AddPackage,
         Family::Repo,
         false,
         Topic::Components,
@@ -822,10 +822,10 @@ pub enum CreateWhat {
 pub enum AddWhat {
     /// add package names to a component that already exists
     #[command(
-        long_about = help::ADD_PACKAGES,
-        after_long_help = help::ADD_PACKAGES_NOTES
+        long_about = help::ADD_PACKAGE,
+        after_long_help = help::ADD_PACKAGE_NOTES
     )]
-    Packages {
+    Package {
         /// the package names to add; asked for when none is given
         #[arg(value_name = "name")]
         names: Vec<String>,
@@ -1516,7 +1516,7 @@ impl Verb {
             | Self::CreateModule
             | Self::CreateKey
             | Self::CreateScripts
-            | Self::AddPackages
+            | Self::AddPackage
             | Self::ImportModule
             | Self::SetWorkflows
             | Self::SetLibrary

@@ -42,7 +42,7 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | Command | Description | Schema |
 | --- | --- | --- |
 | [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in an image | [`manifest.kdl`](schema/component.md) |
-| [`buildc add packages [name]...`](#buildc-add-packages) | add package names to a component that already exists | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
+| [`buildc add package [name]...`](#buildc-add-package) | add package names to a component that already exists | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
 | [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc set component [path]`](#buildc-set-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
@@ -406,7 +406,7 @@ The command asks for the component name. For an inline component it then asks
 for the image or flavour that holds the block. For both kinds it asks for an
 optional description and optional base family restrictions. For a directory
 component it then asks which images and flavours list the component. The
-command writes no packages. `buildc add packages` adds them once the
+command writes no packages. `buildc add package` adds them once the
 component exists.
 
 **Usage:** `buildc create component [OPTIONS] [name]`
@@ -453,7 +453,7 @@ example/
 > holds a component. It refuses a directory component when an image file
 > already defines the name inline.
 >
-> `--with packages=...` is refused. `buildc add packages <names...> --component
+> `--with packages=...` is refused. `buildc add package <names...> --component
 > <name>` adds the packages after the component exists.
 >
 > The command writes a directory component unless `--inline` is given.
@@ -546,7 +546,7 @@ does not hold yet.
 >
 > `buildc create repo` asks the same question, with the skeleton chosen.
 
-## `buildc add packages`
+## `buildc add package`
 
 Adds package names to a component that already exists. The component is a
 directory under `components/` or a block inside an image file.
@@ -571,7 +571,7 @@ holds its names in a block, then each new name goes on its own line inside
 the block. A repeat call writes only the names the component does not list
 yet.
 
-**Usage:** `buildc add packages [OPTIONS] [name]...`
+**Usage:** `buildc add package [OPTIONS] [name]...`
 
 | Argument | Description |
 | --- | --- |

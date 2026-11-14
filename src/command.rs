@@ -16,6 +16,7 @@ pub enum Verb {
     CreateModule,
     CreateKey,
     CreateScripts,
+    AddPackage,
     ImportModule,
     SetWorkflows,
     SetLibrary,
@@ -65,6 +66,11 @@ impl Verb {
                 "image-flavours",
             )),
             Self::CreateModule => Some(("`manifest.kdl`", Area::Component, "")),
+            Self::AddPackage => Some((
+                "`manifest.kdl`&nbsp;›&nbsp;`packages`",
+                Area::Component,
+                "packages",
+            )),
             Self::CreateKey | Self::SetKey => {
                 Some(("`manifest.kdl`&nbsp;›&nbsp;`key`", Area::Component, "key"))
             }
@@ -138,6 +144,7 @@ pub const ALL: &[Verb] = &[
     Verb::CreateModule,
     Verb::CreateKey,
     Verb::CreateScripts,
+    Verb::AddPackage,
     Verb::ImportModule,
     Verb::SetWorkflows,
     Verb::SetLibrary,
@@ -287,6 +294,13 @@ const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
         Family::Repo,
         false,
         Topic::Repository,
+    ),
+    (
+        "add package",
+        Verb::AddPackage,
+        Family::Repo,
+        false,
+        Topic::Components,
     ),
     (
         "import component",
@@ -501,6 +515,11 @@ pub enum Surface {
     Create {
         #[command(subcommand)]
         what: Option<CreateWhat>,
+    },
+    /// add to a component that already exists
+    Add {
+        #[command(subcommand)]
+        what: Option<AddWhat>,
     },
     /// copy a component from a declared library into the repository
     Import {
@@ -761,7 +780,7 @@ pub enum CreateWhat {
         #[arg(long, value_name = "name")]
         image: Vec<String>,
     },
-    /// write a component and offer to list it in an image
+    /// write a new component in components/ or inline in an image
     #[command(long_about = help::CREATE_COMPONENT, after_long_help = help::CREATE_COMPONENT_NOTES)]
     Component {
         /// the component name or path
@@ -770,12 +789,12 @@ pub enum CreateWhat {
         /// an image that lists the component
         #[arg(long, value_name = "name")]
         image: Vec<String>,
-        /// a package the component installs
-        #[arg(long, value_name = "name")]
-        pkg: Vec<String>,
         /// one more manifest line, such as `provides=browser`; repeatable
         #[arg(long, value_name = "verb=value")]
         with: Vec<String>,
+        /// write the component as a block in one image file
+        #[arg(long)]
+        inline: bool,
     },
     /// generate a key that a component declares
     #[command(long_about = help::CREATE_KEY, after_long_help = help::CREATE_KEY_NOTES)]
@@ -796,6 +815,26 @@ pub enum CreateWhat {
         /// the scripts to keep
         #[arg(value_name = "name")]
         names: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AddWhat {
+    /// add package names to a component that already exists
+    #[command(
+        long_about = help::ADD_PACKAGE,
+        after_long_help = help::ADD_PACKAGE_NOTES
+    )]
+    Package {
+        /// the package names to add; asked for when none is given
+        #[arg(value_name = "name")]
+        names: Vec<String>,
+        /// the path of the component that receives the names; asked with a picker when absent
+        #[arg(long, value_name = "path")]
+        component: Option<String>,
+        /// the image, or `<image>/<flavour>`, that holds the inline component; needed only when the path is inline in more than one image or flavour
+        #[arg(long, value_name = "name")]
+        image: Option<String>,
     },
 }
 
@@ -1477,6 +1516,7 @@ impl Verb {
             | Self::CreateModule
             | Self::CreateKey
             | Self::CreateScripts
+            | Self::AddPackage
             | Self::ImportModule
             | Self::SetWorkflows
             | Self::SetLibrary

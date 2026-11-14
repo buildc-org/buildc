@@ -41,7 +41,8 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create component [name]`](#buildc-create-component) | write a component and offer to list it in an image | [`manifest.kdl`](schema/component.md) |
+| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in an image | [`manifest.kdl`](schema/component.md) |
+| [`buildc add package [name]...`](#buildc-add-package) | add package names to a component that already exists | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
 | [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc set component [path]`](#buildc-set-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
@@ -392,13 +393,21 @@ image "example" {
 
 ## `buildc create component`
 
-Writes a new component to `components/<name>/manifest.kdl` and offers to list
-it in an image. The name can be a path, so `apps/firefox` writes
-`components/apps/firefox/manifest.kdl`.
+Writes a new component. A directory component is a manifest at
+`components/<name>/manifest.kdl`. The command offers to list it in images.
+`--inline` writes it as a block inside one image file instead, and the block
+defines the component and lists it in that image or flavour.
 
-It asks for the component name, an optional description, optional base family
-restrictions, whether it installs packages and their names, and the images and
-flavours that list it.
+The name can be a path. As a directory component, `apps/firefox` writes
+`components/apps/firefox/manifest.kdl`. As an inline component, it writes a
+`firefox` block inside an `apps` block.
+
+The command asks for the component name. For an inline component it then asks
+for the image or flavour that holds the block. For both kinds it asks for an
+optional description and optional base family restrictions. For a directory
+component it then asks which images and flavours list the component. The
+command writes no packages. `buildc add package` adds them once the
+component exists.
 
 **Usage:** `buildc create component [OPTIONS] [name]`
 
@@ -409,8 +418,8 @@ flavours that list it.
 | Option | Description |
 | --- | --- |
 | `--image <name>` | an image that lists the component |
-| `--pkg <name>` | a package the component installs |
 | `--with <verb=value>` | one more manifest line, such as `provides=browser`; repeatable |
+| `--inline` | write the component as a block in one image file |
 
 **Schema:** [`manifest.kdl`](schema/component.md)
 
@@ -425,18 +434,29 @@ example/
 ```
 
 > [!NOTE]
-> With no `targets` declaration, a component targets every base family. It
-> writes packages outside a family gate so every targeted family installs
-> them. A package name that differs by family goes in a `family` block.
-> The build installs them through the family adapter, with `dnf install -y` on
-> Fedora and RHEL, and with `apt-get update`, `apt-get install -y` and
-> `apt-get clean` on Debian and Ubuntu.
->
 > An image and one of its own flavours cannot both list the component. The image
 > entry already reaches every flavour of that image.
 >
-> Choosing no image is valid. The component exists with no listing. Leaving the
-> picker writes nothing.
+> Choosing no image is valid for a directory component. The component then
+> exists with no listing. Leaving the picker writes nothing.
+>
+> An inline component belongs to one image or flavour. `--inline` therefore
+> takes one `--image`. If nothing can be asked, then an inline component needs
+> that `--image`. The command refuses an inline component when the user
+> chooses no image.
+>
+> An inline component needs at least one manifest line. A description, a
+> `targets` restriction or a `--with` line each counts.
+>
+> One name cannot be a directory component and an inline component at once.
+> The command refuses an inline component when `components/<name>/` already
+> holds a component. It refuses a directory component when an image file
+> already defines the name inline.
+>
+> `--with packages=...` is refused. `buildc add package <names...> --component
+> <name>` adds the packages after the component exists.
+>
+> The command writes a directory component unless `--inline` is given.
 
 ## `buildc create key`
 
@@ -525,6 +545,79 @@ does not hold yet.
 > supplies.
 >
 > `buildc create repo` asks the same question, with the skeleton chosen.
+
+## `buildc add package`
+
+Adds package names to a component that already exists. The component is a
+directory under `components/` or a block inside an image file.
+
+The names are arguments and the command asks for them when none is given.
+`--component` takes the component's path, such as `apps` or `apps/firefox`.
+Without it the command asks with a picker of the components this repository
+holds. If the repository holds one component, then the command takes it
+without asking. If no terminal is watching, then the command refuses and names
+`--component`.
+
+`--image` names the image that holds an inline component, or the flavour as
+`<image>/<flavour>`. It is needed only when the same path is inline in more
+than one image or flavour. If `--image` is left out for such a path, then the
+command asks with a picker of those places.
+
+A component with no `packages` node gains one. A component directory that
+holds only scripts gains a `manifest.kdl`. Otherwise the names join the first
+top-level `packages` node in the shape it already uses. If the node lists its
+names on one line, then the new names go after its last name. If the node
+holds its names in a block, then each new name goes on its own line inside
+the block. A repeat call writes only the names the component does not list
+yet.
+
+**Usage:** `buildc add package [OPTIONS] [name]...`
+
+| Argument | Description |
+| --- | --- |
+| `<name>` | the package names to add; asked for when none is given |
+
+| Option | Description |
+| --- | --- |
+| `--component <path>` | the path of the component that receives the names; asked with a picker when absent |
+| `--image <name>` | the image, or `<image>/<flavour>`, that holds the inline component; needed only when the path is inline in more than one image or flavour |
+
+**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages)
+
+**What it writes:**
+
+```text
+example/
+└── ~ example.image.kdl  firefox and wireguard-tools added to `packages`
+```
+
+> [!NOTE]
+> A name inside a family-gated `on` block counts as listed. The command does
+> not add it again at the top level.
+>
+> The command writes each name outside any `on` gate. Every base family that
+> the component targets then installs it. A name that differs by family
+> belongs in an `on` block. The user writes that block in the manifest or
+> image file.
+>
+> If the `packages` node carries `enablerepo=`, then the new names install with
+> that repository enabled too.
+>
+> A name takes letters, digits and `. _ + : -`, with at most one `=` before a
+> version. An option reference such as `firefox={version}` is accepted in place
+> of literal text. The rule holds because the build writes the name straight
+> into its RUN line. A name that breaks the rule is refused before anything is
+> written. An install that needs other characters belongs in `component.sh`.
+>
+> A directory component that tracks its library is refused because an edit
+> would no longer match its lock entry. Run `buildc set component <path>
+> --untracked` first to end the tracking.
+>
+> A path that is both a directory component and an inline component is
+> refused the same way `buildc check` refuses it.
+>
+> `buildc create component` writes no packages. Run this command after it, or
+> write the `packages` line in the manifest or image file by hand.
 
 ## `buildc import component`
 

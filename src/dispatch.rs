@@ -32,13 +32,13 @@ pub struct Flags {
     pub backend: Option<String>,
     pub oci_output: Option<String>,
     pub secrets: Vec<String>,
-    pub pkgs: Vec<String>,
     pub with: Vec<(String, String)>,
     pub cache_to: bool,
     pub no_cache_from: bool,
     pub rebuild: bool,
     pub dependencies: bool,
     pub untracked: bool,
+    pub inline: bool,
 }
 
 fn one_name(rest: &[&str], name: &str) -> Result<Option<String>, Error> {
@@ -285,13 +285,13 @@ pub fn dispatch(
         backend,
         oci_output,
         secrets,
-        pkgs,
         with,
         cache_to,
         no_cache_from,
         rebuild,
         dependencies,
         untracked,
+        inline,
     } = flags;
     if *here == Context::Host && command::on_host(verb) {
         return on_host(
@@ -372,8 +372,24 @@ pub fn dispatch(
             let Some(root) = open(here)? else {
                 return Ok(ExitCode::from(REPO_ERROR));
             };
-            let wrote = crate::create::Component::collect(&root, name, pkgs, with, images, prompt)?
-                .apply(&root)?;
+            let wrote =
+                crate::create::Component::collect(&root, name, with, images, inline, prompt)?
+                    .apply(&root)?;
+            crate::report::report(&root, &wrote);
+            Ok(ExitCode::SUCCESS)
+        }
+        Verb::AddPackage => {
+            let Some(root) = open(here)? else {
+                return Ok(ExitCode::from(REPO_ERROR));
+            };
+            let names: Vec<String> = rest.iter().map(|name| (*name).to_string()).collect();
+            let image = images.into_iter().next();
+            let Some(packages) =
+                crate::add::Packages::collect(&root, names, component_arg, image, prompt)?
+            else {
+                return Ok(ExitCode::SUCCESS);
+            };
+            let wrote = packages.apply(&root)?;
             crate::report::report(&root, &wrote);
             Ok(ExitCode::SUCCESS)
         }

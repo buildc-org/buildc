@@ -123,6 +123,14 @@ impl Listing {
 
     pub fn target(root: &Path, given: Option<String>, prompt: &Prompt) -> Result<Self, String> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
+        Self::target_from(&list, given.as_deref(), prompt)
+    }
+
+    pub(crate) fn target_from(
+        list: &crate::model::image::List,
+        given: Option<&str>,
+        prompt: &Prompt,
+    ) -> Result<Self, String> {
         if list.images.is_empty() {
             return Ok(Self::NoImage);
         }
@@ -148,7 +156,7 @@ impl Listing {
                 }
             }
         };
-        Ok(Self::In(vec![Listed::of(&list, &targets[at])]))
+        Ok(Self::In(vec![Listed::of(list, &targets[at])]))
     }
 
     pub(crate) fn collect_from(

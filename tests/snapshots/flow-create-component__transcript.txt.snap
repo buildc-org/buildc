@@ -1,5 +1,5 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
@@ -8,11 +8,6 @@ component name: My Editor
 description (optional) []: A graphical editor
 
 supported base families, separated by spaces (optional) []: fedora
-
-Does this component install packages? (Yes/No)
-yes
-
-package names, separated by spaces []: nano vim
 
 List it in example? (Yes/No)
 Yes

@@ -169,8 +169,7 @@ fn notes_follow_their_node_before_the_nodes_inside_it() {
         area: Area::Repo,
         at: "",
     };
-    let mut out = String::new();
-    section(&s, 1, &mut out);
+    let out = section(&s, 1);
     let block = out.find("The block note.\n").expect("the block note");
     let leaf = out
         .find("## `leaf` (optional, repeatable)\n\nA leaf.\n")

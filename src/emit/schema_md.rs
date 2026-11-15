@@ -256,7 +256,14 @@ fn example(node: &Node) -> String {
 fn opener(node: &Node) -> String {
     match node.arg {
         Arg::Names => node.name.to_string(),
-        _ => example(node),
+        Arg::None
+        | Arg::Str
+        | Arg::Bool
+        | Arg::Int
+        | Arg::Strs
+        | Arg::StrPair(..)
+        | Arg::One(..)
+        | Arg::MaybeOne(..) => example(node),
     }
 }
 

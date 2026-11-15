@@ -15,7 +15,7 @@ pub fn path(image: &Image) -> PathBuf {
 }
 
 pub fn hooks<'a>(image: &'a Image, root: &Path) -> Vec<(&'a Entry, Vec<String>)> {
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     image
         .entries
         .iter()

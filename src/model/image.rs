@@ -85,6 +85,20 @@ pub struct Image {
 }
 
 impl Base {
+    pub fn image_requirements<'a>(
+        &'a self,
+        components: impl IntoIterator<Item = &'a Component> + 'a,
+    ) -> impl Iterator<Item = (Option<&'a Component>, &'a Requirement)> + 'a {
+        let own = self.requires.iter().map(|requirement| (None, requirement));
+        let components = components.into_iter().flat_map(|component| {
+            component
+                .requires
+                .iter()
+                .map(move |requirement| (Some(component), requirement))
+        });
+        own.chain(components)
+    }
+
     pub fn shipped(&self) -> impl Iterator<Item = &Capability> {
         self.provides
             .iter()
@@ -278,6 +292,10 @@ impl Network {
 }
 
 impl Image {
+    pub fn family(&self) -> &str {
+        self.base.as_ref().map_or("", |base| base.family.as_str())
+    }
+
     pub fn components(&self) -> impl Iterator<Item = &Component> {
         self.entries.iter().filter_map(|e| e.component.as_ref())
     }

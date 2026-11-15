@@ -202,7 +202,7 @@ pub fn check_network(
              script step for"
         }
     };
-    let base_family = image.base.as_ref().map_or("", |b| b.family.as_str());
+    let base_family = image.family();
     use crate::diag::Issue;
     for entry in &image.entries {
         let Some(component) = entry.component.as_ref() else {

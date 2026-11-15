@@ -53,7 +53,7 @@ pub fn resolve_collects(
     out.destinations.sort();
     out.destinations.dedup();
 
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     for component in image.components() {
         let dir = layout::component(root, &component.dir);
         for (file, collector) in &disk.collectors {

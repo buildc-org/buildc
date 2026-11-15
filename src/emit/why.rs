@@ -142,7 +142,7 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
     }
 
     for image in &list.images {
-        let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+        let family = image.family();
         let mut listed = false;
         for entry in &image.entries {
             if entry.path != path {

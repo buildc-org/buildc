@@ -1007,7 +1007,7 @@ fn owed<'a>(
     if image_has(image, flavour, want, index) {
         return Vec::new();
     }
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     let fits = index.fitting(want, family);
     let here: Vec<&crate::provider::Provider> =
         fits.iter().copied().filter(|held| held.here).collect();

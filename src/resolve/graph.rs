@@ -1,5 +1,5 @@
-use crate::diag::{Issue, Issues, Source};
-use crate::model::component::{Capability, Component, Position, Requirement};
+use crate::diag::{Issue, Issues};
+use crate::model::component::{Capability, Component, Position};
 use crate::model::image::{Entry, Image};
 use crate::model::version::Version;
 use crate::provider::Index;
@@ -37,7 +37,10 @@ fn same_key(capability: &str, providers: &[&Component]) -> bool {
     let Some(kind) = capability.strip_suffix("-key") else {
         return false;
     };
-    let Some(first) = providers[0].keys.iter().find(|key| key.kind == kind) else {
+    let [provider, ..] = providers else {
+        return false;
+    };
+    let Some(first) = provider.keys.iter().find(|key| key.kind == kind) else {
         return false;
     };
     providers.iter().all(|component| {
@@ -68,7 +71,7 @@ fn nowhere(index: &Index, capability: &str, image: &Image) -> String {
 }
 
 fn satisfied_by(index: &Index, image: &Image, name: &str) -> String {
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     let fits = index.fitting(name, family);
     let named = |candidates: &[&crate::provider::Provider]| -> Vec<String> {
         candidates
@@ -519,17 +522,10 @@ fn check_versions(image: &Image, issues: &mut Issues) {
     };
     // A digest pins the base and the recorded version belongs to that digest. A moving base resolves to a new digest on each build. Its recorded version is not trusted.
     let pinned = base.image.contains('@');
-    let mut requirements: Vec<(&str, &Source, &Requirement)> = Vec::new();
-    for requirement in &base.requires {
-        requirements.push((&base.image, &base.src, requirement));
-    }
-    for component in image.components() {
-        for requirement in &component.requires {
-            requirements.push((&component.path, &component.src, requirement));
-        }
-    }
-
-    for (owner, src, requirement) in requirements {
+    for (component, requirement) in base.image_requirements(image.components()) {
+        let (owner, src) = component.map_or((&base.image, &base.src), |component| {
+            (&component.path, &component.src)
+        });
         let Some(min) = &requirement.min else {
             continue;
         };

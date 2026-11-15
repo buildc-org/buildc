@@ -25,7 +25,7 @@ pub fn dir(image: &Image, path: &str) -> PathBuf {
 }
 
 pub fn of(image: &Image, collection: &Collection, root: &Path) -> Content {
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut content = Content {
         copies: Vec::new(),

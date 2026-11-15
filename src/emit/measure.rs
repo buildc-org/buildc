@@ -2,10 +2,6 @@ use crate::model::component::{Component, Requirement};
 use crate::model::image::Image;
 use std::collections::BTreeSet;
 
-fn family(image: &Image) -> &str {
-    image.base.as_ref().map_or("", |base| base.family.as_str())
-}
-
 // The callers pass a `BTreeSet` to keep the emitted lines unique and sorted. An unchanged repository writes the same Containerfile.
 fn join(entries: BTreeSet<String>) -> String {
     entries.into_iter().collect::<Vec<String>>().join(" ")
@@ -20,26 +16,29 @@ fn base_provides(image: &Image) -> BTreeSet<String> {
         .collect()
 }
 
+fn packaged<'a>(
+    components: impl Iterator<Item = &'a Component>,
+) -> impl Iterator<Item = (&'a Component, &'a str, &'a str)> {
+    components.flat_map(|component| {
+        component.provides.iter().filter_map(move |decl| {
+            let package = decl.package.as_deref()?;
+            (!component.builds_only(&decl.name)).then_some((component, decl.name.as_str(), package))
+        })
+    })
+}
+
 fn component_provides(image: &Image) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for component in image.components() {
-        for decl in &component.provides {
-            let Some(package) = decl.package.as_deref() else {
-                continue;
-            };
-            if component.builds_only(&decl.name) {
-                continue;
-            }
-            out.insert(format!(
+    packaged(image.components())
+        .map(|(component, name, package)| {
+            format!(
                 "{}|{}|{}|{}",
                 component.path,
-                decl.name,
+                name,
                 package,
                 component.flavour.as_deref().unwrap_or_default()
-            ));
-        }
-    }
-    out
+            )
+        })
+        .collect()
 }
 
 fn floors(image: &Image) -> BTreeSet<String> {
@@ -63,12 +62,10 @@ fn floors(image: &Image) -> BTreeSet<String> {
             owner
         ));
     };
-    for requirement in &base.requires {
-        add(requirement, None, &base.image);
-    }
-    for component in image.components() {
-        for requirement in &component.requires {
-            add(requirement, component.flavour.as_deref(), &component.path);
+    for (component, requirement) in base.image_requirements(image.components()) {
+        match component {
+            None => add(requirement, None, &base.image),
+            Some(component) => add(requirement, component.flavour.as_deref(), &component.path),
         }
     }
     out
@@ -85,7 +82,7 @@ pub fn early(image: &Image) -> String {
          RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
          FAMILY={family} FLAVOUR=\"${{FLAVOUR:-}}\" PROVIDES=\"{provides}\" FLOORS=\"{floors}\" \\\n    \
          bash /ctx/lib/measure-base.sh\n\n",
-        family = family(image),
+        family = image.family(),
     )
 }
 
@@ -103,24 +100,16 @@ pub fn record(image: &Image, reset: bool) -> String {
          RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
          FAMILY={family} FLAVOUR=\"${{FLAVOUR:-}}\" MEASURED=\"{measured}\" {reset}\\\n    \
          bash /ctx/lib/measure-image.sh\n\n",
-        family = family(image),
+        family = image.family(),
     )
 }
 
 pub fn versioned(components: &[&Component]) -> Vec<String> {
-    let mut out = BTreeSet::new();
-    for component in components {
-        for decl in &component.provides {
-            let Some(package) = decl.package.as_deref() else {
-                continue;
-            };
-            if component.builds_only(&decl.name) {
-                continue;
-            }
-            out.insert(format!("{}|{}|{}", component.path, decl.name, package));
-        }
-    }
-    out.into_iter().collect()
+    packaged(components.iter().copied())
+        .map(|(component, name, package)| format!("{}|{}|{}", component.path, name, package))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub fn provided<'a>(components: &'a [&'a Component]) -> BTreeSet<&'a str> {
@@ -156,13 +145,11 @@ pub fn required(
         out.insert(format!("{}|{}|{}", requirement.name, min, owner));
     };
     if let Some(base) = &image.base {
-        for requirement in &base.requires {
-            add(requirement, &base.image);
-        }
-    }
-    for component in components {
-        for requirement in &component.requires {
-            add(requirement, &component.path);
+        for (component, requirement) in base.image_requirements(components.iter().copied()) {
+            add(
+                requirement,
+                component.map_or(&base.image, |component| &component.path),
+            );
         }
     }
     out.into_iter().collect()

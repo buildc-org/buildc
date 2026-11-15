@@ -4,7 +4,6 @@ use crate::copy;
 use crate::emit::Part;
 use crate::error::Error;
 use crate::Command;
-
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -74,7 +73,19 @@ fn formatted(command: Command, format: Option<&str>) -> Result<Command, Error> {
         (Command::Graph | Command::Why | Command::Coverage, Some(other)) => Err(Error::Invocation(
             format!("`--format` is md or json, not `{other}`"),
         )),
-        (command, _) => Ok(command),
+        (
+            command @ (Command::Plan
+            | Command::Check
+            | Command::Generate
+            | Command::Verify
+            | Command::Section
+            | Command::GraphJson
+            | Command::Summary
+            | Command::Sbom
+            | Command::WhyJson
+            | Command::CoverageJson),
+            _,
+        ) => Ok(command),
     }
 }
 

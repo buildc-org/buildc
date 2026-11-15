@@ -77,10 +77,8 @@ pub(super) fn workflows(call: Call) -> Result<ExitCode, Error> {
         rest,
         prompt,
         here,
-        flags,
         ..
     } = call;
-    let Flags { .. } = flags;
     if let [word, ..] = rest {
         return Err(Error::Invocation(format!("`{name}` does not take {word}")));
     }
@@ -113,13 +111,7 @@ pub(super) fn workflows(call: Call) -> Result<ExitCode, Error> {
 }
 
 pub(super) fn library(call: Call) -> Result<ExitCode, Error> {
-    let Call {
-        prompt,
-        here,
-        flags,
-        ..
-    } = call;
-    let Flags { .. } = flags;
+    let Call { prompt, here, .. } = call;
     let kind = crate::model::remote::Kind::Components;
     let Some(root) = open(here)? else {
         return Ok(ExitCode::from(REPO_ERROR));

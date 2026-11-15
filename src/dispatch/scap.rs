@@ -1,4 +1,4 @@
-use super::{repo_root, Call, Flags, REPO_ERROR};
+use super::{repo_root, Call, Flags};
 use crate::error::Error;
 use std::path::Path;
 use std::process::ExitCode;
@@ -6,12 +6,7 @@ use std::process::ExitCode;
 pub(super) fn content(call: Call) -> Result<ExitCode, Error> {
     let Call { here, flags, .. } = call;
     let Flags { target, .. } = flags;
-    Ok(
-        match crate::scap::content(&repo_root(here)?, target.as_deref())? {
-            crate::scap::Verdict::Clean => ExitCode::SUCCESS,
-            crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
-        },
-    )
+    Ok(crate::scap::content(&repo_root(here)?, target.as_deref())?.into())
 }
 
 pub(super) fn tailoring(call: Call) -> Result<ExitCode, Error> {
@@ -20,14 +15,8 @@ pub(super) fn tailoring(call: Call) -> Result<ExitCode, Error> {
         target, datastream, ..
     } = flags;
     Ok(
-        match crate::scap::tailoring_for(
-            &repo_root(here)?,
-            target.as_deref(),
-            datastream.as_deref(),
-        )? {
-            crate::scap::Verdict::Clean => ExitCode::SUCCESS,
-            crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
-        },
+        crate::scap::tailoring_for(&repo_root(here)?, target.as_deref(), datastream.as_deref())?
+            .into(),
     )
 }
 
@@ -87,10 +76,5 @@ pub(super) fn report(call: Call) -> Result<ExitCode, Error> {
         baseline,
         base: base_scan,
     };
-    Ok(
-        match crate::scap::run(&repo_root(here)?, Path::new(arf), &opts)? {
-            crate::scap::Verdict::Clean => ExitCode::SUCCESS,
-            crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
-        },
-    )
+    Ok(crate::scap::run(&repo_root(here)?, Path::new(arf), &opts)?.into())
 }

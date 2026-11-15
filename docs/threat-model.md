@@ -59,7 +59,7 @@ A collection is a Git repository of components or base-image catalogs that
   `src/collection.rs` `fetch_git` refuses an archive whose hash differs.
 - Pinning is optional. A source with no `sha256` is unpinned, and every fetch
   of it takes whatever its ref holds at that time. `buildc check` warns about
-  each unpinned source (`src/dispatch.rs`).
+  each unpinned source (`src/dispatch/read.rs` `reading`).
 - An image lists only the components under `components/`, and `check`, `generate`
   and `build` read no collection. The image grammar in `src/parse/image.rs`
   refuses a `source` block, and `parse_entry` refuses a `pin`. A collection
@@ -119,7 +119,7 @@ fetches while its layer builds.
   `sha256=`, the tarball is held to that hash. Without it, `buildc.sh` checks
   the `.sha256` published beside the tarball, which proves only that the
   download is complete. `buildc check` warns about a pin with no `sha256=`
-  (`src/dispatch.rs`).
+  (`src/dispatch/read.rs` `reading`).
 - If `repo.kdl` declares no `buildc-version`, then `buildc.sh` resolves the latest
   release on each run (`assets/scripts/buildc.sh`). A build then takes a new
   release as soon as it is published, and `buildc check` does not warn. See

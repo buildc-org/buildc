@@ -1,5 +1,4 @@
 use super::read::{fits, rendered};
-use super::REPO_ERROR;
 use crate::command::Verb;
 use crate::error::Error;
 use common::prompt::Prompt;
@@ -82,10 +81,7 @@ pub(super) fn on_host(
         let image = image_of(&manifest, target).ok_or_else(|| {
             Error::Invocation("the manifest names no image for this target".to_string())
         })?;
-        return Ok(match crate::scap::content_on_host(image, target)? {
-            crate::scap::Verdict::Clean => ExitCode::SUCCESS,
-            crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
-        });
+        return Ok(crate::scap::content_on_host(image, target)?.into());
     }
     unreachable!("{verb:?} is not answered on a host");
 }

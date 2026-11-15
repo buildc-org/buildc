@@ -143,13 +143,8 @@ pub(super) fn key(call: Call) -> Result<ExitCode, Error> {
 
 pub(super) fn scripts(call: Call) -> Result<ExitCode, Error> {
     let Call {
-        rest,
-        prompt,
-        here,
-        flags,
-        ..
+        rest, prompt, here, ..
     } = call;
-    let Flags { .. } = flags;
     let Some(root) = open(here)? else {
         return Ok(ExitCode::from(REPO_ERROR));
     };

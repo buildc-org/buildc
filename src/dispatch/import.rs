@@ -1,4 +1,4 @@
-use super::{collection_repo, one_name, repo_root, Call, Flags};
+use super::{collection_repo, one_name, Call, Flags};
 use crate::error::Error;
 use std::process::ExitCode;
 
@@ -39,9 +39,7 @@ pub(super) fn component(call: Call) -> Result<ExitCode, Error> {
 
 pub(super) fn components(call: Call) -> Result<ExitCode, Error> {
     let Call { rest, here, .. } = call;
-    let root = repo_root(here)?;
-    let list = crate::model::image::List::editable(&root)
-        .map_err(|issues| Error::Operation(issues.plain()))?;
+    let (root, list) = collection_repo(here)?;
     let wrote = crate::fetch::components(&root, &list.sources, list.audit_enforce, rest)?;
     let tracks = crate::provenance::lock::read(&root)
         .iter()

@@ -31,10 +31,7 @@ pub(super) fn image(call: Call) -> Result<ExitCode, Error> {
         no_cache_from,
         cache_to,
     };
-    Ok(match crate::build::run(&repo_root(here)?, &opts)? {
-        crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
-        crate::build::Stopped::Built => ExitCode::SUCCESS,
-    })
+    Ok(crate::build::run(&repo_root(here)?, &opts)?.into())
 }
 
 pub(super) fn validate(call: Call) -> Result<ExitCode, Error> {
@@ -50,12 +47,7 @@ pub(super) fn validate(call: Call) -> Result<ExitCode, Error> {
     let image = one_name(rest, name)?.ok_or_else(|| {
         Error::Invocation("`buildc validate` takes the built image to check".to_string())
     })?;
-    Ok(
-        match crate::build::validate(&root, &image, target.as_deref())? {
-            crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
-            crate::build::Stopped::Built => ExitCode::SUCCESS,
-        },
-    )
+    Ok(crate::build::validate(&root, &image, target.as_deref())?.into())
 }
 
 pub(super) fn attribute(call: Call) -> Result<ExitCode, Error> {
@@ -71,12 +63,25 @@ pub(super) fn attribute(call: Call) -> Result<ExitCode, Error> {
     let image = one_name(rest, name)?.ok_or_else(|| {
         Error::Invocation("`buildc attribute` takes the built image to map".to_string())
     })?;
-    Ok(
-        match crate::attribute::run(&root, &image, target.as_deref())? {
-            crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
-            crate::build::Stopped::Built => ExitCode::SUCCESS,
-        },
-    )
+    Ok(crate::attribute::run(&root, &image, target.as_deref())?.into())
+}
+
+fn vm_options(flags: Flags) -> crate::vm::Options {
+    let Flags {
+        mut images,
+        target,
+        mut tags,
+        ram,
+        rebuild,
+        ..
+    } = flags;
+    crate::vm::Options {
+        target,
+        image: images.pop(),
+        tag: tags.pop(),
+        ram,
+        rebuild,
+    }
 }
 
 pub(super) fn vm(call: Call) -> Result<ExitCode, Error> {
@@ -88,22 +93,8 @@ pub(super) fn vm(call: Call) -> Result<ExitCode, Error> {
         flags,
         ..
     } = call;
-    let Flags {
-        images,
-        target,
-        tags,
-        ram,
-        rebuild,
-        ..
-    } = flags;
     let root = repo_root(here)?;
-    let opts = crate::vm::Options {
-        target,
-        image: images.last().cloned(),
-        tag: tags.last().cloned(),
-        ram,
-        rebuild,
-    };
+    let opts = vm_options(flags);
     let noun = name.rsplit(' ').next().expect("a vm command has a noun");
     crate::vm::run(
         &root,
@@ -124,22 +115,8 @@ pub(super) fn media(call: Call) -> Result<ExitCode, Error> {
         flags,
         ..
     } = call;
-    let Flags {
-        images,
-        target,
-        tags,
-        ram,
-        rebuild,
-        ..
-    } = flags;
     let root = repo_root(here)?;
-    let opts = crate::vm::Options {
-        target,
-        image: images.last().cloned(),
-        tag: tags.last().cloned(),
-        ram,
-        rebuild,
-    };
+    let opts = vm_options(flags);
     one_name(rest, name)?;
     let noun = name.rsplit(' ').next().expect("a media command has a noun");
     crate::media::run(&root, noun, &opts)?;

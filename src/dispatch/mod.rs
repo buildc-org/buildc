@@ -11,7 +11,6 @@ mod tool;
 pub(crate) use read::picker_options;
 
 use crate::command::{self, Context, Verb};
-
 use crate::error::Error;
 use common::prompt::Prompt;
 use std::path::{Path, PathBuf};
@@ -20,6 +19,24 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const USAGE_ERROR: u8 = 1;
 pub const REPO_ERROR: u8 = 2;
+
+impl From<crate::scap::Verdict> for ExitCode {
+    fn from(verdict: crate::scap::Verdict) -> Self {
+        match verdict {
+            crate::scap::Verdict::Clean => ExitCode::SUCCESS,
+            crate::scap::Verdict::Wrong => ExitCode::from(REPO_ERROR),
+        }
+    }
+}
+
+impl From<crate::build::Stopped> for ExitCode {
+    fn from(stopped: crate::build::Stopped) -> Self {
+        match stopped {
+            crate::build::Stopped::Repository => ExitCode::from(REPO_ERROR),
+            crate::build::Stopped::Built => ExitCode::SUCCESS,
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct Flags {
@@ -127,7 +144,7 @@ fn collection_repo(here: &Context) -> Result<(PathBuf, crate::model::image::List
     Ok((root, list))
 }
 
-pub struct Call<'a> {
+struct Call<'a> {
     name: &'a str,
     rest: &'a [&'a str],
     prompt: &'a Prompt,

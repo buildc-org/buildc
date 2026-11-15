@@ -58,6 +58,7 @@ const SECTIONS: &[Section] = &[
         at: "`components/components.lock.kdl`, at the root of `components/`." },
 ];
 
+// The name and the description identify a node because a `const` node has no fixed address.
 fn section_of(node: &Node) -> Option<&'static Section> {
     SECTIONS
         .iter()
@@ -256,7 +257,14 @@ fn example(node: &Node) -> String {
 fn opener(node: &Node) -> String {
     match node.arg {
         Arg::Names => node.name.to_string(),
-        _ => example(node),
+        Arg::None
+        | Arg::Str
+        | Arg::Bool
+        | Arg::Int
+        | Arg::Strs
+        | Arg::StrPair(..)
+        | Arg::One(..)
+        | Arg::MaybeOne(..) => example(node),
     }
 }
 
@@ -297,6 +305,7 @@ fn kdl(
         .iter()
         .filter(|c| show.keeps(node, c))
         .collect();
+    // The example shows the first child because this node refuses an empty block.
     if shown.is_empty() && !node.empty.text.is_empty() {
         shown.extend(node.children.first());
     }
@@ -375,16 +384,17 @@ fn scaffolded(parent: &Node, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
-fn snippet(path: &[&Node], node: &Node, from: Area, out: &mut String) {
-    out.push_str("```kdl\n");
+fn snippet(path: &[&Node], node: &Node, from: Area) -> String {
+    let mut out = String::from("```kdl\n");
     for (depth, outer) in path.iter().enumerate() {
         let _ = writeln!(out, "{}{} {{", "    ".repeat(depth), opener(outer));
     }
-    kdl(node, path.len(), Show::Minimal, from, None, out);
+    kdl(node, path.len(), Show::Minimal, from, None, &mut out);
     for depth in (0..path.len()).rev() {
         let _ = writeln!(out, "{}}}", "    ".repeat(depth));
     }
     out.push_str("```\n\n");
+    out
 }
 
 fn anchor(path: &[&Node], node: &Node) -> String {
@@ -421,6 +431,7 @@ fn table(
             seen.iter().find(|(desc, _)| *desc == child.desc),
         ) {
             (Some(s), _) => href(s, from),
+            // A node that recurs under another parent links to the first section written for it.
             (None, Some((_, at))) => format!("#{at}"),
             (None, None) => {
                 let at = anchor(path, child);
@@ -459,7 +470,7 @@ fn node_section(
         presence(node),
         intro(node)
     );
-    snippet(path, node, from, out);
+    out.push_str(&snippet(path, node, from));
     if let Some(what) = accepts(node, &format!("#{id}-fields")) {
         let _ = writeln!(out, "Accepts: {what}\n");
     }
@@ -474,11 +485,10 @@ fn node_section(
     path.pop();
 }
 
-fn section(section: &Section, depth: usize, out: &mut String) {
+fn section(section: &Section, depth: usize) -> String {
     let root = section.node;
-    let _ = writeln!(
-        out,
-        "<a id=\"{}\"></a>\n\n{} `{}`\n\nLocation: {}\n\n{}\n",
+    let mut out = format!(
+        "<a id=\"{}\"></a>\n\n{} `{}`\n\nLocation: {}\n\n{}\n\n",
         section.name,
         "#".repeat(depth),
         section.name,
@@ -491,20 +501,21 @@ fn section(section: &Section, depth: usize, out: &mut String) {
         if let Some(what) = accepts(root, &format!("#{}-fields", section.name)) {
             let _ = writeln!(out, "Accepts: {what}\n");
         }
-        cases(root, out);
-        props(root, out);
+        cases(root, &mut out);
+        props(root, &mut out);
         path.push(root);
     }
     let id = section.declared.then_some(section.name);
     let seen = &mut Vec::new();
-    let here = table(root, &path, section.area, id, seen, out);
+    let here = table(root, &path, section.area, id, seen, &mut out);
     if !section.declared {
-        cases(root, out);
+        cases(root, &mut out);
     }
-    alert(root.notes, out);
+    alert(root.notes, &mut out);
     for child in here {
-        node_section(child, &mut path, depth + 1, section.area, seen, out);
+        node_section(child, &mut path, depth + 1, section.area, seen, &mut out);
     }
+    out
 }
 
 const AREAS: [Area; 6] = [
@@ -620,7 +631,7 @@ pub fn page(area: Area) -> String {
         }
     };
     for s in schemas {
-        section(s, depth, &mut out);
+        out.push_str(&section(s, depth));
     }
     let trimmed = out.trim_end().len();
     out.truncate(trimmed);

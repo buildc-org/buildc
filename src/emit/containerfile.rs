@@ -76,7 +76,7 @@ const FLAVOUR_ARG: &str = "\
 ARG FLAVOUR";
 
 fn family_arg(image: &Image) -> String {
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     format!("# ---- base family ----\nARG FAMILY={family}")
 }
 
@@ -119,7 +119,7 @@ pub fn sections(
     let mut out = String::new();
     let mut tails: Vec<String> = Vec::new();
     let mut flavour_arg_emitted = false;
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
 
     if image
         .entries

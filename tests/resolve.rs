@@ -2607,3 +2607,37 @@ fn an_enforced_audit_refuses_a_clone_that_names_no_commit_at_generate() {
         "{said}"
     );
 }
+
+#[test]
+fn a_copr_on_a_fedora_base_needs_a_family_adapter() {
+    let issues = checked(
+        "copr-adapter",
+        "        tools",
+        &[("tools", "copr \"owner/project\"")],
+    );
+    assert!(issues.contains("missing family adapter"), "{issues}");
+}
+
+#[test]
+fn a_named_image_or_target_must_be_declared() {
+    let root = written("unknown-names", "", &[]);
+    let issues = |command, arg| {
+        buildc::run(command, Some(arg), &root)
+            .problems
+            .issues
+            .plain()
+    };
+    let image = issues(Command::Section, "nosuch");
+    let target = issues(Command::Summary, "nosuch");
+    let known = issues(Command::Section, "checked");
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        image.contains("`nosuch` is not a declared image"),
+        "{image}"
+    );
+    assert!(
+        target.contains("`nosuch` is not a build target"),
+        "{target}"
+    );
+    assert!(!known.contains("is not a declared image"), "{known}");
+}

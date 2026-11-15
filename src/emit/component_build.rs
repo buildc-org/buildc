@@ -34,7 +34,7 @@ fn file_name(entry: &Entry) -> String {
 }
 
 pub fn installs_packages(image: &Image, entry: &Entry, component: &Component, root: &Path) -> bool {
-    let base_family = image.base.as_ref().map_or("", |b| b.family.as_str());
+    let base_family = image.family();
     !split_packages(entry, component, base_family, image, root).is_empty()
 }
 
@@ -74,7 +74,7 @@ pub fn splits(image: &Image, entry: &Entry, component: &Component, root: &Path) 
 }
 
 pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(PathBuf, String)> {
-    let base_family = image.base.as_ref().map_or("", |b| b.family.as_str());
+    let base_family = image.family();
     let mut out = Vec::new();
     for entry in &image.entries {
         let Some(component) = entry.component.as_ref() else {

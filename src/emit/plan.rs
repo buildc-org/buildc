@@ -194,7 +194,7 @@ fn image(list: &List, image: &Image, resolved: &Resolved) -> Json {
 
 fn target(list: &List, image: &Image, resolved: &Resolved, target: &Target) -> Json {
     let flavour = target.flavour.as_str();
-    let family = image.base.as_ref().map_or("", |base| base.family.as_str());
+    let family = image.family();
     let entries: Vec<&Entry> = image
         .entries
         .iter()
@@ -449,10 +449,7 @@ fn build_facts(
             ),
         ),
         ("uki", Json::Bool(!image.boot.is_empty())),
-        (
-            "family",
-            Json::string(image.base.as_ref().map_or("", |base| base.family.as_str())),
-        ),
+        ("family", Json::string(image.family())),
         (
             "base",
             Json::optional(image.base.as_ref().map(|base| base.image.clone())),

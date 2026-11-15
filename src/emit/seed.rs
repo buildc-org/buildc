@@ -58,7 +58,7 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
     if !sources.is_empty() {
         out.push_str("\nsources {\n");
         for collection in sources {
-            source(collection, &mut out);
+            out.push_str(&source(collection));
         }
         out.push_str("}\n");
     }
@@ -77,16 +77,14 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
     Some((PathBuf::from(layout::GENERATED).join("seed.kdl"), out))
 }
 
-fn source(collection: &Collection, out: &mut String) {
+fn source(collection: &Collection) -> String {
     let name = &collection.name;
+    let mut out = format!("\x20   components {name:?} {{\n");
     match &collection.at {
         At::Dir(path) => {
-            let _ = writeln!(out, "\x20   components {name:?} {{");
             let _ = writeln!(out, "\x20       dir {path:?}");
-            out.push_str("\x20   }\n");
         }
         At::Git(pin) => {
-            let _ = writeln!(out, "\x20   components {name:?} {{");
             if let Tracker::Unpinned(why) = &pin.tracker {
                 if !why.is_empty() {
                     let _ = writeln!(out, "\x20       unpinned {why:?}");
@@ -106,7 +104,8 @@ fn source(collection: &Collection, out: &mut String) {
             if let Some(path) = &pin.path {
                 let _ = writeln!(out, "\x20       path {path:?}");
             }
-            out.push_str("\x20   }\n");
         }
     }
+    out.push_str("\x20   }\n");
+    out
 }

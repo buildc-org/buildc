@@ -235,6 +235,7 @@ struct Place {
     words: &'static str,
     verb: Verb,
     family: Family,
+    /// If true, then the verb also runs in `Context::Host`.
     on_host: bool,
     topic: Topic,
 }
@@ -561,7 +562,6 @@ const SURFACE: &[Place] = &[
     disable_help_subcommand = true,
     disable_version_flag = true,
     color = ColorChoice::Never,
-    // A global is listed after every command's own flags.
     next_display_order = 100
 )]
 pub struct Cli {
@@ -575,9 +575,9 @@ pub struct Cli {
     pub verb: Option<Surface>,
 }
 
-// The tree every word is parsed by. A word whose forms all take a noun parses
-// with `what` absent, which is the picker's half. A `///` here would become the
-// root command's help.
+// The derive only shapes the command tree and no code reads the fields of this tree.
+// Each field name is the argument id that `flag` and `flag_all` look up.
+// A renamed field makes that lookup return nothing without an error.
 #[derive(Subcommand)]
 pub enum Surface {
     /// replace this buildc and its assets with the latest release
@@ -1000,7 +1000,6 @@ pub enum MediaWhat {
     },
 }
 
-// The flags every `vm` and `media` noun takes, declared once so their help is too.
 #[derive(clap::Args)]
 pub struct Disk {
     #[arg(long, value_name = "target")]
@@ -1110,6 +1109,8 @@ fn levels(matches: &ArgMatches) -> Vec<&ArgMatches> {
     levels
 }
 
+/// A flag that the user gave to a parent command reaches the noun below that command.
+/// If the noun parsed the flag as well, then the noun's value wins.
 pub fn flag<T: Clone + Send + Sync + 'static>(matches: &ArgMatches, id: &str) -> Option<T> {
     levels(matches)
         .into_iter()
@@ -1130,7 +1131,6 @@ pub fn flag_all<T: Clone + Send + Sync + 'static>(matches: &ArgMatches, id: &str
         .unwrap_or_default()
 }
 
-// clap accepts a flag the parent command defines, so a leaf that never reads it would silently ignore the value the user gave.
 pub fn ignored(matches: &ArgMatches) -> Vec<String> {
     let tree = Cli::command();
     let mut commands: Vec<&clap::Command> = vec![&tree];
@@ -1252,6 +1252,7 @@ pub fn runs_in(path: &str, here: &Context) -> bool {
     }
 }
 
+/// A heading holds `None` in the row list so that an index picks the same entry in both lists.
 pub fn choices(rows: &[Row], here: &Context) -> (Vec<Option<Row>>, Vec<Choice>) {
     let runs: Vec<Row> = rows
         .iter()
@@ -1397,6 +1398,9 @@ pub fn host_labels() -> Vec<String> {
 #[derive(Debug, PartialEq)]
 pub enum Context {
     Repo(PathBuf),
+    /// The user gave no `--root`.
+    /// No repo.kdl is in the working directory or above it.
+    /// The baked build manifest is present.
     Host,
     Loose,
 }
@@ -1415,7 +1419,6 @@ impl Context {
                 Err(_) => found,
             });
         }
-        // A booted image carries the generated manifest, so its presence means this tool runs inside its own image.
         match Path::new(crate::provenance::build::MANIFEST).is_file() {
             true => Self::Host,
             false => Self::Loose,
@@ -1457,10 +1460,6 @@ pub fn grouped(rows: &[Row]) -> Vec<(Topic, Vec<&Row>)> {
         .collect()
 }
 
-fn is_host(path: &str) -> bool {
-    place(path).on_host
-}
-
 fn shown(path: &str) -> bool {
     matches!(family(path), Family::Anywhere | Family::Repo)
 }
@@ -1488,8 +1487,9 @@ pub fn usage(here: &Context) -> String {
             .join("\n")
     };
     let anywhere = block(&|path| family(path) == Family::Anywhere);
-    let repo =
-        |host: bool| block(&move |path| family(path) == Family::Repo && is_host(path) == host);
+    let repo = |host: bool| {
+        block(&move |path| family(path) == Family::Repo && place(path).on_host == host)
+    };
     match here {
         Context::Repo(_) => format!("{HEAD}\n{}\n{RULE}", block(&|_| true)),
         Context::Host => format!(

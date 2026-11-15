@@ -7,6 +7,7 @@ use crate::Command;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+/// The run must already hold an issue for an unknown image or a missing default image.
 fn coverage(
     run: &mut crate::Run,
     json: bool,
@@ -53,12 +54,11 @@ fn coverage(
         );
         return Ok(());
     };
-    let (stdout, parts) = match json {
-        true => (read_out.json().render(), read_out.parts()),
-        false => (read_out.markdown(), read_out.parts()),
+    run.report.stdout = match json {
+        true => read_out.json().render(),
+        false => read_out.markdown(),
     };
-    run.report.stdout = stdout;
-    run.report.parts = parts;
+    run.report.parts = read_out.parts();
     Ok(())
 }
 

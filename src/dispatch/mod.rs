@@ -130,6 +130,8 @@ fn note_pin(root: &Path) {
     }
 }
 
+/// Returns `None` if the repository fails the compatibility check.
+/// The check has then already reported its reasons to the user.
 fn open(here: &Context) -> Result<Option<PathBuf>, Error> {
     let root = repo_root(here)?;
     let refused =

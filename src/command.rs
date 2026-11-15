@@ -177,11 +177,11 @@ pub const ALL: &[Verb] = &[
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Family {
+pub enum Runs {
     Anywhere,
     Repo,
-    Script,
-    Layer,
+    /// The verb also runs in `Context::Host`.
+    RepoOrImage,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -234,9 +234,8 @@ impl Topic {
 struct Place {
     words: &'static str,
     verb: Verb,
-    family: Family,
-    /// If true, then the verb also runs in `Context::Host`.
-    on_host: bool,
+    runs: Runs,
+    listed: bool,
     topic: Topic,
 }
 
@@ -244,309 +243,309 @@ const SURFACE: &[Place] = &[
     Place {
         words: "upgrade",
         verb: Verb::Upgrade,
-        family: Family::Anywhere,
-        on_host: false,
+        runs: Runs::Anywhere,
+        listed: true,
         topic: Topic::Tool,
     },
     Place {
         words: "create repo",
         verb: Verb::CreateRepo,
-        family: Family::Anywhere,
-        on_host: false,
+        runs: Runs::Anywhere,
+        listed: true,
         topic: Topic::Repository,
     },
     Place {
         words: "create git",
         verb: Verb::CreateGit,
-        family: Family::Anywhere,
-        on_host: false,
+        runs: Runs::Anywhere,
+        listed: true,
         topic: Topic::Repository,
     },
     Place {
         words: "create image",
         verb: Verb::CreateImage,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Image,
     },
     Place {
         words: "create flavour",
         verb: Verb::CreateFlavour,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Image,
     },
     Place {
         words: "create component",
         verb: Verb::CreateModule,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Components,
     },
     Place {
         words: "create key",
         verb: Verb::CreateKey,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Keys,
     },
     Place {
         words: "create scripts",
         verb: Verb::CreateScripts,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Repository,
     },
     Place {
         words: "import component",
         verb: Verb::ImportModule,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Components,
     },
     Place {
         words: "set workflows",
         verb: Verb::SetWorkflows,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Ci,
     },
     Place {
         words: "set library",
         verb: Verb::SetLibrary,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Repository,
     },
     Place {
         words: "set conforms",
         verb: Verb::SetConforms,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Audit,
     },
     Place {
         words: "set claims",
         verb: Verb::SetClaims,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Audit,
     },
     Place {
         words: "set key",
         verb: Verb::SetKey,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Keys,
     },
     Place {
         words: "set component",
         verb: Verb::SetModule,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Components,
     },
     Place {
         words: "check",
         verb: Verb::Check,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Check,
     },
     Place {
         words: "generate",
         verb: Verb::Generate,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Check,
     },
     Place {
         words: "build",
         verb: Verb::Build,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "vm build",
         verb: Verb::VmBuild,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "vm run",
         verb: Verb::VmRun,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "vm spawn",
         verb: Verb::VmSpawn,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "media build",
         verb: Verb::MediaBuild,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "media run",
         verb: Verb::MediaRun,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "section",
         verb: Verb::Section,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Inspect,
     },
     Place {
         words: "graph",
         verb: Verb::Graph,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Inspect,
     },
     Place {
         words: "why",
         verb: Verb::Why,
-        family: Family::Repo,
-        on_host: true,
+        runs: Runs::RepoOrImage,
+        listed: true,
         topic: Topic::Inspect,
     },
     Place {
         words: "coverage",
         verb: Verb::Coverage,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Audit,
     },
     Place {
         words: "plan",
         verb: Verb::Plan,
-        family: Family::Script,
-        on_host: true,
+        runs: Runs::RepoOrImage,
+        listed: false,
         topic: Topic::Inspect,
     },
     Place {
         words: "verify",
         verb: Verb::Verify,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Check,
     },
     Place {
         words: "summary",
         verb: Verb::Summary,
-        family: Family::Script,
-        on_host: true,
+        runs: Runs::RepoOrImage,
+        listed: false,
         topic: Topic::Inspect,
     },
     Place {
         words: "sbom",
         verb: Verb::Sbom,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Inspect,
     },
     Place {
         words: "fetch components",
         verb: Verb::FetchModules,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Components,
     },
     Place {
         words: "scap content",
         verb: Verb::ScapContent,
-        family: Family::Script,
-        on_host: true,
+        runs: Runs::RepoOrImage,
+        listed: false,
         topic: Topic::Audit,
     },
     Place {
         words: "scap rules",
         verb: Verb::ScapRules,
-        family: Family::Script,
-        on_host: true,
+        runs: Runs::RepoOrImage,
+        listed: false,
         topic: Topic::Audit,
     },
     Place {
         words: "scap tailoring",
         verb: Verb::ScapTailoring,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Audit,
     },
     Place {
         words: "scap",
         verb: Verb::Scap,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Audit,
     },
     Place {
         words: "registry namespace",
         verb: Verb::RegistryNamespace,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Inspect,
     },
     Place {
         words: "registry ref",
         verb: Verb::RegistryRef,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Inspect,
     },
     Place {
         words: "recipe",
         verb: Verb::Recipe,
-        family: Family::Script,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: false,
         topic: Topic::Inspect,
     },
     Place {
         words: "build-record",
         verb: Verb::BuildRecord,
-        family: Family::Layer,
-        on_host: false,
+        runs: Runs::Anywhere,
+        listed: false,
         topic: Topic::Layer,
     },
     Place {
         words: "fetch",
         verb: Verb::Fetch,
-        family: Family::Layer,
-        on_host: false,
+        runs: Runs::Anywhere,
+        listed: false,
         topic: Topic::Layer,
     },
     Place {
         words: "validate-image",
         verb: Verb::ValidateImage,
-        family: Family::Layer,
-        on_host: false,
+        runs: Runs::Anywhere,
+        listed: false,
         topic: Topic::Layer,
     },
     Place {
         words: "validate",
         verb: Verb::Validate,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
     Place {
         words: "attribute",
         verb: Verb::Attribute,
-        family: Family::Repo,
-        on_host: false,
+        runs: Runs::Repo,
+        listed: true,
         topic: Topic::Build,
     },
 ];
@@ -1096,7 +1095,7 @@ pub fn on_host(verb: Verb) -> bool {
     SURFACE
         .iter()
         .find(|place| place.verb == verb)
-        .is_some_and(|place| place.on_host)
+        .is_some_and(|place| place.runs == Runs::RepoOrImage)
 }
 
 fn levels(matches: &ArgMatches) -> Vec<&ArgMatches> {
@@ -1241,15 +1240,10 @@ pub fn rows(word: Option<&str>) -> Vec<Row> {
 }
 
 pub fn runs_in(path: &str, here: &Context) -> bool {
-    let place = place(path);
-    match place.family {
-        Family::Anywhere | Family::Layer => true,
-        Family::Repo | Family::Script => match here {
-            Context::Repo(_) => true,
-            Context::Host => place.on_host,
-            Context::Loose => false,
-        },
-    }
+    matches!(
+        (runs(path), here),
+        (Runs::Anywhere, _) | (_, Context::Repo(_)) | (Runs::RepoOrImage, Context::Host)
+    )
 }
 
 /// A heading holds `None` in the row list so that an index picks the same entry in both lists.
@@ -1437,8 +1431,8 @@ docs/cli.md is the reference. Data goes to stdout and diagnostics to
 stderr; exit 1 is the invocation, exit 2 the repository.
 ";
 
-fn family(path: &str) -> Family {
-    place(path).family
+fn runs(path: &str) -> Runs {
+    place(path).runs
 }
 
 pub fn topic(path: &str) -> Topic {
@@ -1461,7 +1455,7 @@ pub fn grouped(rows: &[Row]) -> Vec<(Topic, Vec<&Row>)> {
 }
 
 fn shown(path: &str) -> bool {
-    matches!(family(path), Family::Anywhere | Family::Repo)
+    place(path).listed
 }
 
 pub fn usage(here: &Context) -> String {
@@ -1486,9 +1480,9 @@ pub fn usage(here: &Context) -> String {
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let anywhere = block(&|path| family(path) == Family::Anywhere);
+    let anywhere = block(&|path| runs(path) == Runs::Anywhere);
     let repo = |host: bool| {
-        block(&move |path| family(path) == Family::Repo && place(path).on_host == host)
+        block(&move |path| runs(path) == if host { Runs::RepoOrImage } else { Runs::Repo })
     };
     match here {
         Context::Repo(_) => format!("{HEAD}\n{}\n{RULE}", block(&|_| true)),
@@ -1501,7 +1495,7 @@ pub fn usage(here: &Context) -> String {
         Context::Loose => format!(
             "{HEAD}\n{anywhere}\nthese need a repository, and there is none here or above:\n\n\
              {}\n{RULE}",
-            block(&|path| family(path) == Family::Repo)
+            block(&|path| runs(path) != Runs::Anywhere)
         ),
     }
 }
@@ -1753,7 +1747,7 @@ mod tests {
         assert!(kept
             .iter()
             .flatten()
-            .all(|row| surface(&row.path).is_some_and(|place| place.family == Family::Anywhere)));
+            .all(|row| surface(&row.path).is_some_and(|place| place.runs == Runs::Anywhere)));
         assert_eq!(kept.len(), drawn.len());
         let (kept, _) = choices(&rows(None), &Context::Host);
         let verbs: Vec<Verb> = kept.iter().flatten().map(|row| row.verb).collect();

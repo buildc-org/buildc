@@ -181,6 +181,7 @@ fn clashing<'m>(
         .collect()
 }
 
+/// The user reads the issues in the order these checks run.
 pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
     check_helpers(image, issues);
     check_base_overlap(image, issues);
@@ -520,7 +521,8 @@ fn check_versions(image: &Image, issues: &mut Issues) {
     let Some(base) = &image.base else {
         return;
     };
-    // A digest pins the base and the recorded version belongs to that digest. A moving base resolves to a new digest on each build. Its recorded version is not trusted.
+    // A base pinned by digest is checked against the versions its probe recorded.
+    // An unpinned base is measured during the image build instead.
     let pinned = base.image.contains('@');
     for (component, requirement) in base.image_requirements(image.components()) {
         let (owner, src) = component.map_or((&base.image, &base.src), |component| {

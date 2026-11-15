@@ -2,7 +2,6 @@ use crate::model::component::{Component, Requirement};
 use crate::model::image::Image;
 use std::collections::BTreeSet;
 
-// The callers pass a `BTreeSet` to keep the emitted lines unique and sorted. An unchanged repository writes the same Containerfile.
 fn join(entries: BTreeSet<String>) -> String {
     entries.into_iter().collect::<Vec<String>>().join(" ")
 }
@@ -50,7 +49,6 @@ fn floors(image: &Image) -> BTreeSet<String> {
         let Some(min) = &requirement.min else {
             return;
         };
-        // Only a capability the base provides from a named package can be measured before the components. The early run leaves any other floor to the final-image check.
         if base.packages(&requirement.name).next().is_none() {
             return;
         }
@@ -131,7 +129,6 @@ pub fn required(
     provided: &BTreeSet<&str>,
 ) -> Vec<String> {
     let mut out = BTreeSet::new();
-    // The early measurement settles a floor that only the base provides. This check covers the component providers.
     let mut add = |requirement: &Requirement, owner: &str| {
         let Some(min) = &requirement.min else {
             return;

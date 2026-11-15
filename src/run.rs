@@ -328,6 +328,7 @@ fn generated_files(
     files.extend(
         emit::SCRIPTS
             .iter()
+            // A script that the user keeps in the repository's scripts directory takes the place of the generated copy.
             .filter(|script| !root.join(layout::SCRIPTS).join(script.name).is_file())
             .map(|script| {
                 (

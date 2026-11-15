@@ -58,6 +58,7 @@ const SECTIONS: &[Section] = &[
         at: "`components/components.lock.kdl`, at the root of `components/`." },
 ];
 
+// The name and the description identify a node because a `const` node has no fixed address.
 fn section_of(node: &Node) -> Option<&'static Section> {
     SECTIONS
         .iter()
@@ -304,6 +305,7 @@ fn kdl(
         .iter()
         .filter(|c| show.keeps(node, c))
         .collect();
+    // The example shows the first child because this node refuses an empty block.
     if shown.is_empty() && !node.empty.text.is_empty() {
         shown.extend(node.children.first());
     }
@@ -429,6 +431,7 @@ fn table(
             seen.iter().find(|(desc, _)| *desc == child.desc),
         ) {
             (Some(s), _) => href(s, from),
+            // A node that recurs under another parent links to the first section written for it.
             (None, Some((_, at))) => format!("#{at}"),
             (None, None) => {
                 let at = anchor(path, child);

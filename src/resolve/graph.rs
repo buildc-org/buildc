@@ -178,28 +178,20 @@ fn clashing<'m>(
         .collect()
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "every graph check reads the provider maps the function builds first"
-)]
 pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
-    let mut offered: BTreeMap<&str, Vec<&Component>> = BTreeMap::new();
-    for component in image.components() {
-        for decl in &component.provides {
-            offered
-                .entry(decl.name.as_str())
-                .or_default()
-                .push(component);
-        }
-    }
+    check_helpers(image, issues);
+    check_base_overlap(image, issues);
+    check_family(image, issues);
+    check_exclusive(image, issues);
+    check_base_requires(image, index, issues);
+    check_boot_chain(image, index, issues);
+    check_removes(image, issues);
+    check_requires(image, index, issues);
+    check_after(image, issues);
+    check_versions(image, issues);
+}
 
-    let base_caps: BTreeMap<&str, &Capability> = image
-        .base
-        .iter()
-        .flat_map(|b| b.provides.iter())
-        .map(|decl| (decl.name.as_str(), decl))
-        .collect();
-
+fn check_helpers(image: &Image, issues: &mut Issues) {
     let mut helpers: BTreeMap<&str, &Component> = BTreeMap::new();
     for component in image.components() {
         for helper in &component.helpers {
@@ -222,7 +214,15 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             }
         }
     }
+}
 
+fn check_base_overlap(image: &Image, issues: &mut Issues) {
+    let base_caps: BTreeMap<&str, &Capability> = image
+        .base
+        .iter()
+        .flat_map(|b| b.provides.iter())
+        .map(|decl| (decl.name.as_str(), decl))
+        .collect();
     for component in image.components() {
         let (covered, rest): (Vec<&Capability>, Vec<&Capability>) = component
             .provides
@@ -248,41 +248,41 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             )),
         );
     }
+}
 
-    let base_family = image
+fn check_family(image: &Image, issues: &mut Issues) {
+    let Some(base_family) = image
         .base
         .as_ref()
         .map(|b| b.family.as_str())
-        .filter(|f| !f.is_empty());
-    if let Some(base_family) = base_family {
-        let needs_adapter = image.components().any(|component| {
-            (base_family == "fedora" && !component.coprs.is_empty())
-                || component
-                    .packages
-                    .iter()
-                    .chain(&component.groups)
-                    .any(|group| group.family == base_family)
-        });
-        let has_adapter = answering(image, "build-environment")
-            .iter()
-            .any(|component| super::targets(&component.targets, base_family));
-        if needs_adapter && !has_adapter {
-            issues.push(
-                Issue::new(
-                    format!(
-                        "image `{}` installs packages for `{base_family}`, but no enabled component provides `build-environment` for that family",
-                        image.id
-                    ),
-                    &image.src,
-                )
-                .at(image.span, "missing family adapter"),
-            );
-        }
+        .filter(|f| !f.is_empty())
+    else {
+        return;
+    };
+    let needs_adapter = image.components().any(|component| {
+        (base_family == "fedora" && !component.coprs.is_empty())
+            || component
+                .packages
+                .iter()
+                .chain(&component.groups)
+                .any(|group| group.family == base_family)
+    });
+    let has_adapter = answering(image, "build-environment")
+        .iter()
+        .any(|component| super::targets(&component.targets, base_family));
+    if needs_adapter && !has_adapter {
+        issues.push(
+            Issue::new(
+                format!(
+                    "image `{}` installs packages for `{base_family}`, but no enabled component provides `build-environment` for that family",
+                    image.id
+                ),
+                &image.src,
+            )
+            .at(image.span, "missing family adapter"),
+        );
     }
     for component in image.components() {
-        let Some(base_family) = base_family else {
-            break;
-        };
         if !super::targets(&component.targets, base_family) {
             issues.push(
                 Issue::new(
@@ -302,7 +302,18 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             );
         }
     }
+}
 
+fn check_exclusive(image: &Image, issues: &mut Issues) {
+    let mut offered: BTreeMap<&str, Vec<&Component>> = BTreeMap::new();
+    for component in image.components() {
+        for decl in &component.provides {
+            offered
+                .entry(decl.name.as_str())
+                .or_default()
+                .push(component);
+        }
+    }
     for (capability, providers) in &offered {
         let keyed = capability.strip_suffix("-key").is_some_and(|kind| {
             providers
@@ -353,26 +364,31 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             );
         }
     }
+}
 
-    if let Some(base) = &image.base {
-        for decl in &base.requires {
-            if !answering(image, &decl.name).is_empty() {
-                continue;
-            }
-            issues.push(
-                Issue::new(
-                    format!(
-                        "`{}` requires `{}`, which nothing enabled provides",
-                        base.image, decl.name
-                    ),
-                    &image.src,
-                )
-                .at(decl.span, "the base is not usable without it")
-                .help(satisfied_by(index, image, &decl.name)),
-            );
+fn check_base_requires(image: &Image, index: &Index, issues: &mut Issues) {
+    let Some(base) = &image.base else {
+        return;
+    };
+    for decl in &base.requires {
+        if !answering(image, &decl.name).is_empty() {
+            continue;
         }
+        issues.push(
+            Issue::new(
+                format!(
+                    "`{}` requires `{}`, which nothing enabled provides",
+                    base.image, decl.name
+                ),
+                &image.src,
+            )
+            .at(decl.span, "the base is not usable without it")
+            .help(satisfied_by(index, image, &decl.name)),
+        );
     }
+}
 
+fn check_boot_chain(image: &Image, index: &Index, issues: &mut Issues) {
     if image.boot.is_empty() && !answering(image, "boot-chain-uki").is_empty() {
         issues.push(
             Issue::new(
@@ -404,9 +420,9 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             );
         }
     }
+}
 
-    check_removes(image, issues);
-
+fn check_requires(image: &Image, index: &Index, issues: &mut Issues) {
     for component in image.components() {
         let flavour = component.flavour.as_deref();
         for decl in &component.requires {
@@ -472,7 +488,9 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             }
         }
     }
+}
 
+fn check_after(image: &Image, issues: &mut Issues) {
     for component in image.components() {
         for decl in &component.after {
             if image.base_answers(&decl.name) {
@@ -493,8 +511,6 @@ pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
             }
         }
     }
-
-    check_versions(image, issues);
 }
 
 fn check_versions(image: &Image, issues: &mut Issues) {

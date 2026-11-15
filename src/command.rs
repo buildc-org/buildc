@@ -231,237 +231,323 @@ impl Topic {
     }
 }
 
-const SURFACE: &[(&str, Verb, Family, bool, Topic)] = &[
-    (
-        "upgrade",
-        Verb::Upgrade,
-        Family::Anywhere,
-        false,
-        Topic::Tool,
-    ),
-    (
-        "create repo",
-        Verb::CreateRepo,
-        Family::Anywhere,
-        false,
-        Topic::Repository,
-    ),
-    (
-        "create git",
-        Verb::CreateGit,
-        Family::Anywhere,
-        false,
-        Topic::Repository,
-    ),
-    (
-        "create image",
-        Verb::CreateImage,
-        Family::Repo,
-        false,
-        Topic::Image,
-    ),
-    (
-        "create flavour",
-        Verb::CreateFlavour,
-        Family::Repo,
-        false,
-        Topic::Image,
-    ),
-    (
-        "create component",
-        Verb::CreateModule,
-        Family::Repo,
-        false,
-        Topic::Components,
-    ),
-    (
-        "create key",
-        Verb::CreateKey,
-        Family::Repo,
-        false,
-        Topic::Keys,
-    ),
-    (
-        "create scripts",
-        Verb::CreateScripts,
-        Family::Repo,
-        false,
-        Topic::Repository,
-    ),
-    (
-        "import component",
-        Verb::ImportModule,
-        Family::Repo,
-        false,
-        Topic::Components,
-    ),
-    (
-        "set workflows",
-        Verb::SetWorkflows,
-        Family::Repo,
-        false,
-        Topic::Ci,
-    ),
-    (
-        "set library",
-        Verb::SetLibrary,
-        Family::Repo,
-        false,
-        Topic::Repository,
-    ),
-    (
-        "set conforms",
-        Verb::SetConforms,
-        Family::Repo,
-        false,
-        Topic::Audit,
-    ),
-    (
-        "set claims",
-        Verb::SetClaims,
-        Family::Repo,
-        false,
-        Topic::Audit,
-    ),
-    ("set key", Verb::SetKey, Family::Repo, false, Topic::Keys),
-    (
-        "set component",
-        Verb::SetModule,
-        Family::Repo,
-        false,
-        Topic::Components,
-    ),
-    ("check", Verb::Check, Family::Repo, false, Topic::Check),
-    (
-        "generate",
-        Verb::Generate,
-        Family::Repo,
-        false,
-        Topic::Check,
-    ),
-    ("build", Verb::Build, Family::Repo, false, Topic::Build),
-    ("vm build", Verb::VmBuild, Family::Repo, false, Topic::Build),
-    ("vm run", Verb::VmRun, Family::Repo, false, Topic::Build),
-    ("vm spawn", Verb::VmSpawn, Family::Repo, false, Topic::Build),
-    (
-        "media build",
-        Verb::MediaBuild,
-        Family::Repo,
-        false,
-        Topic::Build,
-    ),
-    (
-        "media run",
-        Verb::MediaRun,
-        Family::Repo,
-        false,
-        Topic::Build,
-    ),
-    (
-        "section",
-        Verb::Section,
-        Family::Repo,
-        false,
-        Topic::Inspect,
-    ),
-    ("graph", Verb::Graph, Family::Repo, false, Topic::Inspect),
-    ("why", Verb::Why, Family::Repo, true, Topic::Inspect),
-    (
-        "coverage",
-        Verb::Coverage,
-        Family::Repo,
-        false,
-        Topic::Audit,
-    ),
-    ("plan", Verb::Plan, Family::Script, true, Topic::Inspect),
-    ("verify", Verb::Verify, Family::Script, false, Topic::Check),
-    (
-        "summary",
-        Verb::Summary,
-        Family::Script,
-        true,
-        Topic::Inspect,
-    ),
-    ("sbom", Verb::Sbom, Family::Script, false, Topic::Inspect),
-    (
-        "fetch components",
-        Verb::FetchModules,
-        Family::Repo,
-        false,
-        Topic::Components,
-    ),
-    (
-        "scap content",
-        Verb::ScapContent,
-        Family::Script,
-        true,
-        Topic::Audit,
-    ),
-    (
-        "scap rules",
-        Verb::ScapRules,
-        Family::Script,
-        true,
-        Topic::Audit,
-    ),
-    (
-        "scap tailoring",
-        Verb::ScapTailoring,
-        Family::Script,
-        false,
-        Topic::Audit,
-    ),
-    ("scap", Verb::Scap, Family::Script, false, Topic::Audit),
-    (
-        "registry namespace",
-        Verb::RegistryNamespace,
-        Family::Script,
-        false,
-        Topic::Inspect,
-    ),
-    (
-        "registry ref",
-        Verb::RegistryRef,
-        Family::Script,
-        false,
-        Topic::Inspect,
-    ),
-    (
-        "recipe",
-        Verb::Recipe,
-        Family::Script,
-        false,
-        Topic::Inspect,
-    ),
-    (
-        "build-record",
-        Verb::BuildRecord,
-        Family::Layer,
-        false,
-        Topic::Layer,
-    ),
-    ("fetch", Verb::Fetch, Family::Layer, false, Topic::Layer),
-    (
-        "validate-image",
-        Verb::ValidateImage,
-        Family::Layer,
-        false,
-        Topic::Layer,
-    ),
-    (
-        "validate",
-        Verb::Validate,
-        Family::Repo,
-        false,
-        Topic::Build,
-    ),
-    (
-        "attribute",
-        Verb::Attribute,
-        Family::Repo,
-        false,
-        Topic::Build,
-    ),
+struct Place {
+    words: &'static str,
+    verb: Verb,
+    family: Family,
+    on_host: bool,
+    topic: Topic,
+}
+
+const SURFACE: &[Place] = &[
+    Place {
+        words: "upgrade",
+        verb: Verb::Upgrade,
+        family: Family::Anywhere,
+        on_host: false,
+        topic: Topic::Tool,
+    },
+    Place {
+        words: "create repo",
+        verb: Verb::CreateRepo,
+        family: Family::Anywhere,
+        on_host: false,
+        topic: Topic::Repository,
+    },
+    Place {
+        words: "create git",
+        verb: Verb::CreateGit,
+        family: Family::Anywhere,
+        on_host: false,
+        topic: Topic::Repository,
+    },
+    Place {
+        words: "create image",
+        verb: Verb::CreateImage,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Image,
+    },
+    Place {
+        words: "create flavour",
+        verb: Verb::CreateFlavour,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Image,
+    },
+    Place {
+        words: "create component",
+        verb: Verb::CreateModule,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Components,
+    },
+    Place {
+        words: "create key",
+        verb: Verb::CreateKey,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Keys,
+    },
+    Place {
+        words: "create scripts",
+        verb: Verb::CreateScripts,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Repository,
+    },
+    Place {
+        words: "import component",
+        verb: Verb::ImportModule,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Components,
+    },
+    Place {
+        words: "set workflows",
+        verb: Verb::SetWorkflows,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Ci,
+    },
+    Place {
+        words: "set library",
+        verb: Verb::SetLibrary,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Repository,
+    },
+    Place {
+        words: "set conforms",
+        verb: Verb::SetConforms,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "set claims",
+        verb: Verb::SetClaims,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "set key",
+        verb: Verb::SetKey,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Keys,
+    },
+    Place {
+        words: "set component",
+        verb: Verb::SetModule,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Components,
+    },
+    Place {
+        words: "check",
+        verb: Verb::Check,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Check,
+    },
+    Place {
+        words: "generate",
+        verb: Verb::Generate,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Check,
+    },
+    Place {
+        words: "build",
+        verb: Verb::Build,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "vm build",
+        verb: Verb::VmBuild,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "vm run",
+        verb: Verb::VmRun,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "vm spawn",
+        verb: Verb::VmSpawn,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "media build",
+        verb: Verb::MediaBuild,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "media run",
+        verb: Verb::MediaRun,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "section",
+        verb: Verb::Section,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "graph",
+        verb: Verb::Graph,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "why",
+        verb: Verb::Why,
+        family: Family::Repo,
+        on_host: true,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "coverage",
+        verb: Verb::Coverage,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "plan",
+        verb: Verb::Plan,
+        family: Family::Script,
+        on_host: true,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "verify",
+        verb: Verb::Verify,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Check,
+    },
+    Place {
+        words: "summary",
+        verb: Verb::Summary,
+        family: Family::Script,
+        on_host: true,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "sbom",
+        verb: Verb::Sbom,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "fetch components",
+        verb: Verb::FetchModules,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Components,
+    },
+    Place {
+        words: "scap content",
+        verb: Verb::ScapContent,
+        family: Family::Script,
+        on_host: true,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "scap rules",
+        verb: Verb::ScapRules,
+        family: Family::Script,
+        on_host: true,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "scap tailoring",
+        verb: Verb::ScapTailoring,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "scap",
+        verb: Verb::Scap,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Audit,
+    },
+    Place {
+        words: "registry namespace",
+        verb: Verb::RegistryNamespace,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "registry ref",
+        verb: Verb::RegistryRef,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "recipe",
+        verb: Verb::Recipe,
+        family: Family::Script,
+        on_host: false,
+        topic: Topic::Inspect,
+    },
+    Place {
+        words: "build-record",
+        verb: Verb::BuildRecord,
+        family: Family::Layer,
+        on_host: false,
+        topic: Topic::Layer,
+    },
+    Place {
+        words: "fetch",
+        verb: Verb::Fetch,
+        family: Family::Layer,
+        on_host: false,
+        topic: Topic::Layer,
+    },
+    Place {
+        words: "validate-image",
+        verb: Verb::ValidateImage,
+        family: Family::Layer,
+        on_host: false,
+        topic: Topic::Layer,
+    },
+    Place {
+        words: "validate",
+        verb: Verb::Validate,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
+    Place {
+        words: "attribute",
+        verb: Verb::Attribute,
+        family: Family::Repo,
+        on_host: false,
+        topic: Topic::Build,
+    },
 ];
 
 #[derive(Parser)]
@@ -995,19 +1081,23 @@ pub struct Row {
     pub about: String,
 }
 
-fn surface(path: &str) -> Option<(&'static str, Verb, Family, bool, Topic)> {
-    SURFACE.iter().copied().find(|(words, ..)| *words == path)
+fn surface(path: &str) -> Option<&'static Place> {
+    SURFACE.iter().find(|place| place.words == path)
+}
+
+fn place(path: &str) -> &'static Place {
+    surface(path).unwrap_or_else(|| panic!("`{path}` has no place row"))
 }
 
 pub fn verb(path: &str) -> Option<Verb> {
-    surface(path).map(|(_, verb, ..)| verb)
+    surface(path).map(|place| place.verb)
 }
 
 pub fn on_host(verb: Verb) -> bool {
     SURFACE
         .iter()
-        .find(|(_, row, ..)| *row == verb)
-        .is_some_and(|(_, _, _, host, _)| *host)
+        .find(|place| place.verb == verb)
+        .is_some_and(|place| place.on_host)
 }
 
 fn levels(matches: &ArgMatches) -> Vec<&ArgMatches> {
@@ -1117,9 +1207,8 @@ fn collect(command: &clap::Command, prefix: &str, rows: &mut Vec<Row>) {
             collect(sub, &path, rows);
         }
         if !nested || sub.get_positionals().next().is_some() {
-            let (_, verb, ..) = surface(&path).expect("every leaf has a place row");
             rows.push(Row {
-                verb,
+                verb: place(&path).verb,
                 label: label(&path, sub),
                 about: sub
                     .get_about()
@@ -1152,12 +1241,12 @@ pub fn rows(word: Option<&str>) -> Vec<Row> {
 }
 
 pub fn runs_in(path: &str, here: &Context) -> bool {
-    let (_, _, family, host, _) = surface(path).expect("every command path has a place row");
-    match family {
+    let place = place(path);
+    match place.family {
         Family::Anywhere | Family::Layer => true,
         Family::Repo | Family::Script => match here {
             Context::Repo(_) => true,
-            Context::Host => host,
+            Context::Host => place.on_host,
             Context::Loose => false,
         },
     }
@@ -1346,11 +1435,11 @@ stderr; exit 1 is the invocation, exit 2 the repository.
 ";
 
 fn family(path: &str) -> Family {
-    surface(path).expect("every command path has a place row").2
+    place(path).family
 }
 
 pub fn topic(path: &str) -> Topic {
-    surface(path).expect("every command path has a place row").4
+    place(path).topic
 }
 
 pub fn grouped(rows: &[Row]) -> Vec<(Topic, Vec<&Row>)> {
@@ -1369,7 +1458,7 @@ pub fn grouped(rows: &[Row]) -> Vec<(Topic, Vec<&Row>)> {
 }
 
 fn is_host(path: &str) -> bool {
-    surface(path).expect("every command path has a place row").3
+    place(path).on_host
 }
 
 fn shown(path: &str) -> bool {
@@ -1519,7 +1608,7 @@ mod tests {
     #[test]
     fn every_command_path_has_one_row_and_every_row_names_a_leaf() {
         let tree = paths();
-        let mut rows: Vec<&str> = SURFACE.iter().map(|(path, ..)| *path).collect();
+        let mut rows: Vec<&str> = SURFACE.iter().map(|place| place.words).collect();
         rows.sort_unstable();
         rows.dedup();
         assert_eq!(rows.len(), SURFACE.len(), "a path has two rows");
@@ -1529,7 +1618,7 @@ mod tests {
         assert_eq!(tree.len(), ALL.len(), "a verb has no path or two");
         for verb in ALL {
             assert_eq!(
-                SURFACE.iter().filter(|(_, row, ..)| row == verb).count(),
+                SURFACE.iter().filter(|place| place.verb == *verb).count(),
                 1,
                 "{verb:?} has no one row"
             );
@@ -1664,8 +1753,7 @@ mod tests {
         assert!(kept
             .iter()
             .flatten()
-            .all(|row| surface(&row.path)
-                .is_some_and(|(_, _, family, ..)| family == Family::Anywhere)));
+            .all(|row| surface(&row.path).is_some_and(|place| place.family == Family::Anywhere)));
         assert_eq!(kept.len(), drawn.len());
         let (kept, _) = choices(&rows(None), &Context::Host);
         let verbs: Vec<Verb> = kept.iter().flatten().map(|row| row.verb).collect();

@@ -218,7 +218,7 @@ pub(crate) fn run_loaded(
             .iter()
             .any(|image| !emit::measure::record(image, false).is_empty());
         files.extend(
-            emit::measure::libraries(early, record)
+            emit::measure::libraries(emit::measure::Measured { early, record })
                 .into_iter()
                 .map(|(name, body)| {
                     (

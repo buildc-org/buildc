@@ -168,7 +168,12 @@ pub fn required(
     out.into_iter().collect()
 }
 
-pub fn libraries(early: bool, record: bool) -> Vec<(&'static str, &'static str)> {
+pub struct Measured {
+    pub early: bool,
+    pub record: bool,
+}
+
+pub fn libraries(Measured { early, record }: Measured) -> Vec<(&'static str, &'static str)> {
     let mut out = Vec::new();
     if early || record {
         out.push((
@@ -198,13 +203,17 @@ mod tests {
     #[test]
     fn the_version_helper_is_generated_for_either_measurement() {
         for (early, record) in [(true, false), (false, true), (true, true)] {
-            let names: Vec<&str> = libraries(early, record)
+            let names: Vec<&str> = libraries(Measured { early, record })
                 .into_iter()
                 .map(|(name, _)| name)
                 .collect();
             assert!(names.contains(&"version-helpers.sh"), "{early} {record}");
         }
-        assert!(libraries(false, false).is_empty());
+        assert!(libraries(Measured {
+            early: false,
+            record: false
+        })
+        .is_empty());
     }
 
     #[test]

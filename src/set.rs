@@ -25,7 +25,7 @@ impl Library {
     pub fn adding(
         kind: crate::model::remote::Kind,
         prompt: &Prompt,
-    ) -> Result<Option<Self>, String> {
+    ) -> Result<Option<Self>, Error> {
         let default = crate::collection::default_library(kind);
         if !prompt.asks() {
             return Ok(Some(Self {
@@ -58,10 +58,10 @@ impl Library {
         }
         let alias = prompt.line(None, copy::SOURCE_ALIAS, "a source alias", "", None)?;
         if !crate::model::image::is_name(&alias) {
-            return Err(format!(
+            return Err(Error::Operation(format!(
                 "`{alias}` is not a source name: lowercase, digits and dashes, starting with a \
                  letter"
-            ));
+            )));
         }
         let url = prompt.line(
             None,
@@ -295,7 +295,7 @@ fn offer(
     profile: &crate::scap::Profile,
     index: &crate::provider::Index,
     prompt: &Prompt,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, Error> {
     let owed = crate::scap::owed(image, content, profile, index);
     let named: Vec<String> = owed
         .helping

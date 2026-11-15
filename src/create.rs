@@ -1,5 +1,6 @@
 use crate::copy;
 use crate::declaration::append;
+use crate::error::Error;
 use crate::forge;
 use crate::layout;
 use crate::layout::{named_after_root, under};
@@ -75,7 +76,7 @@ impl Repo {
         base: Option<String>,
         root_arg: Option<PathBuf>,
         prompt: &Prompt,
-    ) -> Result<Option<Self>, String> {
+    ) -> Result<Option<Self>, Error> {
         let mut given = Given {
             name,
             host: host.filter(|host| !host.trim().is_empty()),
@@ -117,7 +118,7 @@ impl Repo {
         given: &Given,
         prev: Option<&Self>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let name = match prev {
             Some(prev) if from > Field::Name => prev.name.clone(),
             _ => NonEmpty::parse(
@@ -433,7 +434,7 @@ impl Scripts {
         names: &[&str],
         held: &[&str],
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let open: Vec<_> = offered()
             .into_iter()
             .filter(|(name, _, _)| !root.join(layout::SCRIPTS).join(name).exists())
@@ -443,19 +444,19 @@ impl Scripts {
                 .iter()
                 .map(|name| match open.iter().find(|(open, _, _)| open == name) {
                     Some((open, _, _)) => Ok(*open),
-                    None if root.join(layout::SCRIPTS).join(name).exists() => {
-                        Err(format!("scripts/{name} is already the repository's own"))
-                    }
-                    None => Err(format!(
+                    None if root.join(layout::SCRIPTS).join(name).exists() => Err(
+                        Error::Operation(format!("scripts/{name} is already the repository's own")),
+                    ),
+                    None => Err(Error::Operation(format!(
                         "`{name}` is not a file buildc supplies; it supplies {}",
                         offered()
                             .iter()
                             .map(|(name, _, _)| *name)
                             .collect::<Vec<_>>()
                             .join(", ")
-                    )),
+                    ))),
                 })
-                .collect::<Result<Vec<_>, String>>()?;
+                .collect::<Result<Vec<_>, Error>>()?;
             return Ok(Self { chosen });
         }
         let options: Vec<Choice> = open
@@ -521,18 +522,18 @@ impl Scripts {
     }
 }
 
-fn choose_host(current: Option<&str>, prompt: &Prompt) -> Result<String, String> {
+fn choose_host(current: Option<&str>, prompt: &Prompt) -> Result<String, Error> {
     let options = host_options();
     let at = current.map(|held| usize::from(held != forge::HOST));
     match ask_one(prompt, copy::REPO_HOST, &options, at)? {
         Some(0) | None => Ok(forge::HOST.to_string()),
-        _ => prompt.line(
+        _ => Ok(prompt.line(
             None,
             copy::FORGEJO_ADDRESS,
             "`--host`",
             "",
             current.filter(|held| *held != forge::HOST),
-        ),
+        )?),
     }
 }
 
@@ -548,11 +549,11 @@ fn ask_one(
     question: &str,
     options: &[Choice],
     at: Option<usize>,
-) -> Result<Option<usize>, String> {
-    match at {
-        Some(at) => prompt.choose_current(question, options, at),
-        None => prompt.choose(question, options),
-    }
+) -> Result<Option<usize>, Error> {
+    Ok(match at {
+        Some(at) => prompt.choose_current(question, options, at)?,
+        None => prompt.choose(question, options)?,
+    })
 }
 
 #[derive(Clone)]
@@ -590,7 +591,7 @@ impl Image {
         from: Field,
         prev: Option<&Self>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let Home {
             root,
             repo,
@@ -613,12 +614,17 @@ impl Image {
         };
         let takes_components = prev.is_none_or(|prev| prev.takes_components);
         if base.as_deref().is_some_and(|base| base.trim().is_empty()) {
-            return Err("`--base` is empty; name a base image or a base component".to_string());
+            return Err(Error::Operation(
+                "`--base` is empty; name a base image or a base component".to_string(),
+            ));
         }
         let id = crate::init::id(name.as_str())?;
         let file = root.join(format!("{id}{}", layout::IMAGE_SUFFIX));
         if file.exists() {
-            return Err(format!("{} is already there", file.display()));
+            return Err(Error::Operation(format!(
+                "{} is already there",
+                file.display()
+            )));
         }
         let (list, _) = crate::model::image::List::load(root);
         let names_default = implicit_default(&list).filter(|was| *was != id);
@@ -644,10 +650,10 @@ impl Image {
         let base = catalogued(&bases, base);
         if crate::bases::find(&bases, &base).is_none() && crate::model::image::is_local_path(&base)
         {
-            return Err(format!(
+            return Err(Error::Operation(format!(
                 "`{base}` names no base component in the repository or a library; give an image \
                  reference with a tag, such as `quay.io/fedora/fedora-bootc:44`"
-            ));
+            )));
         }
         let known = crate::bases::find(&bases, &base);
         let family = known
@@ -859,26 +865,26 @@ impl Flavour {
         name: Option<String>,
         images: Vec<String>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let name = prompt.text(name, copy::FLAVOUR_NAME, "a name argument", None)?;
 
         if !crate::model::image::is_name(&name) {
-            return Err(format!(
+            return Err(Error::Operation(format!(
                 "`{name}` must be lowercase letters, digits and dashes, starting with a letter"
-            ));
+            )));
         }
         if name == crate::model::image::NO_FLAVOUR {
-            return Err(format!(
+            return Err(Error::Operation(format!(
                 "`{}` is what the ungated build is called, so it is not a flavour name",
                 crate::model::image::NO_FLAVOUR
-            ));
+            )));
         }
 
         let (list, _) = crate::model::image::List::load(root);
         if list.images.is_empty() {
-            return Err(
+            return Err(Error::Operation(
                 "no image to add a flavour to; `buildc create image <name>` writes one".to_string(),
-            );
+            ));
         }
 
         let at = match images.len() {
@@ -890,10 +896,10 @@ impl Flavour {
                     .collect();
                 match prompt.choose(copy::FLAVOUR_IMAGE, &options)? {
                     Some(at) => at,
-                    None => return Err(
+                    None => return Err(Error::Operation(
                         "give `--image`, since nothing can be asked here: which image publishes it"
                             .to_string(),
-                    ),
+                    )),
                 }
             }
             1 => match list.images.iter().position(|image| image.id == images[0]) {
@@ -901,27 +907,27 @@ impl Flavour {
                 None => {
                     let ids: Vec<&str> =
                         list.images.iter().map(|image| image.id.as_str()).collect();
-                    return Err(format!(
+                    return Err(Error::Operation(format!(
                         "`{}` is not a declared image; there is {}",
                         images[0],
                         ids.join(", ")
-                    ));
+                    )));
                 }
             },
             _ => {
-                return Err(
+                return Err(Error::Operation(
                     "`create flavour` writes into one image; name one with `--image`".to_string(),
-                )
+                ))
             }
         };
 
         let image = &list.images[at];
 
         if image.flavours.iter().any(|held| held.name == name) {
-            return Err(format!(
+            return Err(Error::Operation(format!(
                 "`{}` already declares a flavour `{name}`",
                 image.id
-            ));
+            )));
         }
 
         Ok(Self {
@@ -1004,30 +1010,30 @@ fn choose_base(
     bases: &[crate::model::component::BaseComponent],
     current: Option<&str>,
     prompt: &Prompt,
-) -> Result<String, String> {
+) -> Result<String, Error> {
     let mut options = base_options(bases);
     let at = current.and_then(|held| bases.iter().position(|base| base.name == held));
     if prompt.draws() && !options.is_empty() {
         options.push(Choice::new(copy::OTHER_BASE, copy::OTHER_BASE_ABOUT));
         return match ask_one(prompt, copy::IMAGE_BASE, &options, at)? {
             Some(chosen) if chosen < bases.len() => Ok(bases[chosen].name.clone()),
-            Some(_) => prompt.text(
+            Some(_) => Ok(prompt.text(
                 None,
                 copy::BASE_IMAGE,
                 "`--base`",
                 bases.first().map(|base| base.image.as_str()),
-            ),
+            )?),
             None => unreachable!("a drawn picker either chooses or cancels"),
         };
     }
     match ask_one(prompt, copy::IMAGE_BASE, &options, at)? {
         Some(chosen) => Ok(bases[chosen].name.clone()),
-        None => prompt.text(
+        None => Ok(prompt.text(
             None,
             copy::BASE_IMAGE,
             "`--base`",
             bases.first().map(|base| base.image.as_str()),
-        ),
+        )?),
     }
 }
 
@@ -1050,7 +1056,7 @@ fn choose_bootloader(
     known: Option<&crate::model::component::BaseComponent>,
     held: Option<&str>,
     prompt: &Prompt,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, Error> {
     let offered = known
         .map(|base| base.bootloaders.as_slice())
         .unwrap_or_default();
@@ -1089,7 +1095,7 @@ impl Component {
         with: Vec<(String, String)>,
         images: Vec<String>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
         let name = prompt.text(name, copy::COMPONENT_NAME, "a name argument", None)?;
         let path = name
@@ -1099,7 +1105,9 @@ impl Component {
             .join("/");
         let file = layout::manifest(root, &path);
         if file.exists() {
-            return Err(format!("components/{path} is already there"));
+            return Err(Error::Operation(format!(
+                "components/{path} is already there"
+            )));
         }
 
         let description = match with.iter().any(|(verb, _)| verb == "description") {
@@ -1259,7 +1267,7 @@ fn offer(
     wanted: &[&crate::provider::Provider],
     prompt: &Prompt,
     current: bool,
-) -> Result<bool, String> {
+) -> Result<bool, Error> {
     if prompt.asks() {
         println!("{base} brings none of these components:");
         for provider in wanted {
@@ -1268,7 +1276,7 @@ fn offer(
         println!();
     }
     let [yes, no] = yes_no_options();
-    prompt.confirm_current(copy::BRING_FOR_BASE, &yes.label, &no.label, current)
+    Ok(prompt.confirm_current(copy::BRING_FOR_BASE, &yes.label, &no.label, current)?)
 }
 
 fn yes_no_options() -> [Choice; 2] {
@@ -1954,7 +1962,7 @@ image "example" {
             Ok(_) => panic!("an empty base was accepted"),
             Err(said) => said,
         };
-        assert!(said.contains("`--base` is empty"), "{said}");
+        assert!(said.message().contains("`--base` is empty"), "{said}");
         assert!(!root.join("example.image.kdl").exists());
         let _ = std::fs::remove_dir_all(&root);
     }

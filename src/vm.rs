@@ -1,4 +1,5 @@
 use crate::copy;
+use crate::error::Error;
 use common::prompt::Prompt;
 use common::ui::Choice;
 use std::os::unix::process::CommandExt as _;
@@ -32,7 +33,7 @@ pub fn run(
     given: Option<&str>,
     opts: &Options,
     prompt: &Prompt,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     let Some(kind) = kind(noun, name, given, prompt)? else {
         return Ok(());
     };
@@ -40,18 +41,18 @@ pub fn run(
     let access = access(root, opts);
     let script = root.join(crate::layout::script(root, SCRIPT));
     if !script.is_file() {
-        return Err(format!(
+        return Err(Error::Operation(format!(
             "{} is not there; `buildc generate` writes it",
             script.display()
-        ));
+        )));
     }
-    Err(format!(
+    Err(Error::Operation(format!(
         "{}: {}",
         script.display(),
         Command::new(&script)
             .args(argv(noun, kind, opts, installer, &access))
             .exec()
-    ))
+    )))
 }
 
 fn converts(root: &Path, noun: &str, kind: &str, opts: &Options) -> bool {
@@ -190,7 +191,7 @@ fn kind(
     name: &str,
     given: Option<&str>,
     prompt: &Prompt,
-) -> Result<Option<&'static str>, String> {
+) -> Result<Option<&'static str>, Error> {
     let names = || match TYPES
         .iter()
         .map(|(name, _)| format!("`{name}`"))
@@ -202,15 +203,21 @@ fn kind(
     };
     if let Some(named) = given {
         if named == "iso" {
-            return Err("an installer iso is `buildc media build`, not a vm disk".to_string());
+            return Err(Error::Operation(
+                "an installer iso is `buildc media build`, not a vm disk".to_string(),
+            ));
         }
         return match TYPES.iter().find(|(name, _)| *name == named) {
             Some((name, _)) => Ok(Some(name)),
-            None => Err(format!("`{}` takes {}, not `{named}`", name, names())),
+            None => Err(Error::Operation(format!(
+                "`{}` takes {}, not `{named}`",
+                name,
+                names()
+            ))),
         };
     }
     if !prompt.draws() {
-        return Err(format!("`{name}` takes {}", names()));
+        return Err(Error::Operation(format!("`{name}` takes {}", names())));
     }
     Ok(prompt
         .choose(copy::WHICH_DISK, &rows(noun))?
@@ -334,18 +341,24 @@ mod tests {
             assert_eq!(installer(&root, build, kind, &opts(None)), Some(BOOTC));
         }
         let installed = refuse("qcow2", &opts(None));
-        assert!(installed.contains("vm.sh is not there"), "{installed}");
+        assert!(
+            installed.message().contains("vm.sh is not there"),
+            "{installed}"
+        );
 
         let unasked =
             run(&root, "run", "vm run", None, &opts(None), &Prompt::silent()).unwrap_err();
-        assert!(unasked.contains("takes `qcow2` or `raw`"), "{unasked}");
+        assert!(
+            unasked.message().contains("takes `qcow2` or `raw`"),
+            "{unasked}"
+        );
 
         crate::init::put(&root.join("out/raw/disk.raw"), "").unwrap();
         assert!(!converts(&root, "spawn", "raw", &opts(None)));
         assert!(!converts(&root, "run", "raw", &opts(None)));
         assert_eq!(installer(&root, "run", "raw", &opts(None)), None);
         let booted = refuse("raw", &opts(None));
-        assert!(booted.contains("vm.sh is not there"), "{booted}");
+        assert!(booted.message().contains("vm.sh is not there"), "{booted}");
 
         assert!(converts(&root, "build", "raw", &opts(None)));
         assert!(converts(&root, "run", "qcow2", &opts(None)));
@@ -369,7 +382,7 @@ mod tests {
         .unwrap();
         assert_eq!(family(&root, &opts(None)).as_deref(), Some("fedora"));
         let fedora = refuse("qcow2", &opts(None));
-        assert!(fedora.contains("vm.sh is not there"), "{fedora}");
+        assert!(fedora.message().contains("vm.sh is not there"), "{fedora}");
         for kind in ["qcow2", "raw"] {
             assert_eq!(installer(&root, build, kind, &opts(None)), None);
         }
@@ -391,6 +404,9 @@ mod tests {
     #[test]
     fn an_iso_points_at_the_media_command() {
         let refused = kind("build", "vm build", Some("iso"), &Prompt::silent()).unwrap_err();
-        assert!(refused.contains("buildc media build"), "{refused}");
+        assert!(
+            refused.message().contains("buildc media build"),
+            "{refused}"
+        );
     }
 }

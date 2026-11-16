@@ -653,6 +653,12 @@ example/
 > selectable. An explicit `--component` path selects a hidden component as
 > usual.
 >
+> A directory component that tracks its library stays out of the `select
+> component` picker because the command refuses to edit such a component. A
+> typed group name or an explicit `--component` path still reaches the refusal.
+> If no component is left to pick, then the form shows no `select component`
+> row.
+>
 > A name takes letters, digits and `. _ + : -`, with at most one `=` before a
 > version. An option reference such as `firefox={version}` is accepted in place
 > of literal text. The rule exists because the build writes the name straight
@@ -665,8 +671,11 @@ example/
 > tracked path is refused the same way. Running `buildc detach component <path>`
 > first ends the tracking.
 >
-> A path that is both a directory component and an inline component is refused.
-> `buildc check` refuses it the same way.
+> If the lock file does not parse, then the command refuses and names the lock
+> file. Nothing is written.
+>
+> A path that is both a directory component and an inline component is refused,
+> whether the user types it or picks it. `buildc check` refuses it the same way.
 >
 > The `create component` command writes no packages. The user runs `buildc add
 > package` afterward to add them, or writes the `packages` line in the manifest

@@ -127,6 +127,19 @@ fn candidates(root: &Path, list: &List) -> Vec<Candidate> {
     found
 }
 
+fn pickable(root: &Path, candidates: &[Candidate]) -> Result<Vec<Candidate>, String> {
+    let tracked = crate::provenance::lock::tracked(root)?;
+    Ok(candidates
+        .iter()
+        .filter(|candidate| match candidate.place {
+            Place::Directory { .. } => !tracked.iter().any(|record| record.path == candidate.path),
+            // The lock file tracks component directories alone.
+            Place::Inline { .. } => true,
+        })
+        .cloned()
+        .collect())
+}
+
 enum GroupChoice {
     Name(String),
     Component(Candidate),
@@ -156,12 +169,17 @@ fn group_name_field(value: &str) -> Field {
         .default_value(copy::DEFAULT_GROUP)
 }
 
+fn location_fields(candidates: &[Candidate]) -> Vec<Field> {
+    let mut fields = vec![group_name_field("")];
+    if !candidates.is_empty() {
+        fields.push(Field::action(copy::SELECT_COMPONENT, ""));
+    }
+    fields
+}
+
 fn group_form(candidates: &[Candidate], prompt: &Prompt) -> Result<Option<GroupChoice>, Error> {
     let actions = [copy::ADD_PACKAGES, copy::CANCEL];
-    let mut fields = vec![
-        group_name_field(""),
-        Field::action(copy::SELECT_COMPONENT, ""),
-    ];
+    let mut fields = location_fields(candidates);
     let mut selected: Option<&Candidate> = None;
     let mut visited = Vec::new();
     loop {
@@ -243,14 +261,11 @@ fn check_image(candidate: &Candidate, images: &[String]) -> Result<(), Error> {
     }
 }
 
-fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<Found, Error> {
+fn refuse_defined_twice(candidates: &[Candidate], path: &str) -> Result<(), Error> {
     let matching: Vec<&Candidate> = candidates
         .iter()
         .filter(|candidate| candidate.path == path)
         .collect();
-    if matching.is_empty() {
-        return Ok(Found::New(path));
-    }
     let inline = matching
         .iter()
         .filter(|candidate| matches!(candidate.place, Place::Inline { .. }))
@@ -268,6 +283,18 @@ fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<
              check` refuses the pair"
         )));
     }
+    Ok(())
+}
+
+fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<Found, Error> {
+    let matching: Vec<&Candidate> = candidates
+        .iter()
+        .filter(|candidate| candidate.path == path)
+        .collect();
+    if matching.is_empty() {
+        return Ok(Found::New(path));
+    }
+    refuse_defined_twice(candidates, &path)?;
     let held: Vec<&Candidate> = match images.is_empty() {
         true => matching.clone(),
         false => matching
@@ -299,13 +326,14 @@ fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<
 }
 
 fn refuse_tracked(root: &Path, path: &str) -> Result<(), Error> {
-    match crate::provenance::lock::entry(root, path) {
-        Some(record) if record.tracked => Err(Error::Operation(format!(
+    let tracked = crate::provenance::lock::tracked(root)?;
+    match tracked.into_iter().find(|record| record.path == path) {
+        Some(record) => Err(Error::Operation(format!(
             "The `{path}` component is tracking `{}/{}`. To modify it, first detach it from `{}` \
              with `buildc detach component {path}`",
             record.library, record.upstream, record.library
         ))),
-        _ => Ok(()),
+        None => Ok(()),
     }
 }
 
@@ -460,10 +488,11 @@ impl Packages {
         }
         let images = unique;
         let list = List::editable(root).map_err(|issues| issues.plain())?;
+        crate::provenance::lock::parses(root)?;
         let candidates = candidates(root, &list);
         let group = match component {
             Some(path) => GroupChoice::Name(path),
-            None if prompt.draws() => match group_form(&candidates, prompt)? {
+            None if prompt.draws() => match group_form(&pickable(root, &candidates)?, prompt)? {
                 Some(choice) => choice,
                 None => return Ok(None),
             },
@@ -481,6 +510,7 @@ impl Packages {
         };
         let found = match group {
             GroupChoice::Component(candidate) => {
+                refuse_defined_twice(&candidates, &candidate.path)?;
                 check_image(&candidate, &images)?;
                 Found::Existing(candidate)
             }
@@ -652,6 +682,42 @@ mod tests {
     }
 
     #[test]
+    fn the_picker_leaves_out_a_tracked_directory_component() {
+        let root = repository("pickable");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    tool {\n        packages \"htop\"\n    }\n}\n",
+        );
+        manifest(&root, "tool", "schema-version 1\n");
+        manifest(&root, "kept", "schema-version 1\n");
+        // A filter on the path alone would drop the inline `tool` group.
+        // A filter on the lock entry alone would drop the `kept` component.
+        crate::init::put(
+            &layout::lock(&root),
+            "component \"tool\" {\n    library \"buildc\"\n    path \"tool\"\n    content \"abc\"\n    track\n}\ncomponent \"kept\" {\n    library \"buildc\"\n    path \"kept\"\n    content \"abc\"\n}\n",
+        )
+        .unwrap();
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let picked: Vec<(String, bool)> = pickable(&root, &candidates(&root, &list))
+            .unwrap()
+            .into_iter()
+            .map(|candidate| {
+                (
+                    candidate.path,
+                    matches!(candidate.place, Place::Directory { .. }),
+                )
+            })
+            .collect();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            picked,
+            [("kept".to_string(), true), ("tool".to_string(), false)]
+        );
+    }
+
+    #[test]
     fn the_package_location_form_names_the_group_and_the_component_choice() {
         use crate::screen_tests::{assert_screen, screen};
         use common::ui::testing::{FormFrame, FormMode};
@@ -675,6 +741,48 @@ mod tests {
             sections: &[],
         };
         assert_screen("add-package-location", frame.render(&screen()));
+    }
+
+    #[test]
+    fn the_package_location_form_offers_no_component_choice_without_candidates() {
+        assert_eq!(location_fields(&[]).len(), 1);
+        let root = repository("location-fields");
+        manifest(&root, "tool", "schema-version 1\n");
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
+        assert_eq!(location_fields(&found).len(), 2);
+        crate::init::put(
+            &layout::lock(&root),
+            "component \"tool\" {\n    library \"buildc\"\n    path \"tool\"\n    content \"abc\"\n    track\n}\n",
+        )
+        .unwrap();
+        let left = pickable(&root, &found).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(location_fields(&left).len(), 1);
+    }
+
+    #[test]
+    fn a_picked_component_defined_twice_is_refused() {
+        let root = repository("picked-twice");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    tool {\n        packages \"vim\"\n    }\n}\n",
+        );
+        manifest(&root, "tool", "schema-version 1\n");
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refuse_defined_twice(&found, "tool").unwrap_err();
+        assert!(
+            refused.message().contains("defined twice"),
+            "{}",
+            refused.message()
+        );
+        assert!(refuse_defined_twice(&found, "other").is_ok());
     }
 
     #[test]
@@ -1114,6 +1222,31 @@ mod tests {
         ));
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.contains("directory component"), "{refused}");
+    }
+
+    #[test]
+    fn a_lock_that_does_not_parse_refuses_the_edit() {
+        let root = repository("broken-lock");
+        manifest(&root, "tool", "schema-version 1\n");
+        crate::init::put(&layout::lock(&root), "component \"tool\" {\n").unwrap();
+        let refused = refused(add(&root, &["htop"], "tool"));
+        let manifest = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.contains("does not parse"), "{refused}");
+        assert!(!manifest.contains("htop"), "{manifest}");
+    }
+
+    #[test]
+    fn a_lock_that_does_not_parse_refuses_an_inline_group() {
+        let root = repository("broken-lock-inline");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    apps {\n        packages \"vim\"\n    }\n}\n",
+        );
+        crate::init::put(&layout::lock(&root), "component \"apps\" {\n").unwrap();
+        let refused = refused(add(&root, &["htop"], "apps"));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.contains("does not parse"), "{refused}");
     }
 
     #[test]

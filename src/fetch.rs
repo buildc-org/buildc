@@ -30,7 +30,8 @@ pub fn components(
                 )
             })?;
         crate::import::verified(library, enforce)?;
-        let upstream = crate::collection::tree(root, library)?
+        let tree = crate::collection::tree(root, library)?;
+        let upstream = tree
             .join(library.subtree().unwrap_or(""))
             .join(&record.upstream);
         if !upstream.join(layout::MANIFEST_FILE).is_file() {
@@ -41,6 +42,15 @@ pub fn components(
                 record.library
             ));
         }
+        // The lock file is committed to the repository and a pull request can change the `path` of any lock entry.
+        crate::import::contained(&tree, &upstream, &record.library, &record.upstream).map_err(
+            |err| {
+                format!(
+                    "{err}; correct the `path` of the `{}` entry in `components.lock.kdl`",
+                    shown(&record.path)
+                )
+            },
+        )?;
         let content = lock::hash(&upstream).ok_or_else(|| {
             format!(
                 "{} cannot be hashed, so nothing can record what was copied",
@@ -325,6 +335,32 @@ mod tests {
             panic!("the key is refused");
         };
         assert!(refused.contains("is not a path under"), "{refused}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_lock_path_outside_the_library_refuses_the_update() {
+        let root = imported(
+            "upstream",
+            &[("browser/manifest.kdl", "")],
+            &[("browser", "browser")],
+            true,
+        );
+        crate::init::put(&root.join("outside/manifest.kdl"), "").unwrap();
+        let lock = read(&root, "components/components.lock.kdl").unwrap();
+        let absolute = root.join("outside").display().to_string();
+        for path in ["../outside", absolute.as_str()] {
+            let climbed = lock.replace("path \"browser\"", &format!("path \"{path}\""));
+            crate::init::put(&layout::lock(&root), &climbed).unwrap();
+            let Err(refused) = components(&root, &library(), false, &[]) else {
+                panic!("the lock path `{path}` is refused");
+            };
+            assert!(
+                refused.contains("outside the library tree")
+                    && refused.contains("correct the `path`"),
+                "{refused}"
+            );
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 

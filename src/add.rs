@@ -60,6 +60,7 @@ struct Candidate {
     place: Place,
     label: String,
     about: String,
+    hidden: bool,
 }
 
 fn candidates(root: &Path, list: &List) -> Vec<Candidate> {
@@ -78,13 +79,13 @@ fn candidates(root: &Path, list: &List) -> Vec<Candidate> {
             if !crate::model::image::is_local_path(&path) {
                 return None;
             }
+            let file = dir.join(layout::MANIFEST_FILE);
             Some(Candidate {
                 label: path.clone(),
                 about: format!("components/{path}"),
                 path,
-                place: Place::Directory {
-                    file: dir.join(layout::MANIFEST_FILE),
-                },
+                hidden: crate::parse::component::hidden(&file),
+                place: Place::Directory { file },
             })
         })
         .collect();
@@ -103,6 +104,7 @@ fn candidates(root: &Path, list: &List) -> Vec<Candidate> {
                 label: format!("{} ({})", entry.path, place.target().unwrap_or_default()),
                 about: image.src.name().to_string(),
                 path: entry.path.clone(),
+                hidden: crate::parse::component::inline_hidden(&image.src, spans),
                 place,
             });
         }
@@ -136,7 +138,13 @@ fn pick(found: Vec<Candidate>, prompt: &Prompt) -> Result<Option<Candidate>, Err
     }
     let options: Vec<Choice> = found
         .iter()
-        .map(|candidate| Choice::new(&candidate.label, &candidate.about))
+        .map(|candidate| {
+            let choice = Choice::new(&candidate.label, &candidate.about);
+            match candidate.hidden {
+                true => choice.hidden(),
+                false => choice,
+            }
+        })
         .collect();
     let Some(at) = prompt.choose(copy::WHICH_COMPONENT, &options)? else {
         return Ok(None);
@@ -449,6 +457,27 @@ mod tests {
             Ok(_) => panic!("the command was expected to refuse"),
             Err(error) => error.message().to_string(),
         }
+    }
+
+    #[test]
+    fn a_hidden_component_is_marked_in_the_candidates() {
+        let root = repository("hidden-candidate");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    tool\n    apps {\n        hidden #true\n    }\n}\n",
+        );
+        manifest(&root, "tool", "schema-version 1\nhidden #true\n");
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(found
+            .iter()
+            .any(|candidate| candidate.path == "tool" && candidate.hidden));
+        assert!(found
+            .iter()
+            .any(|candidate| candidate.path == "apps" && candidate.hidden));
     }
 
     #[test]

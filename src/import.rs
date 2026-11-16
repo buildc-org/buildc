@@ -158,11 +158,15 @@ fn offered(
                 .name
                 .split_once('/')
                 .map_or("", |(group, _)| group);
-            match fit.and_then(|fit| fit.unavailable(&component.declares)) {
+            let choice = match fit.and_then(|fit| fit.unavailable(&component.declares)) {
                 Some(why) => Choice::new(component.qualified(), why).unavailable(),
                 None => Choice::new(component.qualified(), component.about()),
-            }
-            .within(group)
+            };
+            let choice = match component.declares.hidden {
+                true => choice.hidden(),
+                false => choice,
+            };
+            choice.within(group)
         })
         .collect();
     Ok((listed, options))

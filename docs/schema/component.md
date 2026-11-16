@@ -17,6 +17,7 @@ targets "fedora" "debian"
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this file is written against. |
 | [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. |
 | [`targets`](#targets) (optional,&nbsp;repeatable) | *list of strings* | The base families that this component builds on, which the image's `family` must match. Omit it to target every family. |
+| [`hidden`](#hidden) (optional) | *boolean* | Omits this component from component pickers; the component still builds. |
 | [`provides`](#provides) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp;} | A capability that this component provides for the components that require it. |
 | [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide. It also orders the build. |
 | [`imports`](#imports) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;} | A component that builds in every image that holds this component. |
@@ -89,6 +90,18 @@ targets "fedora" "debian"
 ```
 
 Accepts: *list of strings*
+
+<a id="hidden"></a>
+
+## `hidden` (optional)
+
+An explicit path still selects it. A picker reveals hidden components with the `h` key.
+
+```kdl
+hidden #true
+```
+
+Accepts: *boolean*
 
 <a id="provides"></a>
 

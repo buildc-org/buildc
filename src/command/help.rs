@@ -246,6 +246,12 @@ pub(super) const ADD_PACKAGE_NOTES: &str = r#"> [!NOTE]
 > selectable. An explicit `--component` path selects a hidden component as
 > usual.
 >
+> A directory component that tracks its library stays out of the `select
+> component` picker because the command refuses to edit such a component. A
+> typed group name or an explicit `--component` path still reaches the refusal.
+> An inline group stays in the picker even when its path matches a tracked
+> component.
+>
 > A name takes letters, digits and `. _ + : -`, with at most one `=` before a
 > version. An option reference such as `firefox={version}` is accepted in place
 > of literal text. The rule exists because the build writes the name straight
@@ -257,6 +263,9 @@ pub(super) const ADD_PACKAGE_NOTES: &str = r#"> [!NOTE]
 > would no longer match its lock entry. A new inline or directory group at a
 > tracked path is refused the same way. Running `buildc detach component <path>`
 > first ends the tracking.
+>
+> If the lock file does not parse, then the command refuses and names the lock
+> file. Nothing is written.
 >
 > A path that is both a directory component and an inline component is refused.
 > `buildc check` refuses it the same way.

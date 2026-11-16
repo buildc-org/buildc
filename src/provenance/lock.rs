@@ -99,6 +99,15 @@ pub fn read(root: &Path) -> Vec<Record> {
         .collect()
 }
 
+pub fn tracked(root: &Path) -> Result<Vec<Record>, String> {
+    // A lock file that does not parse would otherwise read as one that tracks no component.
+    parses(root)?;
+    Ok(read(root)
+        .into_iter()
+        .filter(|record| record.tracked)
+        .collect())
+}
+
 pub fn entry(root: &Path, dir: &str) -> Option<Record> {
     read(root).into_iter().find(|record| record.path == dir)
 }

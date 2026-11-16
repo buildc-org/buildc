@@ -119,10 +119,7 @@ fn choose_tracked(name: &str, root: &Path, prompt: &Prompt) -> Result<Option<Str
             "`{name}` takes the component to detach as `<path>`"
         )));
     }
-    let tracked: Vec<lock::Record> = lock::read(root)
-        .into_iter()
-        .filter(|record| record.tracked)
-        .collect();
+    let tracked = lock::tracked(root)?;
     if tracked.is_empty() {
         eprintln!("buildc: {}", copy::NOTHING_TRACKED);
         return Ok(None);

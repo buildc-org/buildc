@@ -38,14 +38,25 @@ pub const FLAVOUR_IMAGE: &str = "image that publishes the flavour";
 pub const COMPONENT_NAME: &str = "component name";
 pub const COMPONENT_DESCRIPTION: &str = "description (optional)";
 pub const COMPONENT_SUPPORTS: &str = "supported base families, separated by spaces (optional)";
-pub const COMPONENT_PACKAGES: &str = "Does this component install packages?";
-pub const PACKAGE_NAMES: &str = "package names, separated by spaces";
+pub const PACKAGE_NAMES: &str = "packages";
+pub const PACKAGE_NAMES_HINT: &str = "separated by a space";
+pub const GROUP_NAME: &str = "group name";
+pub fn group_name_hint() -> String {
+    format!("enter for default ({DEFAULT_GROUP})")
+}
+pub const DEFAULT_GROUP: &str = "apps";
+pub const SELECT_COMPONENT: &str = "select component";
+pub const ADD_PACKAGES: &str = "Add packages";
 pub const WHICH_COMPONENT: &str = "component";
 pub const WHICH_COMPONENTS: &str = "components";
 pub const LIST_IN_IMAGES: &str = "images and flavours that list it";
 
 pub fn list_in(target: &str) -> String {
     format!("List it in {target}?")
+}
+
+pub fn package_group_images(name: &str) -> String {
+    format!("select image to add \"{name}\" package group")
 }
 
 pub const TARGET_IMAGE: &str = "image or flavour";

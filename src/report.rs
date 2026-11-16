@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 pub type Say<'a> = &'a mut dyn FnMut(&str);
 
 pub fn report(root: &Path, wrote: &[(PathBuf, Change)]) {
+    if wrote.is_empty() {
+        return;
+    }
     let declared = crate::model::image::List::load(root).0.id;
     let id = match declared.is_empty() {
         true => layout::named_after_root(root).unwrap_or_default(),

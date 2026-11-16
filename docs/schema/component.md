@@ -10,7 +10,6 @@ The directory under `components/` is the component's name, and the manifest sits
 schema-version 1
 description "Traditional CLI utilities"
 targets "fedora" "debian"
-packages "htop" "tmux"
 ```
 
 | Field | Accepts | Description |
@@ -18,6 +17,7 @@ packages "htop" "tmux"
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this file is written against. |
 | [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. |
 | [`targets`](#targets) (optional,&nbsp;repeatable) | *list of strings* | The base families that this component builds on, which the image's `family` must match. Omit it to target every family. |
+| [`hidden`](#hidden) (optional) | *boolean* | Keeps the component out of picker lists until the user reveals it. |
 | [`provides`](#provides) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp;} | A capability that this component provides for the components that require it. |
 | [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide. It also orders the build. |
 | [`imports`](#imports) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;} | A component that builds in every image that holds this component. |
@@ -90,6 +90,18 @@ targets "fedora" "debian"
 ```
 
 Accepts: *list of strings*
+
+<a id="hidden"></a>
+
+## `hidden` (optional)
+
+A component marked `hidden #true` stays out of the component pickers of `buildc add package`, `buildc import component` and `buildc why` by default. The user reveals it by pressing `h` in the picker and naming the component's path on the command line selects it as usual. Hiding changes nothing else and the component still builds and appears in the build summary, `buildc why` and `buildc graph`.
+
+```kdl
+hidden #true
+```
+
+Accepts: *boolean*
 
 <a id="provides"></a>
 

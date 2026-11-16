@@ -1270,8 +1270,7 @@ pub fn source_span(text: &str, kind: &str, alias: &str) -> Option<Span> {
 pub fn sources_insert(text: &str) -> Option<usize> {
     let doc: KdlDocument = text.parse().ok()?;
     let sources = doc.nodes().iter().find(|n| n.name().value() == "sources")?;
-    let span: Span = sources.span().into();
-    text[..span.offset + span.len].rfind('}')
+    super::block_close(sources, text)
 }
 
 pub fn at_text((hour, minute): (u32, u32)) -> String {

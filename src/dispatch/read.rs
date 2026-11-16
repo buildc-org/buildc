@@ -132,10 +132,11 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
     let mut chosen = None;
     let mut run = if picks {
         let loaded = crate::load(&root);
-        let (question, known, shown) = match command {
+        let (question, known, shown, hidden) = match command {
             Command::Coverage | Command::CoverageJson => {
                 let known: Vec<String> = loaded.list.images.iter().map(|i| i.id.clone()).collect();
-                (copy::WHICH_IMAGE, known.clone(), known)
+                let hidden = vec![false; known.len()];
+                (copy::WHICH_IMAGE, known.clone(), known, hidden)
             }
             Command::Plan
             | Command::Check
@@ -150,13 +151,14 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
             | Command::WhyJson => {
                 let known = crate::emit::why::known(&loaded.list);
                 let shown = crate::emit::why::display(&known);
-                (copy::WHICH_COMPONENT, known, shown)
+                let hidden = crate::emit::why::hidden(&loaded.list, &known);
+                (copy::WHICH_COMPONENT, known, shown, hidden)
             }
         };
         if known.is_empty() {
             crate::run_loaded(command, None, &root, loaded)
         } else {
-            let options = picker_options(&shown);
+            let options = picker_options(&shown, &hidden);
             let Some(at) = prompt.choose(question, &options)? else {
                 return Ok(ExitCode::SUCCESS);
             };
@@ -287,10 +289,17 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-pub(crate) fn picker_options(shown: &[String]) -> Vec<common::ui::Choice> {
+pub(crate) fn picker_options(shown: &[String], hidden: &[bool]) -> Vec<common::ui::Choice> {
     shown
         .iter()
-        .map(|name| common::ui::Choice::new(name, ""))
+        .zip(hidden)
+        .map(|(label, hidden)| {
+            let choice = common::ui::Choice::new(label, "");
+            match hidden {
+                true => choice.hidden(),
+                false => choice,
+            }
+        })
         .collect()
 }
 

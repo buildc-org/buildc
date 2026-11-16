@@ -59,13 +59,13 @@ pub struct Flags {
     pub backend: Option<String>,
     pub oci_output: Option<String>,
     pub secrets: Vec<String>,
-    pub pkgs: Vec<String>,
     pub with: Vec<(String, String)>,
     pub cache_to: bool,
     pub no_cache_from: bool,
     pub rebuild: bool,
     pub dependencies: bool,
     pub untracked: bool,
+    pub inline: bool,
 }
 
 fn one_name(rest: &[&str], name: &str) -> Result<Option<String>, Error> {
@@ -186,6 +186,7 @@ pub fn dispatch(
         Verb::CreateImage => create::image(call),
         Verb::CreateFlavour => create::flavour(call),
         Verb::CreateModule => create::component(call),
+        Verb::AddPackage => create::add_package(call),
         Verb::CreateKey => create::key(call),
         Verb::CreateScripts => create::scripts(call),
         Verb::SetKey => set::key(call),

@@ -163,6 +163,7 @@ pub struct Component {
     pub src: Source,
     pub description: String,
     pub targets: Vec<String>,
+    pub hidden: bool,
     pub provides: Vec<Capability>,
     pub exclusive: Vec<String>,
     pub requires: Vec<Requirement>,

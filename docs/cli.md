@@ -41,7 +41,8 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create component [name]`](#buildc-create-component) | write a component and offer to list it in an image | [`manifest.kdl`](schema/component.md) |
+| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in an image | [`manifest.kdl`](schema/component.md) |
+| [`buildc add package [name]...`](#buildc-add-package) | add packages to a package group | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
 | [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc set component [path]`](#buildc-set-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
@@ -392,13 +393,21 @@ image "example" {
 
 ## `buildc create component`
 
-Writes a new component to `components/<name>/manifest.kdl` and offers to list
-it in an image. The name can be a path, so `apps/firefox` writes
-`components/apps/firefox/manifest.kdl`.
+Writes a new component. A directory component is a manifest at
+`components/<name>/manifest.kdl`. The command offers to list it in images.
+`--inline` writes it as a block inside one image file instead, and the block
+defines the component and lists it in that image or flavour.
 
-It asks for the component name, an optional description, optional base family
-restrictions, whether it installs packages and their names, and the images and
-flavours that list it.
+The name can be a path. As a directory component, `apps/firefox` writes
+`components/apps/firefox/manifest.kdl`. As an inline component, it writes a
+`firefox` block inside an `apps` block.
+
+The command asks for the component name. For an inline component it then asks
+for the image or flavour that holds the block. For both kinds it asks for an
+optional description and optional base family restrictions. For a directory
+component it then asks which images and flavours list the component. The
+command writes no packages. `buildc add package` adds them afterward and
+creates the group when the path is new.
 
 **Usage:** `buildc create component [OPTIONS] [name]`
 
@@ -409,8 +418,8 @@ flavours that list it.
 | Option | Description |
 | --- | --- |
 | `--image <name>` | an image that lists the component |
-| `--pkg <name>` | a package the component installs |
 | `--with <verb=value>` | one more manifest line, such as `provides=browser`; repeatable |
+| `--inline` | write the component as a block in one image file |
 
 **Schema:** [`manifest.kdl`](schema/component.md)
 
@@ -425,18 +434,29 @@ example/
 ```
 
 > [!NOTE]
-> With no `targets` declaration, a component targets every base family. It
-> writes packages outside a family gate so every targeted family installs
-> them. A package name that differs by family goes in a `family` block.
-> The build installs them through the family adapter, with `dnf install -y` on
-> Fedora and RHEL, and with `apt-get update`, `apt-get install -y` and
-> `apt-get clean` on Debian and Ubuntu.
->
 > An image and one of its own flavours cannot both list the component. The image
 > entry already reaches every flavour of that image.
 >
-> Choosing no image is valid. The component exists with no listing. Leaving the
-> picker writes nothing.
+> Choosing no image is valid for a directory component. The component then
+> exists with no listing. Leaving the picker writes nothing.
+>
+> An inline component belongs to one image or flavour. `--inline` therefore
+> takes one `--image`. If nothing can be asked, then an inline component needs
+> that `--image`. The command refuses an inline component when the user
+> chooses no image.
+>
+> An inline component needs at least one manifest line. A description, a
+> `targets` restriction or a `--with` line each counts.
+>
+> One name cannot be a directory component and an inline component at once.
+> The command refuses an inline component when `components/<name>/` already
+> holds a component. It refuses a directory component when an image file
+> already defines the name inline.
+>
+> `--with packages=...` is refused. `buildc add package <names...> --component
+> <name>` adds the packages and creates the component when the path is new.
+>
+> The command writes a directory component unless `--inline` is given.
 
 ## `buildc create key`
 
@@ -525,6 +545,132 @@ does not hold yet.
 > supplies.
 >
 > `buildc create repo` asks the same question, with the skeleton chosen.
+
+## `buildc add package`
+
+Adds packages to a package group. The command takes the package names as
+arguments, such as `buildc add package firefox htop`. With no names given, it
+asks for them. The prompt reads `packages`, with the hint `separated by a
+space`.
+
+The packages go into a package group, an ordinary component that lives either
+in its own directory under `components/` or as a block declared inline inside
+an image file. `--component <path>` names the group directly, such as `apps` or
+`apps/firefox`. Without `--component`, in a terminal, the command shows one
+screen with two rows. The first row, `group name`, starts empty and takes
+`apps` on an empty submit. The second row, `select component`, opens a picker
+of the components the repository holds and choosing one fills the group name
+with that component.
+
+If the group already exists, the new names join it wherever it lives and the
+command asks nothing more. A group path the repository does not hold yet
+creates a new group instead. In a terminal, the command then asks which image
+or flavour should get it, as a multi-select of every image and flavour in the
+repository, even when the repository has only one image. Every selected image
+gets its own inline copy of the group holding the packages. If no image is
+selected, the group becomes a directory component instead, at
+`components/<path>/manifest.kdl`.
+
+`--image <name>` selects an image without the prompt, or a flavour as
+`<image>/<flavour>`. It can be given more than once. A name given twice still
+counts once.
+
+**Usage:** `buildc add package [OPTIONS] [name]...`
+
+| Argument | Description |
+| --- | --- |
+| `<name>` | the package names to add; asked for when none is given |
+
+| Option | Description |
+| --- | --- |
+| `--component <path>` | the path of the package group that receives the packages |
+| `--image <name>` | the image or `<image>/<flavour>` that holds the group (repeatable) |
+
+**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages)
+
+**What it writes:**
+
+```text
+example/
+└── ~ example.image.kdl  firefox and wireguard-tools added to `packages`
+```
+
+> [!NOTE]
+> A name listed twice in one call counts once. A call with no names is refused.
+>
+> When nothing can be asked, for example with `--no-tui` or with no terminal,
+> the command refuses and names `--component`.
+>
+> A component with no `packages` node gains one. A component directory that
+> holds only scripts also gains a `manifest.kdl`.
+>
+> Otherwise the new names join the component's first top-level `packages` node
+> and keep its layout. A node that lists its names on one line gets the new
+> names after its last name. A node that holds its names in a block gets each
+> new name on its own line inside the block.
+>
+> A name the group already lists is reported and not written again. A repeat
+> call is safe.
+>
+> A name inside a family-gated `on` block counts as listed. The command does
+> not add it again at the top level.
+>
+> The command writes every new name outside any `on` gate and every base family
+> the component targets installs it. A name that differs by family goes in an
+> `on` block. The user writes that block by hand in the manifest or image file.
+>
+> If the `packages` node carries `enablerepo=`, the new names install with that
+> repository enabled too.
+>
+> One image and one of its own flavours cannot both get the new group because
+> the image's entry already reaches its flavours.
+>
+> A new group path must be a valid component path. Each `/` segment takes
+> lowercase letters, digits and dashes and starts with a letter.
+>
+> An image or flavour that the repository does not declare is refused.
+>
+> A new group that would go inline in an image is refused when that image
+> already lists the same path as an ordinary entry, such as a component
+> imported from a library. The refusal names the image and the path. Nothing is
+> written.
+>
+> The same inline path can exist in several images, one copy each.
+>
+> If a group has several inline copies, `--component` alone is refused because
+> it cannot tell which copy is meant. The user picks one copy with `select
+> component` or with exactly one `--image`.
+>
+> Once a group exists inline, `--image` must name an image that holds a copy.
+> The refusal names the images that do. The command does not add a copy to a
+> further image.
+>
+> `--image` with a directory component is refused because a directory component
+> belongs to no single image.
+>
+> A component marked `hidden #true` stays out of the `select component` picker
+> until the user presses `h`. A revealed hidden component is dimmed and still
+> selectable. An explicit `--component` path selects a hidden component as
+> usual.
+>
+> A name takes letters, digits and `. _ + : -`, with at most one `=` before a
+> version. An option reference such as `firefox={version}` is accepted in place
+> of literal text. The rule exists because the build writes the name straight
+> into a shell command line. A name that breaks the rule is refused before
+> anything is written. An install that needs other characters belongs in the
+> component's `component.sh` script.
+>
+> A directory component that tracks its library is refused because an edit
+> would no longer match its lock entry. This holds for a new directory group at
+> a tracked path too. Running `buildc set component <path> --untracked` first
+> ends the tracking.
+>
+> A path that is both a directory component and an inline component is refused.
+> `buildc check` refuses it the same way.
+>
+> The `create component` command writes no packages. The user runs `buildc add
+> package` afterward to add them, or writes the `packages` line in the manifest
+> or image file by hand.
 
 ## `buildc import component`
 

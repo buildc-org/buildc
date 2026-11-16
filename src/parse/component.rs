@@ -11,8 +11,8 @@ use crate::parse::disk::Disk;
 use crate::parse::prop_span;
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say, FILE_SCHEMA_VERSION};
 use crate::parse::{asset, boolean, check_capability, check_path, child, flag, int_prop, kids};
+use crate::parse::{bool_arg, string_arg, string_args, syntax_issue};
 use crate::parse::{names, options, prop, text};
-use crate::parse::{string_arg, string_args, syntax_issue};
 use crate::resolve::options as resolve_options;
 use crate::runtime::{class_names, VERIFY_CLASSES};
 use kdl::{KdlDocument, KdlNode};
@@ -406,7 +406,7 @@ const BASE_SCAP_CONTENT: Node = Node::new("scap-content",
 
 #[rustfmt::skip]
 pub const COMPONENT: Node = Node::new("component",
-    "One component, which declares what it builds on, what it needs and what it installs.").about("The directory under `components/` is the component's name, and the manifest sits at `manifest.kdl` in it. An image that defines a component inline names it with the path that the image lists.").scaffolds(&["schema-version", "description", "targets", "packages"])
+    "One component, which declares what it builds on, what it needs and what it installs.").about("The directory under `components/` is the component's name, and the manifest sits at `manifest.kdl` in it. An image that defines a component inline names it with the path that the image lists.").scaffolds(&["schema-version", "description", "targets"])
     .children(&[
         FILE_SCHEMA_VERSION,
         Node::new("description", "One line that names the component in the resolved build summary.").example("\"Traditional CLI utilities\"")
@@ -418,6 +418,10 @@ pub const COMPONENT: Node = Node::new("component",
                 "`targets \"fedora\"`, one name for each base family the component builds on"))
             .props(&[], Say::new("`{}` is not a `targets` property", "not part of the schema",
                 "`targets` takes family names alone")),
+        Node::new("hidden", "Keeps the component out of picker lists until the user reveals it.").about("A component marked `hidden #true` stays out of the component pickers of `buildc add package`, `buildc import component` and `buildc why` by default. The user reveals it by pressing `h` in the picker and naming the component's path on the command line selects it as usual. Hiding changes nothing else and the component still builds and appears in the build summary, `buildc why` and `buildc graph`.").example("#true")
+            .arg(Arg::Bool, Say::new("`hidden` takes #true or #false", "not a boolean",
+                "`hidden #true` keeps the component out of picker lists until the user reveals it"))
+            .once(""),
 
         Node::new("provides", "A capability that this component provides for the components that require it.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `base-image` is provided by a `base` node. A manifest cannot declare it.").example("\"flatpak\"")
             .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
@@ -628,9 +632,7 @@ fn batch(
     let mut names: Vec<String> = Vec::new();
     for named in crate::parse::names(node) {
         let value = named.name;
-        // An option reference would fail the token check, so the package name is checked with a stand-in in its place.
-        let literal = resolve_options::interpolate(value, |_| "x".to_string());
-        if let Some(problem) = bad_package(&literal) {
+        if let Some(problem) = check_package(value) {
             issues.push(
                 Issue::new(format!("{noun} name `{value}` {problem}"), src)
                     .at(named.span, "would not survive the RUN line")
@@ -1024,6 +1026,7 @@ impl Component {
             dir: dir_rel.to_string(),
             description: String::new(),
             targets: Vec::new(),
+            hidden: false,
             provides: Vec::new(),
             exclusive: Vec::new(),
             requires: Vec::new(),
@@ -1250,6 +1253,7 @@ impl Component {
                     }
                 }
                 "targets" => component.parse_targets(node, src, issues),
+                "hidden" => component.hidden = is_hidden(node),
                 kind @ ("provides" | "requires" | "after" | "removes") => {
                     component.parse_capabilities(kind, node, src, issues)
                 }
@@ -2133,9 +2137,93 @@ pub fn satisfies_span(kdl: &str) -> Option<Span> {
     Some(node.span().into())
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum PackageInsert {
+    Args { at: usize },
+    Children { close: usize },
+}
+
+#[derive(Default)]
+pub(crate) struct PackageLine {
+    /// `None` says the component has no top-level `packages` node.
+    pub insert: Option<PackageInsert>,
+    /// A name inside an `on` gate counts because a gated package must not be added a second time.
+    pub names: Vec<String>,
+}
+
+fn package_names(node: &KdlNode) -> Vec<String> {
+    crate::parse::names(node)
+        .into_iter()
+        .map(|named| named.name.to_string())
+        .collect()
+}
+
+fn gather_packages(nodes: &[&KdlNode], names: &mut Vec<String>) {
+    for node in nodes {
+        match node.name().value() {
+            "packages" => names.extend(package_names(node)),
+            "on" => {
+                let below: Vec<&KdlNode> = kids(node).iter().collect();
+                gather_packages(&below, names);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn package_line(nodes: &[&KdlNode], text: &str) -> PackageLine {
+    let mut names = Vec::new();
+    gather_packages(nodes, &mut names);
+    let insert = nodes
+        .iter()
+        .find(|node| node.name().value() == "packages")
+        .map(|node| {
+            if let Some(entry) = node
+                .entries()
+                .iter()
+                .rev()
+                .find(|entry| entry.name().is_none())
+            {
+                let end = Span::from(entry.span());
+                return PackageInsert::Args {
+                    at: end.offset + end.len,
+                };
+            }
+            match crate::parse::block_close(node, text) {
+                Some(close) => PackageInsert::Children { close },
+                None => {
+                    let end = Span::from(node.name().span());
+                    PackageInsert::Args {
+                        at: end.offset + end.len,
+                    }
+                }
+            }
+        });
+    PackageLine { insert, names }
+}
+
+pub(crate) fn packages(text: &str) -> Result<PackageLine, String> {
+    let doc: KdlDocument = text.parse().map_err(|_| "is not valid KDL".to_string())?;
+    let nodes: Vec<&KdlNode> = doc.nodes().iter().collect();
+    Ok(package_line(&nodes, text))
+}
+
+pub(crate) fn inline_packages(src: &Source, spans: &[Span]) -> PackageLine {
+    let held = crate::parse::image::nodes_at(src, spans);
+    let nodes: Vec<&KdlNode> = held.iter().collect();
+    package_line(&nodes, src.text())
+}
+
+/// Each option reference stands in as the valid token `x` because the build resolves the option's value later.
+pub(crate) fn check_package(name: &str) -> Option<&'static str> {
+    let literal = resolve_options::interpolate(name, |_| "x".to_string());
+    bad_package(&literal)
+}
+
 #[derive(Default)]
 pub struct Summary {
     pub description: String,
+    pub hidden: bool,
     pub provides: Vec<String>,
     pub exclusive: Vec<String>,
     pub targets: Vec<String>,
@@ -2195,6 +2283,7 @@ pub fn summary(file: &Path) -> Summary {
     exclusive.extend(based.then(|| BASE_IMAGE.to_string()));
     Summary {
         description: strings("description").join(" "),
+        hidden: hidden_nodes(nodes.iter().copied()),
         provides,
         exclusive,
         targets: strings("targets"),
@@ -2259,6 +2348,30 @@ pub fn offered_base(
         scap_content: base.scap_content,
         bootloaders: base.bootloaders,
     })
+}
+
+fn is_hidden(node: &KdlNode) -> bool {
+    bool_arg(node) == Some(true)
+}
+
+fn hidden_nodes<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>) -> bool {
+    nodes
+        .into_iter()
+        .any(|node| node.name().value() == "hidden" && is_hidden(node))
+}
+
+pub(crate) fn hidden(file: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return false;
+    };
+    let Ok(doc) = text.parse::<KdlDocument>() else {
+        return false;
+    };
+    hidden_nodes(doc.nodes().iter())
+}
+
+pub(crate) fn inline_hidden(src: &Source, spans: &[Span]) -> bool {
+    hidden_nodes(crate::parse::image::nodes_at(src, spans).iter())
 }
 
 pub(crate) fn validate_manifest(
@@ -2345,6 +2458,27 @@ mod tests {
         let text = format!("schema-version 1\n{text}");
         Component::parse(name, name, Path::new("."), text, None, &mut issues);
         issues.findings()
+    }
+
+    #[test]
+    fn a_packages_node_with_no_argument_takes_its_first_one_after_the_name() {
+        let text = "schema-version 1\n\npackages\n";
+        let line = packages(text).expect("valid KDL");
+        let at = text.find("packages").unwrap() + "packages".len();
+        assert_eq!(line.insert, Some(PackageInsert::Args { at }));
+    }
+
+    #[test]
+    fn a_block_packages_node_takes_a_child_before_its_closing_brace() {
+        let text = "schema-version 1\n\npackages {\n    \"htop\"\n}\n";
+        let line = packages(text).expect("valid KDL");
+        assert_eq!(
+            line.insert,
+            Some(PackageInsert::Children {
+                close: text.rfind('}').unwrap()
+            })
+        );
+        assert_eq!(line.names, ["htop"]);
     }
 
     #[test]
@@ -2770,6 +2904,62 @@ on "fedora" {
                 "`arch` is not a `targets` property",
                 "`arch` is not an `on` property"
             ]
+        );
+    }
+
+    #[test]
+    fn hidden_is_false_by_default_and_true_when_declared() {
+        let mut issues = Issues::default();
+        let plain = Component::parse(
+            "plain",
+            "plain",
+            Path::new("."),
+            "schema-version 1\ndescription \"plain\"\n".to_string(),
+            None,
+            &mut issues,
+        )
+        .expect("a component");
+        assert!(!plain.hidden);
+        let hidden = Component::parse(
+            "hidden",
+            "hidden",
+            Path::new("."),
+            "schema-version 1\nhidden #true\n".to_string(),
+            None,
+            &mut issues,
+        )
+        .expect("a component");
+        assert!(hidden.hidden);
+        assert!(issues.plain().is_empty(), "{:?}", issues.plain());
+    }
+
+    #[test]
+    fn a_summary_carries_the_hidden_flag() {
+        let file =
+            std::env::temp_dir().join(format!("buildc-summary-hidden-{}.kdl", std::process::id()));
+        std::fs::write(&file, "schema-version 1\nhidden #true\n").unwrap();
+        let summary = summary(&file);
+        std::fs::remove_file(&file).unwrap();
+        assert!(summary.hidden);
+    }
+
+    #[test]
+    fn a_summary_leaves_hidden_false() {
+        let file = std::env::temp_dir().join(format!(
+            "buildc-summary-not-hidden-{}.kdl",
+            std::process::id()
+        ));
+        std::fs::write(&file, "schema-version 1\nhidden #false\n").unwrap();
+        let summary = summary(&file);
+        std::fs::remove_file(&file).unwrap();
+        assert!(!summary.hidden);
+    }
+
+    #[test]
+    fn hidden_takes_a_boolean_alone() {
+        assert_eq!(
+            messages("hidden \"yes\""),
+            ["`hidden` takes #true or #false"]
         );
     }
 

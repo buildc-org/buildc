@@ -259,6 +259,24 @@ pub fn known(list: &List) -> Vec<String> {
     out
 }
 
+pub fn hidden(list: &List, known: &[String]) -> Vec<bool> {
+    known
+        .iter()
+        .map(|path| {
+            list.images
+                .iter()
+                .flat_map(|image| image.entries.iter().chain(&image.suppressed))
+                .any(|entry| {
+                    entry.path == *path
+                        && entry
+                            .component
+                            .as_ref()
+                            .is_some_and(|component| component.hidden)
+                })
+        })
+        .collect()
+}
+
 fn listed(names: &[String]) -> String {
     match names.is_empty() {
         true => "nothing".to_string(),
@@ -1050,13 +1068,34 @@ mod tests {
     }
 
     #[test]
+    fn a_hidden_inline_component_is_marked_in_the_read_picker() {
+        let root = std::env::temp_dir().join(format!("buildc-read-hidden-{}", std::process::id()));
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(
+            &root.join("image.kdl"),
+            "schema-version 1\n\nimage \"one\" {\n    apps {\n        hidden #true\n    }\n    tools {\n        description \"Tools\"\n    }\n}\n",
+        )
+        .unwrap();
+        let loaded = crate::load(&root);
+        std::fs::remove_dir_all(&root).unwrap();
+        let known = known(&loaded.list);
+        let options =
+            crate::dispatch::picker_options(&display(&known), &super::hidden(&loaded.list, &known));
+        assert_eq!(known, ["apps", "tools"]);
+        assert!(options[0].hidden && !options[1].hidden);
+    }
+
+    #[test]
     fn picker_snapshots_repository_components() {
         use crate::screen_tests::{assert_screen, screen};
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/enforced");
         let (list, _) = crate::model::image::List::load(&root);
         let components = known(&list);
-        let options = crate::dispatch::picker_options(&display(&components));
+        let options = crate::dispatch::picker_options(
+            &display(&components),
+            &super::hidden(&list, &components),
+        );
         assert_screen(
             "why-component-picker",
             screen().picker(

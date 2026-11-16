@@ -552,29 +552,19 @@ on "debian" "ubuntu" {
 
 ### Creating a component with the CLI
 
-You can create components with the built-in `buildc create component` command, which
-scaffolds a package component.
-
-Create a component named `browser`, which installs the `firefox` package:
+Create the `browser` component now. Run `buildc create component` with no
+arguments and it walks you through the choices:
 
 ```sh
 buildc create component
 ```
 
-The command prompts for a name, an optional description and supported
-families, then asks whether the component installs a package and which images
-list it:
-
 ```ansi
 component name: browser
 
-description (optional):
+description (optional) []:
 
-supported base families, separated by spaces (optional):
-
-Does this component install packages? Yes
-
-package names, separated by spaces: firefox
+supported base families, separated by spaces (optional) []:
 
 images and flavours that list it
   [ ] workstation-1
@@ -582,18 +572,84 @@ images and flavours that list it
 ↑↓ navigate • ␣ toggle • ⏎  confirm • Esc cancel
 ```
 
-Alternatively, you can configure a component with command arguments:
+Answer the name, an optional description, an optional base-family
+restriction, and then check the images and flavours that should list the
+component, the same multi-select picker you already used earlier in this
+tutorial. The command does not ask about packages, and there is no flag for
+them either. Whatever you answer, you get an empty component ready for its
+first package.
+
+If you already know the name and the image, skip the prompts and pass them
+as arguments instead:
 
 ```sh
-buildc create component browser --image workstation-2 --pkg firefox
+buildc create component browser --image workstation-2
 ```
 
-#### `create component` arguments
+This creates the same empty `browser` component without asking you
+anything.
 
-**`--image`**: lists the new component in the named image.
-**`--pkg`**: adds these package names to the component.
-**`--no-tui`**: asks nothing; a command that would prompt fails and names the
-flag. Use it in scripts with all arguments supplied.
+You have an empty `browser` component. Add your first package to it:
+
+```sh
+buildc add package firefox --component browser
+```
+
+`buildc add package` puts packages into a package group. A package group is
+an ordinary component and `browser` is one.
+
+A package group can live in its own directory under `components/`, the way
+`browser` does. It can also be a block declared inline inside an image file.
+The command works the same either way.
+
+Run the command again whenever you want more packages in the group. It adds
+only the names the group does not already list. Running it again with a
+package the group already has is safe.
+
+Leave out `--component` and the command asks you instead. It shows a screen
+with two rows. The first row is `group name`, where you type a name. Leave
+it empty and the command uses the group `apps`. The second row is `select
+component` and it opens a picker of the components in your repository.
+Choose one and the command fills in its name. A component marked `hidden
+#true` stays out of that picker until you press `h`. The [`hidden`
+node](schema/component.md#hidden) documents the flag itself.
+
+Naming a group your repository does not hold yet creates it. The command
+then asks which images get the new group, as a multi-select of every image
+and flavour. Each image you select gets its own inline copy of the group.
+Select none and the group becomes a directory component under `components/`
+instead.
+
+`--image <name>` picks an image for a new group without asking that
+question. Give it a flavour instead as `<image>/<flavour>`. Repeat the
+option to pick more than one image. The [CLI
+reference](cli.md#buildc-add-package) covers what happens when a group
+already has copies in several images. It also covers the other cases where
+the command refuses.
+
+Add `--no-tui` to `buildc create component` or to `buildc add package` when
+you run them in scripts or in CI. With `--no-tui`, a question the command
+would otherwise ask fails instead and names the flag you left out.
+
+#### `buildc create component` arguments
+
+- **name** (positional, optional): the component's name. Prompted for if
+  left out.
+- **`--image <name>`**: the image or flavour that should list the new
+  component. Prompted for if left out.
+- **`--no-tui`**: fail instead of prompting, naming the missing argument.
+
+#### `buildc add package` arguments
+
+- **names** (positional, one or more): the package names to add.
+- **`--component <path>`**: the package group to add the packages to. A path
+  the repository does not hold yet creates a new group. Leaving out the
+  option shows the group name screen and the component picker.
+- **`--image <name>`**: an image that gets an inline copy of a new group, or
+  a flavour as `<image>/<flavour>`. Repeat it to pick more than one. A new
+  group with no image given becomes a directory component.
+- **`--no-tui`**: make the command fail instead of asking. It names the
+  argument you left out.
 
 Review the `manifest.kdl` file in `components/browser/`:
 

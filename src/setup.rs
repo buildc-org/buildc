@@ -124,6 +124,40 @@ impl Listing {
 
     pub fn target(root: &Path, given: Option<String>, prompt: &Prompt) -> Result<Self, Error> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
+        Self::target_from(&list, given.as_deref(), prompt)
+    }
+
+    pub(crate) fn selected(
+        list: &crate::model::image::List,
+        targets: &[crate::model::image::Target],
+    ) -> Result<Self, String> {
+        let ungated = |target: &crate::model::image::Target| {
+            targets.iter().any(|other| {
+                other.image == target.image && other.flavour == crate::model::image::NO_FLAVOUR
+            })
+        };
+        if let Some(gated) = targets
+            .iter()
+            .find(|target| target.flavour != crate::model::image::NO_FLAVOUR && ungated(target))
+        {
+            return Err(format!(
+                "`{gated}` is inside `{}` and already inherits its entries; list only one of them",
+                gated.image
+            ));
+        }
+        Ok(Self::In(
+            targets
+                .iter()
+                .map(|target| Listed::of(list, target))
+                .collect(),
+        ))
+    }
+
+    pub(crate) fn target_from(
+        list: &crate::model::image::List,
+        given: Option<&str>,
+        prompt: &Prompt,
+    ) -> Result<Self, Error> {
         if list.images.is_empty() {
             return Ok(Self::NoImage);
         }
@@ -149,7 +183,7 @@ impl Listing {
                 }
             }
         };
-        Ok(Self::In(vec![Listed::of(&list, &targets[at])]))
+        Ok(Self::In(vec![Listed::of(list, &targets[at])]))
     }
 
     pub(crate) fn collect_from(
@@ -186,35 +220,14 @@ impl Listing {
                 unique.push(at);
             }
         }
-        let chosen = unique;
-        let ungated = |target: &crate::model::image::Target| {
-            chosen.iter().any(|at| {
-                targets[*at].image == target.image
-                    && targets[*at].flavour == crate::model::image::NO_FLAVOUR
-            })
-        };
-        if let Some(gated) = chosen
-            .iter()
-            .map(|at| &targets[*at])
-            .find(|target| target.flavour != crate::model::image::NO_FLAVOUR && ungated(target))
-        {
-            return Err(Error::Operation(format!(
-                "`{gated}` is inside `{}`, so listing it in both lists it twice",
-                gated.image
-            )));
-        }
-
-        Ok(match chosen.is_empty() {
-            true => Self::Declined {
+        if unique.is_empty() {
+            return Ok(Self::Declined {
                 asked: prompt.asks(),
-            },
-            false => Self::In(
-                chosen
-                    .iter()
-                    .map(|at| Listed::of(list, &targets[*at]))
-                    .collect(),
-            ),
-        })
+            });
+        }
+        let chosen: Vec<crate::model::image::Target> =
+            unique.iter().map(|at| targets[*at].clone()).collect();
+        Ok(Self::selected(list, &chosen)?)
     }
 
     pub fn refuse_duplicate(

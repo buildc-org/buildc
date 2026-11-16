@@ -107,14 +107,44 @@ pub(super) fn component(call: Call) -> Result<ExitCode, Error> {
         ..
     } = call;
     let Flags {
-        images, with, pkgs, ..
+        images,
+        with,
+        inline,
+        ..
     } = flags;
     let name = one_name(rest, name)?;
     let Some(root) = open(here)? else {
         return Ok(ExitCode::from(REPO_ERROR));
     };
-    let wrote =
-        crate::create::Component::collect(&root, name, pkgs, with, images, prompt)?.apply(&root)?;
+    let wrote = crate::create::Component::collect(&root, name, with, images, inline, prompt)?
+        .apply(&root)?;
+    crate::report::report(&root, &wrote);
+    Ok(ExitCode::SUCCESS)
+}
+
+pub(super) fn add_package(call: Call) -> Result<ExitCode, Error> {
+    let Call {
+        rest,
+        prompt,
+        here,
+        flags,
+        ..
+    } = call;
+    let Flags {
+        images,
+        component: component_arg,
+        ..
+    } = flags;
+    let Some(root) = open(here)? else {
+        return Ok(ExitCode::from(REPO_ERROR));
+    };
+    let names: Vec<String> = rest.iter().map(|name| (*name).to_string()).collect();
+    let Some(packages) =
+        crate::add::Packages::collect(&root, names, component_arg, images, prompt)?
+    else {
+        return Ok(ExitCode::SUCCESS);
+    };
+    let wrote = packages.apply(&root)?;
     crate::report::report(&root, &wrote);
     Ok(ExitCode::SUCCESS)
 }

@@ -1,7 +1,5 @@
 use super::{one_name, open, Call, Flags, REPO_ERROR};
-use crate::copy;
 use crate::error::Error;
-use std::path::PathBuf;
 use std::process::ExitCode;
 
 pub(super) fn key(call: Call) -> Result<ExitCode, Error> {
@@ -23,51 +21,6 @@ pub(super) fn key(call: Call) -> Result<ExitCode, Error> {
         return Ok(ExitCode::from(REPO_ERROR));
     };
     crate::key::Recorded::collect(&root, kind, component_arg, from, prompt)?.apply(&root)?;
-    Ok(ExitCode::SUCCESS)
-}
-
-pub(super) fn component(call: Call) -> Result<ExitCode, Error> {
-    let Call {
-        name,
-        rest,
-        prompt,
-        here,
-        flags,
-        ..
-    } = call;
-    let Flags { untracked, .. } = flags;
-    let path = one_name(rest, name)?.ok_or_else(|| {
-        Error::Invocation(format!(
-            "`{name}` takes the component to make the repository's own"
-        ))
-    })?;
-    let Some(root) = open(here)? else {
-        return Ok(ExitCode::from(REPO_ERROR));
-    };
-    let key = crate::provenance::lock::key(&path);
-    if !untracked {
-        if !prompt.asks() {
-            return Err(Error::Invocation(format!(
-                "`{name}` asks before it stops tracking; pass `--untracked` to answer"
-            )));
-        }
-        if !prompt.confirm(&copy::untrack(key), copy::YES, copy::NO)? {
-            return Ok(ExitCode::SUCCESS);
-        }
-    }
-    match crate::provenance::lock::untrack(&root, key)? {
-        true => crate::report::report(
-            &root,
-            &[(
-                PathBuf::from(crate::layout::COMPONENTS).join(crate::layout::LOCK_FILE),
-                crate::create::Change::Updated(format!("`{key}` untracked")),
-            )],
-        ),
-        false => eprintln!(
-            "buildc: `{}/{key}` is already the repository's own",
-            crate::layout::COMPONENTS
-        ),
-    }
     Ok(ExitCode::SUCCESS)
 }
 

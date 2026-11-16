@@ -23,7 +23,7 @@ pub enum Verb {
     SetConforms,
     SetClaims,
     SetKey,
-    SetModule,
+    DetachModule,
     Check,
     Generate,
     Build,
@@ -75,7 +75,7 @@ impl Verb {
                 Some(("`manifest.kdl`&nbsp;›&nbsp;`key`", Area::Component, "key"))
             }
             Self::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
-            Self::ImportModule | Self::FetchModules | Self::SetModule => {
+            Self::ImportModule | Self::FetchModules | Self::DetachModule => {
                 Some(("`components.lock.kdl`", Area::Lock, ""))
             }
             Self::SetWorkflows => Some((
@@ -151,7 +151,7 @@ pub const ALL: &[Verb] = &[
     Verb::SetConforms,
     Verb::SetClaims,
     Verb::SetKey,
-    Verb::SetModule,
+    Verb::DetachModule,
     Verb::Check,
     Verb::Generate,
     Verb::Build,
@@ -353,8 +353,8 @@ const SURFACE: &[Place] = &[
         topic: Topic::Keys,
     },
     Place {
-        words: "set component",
-        verb: Verb::SetModule,
+        words: "detach component",
+        verb: Verb::DetachModule,
         runs: Runs::Repo,
         listed: true,
         topic: Topic::Components,
@@ -615,6 +615,11 @@ pub enum Surface {
     Set {
         #[command(subcommand)]
         what: Option<SetWhat>,
+    },
+    /// detach a component from its library
+    Detach {
+        #[command(subcommand)]
+        what: Option<DetachWhat>,
     },
     /// check every manifest and report each problem at its line
     #[command(long_about = help::CHECK, after_long_help = help::CHECK_NOTES)]
@@ -984,15 +989,19 @@ pub enum SetWhat {
         #[arg(long, value_name = "path")]
         from: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum DetachWhat {
     /// make an imported component the repository's own
-    #[command(long_about = help::SET_COMPONENT, after_long_help = help::SET_COMPONENT_NOTES)]
+    #[command(long_about = help::DETACH_COMPONENT, after_long_help = help::DETACH_COMPONENT_NOTES)]
     Component {
-        /// the imported component to make the repository's own
+        /// the component's path under components/
         #[arg(value_name = "path")]
         path: Option<String>,
-        /// stop tracking without asking
-        #[arg(long)]
-        untracked: bool,
+        /// detach without asking
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 }
 
@@ -1606,7 +1615,7 @@ impl Verb {
             | Self::SetConforms
             | Self::SetClaims
             | Self::SetKey
-            | Self::SetModule
+            | Self::DetachModule
             | Self::Build
             | Self::VmBuild
             | Self::VmRun

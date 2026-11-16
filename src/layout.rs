@@ -280,7 +280,7 @@ pub const REPOSITORY: Tree = Tree {
             what: "More images. The name in front of the suffix is decorative." },
         Place { path: &[COMPONENTS, "/"], writer: "the user, `buildc create component` or `buildc import component`", tracked: true,
             what: "The components of the repository, one directory each. See [Components](components.md)." },
-        Place { path: &[COMPONENTS, "/", LOCK_FILE], writer: "`buildc import component`, `buildc fetch components` and `buildc set component`", tracked: true,
+        Place { path: &[COMPONENTS, "/", LOCK_FILE], writer: "`buildc import component`, `buildc fetch components` and `buildc detach component`", tracked: true,
             what: "Where each imported component came from, and what its content hashed to. See \
                 [`components.lock.kdl`](lock.md)." },
         Place { path: &[KEYS, "/", PUBLIC_KEYS, "/"], writer: "`buildc create key` or `buildc set key`", tracked: true,

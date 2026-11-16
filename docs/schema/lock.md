@@ -21,7 +21,7 @@ component "browser" {
 > [!NOTE]
 > `buildc import component` writes the whole file. The user does not edit it, and every command that reads the images refuses an entry that does not read.
 >
-> `buildc fetch components` copies each tracked component again from its library, and records the new `content` and `component-version`. `buildc set component <path> --untracked` drops `track` and keeps the rest of the entry.
+> `buildc fetch components` copies each tracked component again from its library and records the new `content` and `component-version`. `buildc detach component <path>` drops `track` and keeps the rest of the entry.
 >
 > The entry is keyed by the local path, so one library component imported twice under two names has two entries.
 >

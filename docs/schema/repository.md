@@ -30,7 +30,7 @@ A repository is a git repository with `repo.kdl` at its root, which is how `buil
 | `image.kdl` | `buildc create image`, then the user | yes | The images of the repository. See [`image.kdl`](image.md). |
 | `<name>.image.kdl` | `buildc create image`, then the user | yes | More images. The name in front of the suffix is decorative. |
 | `components/` | the user, `buildc create component` or `buildc import component` | yes | The components of the repository, one directory each. See [Components](components.md). |
-| `components/components.lock.kdl` | `buildc import component`, `buildc fetch components` and `buildc set component` | yes | Where each imported component came from, and what its content hashed to. See [`components.lock.kdl`](lock.md). |
+| `components/components.lock.kdl` | `buildc import component`, `buildc fetch components` and `buildc detach component` | yes | Where each imported component came from, and what its content hashed to. See [`components.lock.kdl`](lock.md). |
 | `keys/public/` | `buildc create key` or `buildc set key` | yes | The public half of each key, at the path it has in the image. |
 | `keys/private/` | `buildc create key` | no | The private half of each key. The build never copies it into the image. |
 | `generated/` | `buildc generate` | yes | Everything that `buildc generate` writes. `buildc verify` compares it byte for byte, so the user does not edit it. |

@@ -64,7 +64,7 @@ pub struct Flags {
     pub no_cache_from: bool,
     pub rebuild: bool,
     pub dependencies: bool,
-    pub untracked: bool,
+    pub yes: bool,
     pub inline: bool,
 }
 
@@ -192,7 +192,7 @@ pub fn dispatch(
         Verb::SetKey => set::key(call),
         Verb::ImportModule => import::component(call),
         Verb::FetchModules => import::components(call),
-        Verb::SetModule => set::component(call),
+        Verb::DetachModule => import::detach(call),
         Verb::SetWorkflows => set::workflows(call),
         Verb::SetLibrary => set::library(call),
         Verb::SetConforms => set::conforms(call),
@@ -230,23 +230,41 @@ mod tests {
     use super::{dispatch, Context, Error, Flags, Verb};
     use common::prompt::Prompt;
 
-    fn untracks(name: &str, untracked: bool, prompt: &Prompt) -> (bool, Result<(), String>) {
+    fn detaches(
+        name: &str,
+        path: Option<&str>,
+        yes: bool,
+        prompt: &Prompt,
+    ) -> (bool, Result<(), String>) {
+        detaches_from(name, true, path, yes, prompt)
+    }
+
+    fn detaches_from(
+        name: &str,
+        tracked: bool,
+        path: Option<&str>,
+        yes: bool,
+        prompt: &Prompt,
+    ) -> (bool, Result<(), String>) {
         let root = std::env::temp_dir().join(format!(
-            "buildc-set-component-{name}-{}",
+            "buildc-detach-component-{name}-{}",
             std::process::id()
         ));
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        let track = if tracked { "    track\n" } else { "" };
+        // The untracked entry comes first. A picker that offers it then fails the picker test.
         crate::init::put(
             &crate::layout::lock(&root),
-            "component \"browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
+            &format!("component \"editor\" {{\n    library \"one\"\n    path \"editor\"\n    content \"0\"\n}}\ncomponent \"browser\" {{\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n{track}}}\n"),
         )
         .unwrap();
+        let rest: Vec<&str> = path.into_iter().collect();
         let ran = dispatch(
-            Verb::SetModule,
-            "set component",
-            &["components/browser"],
+            Verb::DetachModule,
+            "detach component",
+            &rest,
             Flags {
-                untracked,
+                yes,
                 ..Flags::default()
             },
             prompt,
@@ -264,24 +282,99 @@ mod tests {
         (tracked, ran)
     }
 
+    const BROWSER: Option<&str> = Some("components/browser");
+
     #[test]
-    fn set_component_untracks_with_the_flag_or_a_yes() {
-        assert_eq!(untracks("flag", true, &Prompt::silent()), (false, Ok(())));
+    fn detach_component_detaches_with_the_flag() {
         assert_eq!(
-            untracks("yes", false, &Prompt::scripted(vec!["y".into()])),
+            detaches("flag", BROWSER, true, &Prompt::silent()),
             (false, Ok(()))
         );
     }
 
     #[test]
-    fn set_component_keeps_tracking_on_a_no_or_with_nobody_to_ask() {
+    fn detach_component_detaches_on_a_yes() {
         assert_eq!(
-            untracks("no", false, &Prompt::scripted(vec!["n".into()])),
+            detaches("yes", BROWSER, false, &Prompt::scripted(vec!["y".into()])),
+            (false, Ok(()))
+        );
+    }
+
+    #[test]
+    fn detach_component_keeps_tracking_on_a_no() {
+        assert_eq!(
+            detaches("no", BROWSER, false, &Prompt::scripted(vec!["n".into()])),
             (true, Ok(()))
         );
-        let (tracked, refused) = untracks("silent", false, &Prompt::silent());
+    }
+
+    #[test]
+    fn detach_component_needs_the_flag_with_nobody_to_ask() {
+        let (tracked, refused) = detaches("silent", BROWSER, false, &Prompt::silent());
         assert!(tracked);
-        assert!(refused.unwrap_err().contains("--untracked"));
+        assert!(refused.unwrap_err().contains("--yes"));
+    }
+
+    #[test]
+    fn detach_component_picks_a_tracked_component_when_no_path_is_given() {
+        assert_eq!(
+            detaches("picked", None, true, &Prompt::scripted(vec!["1".into()])),
+            (false, Ok(()))
+        );
+    }
+
+    #[test]
+    fn detach_component_needs_the_path_with_nobody_to_ask() {
+        let (tracked, refused) = detaches("unnamed", None, true, &Prompt::silent());
+        assert!(tracked);
+        assert!(refused.unwrap_err().contains("`<path>`"));
+    }
+
+    #[test]
+    fn detach_component_asks_nothing_when_nothing_is_tracked() {
+        assert_eq!(
+            detaches_from("none", false, None, true, &Prompt::scripted(Vec::new())),
+            (false, Ok(()))
+        );
+    }
+
+    #[test]
+    fn detach_component_passes_over_an_untracked_component() {
+        assert_eq!(
+            detaches("untracked", Some("editor"), true, &Prompt::silent()),
+            (true, Ok(()))
+        );
+    }
+
+    #[test]
+    fn detach_component_refuses_a_lock_that_does_not_parse() {
+        let root = std::env::temp_dir().join(format!(
+            "buildc-detach-component-broken-{}",
+            std::process::id()
+        ));
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(&crate::layout::lock(&root), "component \"browser\" {\n").unwrap();
+        let refused = dispatch(
+            Verb::DetachModule,
+            "detach component",
+            &["browser"],
+            Flags {
+                yes: true,
+                ..Flags::default()
+            },
+            &Prompt::silent(),
+            &Context::Repo(root.clone()),
+        )
+        .map(drop);
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(matches!(refused, Err(Error::Operation(said)) if said.contains("does not parse")));
+    }
+
+    #[test]
+    fn detach_component_refuses_a_path_with_no_lock_entry() {
+        let (tracked, refused) = detaches("unknown", Some("nowhere"), true, &Prompt::silent());
+        assert!(tracked);
+        assert!(refused.unwrap_err().contains("is not tracking any library"));
     }
 
     #[test]

@@ -254,9 +254,9 @@ pub(super) const ADD_PACKAGE_NOTES: &str = r#"> [!NOTE]
 > component's `component.sh` script.
 >
 > A directory component that tracks its library is refused because an edit
-> would no longer match its lock entry. This holds for a new directory group at
-> a tracked path too. Running `buildc set component <path> --untracked` first
-> ends the tracking.
+> would no longer match its lock entry. A new inline or directory group at a
+> tracked path is refused the same way. Running `buildc detach component <path>`
+> first ends the tracking.
 >
 > A path that is both a directory component and an inline component is refused.
 > `buildc check` refuses it the same way.
@@ -414,13 +414,20 @@ pub(super) const SET_KEY_NOTES: &str = r#"> [!WARNING]
 > - `pcr-signing` takes a bare PEM public key.
 > - `ssh-keygen` takes an OpenSSH key line."#;
 
-pub(super) const SET_COMPONENT: &str = r#"Makes an imported component the repository's own copy. The component stops tracking
-its library, so `buildc fetch components` skips it, and the user may edit it.
-With no `--untracked`, it asks first. With no terminal, it needs the flag."#;
+pub(super) const DETACH_COMPONENT: &str = r#"Makes an imported component the repository's own copy. The component stops
+tracking its library. `buildc fetch components` then skips it and the user may
+edit it.
 
-pub(super) const SET_COMPONENT_NOTES: &str = r#"> [!NOTE]
-> The lock entry keeps the library, the path and the content hash, so `buildc
-> why` still says where the copy came from and reads out each later edit."#;
+With no path, the command asks which tracked component to detach. With no
+`--yes`, it asks before it detaches. With no terminal, it needs the path and `--yes`."#;
+
+pub(super) const DETACH_COMPONENT_NOTES: &str = r#"> [!NOTE]
+> The lock entry keeps the library, the component's path in that library, the
+> library's revision and the content hash. `buildc why` still says where the copy came
+> from and reads out each later edit.
+>
+> The command changes only `components/components.lock.kdl`. It never touches
+> the component's files."#;
 
 pub(super) const SET_WORKFLOWS: &str = r#"Chooses the CI workflows that the repository generates, and writes the choice
 into `workflows` in `repo.kdl`. Run `buildc generate` next to write the workflow
@@ -807,7 +814,7 @@ component whose library has not moved stays as it is. The scheduled
 pub(super) const FETCH_COMPONENTS_NOTES: &str = r#"> [!WARNING]
 > A tracked component whose content no longer matches its lock entry stops the
 > update before anything is written. Undo the edit, or make the copy the
-> repository's own with `buildc set component <path> --untracked`.
+> repository's own with `buildc detach component <path>`.
 
 > [!NOTE]
 > A tracked component whose directory is missing is copied again. A component that

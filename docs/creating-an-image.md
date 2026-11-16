@@ -482,8 +482,8 @@ was edited.
 A tracked copy changes only when its library moves. `buildc fetch components`
 copies each tracked component again from its library and records the new hash in
 the lock. The `update-components` workflow runs it on a schedule and opens a pull
-request. To edit a tracked copy, first run `buildc set component <path>
---untracked`, which makes the copy yours.
+request. To edit a tracked copy, first run `buildc detach component <path>`. The command
+makes the copy yours.
 
 If `components/` already holds a component at that path, then the import asks
 whether to list the component you hold or to import the library's under another

@@ -176,6 +176,17 @@ echo "lint: the dependency policy accepts the locked graph"
 cargo check --locked --features fuzzing
 echo "lint: the fuzz entry points compile"
 
+# Only the scheduled fuzz job runs fuzz/run.sh.
+# The script stops on a fuzz target that has no corpus.
+mapfile -t fuzz_targets < <(grep -A1 '^\[\[bin\]\]' fuzz/Cargo.toml | sed -n 's/^name = "\(.*\)"$/\1/p')
+for target in "${fuzz_targets[@]}"; do
+    if [ ! -d "fuzz/corpus/$target" ]; then
+        echo "lint: the fuzz target $target has no fuzz/corpus/$target" >&2
+        exit 1
+    fi
+done
+echo "lint: every fuzz target has a corpus"
+
 cargo clippy --locked --all-targets -- -D warnings
 echo "lint: clippy accepts every target"
 

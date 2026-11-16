@@ -22,8 +22,8 @@ pub fn components(
             .find(|source| source.kind == SourceKind::Components && source.name == record.library)
             .ok_or_else(|| {
                 format!(
-                    "`{}` was imported from `{}`, and `sources` in repo.kdl no longer declares \
-                     it; declare the library again, or run `buildc set component {} --untracked`",
+                    "`{}` was imported from `{}` and `sources` in repo.kdl no longer declares \
+                     that library; declare the library again, or run `buildc detach component {}`",
                     shown(&record.path),
                     record.library,
                     record.path
@@ -135,9 +135,9 @@ fn refuse_edited(root: &Path, record: &Record) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "`{}` tracks its library, and its content no longer matches its lock entry, so an \
-         update would overwrite the edit; undo the edit, or run `buildc set component {} \
-         --untracked` to make the copy the repository's own",
+        "`{}` tracks its library and its content no longer matches its lock entry. An update \
+         would overwrite the edit; undo the edit, or run `buildc detach component {}` to make \
+         the copy the repository's own",
         shown(&record.path),
         record.path
     ))
@@ -265,7 +265,7 @@ mod tests {
         };
         assert!(refused.contains("`components/browser` tracks"), "{refused}");
         assert!(
-            refused.contains("buildc set component browser --untracked"),
+            refused.contains("buildc detach component browser"),
             "{refused}"
         );
         assert_eq!(

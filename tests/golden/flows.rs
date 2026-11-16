@@ -484,6 +484,7 @@ fn flow_case(flow: &Flow) {
         "flow-import-none" => setup_import_none(flow),
         "flow-import-present" | "flow-import-present-local" => setup_import_present(flow),
         "flow-import-untracked" => setup_import_untracked(flow),
+        "flow-detach-component" => setup_detach_component(flow),
         "flow-import-exclusive" | "flow-import-exclusive-no-tui" => setup_import_exclusive(flow),
         "flow-import-unavailable" => setup_import_unavailable(flow),
         "flow-import-default" | "flow-create-component-with-schema-issues" => {
@@ -1607,6 +1608,37 @@ fn setup_import_untracked(flow: &Flow) {
     assert!(!entry.contains("track"), "{lock}");
 }
 
+fn setup_detach_component(flow: &Flow) {
+    let target = flow.target;
+    let root = flow.repo_sourced("flow-detach-component");
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "import",
+            "component",
+            "upstream/flatpak",
+            "--image",
+            "example",
+        ],
+    );
+    let lock = root.join("components/components.lock.kdl");
+    let flatpak = || {
+        let lock = std::fs::read_to_string(&lock).unwrap();
+        let entry = &lock[lock
+            .find("component \"flatpak\"")
+            .expect("the lock records flatpak")..];
+        entry[..entry.find("\n}").expect("the entry closes")].to_string()
+    };
+    assert!(flatpak().contains("track"));
+    flow.run(target, &root, None, &["--root", ".", "detach", "component"]);
+    let entry = flatpak();
+    assert!(!entry.contains("track"), "{entry}");
+    assert!(entry.contains("library \"upstream\""), "{entry}");
+}
+
 fn setup_import_unavailable(flow: &Flow) {
     let target = flow.target;
     let root = flow.repo_with("flow-import-unavailable-in", "upstream");
@@ -2141,6 +2173,7 @@ flow_cases! {
     flow_import_suffix_ambiguous => "flow-import-suffix-ambiguous",
     flow_import_unavailable => "flow-import-unavailable",
     flow_import_untracked => "flow-import-untracked",
+    flow_detach_component => "flow-detach-component",
     flow_key_absent => "flow-key-absent",
     flow_key_kinds => "flow-key-kinds",
     flow_key_no_kind => "flow-key-no-kind",

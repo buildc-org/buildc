@@ -299,13 +299,14 @@ fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<
 }
 
 fn refuse_tracked(root: &Path, path: &str) -> Result<(), Error> {
-    if crate::provenance::lock::entry(root, path).is_some_and(|record| record.tracked) {
-        return Err(Error::Operation(format!(
-            "components/{path} tracks its library and an edit would no longer match its lock \
-             entry; run `buildc set component {path} --untracked` first"
-        )));
+    match crate::provenance::lock::entry(root, path) {
+        Some(record) if record.tracked => Err(Error::Operation(format!(
+            "The `{path}` component is tracking `{}/{}`. To modify it, first detach it from `{}` \
+             with `buildc detach component {path}`",
+            record.library, record.upstream, record.library
+        ))),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 fn new_group(
@@ -847,7 +848,8 @@ mod tests {
         let exists = root.join("components/tool/manifest.kdl").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
-            refused.contains("tracks its library") && refused.contains("--untracked"),
+            refused.contains("is tracking `buildc/tool`")
+                && refused.contains("buildc detach component tool"),
             "{refused}"
         );
         assert!(!exists);
@@ -1115,19 +1117,35 @@ mod tests {
     }
 
     #[test]
-    fn a_tracked_component_is_refused_until_it_is_untracked() {
+    fn a_detached_component_takes_packages() {
+        let root = repository("detached");
+        manifest(&root, "tool", "schema-version 1\n");
+        crate::init::put(
+            &layout::lock(&root),
+            "component \"tool\" {\n    library \"buildc\"\n    path \"tool\"\n    content \"abc\"\n}\n",
+        )
+        .unwrap();
+        let added = add(&root, &["htop"], "tool");
+        let manifest = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(added.is_ok());
+        assert!(manifest.contains("htop"), "{manifest}");
+    }
+
+    #[test]
+    fn a_tracked_component_is_refused_until_it_is_detached() {
         let root = repository("tracked");
         manifest(&root, "tool", "schema-version 1\n");
         crate::init::put(
             &layout::lock(&root),
-            "component \"tool\" {\n    library \"buildc\"\n    path \"tool\"\n    content \"abc\"\n    track\n}\n",
+            "component \"tool\" {\n    library \"buildc\"\n    path \"tools/tool\"\n    content \"abc\"\n    track\n}\n",
         )
         .unwrap();
         let refused = refused(add(&root, &["htop"], "tool"));
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
-            refused.contains("tracks its library")
-                && refused.contains("buildc set component tool --untracked"),
+            refused.contains("is tracking `buildc/tools/tool`")
+                && refused.contains("buildc detach component tool"),
             "{refused}"
         );
     }

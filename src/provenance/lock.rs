@@ -48,8 +48,8 @@ pub(crate) const LOCK_FILE: Node = Node::new("lock file",
     .notes(&[
         "`buildc import component` writes the whole file. The user does not edit it, and every command \
          that reads the images refuses an entry that does not read.",
-        "`buildc fetch components` copies each tracked component again from its library, and records the \
-         new `content` and `component-version`. `buildc set component <path> --untracked` drops \
+        "`buildc fetch components` copies each tracked component again from its library and records the \
+         new `content` and `component-version`. `buildc detach component <path>` drops \
          `track` and keeps the rest of the entry.",
         "The entry is keyed by the local path, so one library component imported twice under two \
          names has two entries.",
@@ -209,8 +209,8 @@ pub fn check(root: &Path, issues: &mut Issues) {
                 &src,
             )
             .help(format!(
-                "undo the edit to `{component}`, or run `buildc set component {} --untracked` to make the \
-                 copy the repository's own",
+                "undo the edit to `{component}`, or run `buildc detach component {}` to make the copy \
+                  the repository's own",
                 record.path
             )),
             None if !dir.exists() => Issue::new(
@@ -256,17 +256,7 @@ fn restore(component: &str, record: &Record) -> String {
     )
 }
 
-pub fn untrack(root: &Path, key: &str) -> Result<bool, String> {
-    parses(root)?;
-    let Some(record) = entry(root, key) else {
-        return Err(format!(
-            "`{}/{key}` has no entry in the lock, so it is already the repository's own",
-            layout::COMPONENTS
-        ));
-    };
-    if !record.tracked {
-        return Ok(false);
-    }
+pub fn untrack(root: &Path, record: Record) -> Result<(), String> {
     let locked = with(
         root,
         Record {
@@ -274,8 +264,7 @@ pub fn untrack(root: &Path, key: &str) -> Result<bool, String> {
             ..record
         },
     )?;
-    crate::init::put(&layout::lock(root), &locked)?;
-    Ok(true)
+    crate::init::put(&layout::lock(root), &locked)
 }
 
 #[cfg(test)]
@@ -448,7 +437,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("buildc-lock-untrack-broken-{}", std::process::id()));
         crate::init::put(&layout::lock(&root), "component \"browser\" {\n").unwrap();
-        let refused = untrack(&root, "browser").unwrap_err();
+        let refused = untrack(&root, record("browser", true)).unwrap_err();
         assert!(refused.contains("does not parse"), "{refused}");
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -461,15 +450,14 @@ mod tests {
             &with(&root, record("browser", true)).unwrap(),
         )
         .unwrap();
-        assert_eq!(untrack(&root, "browser"), Ok(true));
+        let tracked = entry(&root, "browser").expect("the entry is written");
+        assert_eq!(untrack(&root, tracked), Ok(()));
         let held = entry(&root, "browser").expect("the entry stays");
         assert!(!held.tracked);
         assert_eq!(held.library, "buildc-org");
         assert_eq!(held.upstream, "browser");
         assert_eq!(held.content, "abc");
         assert_eq!(held.pin.version.as_deref(), Some("v1.0.0"));
-        assert_eq!(untrack(&root, "browser"), Ok(false));
-        assert!(untrack(&root, "editor").is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 

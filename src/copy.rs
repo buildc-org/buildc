@@ -95,8 +95,14 @@ pub fn track(named: &str) -> String {
     format!("Track {named} upstream?")
 }
 
-pub fn untrack(key: &str) -> String {
-    format!("Stop tracking `components/{key}`? The copy becomes the repository's own.")
+pub fn detach(key: &str, library: &str) -> String {
+    format!("Detach `components/{key}` from `{library}`? The copy becomes the repository's own.")
+}
+
+pub const NOTHING_TRACKED: &str = "no component tracks its library";
+
+pub fn not_tracking(key: &str) -> String {
+    format!("`components/{key}` is not tracking any library")
 }
 
 pub const REQUIRED: &str = "Dependencies the images do not provide:";

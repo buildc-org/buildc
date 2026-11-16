@@ -44,7 +44,7 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in an image | [`manifest.kdl`](schema/component.md) |
 | [`buildc add package [name]...`](#buildc-add-package) | add packages to a package group | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
 | [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
-| [`buildc set component [path]`](#buildc-set-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
+| [`buildc detach component [path]`](#buildc-detach-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
 | [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
 
 ### Keys
@@ -661,9 +661,9 @@ example/
 > component's `component.sh` script.
 >
 > A directory component that tracks its library is refused because an edit
-> would no longer match its lock entry. This holds for a new directory group at
-> a tracked path too. Running `buildc set component <path> --untracked` first
-> ends the tracking.
+> would no longer match its lock entry. A new inline or directory group at a
+> tracked path is refused the same way. Running `buildc detach component <path>`
+> first ends the tracking.
 >
 > A path that is both a directory component and an inline component is refused.
 > `buildc check` refuses it the same way.
@@ -927,27 +927,34 @@ It asks for the kind and the file to read.
 > - `pcr-signing` takes a bare PEM public key.
 > - `ssh-keygen` takes an OpenSSH key line.
 
-## `buildc set component`
+## `buildc detach component`
 
-Makes an imported component the repository's own copy. The component stops tracking
-its library, so `buildc fetch components` skips it, and the user may edit it.
-With no `--untracked`, it asks first. With no terminal, it needs the flag.
+Makes an imported component the repository's own copy. The component stops
+tracking its library. `buildc fetch components` then skips it and the user may
+edit it.
 
-**Usage:** `buildc set component [OPTIONS] [path]`
+With no path, the command asks which tracked component to detach. With no
+`--yes`, it asks before it detaches. With no terminal, it needs the path and `--yes`.
+
+**Usage:** `buildc detach component [OPTIONS] [path]`
 
 | Argument | Description |
 | --- | --- |
-| `<path>` | the imported component to make the repository's own |
+| `<path>` | the component's path under components/ |
 
 | Option | Description |
 | --- | --- |
-| `--untracked` | stop tracking without asking |
+| `-y`, `--yes` | detach without asking |
 
 **Schema:** [`components.lock.kdl`](schema/lock.md)
 
 > [!NOTE]
-> The lock entry keeps the library, the path and the content hash, so `buildc
-> why` still says where the copy came from and reads out each later edit.
+> The lock entry keeps the library, the component's path in that library, the
+> library's revision and the content hash. `buildc why` still says where the copy came
+> from and reads out each later edit.
+>
+> The command changes only `components/components.lock.kdl`. It never touches
+> the component's files.
 
 ## `buildc check`
 
@@ -1517,7 +1524,7 @@ component whose library has not moved stays as it is. The scheduled
 > [!WARNING]
 > A tracked component whose content no longer matches its lock entry stops the
 > update before anything is written. Undo the edit, or make the copy the
-> repository's own with `buildc set component <path> --untracked`.
+> repository's own with `buildc detach component <path>`.
 
 > [!NOTE]
 > A tracked component whose directory is missing is copied again. A component that

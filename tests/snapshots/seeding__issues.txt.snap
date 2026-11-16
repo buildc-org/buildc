@@ -1,5 +1,6 @@
 ---
 source: tests/golden/harness.rs
+assertion_line: 41
 ---
   x `components/flatpak` tracks its library, and its content no longer matches
   | its lock entry
@@ -9,5 +10,5 @@ source: tests/golden/harness.rs
    :     `-- this entry
  2 |     library "buildc-org"
    `----
-  help: undo the edit to `components/flatpak`, or run `buildc set component
-        flatpak --untracked` to make the copy the repository's own
+  help: undo the edit to `components/flatpak`, or run `buildc detach component
+        flatpak` to make the copy the repository's own

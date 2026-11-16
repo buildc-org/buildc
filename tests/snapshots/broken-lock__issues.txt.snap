@@ -1,5 +1,6 @@
 ---
 source: tests/golden/harness.rs
+assertion_line: 41
 ---
   x `components/core/edited` tracks its library, and its content no longer
   | matches its lock entry
@@ -9,9 +10,8 @@ source: tests/golden/harness.rs
    :     `-- this entry
  2 |     library "upstream"
    `----
-  help: undo the edit to `components/core/edited`, or run `buildc set
-        component core/edited --untracked` to make the copy the repository's
-        own
+  help: undo the edit to `components/core/edited`, or run `buildc detach
+        component core/edited` to make the copy the repository's own
 
   x `components/core/gone` tracks its library, and the directory is missing
    ,-[tests/repos/broken-lock/components/components.lock.kdl:8:1]

@@ -1,0 +1,16 @@
+---
+source: tests/golden/harness.rs
+---
+  1) base-image/fedora  buildc
+  2) fedora-family  buildc
+  3) flatpak  upstream
+component [1-3, 0 for none]: 3
+
+Detach `components/flatpak` from `upstream`? The copy becomes the repository's own. (Yes/No)
+Yes
+
+
+example/
+└── components/
+    └── ~ components.lock.kdl  `flatpak` detached from `upstream`
+==== exit 0

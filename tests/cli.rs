@@ -100,3 +100,28 @@ fn create_image_refuses_a_base_path_no_component_names() {
     );
     assert!(!wrote, "the refused image was written");
 }
+
+#[test]
+fn detach_component_takes_the_short_yes() {
+    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-detach");
+    let _ = std::fs::remove_dir_all(&root);
+    let lock = root.join("components/components.lock.kdl");
+    std::fs::create_dir_all(lock.parent().expect("the lock has a parent"))
+        .expect("the test repository is writable");
+    std::fs::write(root.join("repo.kdl"), "schema-version 1\n")
+        .expect("the test repository is writable");
+    std::fs::write(
+        &lock,
+        "component \"browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
+    )
+    .expect("the test repository is writable");
+    let out = Command::new(env!("CARGO_BIN_EXE_buildc"))
+        .args(["--no-tui", "detach", "component", "browser", "-y"])
+        .current_dir(&root)
+        .output()
+        .expect("the binary runs");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    let written = std::fs::read_to_string(&lock).expect("the lock stays");
+    assert!(!written.contains("track"), "{written}");
+}

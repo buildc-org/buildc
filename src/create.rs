@@ -1164,8 +1164,8 @@ impl Component {
         }
         if with.iter().any(|(verb, _)| verb == "packages") {
             return Err(Error::Operation(format!(
-                "`--with packages=...` writes no package list; create `{path}` without it and \
-                 run `buildc add package <names...> --component {path}` after"
+                "`--with packages=...` writes no package list; leave it out and run `buildc add \
+                 package <names...> --component {path}` after"
             )));
         }
         let defined = list.images.iter().find(|image| {

@@ -6,9 +6,10 @@ use crate::layout;
 use crate::model::image::List;
 use crate::parse;
 use crate::parse::component::{PackageInsert, PackageLine};
+use crate::setup::Listing;
 use common::prompt::Prompt;
 use common::ui::tree::Change;
-use common::ui::Choice;
+use common::ui::{Answer, Choice, Field, Filled};
 use std::path::{Path, PathBuf};
 
 pub struct Packages {
@@ -18,8 +19,20 @@ pub struct Packages {
     insert: Option<PackageInsert>,
     already: Vec<String>,
     names: Vec<String>,
+    creation: Option<Inline>,
 }
 
+struct Inline {
+    listing: Listing,
+    block: String,
+}
+
+enum NewGroup {
+    Directory,
+    Inline(Inline),
+}
+
+#[derive(Clone)]
 enum Place {
     Directory {
         file: PathBuf,
@@ -55,6 +68,7 @@ impl Place {
     }
 }
 
+#[derive(Clone)]
 struct Candidate {
     path: String,
     place: Place,
@@ -113,30 +127,18 @@ fn candidates(root: &Path, list: &List) -> Vec<Candidate> {
     found
 }
 
-fn targets(candidates: &[Candidate]) -> String {
-    let named: Vec<String> = candidates
-        .iter()
-        .filter_map(|candidate| candidate.place.target())
-        .collect();
-    crate::said(&named)
+enum GroupChoice {
+    Name(String),
+    Component(Candidate),
 }
 
-fn pick(found: Vec<Candidate>, prompt: &Prompt) -> Result<Option<Candidate>, Error> {
-    if found.is_empty() {
-        return Err(Error::Operation(
-            "this repository holds no component; `buildc create component <name>` writes one"
-                .to_string(),
-        ));
-    }
-    if found.len() == 1 {
-        return Ok(found.into_iter().next());
-    }
-    if !prompt.asks() {
-        return Err(Error::Operation(
-            "give `--component` with the component that receives the packages".to_string(),
-        ));
-    }
-    let options: Vec<Choice> = found
+enum Found {
+    Existing(Candidate),
+    New(String),
+}
+
+fn candidate_options(candidates: &[Candidate]) -> Vec<Choice> {
+    candidates
         .iter()
         .map(|candidate| {
             let choice = Choice::new(&candidate.label, &candidate.about);
@@ -145,107 +147,219 @@ fn pick(found: Vec<Candidate>, prompt: &Prompt) -> Result<Option<Candidate>, Err
                 false => choice,
             }
         })
-        .collect();
-    let Some(at) = prompt.choose(copy::WHICH_COMPONENT, &options)? else {
-        return Ok(None);
-    };
-    Ok(found.into_iter().nth(at))
+        .collect()
 }
 
-fn chosen_image(
-    found: Vec<Candidate>,
-    image: &str,
-    named: &str,
-    prompt: &Prompt,
-) -> Result<Option<Candidate>, Error> {
-    let named_targets = targets(&found);
-    let held: Vec<Candidate> = found
-        .into_iter()
-        .filter(|candidate| candidate.place.target().as_deref() == Some(image))
+fn group_name_field(value: &str) -> Field {
+    Field::text(copy::GROUP_NAME, value)
+        .placeholder(&copy::group_name_hint())
+        .default_value(copy::DEFAULT_GROUP)
+}
+
+fn group_form(candidates: &[Candidate], prompt: &Prompt) -> Result<Option<GroupChoice>, Error> {
+    let actions = [copy::ADD_PACKAGES, copy::CANCEL];
+    let mut fields = vec![
+        group_name_field(""),
+        Field::action(copy::SELECT_COMPONENT, ""),
+    ];
+    let mut selected: Option<&Candidate> = None;
+    let mut visited = Vec::new();
+    loop {
+        match common::ui::form(
+            &mut fields,
+            &actions,
+            |_| None,
+            |_| Vec::new(),
+            |fields| (0..fields.len()).collect(),
+            copy::FORM_KEYS,
+            &[],
+            &[],
+            0,
+            &mut visited,
+        )? {
+            Filled::Took(0) => {
+                let name = fields[0].value();
+                // The chosen component names one inline copy where several images share the path.
+                return Ok(Some(match selected {
+                    Some(candidate) if candidate.path == name => {
+                        GroupChoice::Component(candidate.clone())
+                    }
+                    _ => GroupChoice::Name(name),
+                }));
+            }
+            Filled::Took(_) | Filled::Left => return Ok(None),
+            Filled::Opened(1) => {
+                let options = candidate_options(candidates);
+                if let Some(candidate) = prompt
+                    .choose(copy::WHICH_COMPONENT, &options)?
+                    .and_then(|at| candidates.get(at))
+                {
+                    selected = Some(candidate);
+                    fields[0] = group_name_field(&candidate.path);
+                }
+            }
+            Filled::Opened(_) | Filled::Changed(_) | Filled::Table { .. } => {}
+        }
+    }
+}
+
+fn said_targets(found: &[&Candidate]) -> String {
+    let named: Vec<String> = found
+        .iter()
+        .filter_map(|candidate| candidate.place.target())
         .collect();
-    if held.is_empty() {
+    crate::said(&named)
+}
+
+fn check_image(candidate: &Candidate, images: &[String]) -> Result<(), Error> {
+    if images.is_empty() {
+        return Ok(());
+    }
+    match &candidate.place {
+        Place::Directory { .. } => Err(Error::Operation(format!(
+            "`{}` is the directory component components/{} and belongs to no image; leave out \
+             `--image`",
+            candidate.path, candidate.path
+        ))),
+        Place::Inline { .. } => {
+            if images.len() > 1 {
+                return Err(Error::Operation(format!(
+                    "`{}` already exists inline in {}; name that image alone with `--image` or \
+                     leave `--image` out",
+                    candidate.path,
+                    candidate.place.target().unwrap_or_default()
+                )));
+            }
+            let target = candidate.place.target().unwrap_or_default();
+            match images[0] == target {
+                true => Ok(()),
+                false => Err(Error::Operation(format!(
+                    "`{}` is inline in {target}, not `{}`; name `--image {target}` or leave \
+                     `--image` out",
+                    candidate.path, images[0]
+                ))),
+            }
+        }
+    }
+}
+
+fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<Found, Error> {
+    let matching: Vec<&Candidate> = candidates
+        .iter()
+        .filter(|candidate| candidate.path == path)
+        .collect();
+    if matching.is_empty() {
+        return Ok(Found::New(path));
+    }
+    let inline = matching
+        .iter()
+        .filter(|candidate| matches!(candidate.place, Place::Inline { .. }))
+        .count();
+    if inline > 0 && inline < matching.len() {
+        let file = matching
+            .iter()
+            .find_map(|candidate| match &candidate.place {
+                Place::Inline { file, .. } => Some(file.display().to_string()),
+                Place::Directory { .. } => None,
+            })
+            .unwrap_or_default();
         return Err(Error::Operation(format!(
-            "`{named}` is not inline in `{image}`; it is inline in {named_targets}"
+            "`{path}` is defined twice as components/{path} and inline in {file}; `buildc \
+             check` refuses the pair"
         )));
     }
-    pick(held, prompt)
+    let held: Vec<&Candidate> = match images.is_empty() {
+        true => matching.clone(),
+        false => matching
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                candidate.place.target().is_none()
+                    || images
+                        .iter()
+                        .any(|image| candidate.place.target().as_deref() == Some(image.as_str()))
+            })
+            .collect(),
+    };
+    match held.len() {
+        1 => {
+            check_image(held[0], images)?;
+            Ok(Found::Existing(held[0].clone()))
+        }
+        0 => Err(Error::Operation(format!(
+            "`{path}` is not inline in `{}`; it is inline in {}",
+            images.join("`, `"),
+            said_targets(&matching)
+        ))),
+        _ => Err(Error::Operation(format!(
+            "`{path}` is inline in {}; name one `--image` or choose one copy with `select component`",
+            said_targets(&held)
+        ))),
+    }
 }
 
-fn one_inline(
-    found: Vec<Candidate>,
-    named: &str,
-    prompt: &Prompt,
-) -> Result<Option<Candidate>, Error> {
-    if found.len() == 1 {
-        return Ok(found.into_iter().next());
-    }
-    let named_targets = targets(&found);
-    if !prompt.asks() {
+fn refuse_tracked(root: &Path, path: &str) -> Result<(), Error> {
+    if crate::provenance::lock::entry(root, path).is_some_and(|record| record.tracked) {
         return Err(Error::Operation(format!(
-            "`{named}` is inline in {named_targets}; name one with `--image`"
+            "components/{path} tracks its library and an edit would no longer match its lock \
+             entry; run `buildc set component {path} --untracked` first"
         )));
     }
-    pick(found, prompt)
+    Ok(())
 }
 
-fn choose(
-    found: Vec<Candidate>,
-    component: Option<String>,
-    image: Option<String>,
+fn new_group(
+    root: &Path,
+    list: &List,
+    path: &str,
+    names: &[String],
+    images: Vec<String>,
     prompt: &Prompt,
-) -> Result<Option<Candidate>, Error> {
-    let Some(named) = component else {
-        if let Some(image) = image {
-            return Err(Error::Operation(format!(
-                "`--image` needs `--component`; give the inline component that `{image}` holds"
-            )));
-        }
-        if !prompt.asks() {
-            return Err(Error::Operation(
-                "give `--component` with the component that receives the packages".to_string(),
-            ));
-        }
-        return pick(found, prompt);
-    };
-    if !crate::model::image::is_local_path(&named) {
+) -> Result<Option<NewGroup>, Error> {
+    if !crate::model::image::is_local_path(path) {
         return Err(Error::Operation(format!(
-            "`{named}` is not a component path; each `/` segment takes lowercase letters, \
+            "`{path}` is not a component path; each `/` segment takes lowercase letters, \
              digits and dashes and starts with a letter"
         )));
     }
-    let matching: Vec<Candidate> = found
-        .into_iter()
-        .filter(|candidate| candidate.path == named)
-        .collect();
-    if matching.is_empty() {
-        return Err(Error::Operation(format!(
-            "`{named}` is not a component this repository holds; `buildc create component \
-             {named}` writes one"
-        )));
-    }
-    let (inline, directory): (Vec<Candidate>, Vec<Candidate>) = matching
-        .into_iter()
-        .partition(|candidate| matches!(candidate.place, Place::Inline { .. }));
-    if let Some(directory) = directory.into_iter().next() {
-        if !inline.is_empty() {
+    refuse_tracked(root, path)?;
+    let targets = list.targets();
+    let mut selected: Vec<crate::model::image::Target> = Vec::new();
+    for image in images {
+        let Some(target) = targets.iter().find(|target| target.to_string() == image) else {
+            let declared: Vec<String> = targets.iter().map(ToString::to_string).collect();
             return Err(Error::Operation(format!(
-                "`{named}` is defined twice, as components/{named} and inline in {}; `buildc \
-                 check` refuses the pair",
-                inline[0].place.file().display()
+                "`{image}` is not a declared image or flavour; the repository declares {}",
+                crate::said(&declared)
             )));
-        }
-        if let Some(image) = image {
-            return Err(Error::Operation(format!(
-                "`{named}` is the directory component components/{named} and belongs to no \
-                 image; leave out `--image {image}`"
-            )));
-        }
-        return Ok(Some(directory));
+        };
+        selected.push(target.clone());
     }
-    match image {
-        Some(image) => chosen_image(inline, &image, &named, prompt),
-        None => one_inline(inline, &named, prompt),
+    if selected.is_empty() && prompt.asks() && !targets.is_empty() {
+        let options: Vec<Choice> = targets
+            .iter()
+            .map(|target| Choice::new(target.to_string(), ""))
+            .collect();
+        let answer = prompt.choose_many(&copy::package_group_images(path), &options, &[])?;
+        let Answer::Chosen(at) = answer else {
+            return Ok(None);
+        };
+        selected = at
+            .iter()
+            .filter_map(|at| targets.get(*at).cloned())
+            .collect();
     }
+    if selected.is_empty() {
+        return Ok(Some(NewGroup::Directory));
+    }
+    let listing = Listing::selected(list, &selected)?;
+    listing
+        .refuse_duplicate(list, path)
+        .map_err(Error::Operation)?;
+    Ok(Some(NewGroup::Inline(Inline {
+        listing,
+        block: format!(" {{\n    {}\n}}", node(names)),
+    })))
 }
 
 fn args(names: &[String]) -> String {
@@ -281,6 +395,7 @@ fn read(place: &Place) -> Result<(Option<Source>, PackageLine), String> {
     let file = place.file();
     let text = match std::fs::read_to_string(file) {
         Ok(text) => text,
+        // A component directory that holds only scripts has no manifest yet.
         Err(err)
             if err.kind() == std::io::ErrorKind::NotFound
                 && matches!(place, Place::Directory { .. }) =>
@@ -303,14 +418,15 @@ impl Packages {
         root: &Path,
         names: Vec<String>,
         component: Option<String>,
-        image: Option<String>,
+        mut images: Vec<String>,
         prompt: &Prompt,
     ) -> Result<Option<Self>, Error> {
         let names: Vec<String> = match names.is_empty() {
             true => prompt
-                .text(
+                .text_with_placeholder(
                     None,
                     copy::PACKAGE_NAMES,
+                    copy::PACKAGE_NAMES_HINT,
                     "package names as arguments",
                     None,
                 )?
@@ -330,21 +446,70 @@ impl Packages {
                 wanted.push(name);
             }
         }
+        if wanted.is_empty() {
+            return Err(Error::Operation(
+                "give at least one package name".to_string(),
+            ));
+        }
+        let mut unique = Vec::new();
+        for image in images.drain(..) {
+            if !unique.contains(&image) {
+                unique.push(image);
+            }
+        }
+        let images = unique;
         let list = List::editable(root).map_err(|issues| issues.plain())?;
-        let Some(chosen) = choose(candidates(root, &list), component, image, prompt)? else {
-            return Ok(None);
+        let candidates = candidates(root, &list);
+        let group = match component {
+            Some(path) => GroupChoice::Name(path),
+            None if prompt.draws() => match group_form(&candidates, prompt)? {
+                Some(choice) => choice,
+                None => return Ok(None),
+            },
+            None if prompt.asks() => GroupChoice::Name(prompt.text(
+                None,
+                copy::GROUP_NAME,
+                "`--component`",
+                Some(copy::DEFAULT_GROUP),
+            )?),
+            None => {
+                return Err(Error::Operation(
+                    "give `--component` with the group that receives the packages".to_string(),
+                ))
+            }
+        };
+        let found = match group {
+            GroupChoice::Component(candidate) => {
+                check_image(&candidate, &images)?;
+                Found::Existing(candidate)
+            }
+            GroupChoice::Name(path) => resolve(&candidates, path, &images)?,
+        };
+        let chosen = match found {
+            Found::Existing(chosen) => chosen,
+            Found::New(path) => {
+                let Some(group) = new_group(root, &list, &path, &wanted, images, prompt)? else {
+                    return Ok(None);
+                };
+                return Ok(Some(Self {
+                    place: Place::Directory {
+                        file: layout::manifest(root, &path),
+                    },
+                    path,
+                    source: None,
+                    insert: None,
+                    already: Vec::new(),
+                    names: wanted,
+                    creation: match group {
+                        NewGroup::Directory => None,
+                        NewGroup::Inline(inline) => Some(inline),
+                    },
+                }));
+            }
         };
         let (source, line) = read(&chosen.place)?;
         if let Place::Directory { .. } = &chosen.place {
-            if crate::provenance::lock::entry(root, &chosen.path)
-                .is_some_and(|record| record.tracked)
-            {
-                return Err(Error::Operation(format!(
-                    "components/{} tracks its library and an edit would no longer match its \
-                     lock entry; run `buildc set component {} --untracked` first",
-                    chosen.path, chosen.path
-                )));
-            }
+            refuse_tracked(root, &chosen.path)?;
         }
         let (already, names): (Vec<String>, Vec<String>) = wanted
             .into_iter()
@@ -356,10 +521,15 @@ impl Packages {
             insert: line.insert,
             already,
             names,
+            creation: None,
         }))
     }
 
     pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
+        if let Some(Inline { listing, block }) = &self.creation {
+            let list = List::editable(root).map_err(|issues| issues.plain())?;
+            return listing.apply_declaration(&list, &[(self.path.as_str(), block.as_str())]);
+        }
         if !self.already.is_empty() {
             println!(
                 "`{}` already lists {}",
@@ -434,14 +604,14 @@ mod tests {
         root: &Path,
         names: &[&str],
         component: Option<&str>,
-        image: Option<&str>,
+        images: &[&str],
         prompt: &Prompt,
     ) -> Result<Vec<(PathBuf, Change)>, Error> {
         Ok(Packages::collect(
             root,
             names.iter().map(|name| (*name).to_string()).collect(),
             component.map(str::to_string),
-            image.map(str::to_string),
+            images.iter().map(|image| (*image).to_string()).collect(),
             prompt,
         )?
         .ok_or_else(|| Error::Operation("the flow was cancelled".to_string()))?
@@ -449,7 +619,7 @@ mod tests {
     }
 
     fn add(root: &Path, names: &[&str], component: &str) -> Result<Vec<(PathBuf, Change)>, Error> {
-        run(root, names, Some(component), None, &Prompt::silent())
+        run(root, names, Some(component), &[], &Prompt::silent())
     }
 
     fn refused(result: Result<Vec<(PathBuf, Change)>, Error>) -> String {
@@ -478,6 +648,209 @@ mod tests {
         assert!(found
             .iter()
             .any(|candidate| candidate.path == "apps" && candidate.hidden));
+    }
+
+    #[test]
+    fn the_package_location_form_names_the_group_and_the_component_choice() {
+        use crate::screen_tests::{assert_screen, screen};
+        use common::ui::testing::{FormFrame, FormMode};
+        let fields = [
+            group_name_field(""),
+            Field::action(copy::SELECT_COMPONENT, ""),
+        ];
+        let visible = [0, 1];
+        let actions = [copy::ADD_PACKAGES, copy::CANCEL];
+        let frame = FormFrame {
+            fields: &fields,
+            visible: &visible,
+            cursor: 0,
+            button: 0,
+            mode: &FormMode::Rows,
+            actions: &actions,
+            blocked: None,
+            tried: false,
+            keys: copy::FORM_KEYS,
+            header: &[],
+            sections: &[],
+        };
+        assert_screen("add-package-location", frame.render(&screen()));
+    }
+
+    #[test]
+    fn a_plain_component_is_not_hidden() {
+        let root = repository("plain-candidate");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    plain\n    off\n    visible {\n        description \"Visible\"\n    }\n    off-inline {\n        hidden #false\n    }\n}\n",
+        );
+        manifest(&root, "plain", "schema-version 1\n");
+        manifest(&root, "off", "schema-version 1\nhidden #false\n");
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
+        std::fs::remove_dir_all(&root).unwrap();
+        for path in ["plain", "off", "visible", "off-inline"] {
+            assert!(
+                found
+                    .iter()
+                    .any(|candidate| candidate.path == path && !candidate.hidden),
+                "{path} is not a hidden candidate"
+            );
+        }
+    }
+
+    #[test]
+    fn candidate_options_keep_the_label_and_mark_the_hidden() {
+        let candidates = vec![
+            Candidate {
+                path: "base".into(),
+                place: Place::Directory {
+                    file: PathBuf::from("components/base/manifest.kdl"),
+                },
+                label: "base".into(),
+                about: "components/base".into(),
+                hidden: true,
+            },
+            Candidate {
+                path: "apps".into(),
+                place: Place::Directory {
+                    file: PathBuf::from("components/apps/manifest.kdl"),
+                },
+                label: "apps".into(),
+                about: "components/apps".into(),
+                hidden: false,
+            },
+        ];
+        let options = candidate_options(&candidates);
+        assert_eq!(options.len(), 2);
+        assert!(options[0].hidden);
+        assert_eq!(options[1].label, "apps");
+    }
+
+    #[test]
+    fn a_new_inline_group_is_refused_where_the_image_lists_the_path() {
+        let root = repository("listed-path");
+        image(&root, "schema-version 1\n\nimage \"one\" {\n    tools\n}\n");
+        let refused = refused(run(
+            &root,
+            &["htop"],
+            Some("tools"),
+            &["one"],
+            &Prompt::silent(),
+        ));
+        let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused.contains("`one` already lists `tools`"), "{refused}");
+        assert!(!text.contains("htop"), "{text}");
+    }
+
+    #[test]
+    fn a_package_group_image_question_names_the_group() {
+        assert_eq!(
+            copy::package_group_images("tools"),
+            "select image to add \"tools\" package group"
+        );
+    }
+
+    #[test]
+    fn an_existing_inline_group_takes_one_image() {
+        let root = repository("check-image-two");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    apps { description \"Apps\" }\n}\n\nimage \"two\" {\n}\n",
+        );
+        let refused = refused(run(
+            &root,
+            &["htop"],
+            Some("apps"),
+            &["one", "two"],
+            &Prompt::silent(),
+        ));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            refused.contains("already exists inline in one")
+                && refused.contains("leave `--image` out"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_named_image_does_not_ask_for_more_images() {
+        let root = repository("named-image");
+        image(&root, "schema-version 1\n\nimage \"one\" {\n}\n");
+        let prompt = Prompt::scripted(vec![]);
+        run(&root, &["htop"], Some("tools"), &["one"], &prompt).unwrap();
+        let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            text.contains("    tools {\n        packages \"htop\"\n    }\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_new_group_refuses_an_image_and_its_flavour() {
+        let root = repository("image-flavour");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    flavours { dev; }\n    flavour \"dev\" {\n    }\n}\n",
+        );
+        let refused = refused(run(
+            &root,
+            &["htop"],
+            Some("tools"),
+            &["one", "one/dev"],
+            &Prompt::silent(),
+        ));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            refused.contains("inside `one`") && refused.contains("list only one of them"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_repeated_image_name_is_one_target() {
+        let root = repository("duplicate-image");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    apps { description \"Apps\" }\n}\n",
+        );
+        run(
+            &root,
+            &["htop"],
+            Some("apps"),
+            &["one", "one"],
+            &Prompt::silent(),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            text.matches("apps { description \"Apps\"; packages \"htop\" }")
+                .count(),
+            1,
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_new_directory_group_refuses_a_tracked_lock_entry() {
+        let root = repository("new-tracked");
+        crate::init::put(
+            &layout::lock(&root),
+            "component \"tool\" {\n    library \"buildc\"\n    path \"tool\"\n    content \"abc\"\n    track\n}\n",
+        )
+        .unwrap();
+        let refused = refused(add(&root, &["htop"], "tool"));
+        let exists = root.join("components/tool/manifest.kdl").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            refused.contains("tracks its library") && refused.contains("--untracked"),
+            "{refused}"
+        );
+        assert!(!exists);
     }
 
     #[test]
@@ -625,17 +998,10 @@ mod tests {
         );
         let refused = refused(add(&root, &["htop"], "apps"));
         assert!(
-            refused.contains("inline in one and two") && refused.contains("--image"),
+            refused.contains("inline in one and two") && refused.contains("select component"),
             "{refused}"
         );
-        run(
-            &root,
-            &["htop"],
-            Some("apps"),
-            Some("two"),
-            &Prompt::silent(),
-        )
-        .unwrap();
+        run(&root, &["htop"], Some("apps"), &["two"], &Prompt::silent()).unwrap();
         let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
@@ -661,7 +1027,7 @@ mod tests {
             &root,
             &["htop"],
             Some("apps"),
-            Some("one"),
+            &["one"],
             &Prompt::silent(),
         ));
         assert!(refused.contains("not inline in `one`"), "{refused}");
@@ -669,7 +1035,7 @@ mod tests {
             &root,
             &["htop"],
             Some("apps"),
-            Some("one/dev"),
+            &["one/dev"],
             &Prompt::silent(),
         )
         .unwrap();
@@ -741,7 +1107,7 @@ mod tests {
             &root,
             &["htop"],
             Some("tool"),
-            Some("one"),
+            &["one"],
             &Prompt::silent(),
         ));
         std::fs::remove_dir_all(&root).unwrap();
@@ -767,14 +1133,50 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_component_names_the_command_that_writes_one() {
-        let root = repository("unknown");
-        let refused = refused(add(&root, &["htop"], "nope"));
+    fn a_new_group_with_no_image_writes_a_directory_component() {
+        let root = repository("new-group");
+        let wrote = add(&root, &["htop"], "nope").unwrap();
+        let text = std::fs::read_to_string(root.join("components/nope/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(text, "schema-version 1\n\npackages \"htop\"\n");
+        assert!(!wrote.is_empty());
+    }
+
+    #[test]
+    fn a_new_group_with_one_image_writes_an_inline_block() {
+        let root = repository("new-inline");
+        image(&root, "schema-version 1\n\nimage \"one\" {\n}\n");
+        run(&root, &["htop"], Some("tools"), &["one"], &Prompt::silent()).unwrap();
+        let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
-            refused.contains("not a component this repository holds")
-                && refused.contains("buildc create component nope"),
-            "{refused}"
+            text.contains("    tools {\n        packages \"htop\"\n    }\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_new_group_with_two_images_writes_an_inline_block_in_each() {
+        let root = repository("new-inline-two");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n}\n\nimage \"two\" {\n}\n",
+        );
+        run(
+            &root,
+            &["htop"],
+            Some("tools"),
+            &["one", "two"],
+            &Prompt::silent(),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            text.matches("    tools {\n        packages \"htop\"\n    }\n")
+                .count(),
+            2,
+            "{text}"
         );
     }
 
@@ -794,24 +1196,45 @@ mod tests {
         let root = repository("asked");
         manifest(&root, "tool", "schema-version 1\n");
         let prompt = Prompt::scripted(["nano curl"].map(str::to_string).to_vec());
-        run(&root, &[], Some("tool"), None, &prompt).unwrap();
+        run(&root, &[], Some("tool"), &[], &prompt).unwrap();
         let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(text.ends_with("packages \"nano\" \"curl\"\n"), "{text}");
     }
 
     #[test]
-    fn a_picker_chooses_the_component_when_the_flag_is_absent() {
-        let root = repository("picker");
-        manifest(&root, "alpha", "schema-version 1\n");
-        manifest(&root, "beta", "schema-version 1\n");
-        let prompt = Prompt::scripted(["2"].map(str::to_string).to_vec());
-        run(&root, &["htop"], None, None, &prompt).unwrap();
-        let alpha = std::fs::read_to_string(root.join("components/alpha/manifest.kdl")).unwrap();
-        let beta = std::fs::read_to_string(root.join("components/beta/manifest.kdl")).unwrap();
+    fn an_empty_group_name_uses_apps() {
+        let root = repository("default-group");
+        let prompt = Prompt::scripted(vec![String::new()]);
+        run(&root, &["htop"], None, &[], &prompt).unwrap();
+        let text = std::fs::read_to_string(root.join("components/apps/manifest.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(alpha, "schema-version 1\n");
-        assert!(beta.ends_with("packages \"htop\"\n"), "{beta}");
+        assert_eq!(text, "schema-version 1\n\npackages \"htop\"\n");
+    }
+
+    #[test]
+    fn a_scripted_flow_selects_an_image_for_a_new_group() {
+        let root = repository("scripted-image");
+        image(&root, "schema-version 1\n\nimage \"one\" {\n}\n");
+        let prompt = Prompt::scripted(["tools".into(), "1".into()].to_vec());
+        run(&root, &["htop"], None, &[], &prompt).unwrap();
+        let text = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            text.contains("    tools {\n        packages \"htop\"\n    }\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_scripted_flow_takes_the_group_name() {
+        let root = repository("scripted-group");
+        manifest(&root, "alpha", "schema-version 1\n");
+        let prompt = Prompt::scripted(["alpha"].map(str::to_string).to_vec());
+        run(&root, &["htop"], None, &[], &prompt).unwrap();
+        let alpha = std::fs::read_to_string(root.join("components/alpha/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(alpha.ends_with("packages \"htop\"\n"), "{alpha}");
     }
 
     #[test]
@@ -819,7 +1242,7 @@ mod tests {
         let root = repository("silent");
         manifest(&root, "alpha", "schema-version 1\n");
         manifest(&root, "beta", "schema-version 1\n");
-        let refused = refused(run(&root, &["htop"], None, None, &Prompt::silent()));
+        let refused = refused(run(&root, &["htop"], None, &[], &Prompt::silent()));
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.contains("give `--component`"), "{refused}");
     }
@@ -828,7 +1251,7 @@ mod tests {
     fn no_terminal_refuses_a_missing_component_flag_with_one_component() {
         let root = repository("silent-one");
         manifest(&root, "alpha", "schema-version 1\n");
-        let refused = refused(run(&root, &["htop"], None, None, &Prompt::silent()));
+        let refused = refused(run(&root, &["htop"], None, &[], &Prompt::silent()));
         let text = std::fs::read_to_string(root.join("components/alpha/manifest.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.contains("give `--component`"), "{refused}");
@@ -846,26 +1269,26 @@ mod tests {
     }
 
     #[test]
-    fn the_picker_leaves_out_a_directory_whose_name_is_no_component_path() {
-        let root = repository("picker-path");
+    fn the_candidates_leave_out_a_directory_whose_name_is_no_component_path() {
+        let root = repository("candidate-path");
         manifest(&root, "alpha", "schema-version 1\n");
         manifest(&root, "Bad_Name", "schema-version 1\n");
-        let prompt = Prompt::scripted(["1"].map(str::to_string).to_vec());
-        run(&root, &["htop"], None, None, &prompt).unwrap();
-        let alpha = std::fs::read_to_string(root.join("components/alpha/manifest.kdl")).unwrap();
-        let bad = std::fs::read_to_string(root.join("components/Bad_Name/manifest.kdl")).unwrap();
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
         std::fs::remove_dir_all(&root).unwrap();
-        assert!(alpha.ends_with("packages \"htop\"\n"), "{alpha}");
-        assert_eq!(bad, "schema-version 1\n");
+        assert!(found.iter().any(|candidate| candidate.path == "alpha"));
+        assert!(!found.iter().any(|candidate| candidate.path == "Bad_Name"));
     }
 
     #[test]
     fn an_image_without_a_component_flag_is_refused() {
         let root = repository("image-alone");
         manifest(&root, "tool", "schema-version 1\n");
-        let refused = refused(run(&root, &["htop"], None, Some("one"), &Prompt::silent()));
+        let refused = refused(run(&root, &["htop"], None, &["one"], &Prompt::silent()));
         std::fs::remove_dir_all(&root).unwrap();
-        assert!(refused.contains("needs `--component`"), "{refused}");
+        assert!(refused.contains("give `--component`"), "{refused}");
     }
 
     #[test]

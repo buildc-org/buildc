@@ -589,27 +589,47 @@ buildc create component browser --image workstation-2
 This creates the same empty `browser` component without asking you
 anything.
 
-Now give it a package. `buildc add package` is the one command that puts
-packages on a component, whether that component lives in its own
-`components/browser/` directory or as a block declared inline inside an
-image file:
+You have an empty `browser` component. Add your first package to it:
 
 ```sh
 buildc add package firefox --component browser
 ```
 
-Run `buildc add package` again whenever you want to add more names later.
-It only adds the names the component does not already list. It is safe to
-repeat on a component you have already added packages to.
+`buildc add package` puts packages into a package group. A package group is
+an ordinary component and `browser` is one.
 
-`--component` names the component to write to. Leave it out and the command
-opens a picker listing every component in the repository instead. Add
-`--image <name>` only when the path you gave `--component` is declared
-inline in more than one image or flavour. The command then needs it to know
-which one to change.
+A package group can live in its own directory under `components/`, the way
+`browser` does. It can also be a block declared inline inside an image file.
+The command works the same either way.
 
-For scripts and CI, add `--no-tui` to either command. Instead of prompting,
-it fails and names the flag you were missing.
+Run the command again whenever you want more packages in the group. It adds
+only the names the group does not already list. Running it again with a
+package the group already has is safe.
+
+Leave out `--component` and the command asks you instead. It shows a screen
+with two rows. The first row is `group name`, where you type a name. Leave
+it empty and the command uses the group `apps`. The second row is `select
+component` and it opens a picker of the components in your repository.
+Choose one and the command fills in its name. A component marked `hidden
+#true` stays out of that picker until you press `h`. The [`hidden`
+node](schema/component.md#hidden) documents the flag itself.
+
+Naming a group your repository does not hold yet creates it. The command
+then asks which images get the new group, as a multi-select of every image
+and flavour. Each image you select gets its own inline copy of the group.
+Select none and the group becomes a directory component under `components/`
+instead.
+
+`--image <name>` picks an image for a new group without asking that
+question. Give it a flavour instead as `<image>/<flavour>`. Repeat the
+option to pick more than one image. The [CLI
+reference](cli.md#buildc-add-package) covers what happens when a group
+already has copies in several images. It also covers the other cases where
+the command refuses.
+
+Add `--no-tui` to `buildc create component` or to `buildc add package` when
+you run them in scripts or in CI. With `--no-tui`, a question the command
+would otherwise ask fails instead and names the flag you left out.
 
 #### `buildc create component` arguments
 
@@ -622,12 +642,14 @@ it fails and names the flag you were missing.
 #### `buildc add package` arguments
 
 - **names** (positional, one or more): the package names to add.
-- **`--component <path>`**: the component to add them to. Leave it out to
-  pick from a list of every component in the repository.
-- **`--image <name>`**: which image or flavour's inline component to
-  change, needed only when `--component` names a path declared inline in
-  more than one place.
-- **`--no-tui`**: fail instead of prompting, naming the missing argument.
+- **`--component <path>`**: the package group to add the packages to. A path
+  the repository does not hold yet creates a new group. Leaving out the
+  option shows the group name screen and the component picker.
+- **`--image <name>`**: an image that gets an inline copy of a new group, or
+  a flavour as `<image>/<flavour>`. Repeat it to pick more than one. A new
+  group with no image given becomes a directory component.
+- **`--no-tui`**: make the command fail instead of asking. It names the
+  argument you left out.
 
 Review the `manifest.kdl` file in `components/browser/`:
 

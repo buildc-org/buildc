@@ -905,7 +905,7 @@ pub enum CreateWhat {
 
 #[derive(Subcommand)]
 pub enum AddWhat {
-    /// add package names to a component that already exists
+    /// add packages to a package group
     #[command(
         long_about = help::ADD_PACKAGE,
         after_long_help = help::ADD_PACKAGE_NOTES
@@ -914,12 +914,12 @@ pub enum AddWhat {
         /// the package names to add; asked for when none is given
         #[arg(value_name = "name")]
         names: Vec<String>,
-        /// the path of the component that receives the names; asked with a picker when absent
+        /// the path of the package group that receives the packages
         #[arg(long, value_name = "path")]
         component: Option<String>,
-        /// the image, or `<image>/<flavour>`, that holds the inline component; needed only when the path is inline in more than one image or flavour
+        /// the image or `<image>/<flavour>` that holds the group (repeatable)
         #[arg(long, value_name = "name")]
-        image: Option<String>,
+        image: Vec<String>,
     },
 }
 

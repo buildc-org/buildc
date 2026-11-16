@@ -810,7 +810,47 @@ fn setup_add_package(flow: &Flow) {
     let manifest =
         std::fs::read_to_string(root.join("components/local-tools/manifest.kdl")).unwrap();
     assert!(manifest.ends_with("\npackages \"nano\"\n"), "{manifest}");
+    let example = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    std::fs::write(
+        root.join("second.image.kdl"),
+        example.replace("image \"example\"", "image \"second\""),
+    )
+    .unwrap();
+    flow.buildc(
+        &root,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "add",
+            "package",
+            "htop",
+            "--component",
+            "tools",
+            "--image",
+            "example",
+            "--image",
+            "second",
+        ],
+    );
+    for file in ["example.image.kdl", "second.image.kdl"] {
+        let text = std::fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            text.contains("    tools {\n        packages \"htop\"\n    }\n"),
+            "{file}: {text}"
+        );
+    }
     flow.buildc(&root, &["--root", ".", "check"]);
+    flow.buildc(&root, &["--root", ".", "generate"]);
+    for image in ["example", "second"] {
+        let script =
+            std::fs::read_to_string(root.join(format!("generated/{image}/components/tools.sh")))
+                .unwrap();
+        assert!(
+            script.contains("dnf install -y 'htop'"),
+            "{image}: {script}"
+        );
+    }
 }
 
 fn setup_create_flavour(flow: &Flow) {

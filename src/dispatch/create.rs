@@ -139,8 +139,8 @@ pub(super) fn add_package(call: Call) -> Result<ExitCode, Error> {
         return Ok(ExitCode::from(REPO_ERROR));
     };
     let names: Vec<String> = rest.iter().map(|name| (*name).to_string()).collect();
-    let image = images.into_iter().next();
-    let Some(packages) = crate::add::Packages::collect(&root, names, component_arg, image, prompt)?
+    let Some(packages) =
+        crate::add::Packages::collect(&root, names, component_arg, images, prompt)?
     else {
         return Ok(ExitCode::SUCCESS);
     };

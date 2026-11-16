@@ -151,7 +151,7 @@ fn create_into(name: &str, root: &Path) {
         &here,
         vec!["nano".into()],
         Some("my-editor".into()),
-        None,
+        Vec::new(),
         &silent,
     )
     .unwrap()

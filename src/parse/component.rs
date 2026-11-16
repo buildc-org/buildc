@@ -418,9 +418,9 @@ pub const COMPONENT: Node = Node::new("component",
                 "`targets \"fedora\"`, one name for each base family the component builds on"))
             .props(&[], Say::new("`{}` is not a `targets` property", "not part of the schema",
                 "`targets` takes family names alone")),
-        Node::new("hidden", "Omits this component from component pickers; the component still builds.").about("An explicit path still selects it. A picker reveals hidden components with the `h` key.").example("#true")
+        Node::new("hidden", "Keeps the component out of picker lists until the user reveals it.").about("A component marked `hidden #true` stays out of the component pickers of `buildc add package`, `buildc import component` and `buildc why` by default. The user reveals it by pressing `h` in the picker and naming the component's path on the command line selects it as usual. Hiding changes nothing else and the component still builds and appears in the build summary, `buildc why` and `buildc graph`.").example("#true")
             .arg(Arg::Bool, Say::new("`hidden` takes #true or #false", "not a boolean",
-                "`hidden #true` keeps the component out of component pickers"))
+                "`hidden #true` keeps the component out of picker lists until the user reveals it"))
             .once(""),
 
         Node::new("provides", "A capability that this component provides for the components that require it.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `base-image` is provided by a `base` node. A manifest cannot declare it.").example("\"flatpak\"")
@@ -1253,7 +1253,7 @@ impl Component {
                     }
                 }
                 "targets" => component.parse_targets(node, src, issues),
-                "hidden" => component.hidden = bool_arg(node).unwrap_or(false),
+                "hidden" => component.hidden = is_hidden(node),
                 kind @ ("provides" | "requires" | "after" | "removes") => {
                     component.parse_capabilities(kind, node, src, issues)
                 }
@@ -2283,9 +2283,7 @@ pub fn summary(file: &Path) -> Summary {
     exclusive.extend(based.then(|| BASE_IMAGE.to_string()));
     Summary {
         description: strings("description").join(" "),
-        hidden: nodes
-            .iter()
-            .any(|node| node.name().value() == "hidden" && bool_arg(node) == Some(true)),
+        hidden: hidden_nodes(nodes.iter().copied()),
         provides,
         exclusive,
         targets: strings("targets"),
@@ -2352,6 +2350,16 @@ pub fn offered_base(
     })
 }
 
+fn is_hidden(node: &KdlNode) -> bool {
+    bool_arg(node) == Some(true)
+}
+
+fn hidden_nodes<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>) -> bool {
+    nodes
+        .into_iter()
+        .any(|node| node.name().value() == "hidden" && is_hidden(node))
+}
+
 pub(crate) fn hidden(file: &Path) -> bool {
     let Ok(text) = std::fs::read_to_string(file) else {
         return false;
@@ -2359,15 +2367,11 @@ pub(crate) fn hidden(file: &Path) -> bool {
     let Ok(doc) = text.parse::<KdlDocument>() else {
         return false;
     };
-    doc.nodes()
-        .iter()
-        .any(|node| node.name().value() == "hidden" && bool_arg(node) == Some(true))
+    hidden_nodes(doc.nodes().iter())
 }
 
 pub(crate) fn inline_hidden(src: &Source, spans: &[Span]) -> bool {
-    crate::parse::image::nodes_at(src, spans)
-        .iter()
-        .any(|node| node.name().value() == "hidden" && bool_arg(node) == Some(true))
+    hidden_nodes(crate::parse::image::nodes_at(src, spans).iter())
 }
 
 pub(crate) fn validate_manifest(
@@ -2937,6 +2941,18 @@ on "fedora" {
         let summary = summary(&file);
         std::fs::remove_file(&file).unwrap();
         assert!(summary.hidden);
+    }
+
+    #[test]
+    fn a_summary_leaves_hidden_false() {
+        let file = std::env::temp_dir().join(format!(
+            "buildc-summary-not-hidden-{}.kdl",
+            std::process::id()
+        ));
+        std::fs::write(&file, "schema-version 1\nhidden #false\n").unwrap();
+        let summary = summary(&file);
+        std::fs::remove_file(&file).unwrap();
+        assert!(!summary.hidden);
     }
 
     #[test]

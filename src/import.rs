@@ -977,13 +977,22 @@ fn pick<'a>(
             said(&named)
         )));
     }
-    let options: Vec<Choice> = many
-        .iter()
-        .map(|held| Choice::new(held.qualified(), held.about()))
-        .collect();
+    let options = provider_options(many);
     Ok(prompt
         .choose(&copy::which_provider(component, want), &options)?
         .map(|at| many[at]))
+}
+
+fn provider_options(many: &[&crate::provider::Provider]) -> Vec<Choice> {
+    many.iter()
+        .map(|held| {
+            let choice = Choice::new(held.qualified(), held.about());
+            match held.declares.hidden {
+                true => choice.hidden(),
+                false => choice,
+            }
+        })
+        .collect()
 }
 
 fn outside<'a>(
@@ -1604,6 +1613,30 @@ mod tests {
         let (_, options) = offered(root, &sources, None).unwrap();
 
         assert!(options.iter().all(|option| option.available));
+    }
+
+    #[test]
+    fn a_hidden_provider_is_marked_in_the_picker() {
+        let hidden = crate::provider::Provider {
+            owner: None,
+            name: "base".into(),
+            here: true,
+            declares: crate::parse::component::Summary {
+                hidden: true,
+                ..Default::default()
+            },
+        };
+        let visible = crate::provider::Provider {
+            owner: None,
+            name: "tool".into(),
+            here: true,
+            declares: crate::parse::component::Summary::default(),
+        };
+        let many = [&hidden, &visible];
+        let options = provider_options(&many);
+        assert!(options[0].hidden);
+        assert!(!options[1].hidden);
+        assert_eq!(options[1].label, "tool");
     }
 
     #[test]

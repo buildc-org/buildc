@@ -656,8 +656,8 @@ example/
 > A directory component that tracks its library stays out of the `select
 > component` picker because the command refuses to edit such a component. A
 > typed group name or an explicit `--component` path still reaches the refusal.
-> An inline group stays in the picker even when its path matches a tracked
-> component.
+> If no component is left to pick, then the form shows no `select component`
+> row.
 >
 > A name takes letters, digits and `. _ + : -`, with at most one `=` before a
 > version. An option reference such as `firefox={version}` is accepted in place
@@ -674,8 +674,8 @@ example/
 > If the lock file does not parse, then the command refuses and names the lock
 > file. Nothing is written.
 >
-> A path that is both a directory component and an inline component is refused.
-> `buildc check` refuses it the same way.
+> A path that is both a directory component and an inline component is refused,
+> whether the user types it or picks it. `buildc check` refuses it the same way.
 >
 > The `create component` command writes no packages. The user runs `buildc add
 > package` afterward to add them, or writes the `packages` line in the manifest

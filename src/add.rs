@@ -169,12 +169,17 @@ fn group_name_field(value: &str) -> Field {
         .default_value(copy::DEFAULT_GROUP)
 }
 
+fn location_fields(candidates: &[Candidate]) -> Vec<Field> {
+    let mut fields = vec![group_name_field("")];
+    if !candidates.is_empty() {
+        fields.push(Field::action(copy::SELECT_COMPONENT, ""));
+    }
+    fields
+}
+
 fn group_form(candidates: &[Candidate], prompt: &Prompt) -> Result<Option<GroupChoice>, Error> {
     let actions = [copy::ADD_PACKAGES, copy::CANCEL];
-    let mut fields = vec![
-        group_name_field(""),
-        Field::action(copy::SELECT_COMPONENT, ""),
-    ];
+    let mut fields = location_fields(candidates);
     let mut selected: Option<&Candidate> = None;
     let mut visited = Vec::new();
     loop {
@@ -256,14 +261,11 @@ fn check_image(candidate: &Candidate, images: &[String]) -> Result<(), Error> {
     }
 }
 
-fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<Found, Error> {
+fn refuse_defined_twice(candidates: &[Candidate], path: &str) -> Result<(), Error> {
     let matching: Vec<&Candidate> = candidates
         .iter()
         .filter(|candidate| candidate.path == path)
         .collect();
-    if matching.is_empty() {
-        return Ok(Found::New(path));
-    }
     let inline = matching
         .iter()
         .filter(|candidate| matches!(candidate.place, Place::Inline { .. }))
@@ -281,6 +283,18 @@ fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<
              check` refuses the pair"
         )));
     }
+    Ok(())
+}
+
+fn resolve(candidates: &[Candidate], path: String, images: &[String]) -> Result<Found, Error> {
+    let matching: Vec<&Candidate> = candidates
+        .iter()
+        .filter(|candidate| candidate.path == path)
+        .collect();
+    if matching.is_empty() {
+        return Ok(Found::New(path));
+    }
+    refuse_defined_twice(candidates, &path)?;
     let held: Vec<&Candidate> = match images.is_empty() {
         true => matching.clone(),
         false => matching
@@ -496,6 +510,7 @@ impl Packages {
         };
         let found = match group {
             GroupChoice::Component(candidate) => {
+                refuse_defined_twice(&candidates, &candidate.path)?;
                 check_image(&candidate, &images)?;
                 Found::Existing(candidate)
             }
@@ -726,6 +741,48 @@ mod tests {
             sections: &[],
         };
         assert_screen("add-package-location", frame.render(&screen()));
+    }
+
+    #[test]
+    fn the_package_location_form_offers_no_component_choice_without_candidates() {
+        assert_eq!(location_fields(&[]).len(), 1);
+        let root = repository("location-fields");
+        manifest(&root, "tool", "schema-version 1\n");
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
+        assert_eq!(location_fields(&found).len(), 2);
+        crate::init::put(
+            &layout::lock(&root),
+            "component \"tool\" {\n    library \"buildc\"\n    path \"tool\"\n    content \"abc\"\n    track\n}\n",
+        )
+        .unwrap();
+        let left = pickable(&root, &found).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(location_fields(&left).len(), 1);
+    }
+
+    #[test]
+    fn a_picked_component_defined_twice_is_refused() {
+        let root = repository("picked-twice");
+        image(
+            &root,
+            "schema-version 1\n\nimage \"one\" {\n    tool {\n        packages \"vim\"\n    }\n}\n",
+        );
+        manifest(&root, "tool", "schema-version 1\n");
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found = candidates(&root, &list);
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refuse_defined_twice(&found, "tool").unwrap_err();
+        assert!(
+            refused.message().contains("defined twice"),
+            "{}",
+            refused.message()
+        );
+        assert!(refuse_defined_twice(&found, "other").is_ok());
     }
 
     #[test]

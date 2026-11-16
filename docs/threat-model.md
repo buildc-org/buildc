@@ -74,6 +74,10 @@ A collection is a Git repository of components or base-image catalogs that
   collection cannot copy a file from outside itself into `components/`. `buildc
   fetch components` stages the copy first, so a refused copy leaves the component
   as it was.
+- A component copy refuses a source directory whose canonical path leaves its
+  collection (`src/import.rs` `contained`). The check covers a member that is
+  itself a symbolic link. It also covers a lock entry whose `path` climbs out
+  of the collection.
 - The `update-components` workflow runs `buildc fetch components` with a token that
   can push a branch and open a pull request. What it copies reaches `main`
   only through the review of that pull request.

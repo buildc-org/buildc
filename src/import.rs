@@ -71,13 +71,16 @@ pub fn find(
         }
         verified(collection, enforce)?;
         searched.push(&collection.name);
-        let tree =
-            crate::collection::tree(root, collection)?.join(collection.subtree().unwrap_or(""));
-        if tree.join(component).join(layout::MANIFEST_FILE).is_file() {
+        let tree = crate::collection::tree(root, collection)?;
+        let dir = tree
+            .join(collection.subtree().unwrap_or(""))
+            .join(component);
+        if dir.join(layout::MANIFEST_FILE).is_file() {
+            contained(&tree, &dir, &collection.name, component)?;
             found.push(Found {
                 owner: collection.name.clone(),
                 name: component.to_string(),
-                dir: tree.join(component),
+                dir,
             });
         }
     }
@@ -90,14 +93,15 @@ pub fn find(
             if owner.is_some_and(|owner| owner != collection.name) {
                 continue;
             }
-            let tree =
-                crate::collection::tree(root, collection)?.join(collection.subtree().unwrap_or(""));
-            for path in
-                crate::resolve::name::matching(&crate::collection::members(&tree), component)
+            let tree = crate::collection::tree(root, collection)?;
+            let top = tree.join(collection.subtree().unwrap_or(""));
+            for path in crate::resolve::name::matching(&crate::collection::members(&top), component)
             {
+                let dir = top.join(&path);
+                contained(&tree, &dir, &collection.name, &path)?;
                 found.push(Found {
                     owner: collection.name.clone(),
-                    dir: tree.join(&path),
+                    dir,
                     name: path,
                 });
             }
@@ -328,6 +332,22 @@ fn choose_several(
     }
 }
 
+pub(crate) fn contained(tree: &Path, dir: &Path, owner: &str, name: &str) -> Result<(), String> {
+    let real = |path: &Path| {
+        path.canonicalize()
+            .map_err(|err| format!("{}: {err}", path.display()))
+    };
+    let resolved = real(dir)?;
+    match resolved.starts_with(real(tree)?) {
+        true => Ok(()),
+        false => Err(format!(
+            "{}: `{name}` in library `{owner}` resolves to {} outside the library tree",
+            dir.display(),
+            resolved.display()
+        )),
+    }
+}
+
 pub(crate) fn cached_member(
     root: &Path,
     sources: &[Collection],
@@ -349,17 +369,7 @@ pub(crate) fn cached_member(
     if !dir.join(layout::MANIFEST_FILE).is_file() {
         return Ok(None);
     }
-    // A library member may be a symlink, so the check compares canonical paths and a link cannot reach outside the library.
-    let real = |path: &Path| {
-        path.canonicalize()
-            .map_err(|err| format!("{}: {err}", path.display()))
-    };
-    if !real(&dir)?.starts_with(real(&tree)?) {
-        return Err(format!(
-            "{}: library `{owner}` links `{name}` outside its own tree",
-            dir.display()
-        ));
-    }
+    contained(&tree, &dir, owner, name)?;
     Ok(Some(Found {
         owner: owner.to_string(),
         name: name.to_string(),
@@ -1540,9 +1550,29 @@ mod tests {
             .err()
             .expect("a member linked outside the library is refused");
         assert!(
-            refused.contains("links `evil` outside its own tree"),
+            refused.contains("`evil` in library `lib` resolves to"),
             "{refused}"
         );
+    }
+
+    #[test]
+    fn a_found_member_linked_outside_the_library_is_refused() {
+        let root = std::env::temp_dir().join(format!("buildc-import-found-{}", std::process::id()));
+        crate::init::put(&root.join("outside/manifest.kdl"), "schema-version 1\n").unwrap();
+        std::fs::create_dir_all(root.join("library")).unwrap();
+        std::os::unix::fs::symlink(root.join("outside"), root.join("library/evil")).unwrap();
+        std::fs::create_dir_all(root.join("library/apps")).unwrap();
+        std::os::unix::fs::symlink(root.join("outside"), root.join("library/apps/nested")).unwrap();
+        let sources = [collection("lib", "library")];
+        let exact = find(&root, &sources, "evil", false);
+        let matched = find(&root, &sources, "nested", false);
+        std::fs::remove_dir_all(&root).unwrap();
+        for refused in [exact, matched] {
+            let refused = refused
+                .err()
+                .expect("a member linked outside the library is refused");
+            assert!(refused.contains("outside the library tree"), "{refused}");
+        }
     }
 
     #[test]

@@ -97,13 +97,13 @@ fn flags(matches: &ArgMatches) -> Result<dispatch::Flags, Error> {
         backend: one("backend"),
         oci_output: one("oci_output"),
         secrets: many("secret"),
-        pkgs: many("pkg"),
         with,
         cache_to: switch("cache_to"),
         no_cache_from: switch("no_cache_from"),
         rebuild: switch("rebuild"),
         dependencies: switch("dependencies"),
         untracked: switch("untracked"),
+        inline: switch("inline"),
     })
 }
 

@@ -248,6 +248,12 @@ pub(crate) fn kids(node: &KdlNode) -> &[KdlNode] {
     node.children().map(|c| c.nodes()).unwrap_or_default()
 }
 
+pub(crate) fn block_close(node: &KdlNode, text: &str) -> Option<usize> {
+    node.children()?;
+    let span: Span = node.span().into();
+    text[..span.offset + span.len].rfind('}')
+}
+
 pub(crate) fn child<'a>(node: &'a KdlNode, name: &str) -> Option<&'a KdlNode> {
     kids(node).iter().find(|c| c.name().value() == name)
 }

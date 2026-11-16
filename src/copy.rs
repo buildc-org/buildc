@@ -38,7 +38,6 @@ pub const FLAVOUR_IMAGE: &str = "image that publishes the flavour";
 pub const COMPONENT_NAME: &str = "component name";
 pub const COMPONENT_DESCRIPTION: &str = "description (optional)";
 pub const COMPONENT_SUPPORTS: &str = "supported base families, separated by spaces (optional)";
-pub const COMPONENT_PACKAGES: &str = "Does this component install packages?";
 pub const PACKAGE_NAMES: &str = "package names, separated by spaces";
 pub const WHICH_COMPONENT: &str = "component";
 pub const WHICH_COMPONENTS: &str = "components";

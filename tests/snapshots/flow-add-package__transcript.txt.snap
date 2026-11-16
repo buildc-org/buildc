@@ -1,0 +1,7 @@
+---
+source: tests/golden/harness.rs
+---
+
+example/
+└── ~ example.image.kdl  firefox and wireguard-tools added to `packages`
+==== exit 0

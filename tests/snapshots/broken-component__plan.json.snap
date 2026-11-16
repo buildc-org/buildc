@@ -162,6 +162,90 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "core/latin/inner",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/latin/absent",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/importer",
+              "flavour": null,
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "7fa19806c12e5b7b5b65ea935caaa8b77859f4893fb1f862c918204719004a1e",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -181,7 +265,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-component",
-              "COMPONENT_HASHES=core/nameless|157c6f4c6dec62ae03abecfa1c7802cfafa3b08651d214dec028d3daac444206",
+              "COMPONENT_HASHES=core/nameless|157c6f4c6dec62ae03abecfa1c7802cfafa3b08651d214dec028d3daac444206 core/importer|7fa19806c12e5b7b5b65ea935caaa8b77859f4893fb1f862c918204719004a1e",
               "ASSET_RESOLUTIONS=",
               "SCAP_CLAIMED=",
               "SCAP_REFUSED=",

@@ -254,7 +254,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
             entry.component = load(entry, image);
         }
         image.entries = entries;
-        for issue in resolve::imports::expand(image, &disk, load) {
+        for issue in resolve::imports::expand(image, root, &disk, load) {
             issues.push(issue);
         }
 

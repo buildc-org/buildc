@@ -78,29 +78,19 @@ struct Candidate {
 }
 
 fn candidates(root: &Path, list: &List) -> Vec<Candidate> {
-    let components = layout::components(root);
-    let mut found: Vec<Candidate> =
-        layout::component_dirs(&components, layout::is_component, |name| {
-            name.starts_with('.')
-        })
-        .into_iter()
-        .filter_map(|dir| {
-            let path = dir
-                .strip_prefix(&components)
-                .ok()?
-                .to_string_lossy()
-                .replace('\\', "/");
-            if !crate::model::image::is_local_path(&path) {
-                return None;
-            }
-            let file = dir.join(layout::MANIFEST_FILE);
-            Some(Candidate {
+    let mut found: Vec<Candidate> = parse::disk::Disk::scan(root)
+        .components()
+        .filter(|path| crate::model::image::is_local_path(path))
+        .map(|path| {
+            let path = path.to_string();
+            let file = layout::manifest(root, &path);
+            Candidate {
                 label: path.clone(),
                 about: format!("components/{path}"),
                 path,
                 hidden: crate::parse::component::hidden(&file),
                 place: Place::Directory { file },
-            })
+            }
         })
         .collect();
     for image in &list.images {
@@ -783,6 +773,32 @@ mod tests {
             refused.message()
         );
         assert!(refuse_defined_twice(&found, "other").is_ok());
+    }
+
+    #[test]
+    fn a_script_below_a_component_made_by_a_collected_file_is_no_candidate() {
+        let root = repository("collected-candidate");
+        image(&root, "schema-version 1\n\nimage \"one\" {\n    menu\n}\n");
+        manifest(
+            &root,
+            "menu",
+            "schema-version 1\ncollects \"justfile.inc\" into=\"/usr/share/menu/justfile.apps\"\n",
+        );
+        crate::init::put(&root.join("components/apps/justfile.inc"), "").unwrap();
+        crate::init::put(
+            &root.join("components/apps/editor").join(layout::SCRIPT),
+            "",
+        )
+        .unwrap();
+        let list = List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let found: Vec<String> = candidates(&root, &list)
+            .into_iter()
+            .map(|candidate| candidate.path)
+            .collect();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(found, ["apps", "menu"]);
     }
 
     #[test]

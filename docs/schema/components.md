@@ -1,6 +1,6 @@
 # Components
 
-A component is a directory under `components/`, at whatever depth groups it, and its path names the component. The build reads the files below by convention, so a component can be as small as one `component.sh`. Any one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component can also hold other components. An image that lists a nested component also gets the nearest component that holds it, and an image that lists the outer component gets none of the components inside it. The walk that finds components passes over the directories that the build of a component reads.
+A component is a directory under `components/`, at whatever depth groups it, and its path names the component. The build reads the files below by convention, so a component can be as small as one `component.sh`. Any one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component can also hold other components. Inside a component only `manifest.kdl` marks a nested component. Every other directory inside a component is content of the nearest component that holds it. An image that lists a nested component also gets the nearest component that holds it, and an image that lists the outer component gets none of the components inside it. The walk that finds components passes over the directories that the build of a component reads.
 
 ```text
 components/<component-name>/

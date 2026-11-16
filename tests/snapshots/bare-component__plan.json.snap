@@ -136,7 +136,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "f0c9ce6caf1bf31e3982de3365cb90c3f79ff140a8e42796cb2b711edaf5a06f",
+                "content": "49e80a72948947ff2fb58a4294351138176e7cd0a56dbb017237781618f5835e",
                 "resolved": "a80f4ff0eddeaa8e2dde5d95787b73bc79579bc9e43790de507a676d259e41a5",
                 "repo": false,
                 "imported": null
@@ -171,7 +171,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "d3b3189e72b2564dd629a1e7262f0ee1e059fab537ce4b4b6e2ec08f9d59130d",
+                "content": "9facee51ce8794b2328b2d1d98d8a9743c5bd7245e616b48353bc08f36d2b7c5",
                 "resolved": "b7b35636830d5019c53c71ea0f6cc5515edfa9f5537a16e18116dee2d8448329",
                 "repo": false,
                 "imported": null
@@ -217,7 +217,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=bare-component",
-              "COMPONENT_HASHES=hello|c2d1623de00f1d529cc0d583f23f4f963307b32a8ebdd8a2aec003fd1b829cc9 menu|b54feb522c877f97d2eb1c03b82c1cae4c35f4ef6cdda08bad9e7f788f672173 apps|f0c9ce6caf1bf31e3982de3365cb90c3f79ff140a8e42796cb2b711edaf5a06f apps/editor|d3b3189e72b2564dd629a1e7262f0ee1e059fab537ce4b4b6e2ec08f9d59130d",
+              "COMPONENT_HASHES=hello|c2d1623de00f1d529cc0d583f23f4f963307b32a8ebdd8a2aec003fd1b829cc9 menu|b54feb522c877f97d2eb1c03b82c1cae4c35f4ef6cdda08bad9e7f788f672173 apps|49e80a72948947ff2fb58a4294351138176e7cd0a56dbb017237781618f5835e apps/editor|9facee51ce8794b2328b2d1d98d8a9743c5bd7245e616b48353bc08f36d2b7c5",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

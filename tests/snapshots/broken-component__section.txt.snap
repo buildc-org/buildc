@@ -22,6 +22,14 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/broken-component/components/core/nameless.sh
 
+# ---- core/importer ----
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-component/components/core/importer.sh,target=/generated/broken-component/components/core/importer.sh \
+    --mount=type=cache,target=/var/cache \
+    --mount=type=cache,target=/var/log \
+    --mount=type=tmpfs,target=/tmp \
+    bash /generated/broken-component/components/core/importer.sh
+
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 

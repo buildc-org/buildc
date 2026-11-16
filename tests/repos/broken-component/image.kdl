@@ -15,6 +15,15 @@ image "broken-component" {
         latin
     }
     core {
+        latin {
+            inner
+            absent
+        }
+    }
+    core {
+        importer
+    }
+    core {
         nameless
     }
 }

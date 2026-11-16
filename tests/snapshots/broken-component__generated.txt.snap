@@ -916,6 +916,14 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/broken-component/components/core/nameless.sh
 
+# ---- core/importer ----
+RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
+    --mount=type=bind,from=ctx,source=/generated/broken-component/components/core/importer.sh,target=/generated/broken-component/components/core/importer.sh \
+    --mount=type=cache,target=/var/cache \
+    --mount=type=cache,target=/var/log \
+    --mount=type=tmpfs,target=/tmp \
+    bash /generated/broken-component/components/core/importer.sh
+
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -975,6 +983,13 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 set -euxo pipefail
 
 COMPONENT_DIR=/ctx/components/core/nameless
+export COMPONENT_DIR
+==== generated/broken-component/components/core/importer.sh
+#!/usr/bin/env bash
+# GENERATED FILE, do not edit.
+set -euxo pipefail
+
+COMPONENT_DIR=/ctx/components/core/importer
 export COMPONENT_DIR
 ==== generated/broken-component/finalize.sh
 #!/usr/bin/env bash
@@ -1130,6 +1145,7 @@ right.
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["core/nameless"]
+    m1["core/importer"]
 ```
 
 ## Capabilities
@@ -1175,6 +1191,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "998c8152df2141896a0d32ad3c6e36d0636df23df16ae9f5a0fce0fb988db31e",
-  "files": 25
+  "root": "78630f38be29e492dba7bbfab131e26cf6ec104fbe85175762eda8d6c0fbcad2",
+  "files": 26
 }

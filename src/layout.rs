@@ -106,6 +106,8 @@ pub fn component_owned(name: &str) -> bool {
         || FAMILY_DIRS.iter().any(|(dir, _)| *dir == name)
 }
 
+/// Inside a component only `manifest.kdl` marks a nested component.
+/// The `marks` test applies only outside every component.
 pub fn component_dirs(
     tree: &Path,
     marks: impl Fn(&Path) -> bool,
@@ -116,26 +118,29 @@ pub fn component_dirs(
 
 fn walk_components(
     tree: &Path,
-    in_component: bool,
+    tree_is_component: bool,
     marks: impl Fn(&Path) -> bool,
     skip: impl Fn(&str) -> bool,
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let mut dirs = vec![(tree.to_path_buf(), in_component)];
-    while let Some((dir, in_component)) = dirs.pop() {
+    let mut dirs = vec![(tree.to_path_buf(), tree_is_component, tree_is_component)];
+    while let Some((dir, dir_is_component, dir_in_component)) = dirs.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             let path = entry.path();
-            if !path.is_dir() || skip(&name) || (in_component && component_owned(&name)) {
+            if !path.is_dir() || skip(&name) || (dir_is_component && component_owned(&name)) {
                 continue;
             }
-            let component = marks(&path);
+            let component = match dir_in_component {
+                true => is_member(&path),
+                false => marks(&path),
+            };
             if component {
                 out.push(path.clone());
             }
             // A symlinked directory is never entered, so a cycle through a link cannot repeat the walk.
             if !entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
-                dirs.push((path, component));
+                dirs.push((path, component, dir_in_component || component));
             }
         }
     }
@@ -321,7 +326,9 @@ pub const COMPONENT_DIR: Tree = Tree {
         names the component. The build reads the files below by convention, so a component can be as \
         small as one `component.sh`. Any one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, \
         `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component \
-        can also hold other components. An image that lists a nested component also gets the nearest \
+        can also hold other components. Inside a component only `manifest.kdl` marks a nested \
+        component. Every other directory inside a component is content of the nearest component \
+        that holds it. An image that lists a nested component also gets the nearest \
         component that holds it, and an image that lists the outer component gets none of the components \
         inside it. The walk that finds \
         components passes over the directories that the build of a component reads.",
@@ -449,6 +456,35 @@ mod tests {
         .collect();
         assert_eq!(found, ["a", "a/b", "group/f", "linked"]);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn below_a_component_only_a_manifest_marks_a_nested_component() {
+        let root = std::env::temp_dir().join(format!("buildc-nested-line-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (dir, file) in [
+            ("a", SCRIPT),
+            ("a/script", SCRIPT),
+            ("a/vendor/deep", SCRIPT),
+            ("a/listed", "flatpaks.list"),
+            ("a/own", MANIFEST_FILE),
+            ("a/vendor/owned", MANIFEST_FILE),
+            ("top", "flatpaks.list"),
+        ] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+            std::fs::write(root.join(dir).join(file), "").unwrap();
+        }
+
+        let found: Vec<String> = component_dirs(
+            &root,
+            |path| is_component(path) || path.join("flatpaks.list").is_file(),
+            |name| name.starts_with('.'),
+        )
+        .iter()
+        .map(|path| path.strip_prefix(&root).unwrap().display().to_string())
+        .collect();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(found, ["a", "a/own", "a/vendor/owned", "top"]);
     }
 
     #[test]

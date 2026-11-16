@@ -925,7 +925,7 @@ impl Component {
 
         let family = image.base.as_ref().map(|base| base.family.as_str());
         let mut component = match &entry.inline {
-            Some(_) if layout::is_component(&layout::component(root, dir_rel)) => {
+            Some(_) if disk.is_component(dir_rel) => {
                 issues.push(
                     Issue::new(
                         format!(
@@ -970,16 +970,19 @@ impl Component {
                     Self::bare(&entry.path, dir_rel, root, issues)
                 }
                 Err(_) => {
-                    issues.push(
-                        Issue::new(format!("`{}` is not a component", entry.path), &image.src)
-                            .at(entry.span, "nothing to build")
-                            .help(format!(
-                                "give components/{dir_rel} a manifest.kdl, a component.sh, a \
-                                 repo.sh, a packages.sh, a finalize.sh, a files/ directory, a \
-                                 Containerfile.inc or a file that another component collects, \
-                                 or define it inline with a manifest node such as `packages`"
-                            )),
-                    );
+                    let issue =
+                        Issue::new(format!("`{}` is not a component", entry.path), &image.src);
+                    issues.push(match nested_help(root, disk, dir_rel) {
+                        Some(help) => issue
+                            .at(entry.span, "content of another component")
+                            .help(help),
+                        None => issue.at(entry.span, "nothing to build").help(format!(
+                            "give components/{dir_rel} a manifest.kdl, a component.sh, a \
+                             repo.sh, a packages.sh, a finalize.sh, a files/ directory, a \
+                             Containerfile.inc or a file that another component collects, \
+                             or define it inline with a manifest node such as `packages`"
+                        )),
+                    });
                     return None;
                 }
             },
@@ -994,20 +997,14 @@ impl Component {
             issues,
         );
         resolve_options::apply(&mut component, entry, image, issues);
-        // A nested component builds after the nearest component that encloses it, so the requirement follows from the path.
-        let mut parts: Vec<&str> = entry.path.split('/').collect();
-        parts.pop();
-        while !parts.is_empty() {
-            let parent = parts.join("/");
-            if disk.is_component(&parent) || image.defined.contains(&parent) {
-                component.requires.push(Requirement {
-                    name: parent,
-                    span: Span::default(),
-                    min: None,
-                });
-                break;
-            }
-            parts.pop();
+        if let Some(parent) = enclosing(&entry.path, |parent| {
+            disk.is_component(parent) || image.defined.iter().any(|defined| defined == parent)
+        }) {
+            component.requires.push(Requirement {
+                name: parent.to_string(),
+                span: Span::default(),
+                min: None,
+            });
         }
         Some(component)
     }
@@ -2438,6 +2435,23 @@ pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues
             );
         }
     }
+}
+
+pub(crate) fn nested_help(root: &Path, disk: &Disk, path: &str) -> Option<String> {
+    if !layout::component(root, path).is_dir() {
+        return None;
+    }
+    let parent = enclosing(path, |parent| disk.is_component(parent))?;
+    Some(format!(
+        "give components/{path} a manifest.kdl because inside components/{parent} only a \
+         manifest.kdl makes a directory a component of its own"
+    ))
+}
+
+fn enclosing(path: &str, is_component: impl Fn(&str) -> bool) -> Option<&str> {
+    path.rmatch_indices('/')
+        .map(|(at, _)| &path[..at])
+        .find(|parent| is_component(parent))
 }
 
 #[cfg(test)]

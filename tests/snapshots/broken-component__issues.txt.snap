@@ -8,17 +8,13 @@ source: tests/golden/harness.rs
     :         ^^^^|^^^
     :             `-- first here
  10 |     }
- 11 |     core {
- 12 |         missing
- 13 |     }
- 14 |     core {
- 15 |         latin
- 16 |     }
- 17 |     core {
- 18 |         nameless
+    `----
+    ,-[tests/repos/broken-component/image.kdl:27:9]
+ 26 |     core {
+ 27 |         nameless
     :         ^^^^|^^^
     :             `-- and again here
- 19 |     }
+ 28 |     }
     `----
   help: a component builds once per flavour it is listed under
 
@@ -82,6 +78,42 @@ source: tests/golden/harness.rs
     :           `-- manifest.kdl unreadable
  16 |     }
     `----
+
+  x `core/latin/inner` is not a component
+    ,-[tests/repos/broken-component/image.kdl:19:13]
+ 18 |         latin {
+ 19 |             inner
+    :             ^^|^^
+    :               `-- content of another component
+ 20 |             absent
+    `----
+  help: give components/core/latin/inner a manifest.kdl because inside
+        components/core/latin only a manifest.kdl makes a directory a
+        component of its own
+
+  x `core/latin/absent` is not a component
+    ,-[tests/repos/broken-component/image.kdl:20:13]
+ 19 |             inner
+ 20 |             absent
+    :             ^^^|^^
+    :                `-- nothing to build
+ 21 |         }
+    `----
+  help: give components/core/latin/absent a manifest.kdl, a component.sh, a
+        repo.sh, a packages.sh, a finalize.sh, a files/ directory, a
+        Containerfile.inc or a file that another component collects, or define
+        it inline with a manifest node such as `packages`
+
+  x `core/importer` imports `core/latin/extra`, which is not a component
+   ,-[tests/repos/broken-component/components/core/importer/manifest.kdl:3:9]
+ 2 | 
+ 3 | imports "core/latin/extra"
+   :         ^^^^^^^^^|^^^^^^^^
+   :                  `-- content of another component
+   `----
+  help: give components/core/latin/extra a manifest.kdl because inside
+        components/core/latin only a manifest.kdl makes a directory a
+        component of its own
 
   x unknown node `flies`
    ,-[tests/repos/broken-component/components/core/unlisted/manifest.kdl:6:1]

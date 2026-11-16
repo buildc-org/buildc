@@ -4,6 +4,7 @@ use crate::model::image::{Entry, Image};
 use crate::model::options::Value;
 use crate::parse::disk::Disk;
 use std::collections::VecDeque;
+use std::path::Path;
 
 struct Wanted {
     path: String,
@@ -32,6 +33,7 @@ fn wanted(component: &[Import]) -> Vec<Wanted> {
 
 pub fn expand(
     image: &mut Image,
+    root: &Path,
     disk: &Disk,
     mut load: impl FnMut(&Entry, &Image) -> Option<Component>,
 ) -> Vec<Issue> {
@@ -45,7 +47,15 @@ pub fn expand(
             span: base.span,
             wanted: wanted(&base.imports),
         };
-        bring(image, disk, &mut load, importer, &mut queue, &mut issues);
+        bring(
+            image,
+            root,
+            disk,
+            &mut load,
+            importer,
+            &mut queue,
+            &mut issues,
+        );
     }
     while let Some(at) = queue.pop_front() {
         let entry = &image.entries[at];
@@ -59,7 +69,15 @@ pub fn expand(
             span: entry.span,
             wanted: wanted(&component.imports),
         };
-        bring(image, disk, &mut load, importer, &mut queue, &mut issues);
+        bring(
+            image,
+            root,
+            disk,
+            &mut load,
+            importer,
+            &mut queue,
+            &mut issues,
+        );
     }
     issues.extend(cycles(image));
     reorder(image);
@@ -68,6 +86,7 @@ pub fn expand(
 
 fn bring(
     image: &mut Image,
+    root: &Path,
     disk: &Disk,
     load: &mut impl FnMut(&Entry, &Image) -> Option<Component>,
     importer: Importer,
@@ -154,8 +173,14 @@ fn bring(
                 }
             }
             None if !disk.is_component(&want.path) => {
-                issues.push(
-                    Issue::new(
+                let issue = match crate::parse::component::nested_help(root, disk, &want.path) {
+                    Some(help) => Issue::new(
+                        format!("`{by}` imports `{}`, which is not a component", want.path),
+                        &src,
+                    )
+                    .at(want.span, "content of another component")
+                    .help(help),
+                    None => Issue::new(
                         format!(
                             "`{by}` imports `{}`, which is not under components/",
                             want.path
@@ -167,7 +192,8 @@ fn bring(
                         "`buildc import component {}` copies it in from a library",
                         want.path
                     )),
-                );
+                };
+                issues.push(issue);
             }
             None => {
                 let mut entry = Entry {

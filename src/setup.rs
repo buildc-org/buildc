@@ -1,5 +1,6 @@
 use crate::copy;
 use crate::declaration::{append, placed, splice, wrap};
+use crate::error::Error;
 use crate::layout;
 use crate::parse;
 use crate::resolve::workflow::{Basis, Shipped, DEFAULT_AT, SHIPPED};
@@ -34,7 +35,7 @@ impl Libraries {
         crate::collection::DEFAULT_LIBRARIES.iter().collect()
     }
 
-    pub fn collect(held: Option<&Self>, prompt: &Prompt) -> Result<Self, String> {
+    pub fn collect(held: Option<&Self>, prompt: &Prompt) -> Result<Self, Error> {
         let every = Self::every();
         let options: Vec<Choice> = every
             .iter()
@@ -116,12 +117,12 @@ impl Listed {
 }
 
 impl Listing {
-    pub fn collect(root: &Path, given: Vec<String>, prompt: &Prompt) -> Result<Self, String> {
+    pub fn collect(root: &Path, given: Vec<String>, prompt: &Prompt) -> Result<Self, Error> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
         Self::collect_from(&list, given, prompt)
     }
 
-    pub fn target(root: &Path, given: Option<String>, prompt: &Prompt) -> Result<Self, String> {
+    pub fn target(root: &Path, given: Option<String>, prompt: &Prompt) -> Result<Self, Error> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
         if list.images.is_empty() {
             return Ok(Self::NoImage);
@@ -155,7 +156,7 @@ impl Listing {
         list: &crate::model::image::List,
         given: Vec<String>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         if list.images.is_empty() {
             return Ok(Self::NoImage);
         }
@@ -197,10 +198,10 @@ impl Listing {
             .map(|at| &targets[*at])
             .find(|target| target.flavour != crate::model::image::NO_FLAVOUR && ungated(target))
         {
-            return Err(format!(
+            return Err(Error::Operation(format!(
                 "`{gated}` is inside `{}`, so listing it in both lists it twice",
                 gated.image
-            ));
+            )));
         }
 
         Ok(match chosen.is_empty() {
@@ -379,7 +380,7 @@ fn holds<'a>(
 fn ask(
     targets: &[crate::model::image::Target],
     prompt: &Prompt,
-) -> Result<common::ui::Answer, String> {
+) -> Result<common::ui::Answer, Error> {
     if let [only] = targets {
         let listed = prompt.confirm(&copy::list_in(&only.to_string()), copy::YES, copy::NO)?;
         return Ok(common::ui::Answer::Chosen(match listed {
@@ -387,7 +388,7 @@ fn ask(
             false => Vec::new(),
         }));
     }
-    prompt.choose_many(copy::LIST_IN_IMAGES, &target_rows(targets), &[])
+    Ok(prompt.choose_many(copy::LIST_IN_IMAGES, &target_rows(targets), &[])?)
 }
 
 fn target_rows(targets: &[crate::model::image::Target]) -> Vec<Choice> {
@@ -450,7 +451,7 @@ impl Workflows {
         from: Field,
         prompt: &Prompt,
         say: crate::report::Say<'_>,
-    ) -> Result<Option<Self>, String> {
+    ) -> Result<Option<Self>, Error> {
         let chosen: Vec<&'static Shipped> = match from > Field::Workflows {
             true => SHIPPED
                 .iter()
@@ -483,7 +484,11 @@ impl Workflows {
             }
         };
         if let Some(short) = chosen.iter().find(|shipped| !shipped.met(basis)) {
-            return Err(format!("`{}` {}", short.stem, short.needs.unmet()));
+            return Err(Error::Operation(format!(
+                "`{}` {}",
+                short.stem,
+                short.needs.unmet()
+            )));
         }
 
         let builds = chosen.iter().any(|shipped| shipped.stem == "build");
@@ -539,7 +544,7 @@ impl Workflows {
         from: Field,
         prompt: &Prompt,
         say: crate::report::Say<'_>,
-    ) -> Result<Option<Self>, String> {
+    ) -> Result<Option<Self>, Error> {
         Self::collect(
             basis,
             &self.chosen,

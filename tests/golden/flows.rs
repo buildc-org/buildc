@@ -742,9 +742,8 @@ fn setup_component_in_flavour(flow: &Flow) {
     let listed = |at: &str| {
         let (list, _, _) = buildc::declarations(&root);
         buildc::setup::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
-            .and_then(|listing| listing.refuse_duplicate(&list, "dev-tools"))
-            .err()
-            .unwrap_or_default()
+            .and_then(|listing| Ok(listing.refuse_duplicate(&list, "dev-tools")?))
+            .map_or_else(|err| err.message().to_string(), |()| String::new())
     };
     assert_eq!(
         listed("example/dx"),

@@ -1,4 +1,5 @@
 use crate::copy;
+use crate::error::Error;
 use crate::layout;
 use crate::model::component::Key as Declared;
 use crate::parse::disk::Disk;
@@ -22,7 +23,7 @@ fn declared(
     kind: Option<String>,
     component: Option<String>,
     prompt: &Prompt,
-) -> Result<Declared, String> {
+) -> Result<Declared, Error> {
     let mut disk = Disk::scan(root);
     let kind = match kind {
         Some(kind) => kind,
@@ -31,10 +32,10 @@ fn declared(
 
     let mut declaring = disk.keys.remove(&kind).unwrap_or_default();
     if let (true, Some(held)) = (declaring.is_empty(), disk.refused_keys.get(&kind)) {
-        return Err(refused(&kind, held));
+        return Err(Error::Operation(refused(&kind, held)));
     }
     if declaring.is_empty() {
-        return Err(absent(root, &kind, &disk));
+        return Err(Error::Operation(absent(root, &kind, &disk)));
     }
     let at = provider(&declaring, &kind, component, prompt)?;
     Ok(declaring.swap_remove(at).1)
@@ -47,7 +48,7 @@ impl Key {
         component: Option<String>,
         cn: Option<String>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let declared = declared("create key", root, kind, component, prompt)?;
         let kind = declared.kind.clone();
 
@@ -58,15 +59,15 @@ impl Key {
 
         let cn = match (declared.generator.as_str(), declared.profile.as_deref()) {
             (generator @ ("cosign" | "ssh-keygen"), _) if cn.is_some() => {
-                return Err(format!(
+                return Err(Error::Operation(format!(
                     "`--cn` is a certificate's common name, and `{generator}` writes no certificate"
-                ))
+                )))
             }
             (generator @ ("cosign" | "ssh-keygen"), Some(profile)) => {
-                return Err(format!(
+                return Err(Error::Operation(format!(
                     "`{generator}` takes no profile, and `key \"{kind}\"` names \
                      `profile=\"{profile}\"`; only `openssl` is set up by one"
-                ))
+                )))
             }
             ("cosign" | "ssh-keygen", None) => None,
             ("openssl", profile @ Some("module-signing" | "tls-ca")) => {
@@ -74,20 +75,20 @@ impl Key {
             }
             ("openssl", Some("pcr-signing")) => {
                 if cn.is_some() {
-                    return Err(
+                    return Err(Error::Operation(
                         "`--cn` is a certificate's common name, and `pcr-signing` writes \
-                                no certificate"
-                            .into(),
-                    );
+                         no certificate"
+                            .to_string(),
+                    ));
                 }
                 None
             }
             (generator, _) => {
-                return Err(format!(
+                return Err(Error::Operation(format!(
                     "`{generator}` generates a key for a profile, and `key \"{kind}\"` names none; \
                      `profile=\"module-signing\"`, `profile=\"pcr-signing\"` and \
                      `profile=\"tls-ca\"` are the three it has"
-                ))
+                )))
             }
         };
 
@@ -192,7 +193,7 @@ impl Recorded {
         component: Option<String>,
         from: Option<String>,
         prompt: &Prompt,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         let declared = declared("set key", root, kind, component, prompt)?;
         let public = layout::public_key(root, &declared.public);
         unwritten(&public)?;
@@ -251,23 +252,23 @@ fn holds(declared: &Declared, bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-fn which(command: &str, disk: &Disk, prompt: &Prompt) -> Result<String, String> {
+fn which(command: &str, disk: &Disk, prompt: &Prompt) -> Result<String, Error> {
     let kinds: Vec<&String> = disk.keys.keys().collect();
     if let (true, Some((kind, held))) = (kinds.is_empty(), disk.refused_keys.first_key_value()) {
-        return Err(refused(kind, held));
+        return Err(Error::Operation(refused(kind, held)));
     }
     if kinds.is_empty() {
-        return Err(undeclared("", disk));
+        return Err(Error::Operation(undeclared("", disk)));
     }
     let options: Vec<Choice> = kinds.iter().map(|kind| Choice::new(*kind, "")).collect();
     prompt
         .choose(copy::WHICH_KEY, &options)?
         .map(|at| kinds[at].clone())
         .ok_or_else(|| {
-            format!(
+            Error::Operation(format!(
                 "`buildc {command} <kind>` names which key; this repository declares {}",
                 listed(disk)
-            )
+            ))
         })
 }
 
@@ -276,13 +277,14 @@ fn provider(
     kind: &str,
     given: Option<String>,
     prompt: &Prompt,
-) -> Result<usize, String> {
+) -> Result<usize, Error> {
     let dirs: Vec<&str> = declaring.iter().map(|(dir, _)| dir.as_str()).collect();
     if let Some(given) = given {
-        return dirs
-            .iter()
-            .position(|dir| *dir == given)
-            .ok_or_else(|| format!("`components/{given}` does not declare `key \"{kind}\"`"));
+        return dirs.iter().position(|dir| *dir == given).ok_or_else(|| {
+            Error::Operation(format!(
+                "`components/{given}` does not declare `key \"{kind}\"`"
+            ))
+        });
     }
     match dirs.as_slice() {
         [_] => Ok(0),
@@ -292,7 +294,9 @@ fn provider(
             prompt
                 .choose(&copy::key_provider(kind), &options)?
                 .ok_or_else(|| {
-                    format!("the {kind} key is declared by {listed}; name one with `--component`")
+                    Error::Operation(format!(
+                        "the {kind} key is declared by {listed}; name one with `--component`"
+                    ))
                 })
         }
     }
@@ -359,7 +363,7 @@ fn common_name(
     given: Option<String>,
     profile: Option<&str>,
     prompt: &Prompt,
-) -> Result<String, String> {
+) -> Result<String, Error> {
     let named = crate::layout::named_after_root(root).unwrap_or_else(|| "buildc".to_string());
     let what = match profile {
         Some("tls-ca") => "TLS CA",
@@ -690,7 +694,7 @@ key "keylime-ca" {
         assert_eq!(from_cert, from_key);
 
         let again = ask().map(|_| ());
-        assert!(again.is_err_and(|message| message.contains("never overwritten")));
+        assert!(again.is_err_and(|message| message.message().contains("never overwritten")));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -775,7 +779,7 @@ key "keylime-ca" {
             .map(|_| ())
             .unwrap_err();
         assert_eq!(
-            message,
+            message.message(),
             "`ssh-keygen` takes no profile, and `key \"ssh\"` names `profile=\"tls-ca\"`; only `openssl` is set up by one"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -788,7 +792,7 @@ key "keylime-ca" {
             .map(|_| ())
             .unwrap_err();
         assert_eq!(
-            message,
+            message.message(),
             "no component in this repository declares a cosign key.\n\n\
              The keys declared here are secureboot. Import a component carrying one and run this again."
         );
@@ -836,7 +840,10 @@ key "keylime-ca" {
         )
         .map(|_| ())
         .unwrap_err();
-        assert!(err.contains("`ssh-keygen` writes no certificate"), "{err}");
+        assert!(
+            err.message().contains("`ssh-keygen` writes no certificate"),
+            "{err}"
+        );
 
         Key::collect(&root, Some("ssh".into()), None, None, &Prompt::silent())
             .unwrap()
@@ -876,7 +883,10 @@ key "keylime-ca" {
 
         std::fs::write(&held, "-----BEGIN CERTIFICATE-----\n").unwrap();
         let err = record(&held).unwrap_err();
-        assert!(err.contains("an OpenSSH public key line"), "{err}");
+        assert!(
+            err.message().contains("an OpenSSH public key line"),
+            "{err}"
+        );
 
         std::fs::write(&held, "ssh-ed25519 AAAAC3Nz nobody@example\n").unwrap();
         Recorded::collect(
@@ -896,11 +906,15 @@ key "keylime-ca" {
         );
         assert!(record(&held)
             .unwrap_err()
+            .message()
             .contains("a key is never overwritten"));
         let unasked = Recorded::collect(&root, Some("ssh".into()), None, None, &Prompt::silent())
             .map(|_| ())
             .unwrap_err();
-        assert!(unasked.contains("a key is never overwritten"), "{unasked}");
+        assert!(
+            unasked.message().contains("a key is never overwritten"),
+            "{unasked}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -954,7 +968,11 @@ key "keylime-ca" {
         )
         .map(|_| ())
         .unwrap_err();
-        assert!(err.contains("`pcr-signing` writes no certificate"), "{err}");
+        assert!(
+            err.message()
+                .contains("`pcr-signing` writes no certificate"),
+            "{err}"
+        );
 
         Key::collect(&root, Some("pcr".into()), None, None, &Prompt::silent())
             .unwrap()

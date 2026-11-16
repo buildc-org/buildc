@@ -259,7 +259,7 @@ impl<'a> Fit<'a> {
         capability: &str,
         held: &[&crate::model::image::Entry],
         prompt: &Prompt,
-    ) -> Result<Vec<Unlisted>, String> {
+    ) -> Result<Vec<Unlisted>, Error> {
         let named: Vec<String> = held.iter().map(|entry| entry.path.clone()).collect();
         let holder = said(&named);
         let options = [
@@ -283,15 +283,15 @@ impl<'a> Fit<'a> {
                     name: entry.path.clone(),
                 })
                 .collect()),
-            Some(_) => Err(format!(
+            Some(_) => Err(Error::Operation(format!(
                 "nothing imported: `{capability}` is exclusive to `{holder}` in `{}`",
                 self.image.id
-            )),
-            None => Err(format!(
+            ))),
+            None => Err(Error::Operation(format!(
                 "`{capability}` is exclusive, and `{holder}` already provides it in `{}`; run \
                  `buildc import component` in a terminal to replace it",
                 self.image.id
-            )),
+            ))),
         }
     }
 }
@@ -312,14 +312,14 @@ fn choose_several(
     sources: &[Collection],
     fit: Option<&Fit>,
     prompt: &Prompt,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, Error> {
     let (listed, options) = offered(root, sources, fit)?;
     let chosen = match prompt.choose_many(copy::WHICH_COMPONENTS, &options, &[])? {
         common::ui::Answer::Chosen(chosen) => chosen,
         common::ui::Answer::Cancelled => Vec::new(),
     };
     match chosen.is_empty() {
-        true => Err(unchosen()),
+        true => Err(Error::Operation(unchosen())),
         false => Ok(chosen.iter().map(|at| listed[*at].qualified()).collect()),
     }
 }
@@ -548,7 +548,7 @@ impl Component {
         let chosen = picked
             .iter()
             .map(|from| member(root, from, &listing, prompt))
-            .collect::<Result<Vec<Member>, String>>()?;
+            .collect::<Result<Vec<Member>, Error>>()?;
         let declares: Vec<crate::parse::component::Summary> =
             chosen.iter().map(|member| member.declares(root)).collect();
         if let Some(fit) = &fit {
@@ -757,7 +757,7 @@ pub fn bring(
     enforce: bool,
     named: &[String],
     image: &str,
-) -> Result<Component, String> {
+) -> Result<Component, Error> {
     let members = named
         .iter()
         .map(|qualified| brought(root, sources, enforce, qualified))
@@ -803,7 +803,7 @@ fn brought(
     })
 }
 
-fn member(root: &Path, from: &Found, listing: &Listing, prompt: &Prompt) -> Result<Member, String> {
+fn member(root: &Path, from: &Found, listing: &Listing, prompt: &Prompt) -> Result<Member, Error> {
     let name = from.name.clone();
     if !layout::is_component(&layout::component(root, &name)) {
         return Ok(Member {
@@ -835,13 +835,13 @@ fn member(root: &Path, from: &Found, listing: &Listing, prompt: &Prompt) -> Resu
             let chosen =
                 prompt.line(None, copy::LOCAL_NAME, "a local name", "", Some(&suggested))?;
             if !crate::model::image::is_local_path(&chosen) {
-                return Err(format!(
+                return Err(Error::Operation(format!(
                     "`{chosen}` is not a component path: each part is lowercase letters, digits and \
                      dashes, starting with a letter, and the last part may end in one `@<tag>`"
-                ));
+                )));
             }
             if layout::component(root, &chosen).exists() {
-                return Err(format!("`{chosen}` is already in this repository"));
+                return Err(Error::Operation(format!("`{chosen}` is already in this repository")));
             }
             Ok(Member {
                 from: from.clone(),
@@ -849,15 +849,15 @@ fn member(root: &Path, from: &Found, listing: &Listing, prompt: &Prompt) -> Resu
                 vendor: true,
             })
         }
-        (None, _) if !same => Err(format!(
+        (None, _) if !same => Err(Error::Operation(format!(
             "`{name}` is already in this repository and differs from the library's; run `buildc \
              import component` in a terminal to list the local `{name}` or import the library's \
              under another name"
-        )),
-        (None, _) => Err(format!(
+        ))),
+        (None, _) => Err(Error::Operation(format!(
             "`{name}` is already in this repository; run `buildc import component` in a terminal to \
              list the local `{name}` or import the library's under another name"
-        )),
+        ))),
     }
 }
 
@@ -881,7 +881,7 @@ fn short(
     dependencies: bool,
     prompt: &Prompt,
     say: crate::report::Say<'_>,
-) -> Result<Owed, String> {
+) -> Result<Owed, Error> {
     let &Listed {
         listing,
         names,
@@ -961,17 +961,17 @@ fn pick<'a>(
     many: &[&'a crate::provider::Provider],
     dependencies: bool,
     prompt: &Prompt,
-) -> Result<Option<&'a crate::provider::Provider>, String> {
+) -> Result<Option<&'a crate::provider::Provider>, Error> {
     if dependencies {
         let named: Vec<String> = many
             .iter()
             .map(|held| format!("`{}`", held.qualified()))
             .collect();
-        return Err(format!(
+        return Err(Error::Operation(format!(
             "`{component}` requires `{want}`, and {} each provide it; run `buildc import component` \
              in a terminal to choose one",
             said(&named)
-        ));
+        )));
     }
     let options: Vec<Choice> = many
         .iter()
@@ -1180,7 +1180,7 @@ fn measured(
     brought: &[String],
     prompt: &Prompt,
     say: crate::report::Say<'_>,
-) -> Result<Vec<crate::conformance::Conforms>, String> {
+) -> Result<Vec<crate::conformance::Conforms>, Error> {
     let claims: Vec<&String> = declares
         .iter()
         .flat_map(|held| held.satisfies.iter())
@@ -1203,7 +1203,7 @@ fn measured(
     };
     let content = match crate::scap::content_of(&path) {
         Ok(content) => content,
-        Err(err) if datastream.is_some() => return Err(err),
+        Err(err) if datastream.is_some() => return Err(Error::Operation(err)),
         Err(_) => return Ok(Vec::new()),
     };
     let claimed = crate::scap::reached(&content, claims.into_iter());
@@ -1484,7 +1484,10 @@ mod tests {
         let sources = [collection("upstream", "tests/collections/upstream")];
         let refused = choose_several(root, &sources, None, &Prompt::silent()).unwrap_err();
 
-        assert!(refused.starts_with("no component chosen"), "{refused}");
+        assert!(
+            refused.message().starts_with("no component chosen"),
+            "{refused}"
+        );
     }
 
     #[test]

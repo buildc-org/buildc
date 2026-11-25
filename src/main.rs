@@ -82,9 +82,14 @@ fn flags(matches: &ArgMatches) -> Result<dispatch::Flags, Error> {
         owner: one("owner"),
         host: one("host"),
         images: many("image"),
+        builds: many("build"),
         component: one("component"),
+        inside: many("inside"),
+        library: one("library"),
+        pin: one("pin"),
         cn: one("cn"),
         from: one("from"),
+        source: one("source"),
         base: one("base"),
         format: one("format"),
         target: one("target"),
@@ -101,9 +106,14 @@ fn flags(matches: &ArgMatches) -> Result<dispatch::Flags, Error> {
         cache_to: switch("cache_to"),
         no_cache_from: switch("no_cache_from"),
         rebuild: switch("rebuild"),
-        dependencies: switch("dependencies"),
-        yes: switch("yes"),
+        dependencies: !many("dependencies").is_empty(),
+        providers: many("dependencies")
+            .into_iter()
+            .filter(|name| !name.is_empty())
+            .collect(),
         inline: switch("inline"),
+        on: many("on"),
+        workflow_builds: many("builds"),
     })
 }
 
@@ -236,13 +246,12 @@ fn run() -> Result<ExitCode, Error> {
         Verb::CreateRepo
             | Verb::CreateGit
             | Verb::CreateImage
-            | Verb::CreateFlavour
             | Verb::CreateModule
             | Verb::CreateKey
             | Verb::CreateScripts
             | Verb::SetKey
             | Verb::SetLibrary
-            | Verb::ImportModule
+            | Verb::AddComponent
             | Verb::Check
     ) {
         banner(false);

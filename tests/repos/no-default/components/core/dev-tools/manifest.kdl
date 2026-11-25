@@ -1,7 +1,0 @@
-schema-version 1
-
-description "Compilers and language servers, behind the dev flavour"
-
-targets "fedora"
-
-requires "shell-tools"

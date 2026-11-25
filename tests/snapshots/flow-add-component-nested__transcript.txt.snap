@@ -1,0 +1,13 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+  1) fedora-family  dnf5 and its plugins, which every fedora build layer reaches for
+  2) grouped/hardening/coredumps  Coredump lockdown, from a collection that groups what it holds
+components [1-2, several, 0 for none]: 2
+
+
+example/
+└── ~ example.kdl  `hardening/coredumps` added to `example`
+==== exit 0

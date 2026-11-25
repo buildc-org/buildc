@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,15 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- fedora-family ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/example/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/example/components/fedora-family.sh,target=/generated/example/components/fedora-family.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/example/components/fedora-family.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -966,13 +956,6 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/example/components/fedora-family.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/fedora-family
-export COMPONENT_DIR
 ==== generated/example/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1122,12 +1105,13 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
-A thick arrow points from a component to what it imports.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["fedora-family"]
+    m1["example"]
     base ==>|"imports"| m0
 ```
 
@@ -1148,9 +1132,9 @@ graph LR
 
 ## Imports
 
-| Component | Imported by |
-|---|---|
-| `fedora-family` | `base-image/fedora` |
+| Component | By | How |
+|---|---|---|
+| `fedora-family` | `base-image/fedora` | imports |
 ==== generated/example/graph.json
 {
   "image": "example",
@@ -1240,7 +1224,8 @@ graph LR
   "imports": [
     {
       "component": "fedora-family",
-      "by": "base-image/fedora"
+      "by": "base-image/fedora",
+      "how": "imports"
     }
   ],
   "suppressed": []
@@ -1322,13 +1307,13 @@ graph LR
     },
     {
       "customType": "regex",
-      "description": "`version` of the base base-image/fedora in example.image.kdl",
+      "description": "`version` of the base base-image/fedora in example.kdl",
       "managerFilePatterns": [
-        "/^example\\.image\\.kdl$/"
+        "/^example\\.kdl$/"
       ],
       "matchStrings": [
         "(?:^|[\\s{;])(?:\"base-image\"|base-image)(?:[ \\t][^{\\n;]*)?\\{(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?(?:^|[\\s{;])(?:\"fedora\"|fedora)(?:[ \\t][^{\\n;]*)?\\{(?:(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?[;\\n])?\\s*version\\s+\"(?<currentValue>[^\"]+)\"",
-        "(?:^|[\\s{;])(?:\"base-image\"|base-image)(?:[ \\t][^{\\n;]*)?\\{(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?(?:^|[\\s{;])(?:\"fedora\"|fedora)(?:[ \\t][^{\\n;]*)?\\{(?:(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?[;\\n])?\\s*digest\\s+\"(?<currentDigest>sha256:[0-9a-f]+)\""
+        "(?:^|[\\s{;])(?:\"base-image\"|base-image)(?:[ \\t][^{\\n;]*)?\\{(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?(?:^|[\\s{;])(?:\"fedora\"|fedora)[ \\t][^{\\n;]*?digest=\"(?<currentDigest>sha256:[0-9a-f]+)\""
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "quay.io/fedora/fedora-bootc",
@@ -1337,15 +1322,13 @@ graph LR
   ],
 }
 ==== generated/plan.json
-==== .github/workflows/build.yml
-==== .github/workflows/build-disk.yml
-==== .github/workflows/base-sig-probe.yml
+==== .github/workflows/image-build.yml
 ==== .github/workflows/cleanup-registry.yml
 ==== .github/workflows/smoke-test.yml
 ==== .github/workflows/update-components.yml
 ==== generated/snapshot.json
 {
-  "root": "b0b9266103f6d6935f0e9de4762fa77b4afde660498a2a52cae0c607814836ff",
-  "files": 26
+  "root": "6248b8f9147e861dc7e540cd4dd37c3cc44c24bd1cc7944d49bf9cddcd62eb5e",
+  "files": 25
 }
 ==== generated/example/components/fedora-family/lib/family.sh

@@ -1,0 +1,24 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    fedora-family
+    core {
+        tools
+    }
+    core {
+        fetcher
+    }
+    core {
+        asset-only
+    }
+    core {
+        fragment-only
+    }
+    core {
+        installer
+    }
+}

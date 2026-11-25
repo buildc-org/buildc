@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-pin",
   "pr_target": "broken-pin",
   "pr_published": "broken-pin",
-  "ungated_target": "broken-pin",
-  "ungated_published": "broken-pin",
   "cache_image": "broken-pin-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-pin",
-      "file": "./image.kdl",
+      "file": "./components/broken-pin.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,46 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-pin",
           "image": "broken-pin",
-          "flavour": null,
           "published": "broken-pin",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
-              "path": "loose/pin",
-              "flavour": null,
+              "path": "core/hello",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "broken-pin",
               "variant": null,
               "description": "",
               "options": {},
@@ -102,6 +123,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-pin/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

@@ -1,0 +1,140 @@
+---
+source: tests/golden/harness.rs
+---
+==== markdown
+# core/edited
+
+A copy that origins.kdl records
+
+## Where it is built
+
+edited-copy
+
+## What it exchanges
+
+Nothing: it neither provides nor requires.
+
+## What it declares to install
+
+| Family | Packages | Enabled repository |
+| --- | --- | --- |
+| `fedora` | `fastfetch` | default |
+
+## What it claims
+
+Nothing. It declares no `satisfies`.
+
+## Where it came from
+
+| Content | Hash |
+| --- | --- |
+| declared | `af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1` |
+
+It is the repository's own copy of `edited` from `https://github.com/owner/upstream` at `0123456789abcdef0123456789abcdef01234567`.
+
+**It has been edited since it was copied.**
+
+## What it pulls in
+
+Nothing. It declares no `asset`.
+
+## Third-party repositories
+
+None. It declares no `copr` and ships no `repo.sh` file.
+
+==== json
+{
+  "component": "core/edited",
+  "description": "A copy that origins.kdl records",
+  "images": [
+    "edited-copy"
+  ],
+  "suppressed": [],
+  "imported_by": [],
+  "provides": [],
+  "requires": [],
+  "packages": [
+    {
+      "family": "fedora",
+      "names": [
+        "fastfetch"
+      ],
+      "enablerepo": null
+    }
+  ],
+  "groups": [],
+  "coprs": [],
+  "satisfies": [],
+  "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+  "built": null,
+  "library": null,
+  "settings": [],
+  "imported": {
+    "origin": "https://github.com/owner/upstream",
+    "path": "edited",
+    "pin": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "modified": true,
+  "fetches": [],
+  "repo": null
+}
+==== unknown
+  x `nosuch` is not a component this repository lists
+  help: components: edited, owned, edited-copy, fedora-family
+
+==== from the baked manifest, with no repository
+# core/edited
+
+A copy that origins.kdl records
+
+## Where it is built
+
+edited-copy
+
+## What it exchanges
+
+Nothing: it neither provides nor requires.
+
+## What it declares to install
+
+| Family | Packages | Enabled repository |
+| --- | --- | --- |
+| `fedora` | `fastfetch` | default |
+
+## What it claims
+
+Nothing. It declares no `satisfies`.
+
+## Where it came from
+
+| Content | Hash |
+| --- | --- |
+| declared | `af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1` |
+
+It is the repository's own copy of `edited` from `https://github.com/owner/upstream` at `0123456789abcdef0123456789abcdef01234567`.
+
+**It has been edited since it was copied.**
+
+## What it pulls in
+
+Nothing. It declares no `asset`.
+
+## Third-party repositories
+
+None. It declares no `copr` and ships no `repo.sh` file.
+
+==== the names it knows
+edited, owned, edited-copy, fedora-family
+==== against a build record that disagrees
+
+
+| Content | Hash |
+| --- | --- |
+| declared | `af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1` |
+| observed by the build | `not what was declared` |
+
+**The two documents disagree**, which they cannot if both came from this build.
+
+It is the repository's own copy of `edited` from `https://github.com/owner/upstream` at `0123456789abcdef0123456789abcdef01234567`.
+
+**It has been edited since it was copied.**

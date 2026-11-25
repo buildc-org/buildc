@@ -35,16 +35,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/broken-graph/components/core/tw
     --mount=type=tmpfs,target=/tmp \
     bash /generated/broken-graph/components/core/two.sh
 
-# ---- core/three ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/broken-graph/components/core/one/lib/one/shared.sh,target=/ctx/lib/shared.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-graph/components/core/two/lib/two/shared.sh,target=/ctx/lib/shared.sh \
-    --mount=type=bind,from=ctx,source=/generated/broken-graph/components/core/three.sh,target=/generated/broken-graph/components/core/three.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/broken-graph/components/core/three.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 

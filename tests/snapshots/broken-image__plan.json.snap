@@ -3,48 +3,71 @@ source: tests/golden/harness.rs
 ---
 {
   "schema_version": 1,
-  "default_image": "Not An Id",
-  "pr_image": "Not An Id",
-  "default_target": "Not An Id",
-  "default_published": "Not An Id",
-  "pr_target": "Not An Id",
-  "pr_published": "Not An Id",
-  "ungated_target": "Not An Id",
-  "ungated_published": "Not An Id",
-  "cache_image": "Not An Id-cache",
+  "default_image": "broken-image",
+  "pr_image": "broken-image",
+  "default_target": "broken-image",
+  "default_published": "broken-image",
+  "pr_target": "broken-image",
+  "pr_published": "broken-image",
+  "cache_image": "broken-image-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
   "assets": [],
   "images": [
     {
-      "id": "Not An Id",
-      "file": "./image.kdl",
+      "id": "broken-image",
+      "file": "./components/broken-image.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": null,
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
-          "name": "Not An Id",
-          "image": "Not An Id",
-          "flavour": null,
-          "published": "Not An Id",
+          "name": "broken-image",
+          "image": "broken-image",
+          "published": "broken-image",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
-          "components": [],
+          "components": [
+            {
+              "path": "broken-image",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
           "suppressed": [],
           "secrets": [],
           "contract_files": [],
@@ -56,17 +79,20 @@ source: tests/golden/harness.rs
           "collect_destinations": [],
           "datastream": null,
           "build": {
-            "containerfile": "generated/Not An Id/Containerfile",
+            "containerfile": "generated/broken-image/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "",
             "base": null,
             "args": [
-              "TARGET=Not An Id",
+              "TARGET=broken-image",
               "COMPONENT_HASHES=",
               "ASSET_RESOLUTIONS="
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]

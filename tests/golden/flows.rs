@@ -1,4 +1,4 @@
-use crate::harness::{assert_golden, contents, crate_dir, seed_bases, seed_library, tmp};
+use crate::harness::{assert_golden, contents, copy, crate_dir, seed_bases, seed_library, tmp};
 
 use std::cell::Cell;
 
@@ -15,7 +15,6 @@ struct Flow {
 impl Flow {
     fn new(target: &'static str) -> Self {
         let expected = match target {
-            "flow-create-flavour" => 2,
             name if name.starts_with("flow-") => 1,
             _ => 0,
         };
@@ -159,9 +158,9 @@ impl Flow {
             assert_golden(name, "transcript.txt", &transcript);
         }
 
-        let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+        let image = std::fs::read_to_string(root.join("example.kdl")).unwrap();
         assert!(!image.contains("fedora-family"), "{image}");
-        assert!(root.join("components/fedora-family/manifest.kdl").is_file());
+        assert!(!root.join("components/fedora-family").exists());
     }
     fn buildc(&self, dir: &Path, args: &[&str]) {
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buildc"));
@@ -221,10 +220,12 @@ impl Flow {
         let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
             .unwrap()
             .replace(&scaffolded_sources(), "");
-        repo.push_str(&format!(
-            "sources {{\n    components \"upstream\" {{ dir {:?} }}\n    components \"community\" {{ dir {:?} }}\n}}\n",
-            collections.join("upstream").display(),
-            collections.join("community").display()
+        repo.push_str(&local_libraries(
+            &root,
+            &[
+                ("upstream", &collections.join("upstream")),
+                ("community", &collections.join("community")),
+            ],
         ));
         std::fs::write(root.join("repo.kdl"), repo).unwrap();
         root
@@ -235,14 +236,18 @@ impl Flow {
         let mut repo = std::fs::read_to_string(root.join("repo.kdl"))
             .unwrap()
             .replace(&scaffolded_sources(), "");
-        repo.push_str(&format!(
-            "sources {{\n    components {collection:?} {{ dir {:?} }}\n}}\n",
-            crate_dir()
-                .join("tests/collections")
-                .join(collection)
-                .display()
+        repo.push_str(&local_libraries(
+            &root,
+            &[(
+                collection,
+                &crate_dir().join("tests/collections").join(collection),
+            )],
         ));
         std::fs::write(root.join("repo.kdl"), repo).unwrap();
+        let upstream = crate_dir().join("tests/collections/upstream");
+        for held in ["base-image/fedora", "fedora-family"] {
+            copy(&upstream.join(held), &root.join("components").join(held));
+        }
         root
     }
 
@@ -262,7 +267,8 @@ impl Flow {
 
 const SIGNED_OUT: &str = "#!/bin/sh\ntest \"$1\" = auth && exit 1\nexit 0\n";
 
-const SIGNED_IN: &str = "#!/bin/sh\nexit 0\n";
+const SIGNED_IN: &str =
+    "#!/bin/sh\ntest \"$1\" = auth && { echo \"account someone\"; exit 0; }\nexit 0\n";
 
 fn answers(fixture: &Path) -> PathBuf {
     let file = fixture.join("answers.txt");
@@ -318,7 +324,7 @@ fn drawn_run(
                 let mut held = raw.lock().unwrap();
                 held.push(byte[0]);
 
-                // The test answers the cursor-position request an inline viewport sends, because a pseudo-terminal has no terminal to answer it.
+                // The test answers the cursor-position request because a pseudo-terminal has no terminal to answer it.
                 if held.ends_with(b"\x1b[6n") {
                     let mut input = input.lock().unwrap();
                     let _ = input.write_all(b"\x1b[1;1R");
@@ -364,15 +370,14 @@ fn drawn_run(
 }
 
 fn listing(text: &str, segments: &str) -> String {
-    let at = text.rfind('}').expect("the image closes");
-    format!("{}{segments}{}", &text[..at], &text[at..])
+    format!("{text}{segments}")
 }
 
 fn lists_sshd(root: &Path) {
-    let file = root.join("example.image.kdl");
-    let listed = listing(&std::fs::read_to_string(&file).unwrap(), "    sshd\n");
+    let file = root.join("example.kdl");
+    let listed = listing(&std::fs::read_to_string(&file).unwrap(), "sshd\n");
     assert!(
-        buildc::parse::image::listings(&listed, "sshd") == [None],
+        buildc::parse::image::listed(&listed, "sshd") == 1,
         "{listed}"
     );
     std::fs::write(file, listed).unwrap();
@@ -393,7 +398,7 @@ key "secureboot" {
     private "MOK.priv"
 }
 "#;
-fn scaffolded(area: buildc::emit::schema_md::Area, file: &Path) {
+fn written(file: &Path) -> Vec<String> {
     fn walk(nodes: &[kdl::KdlNode], prefix: &str, out: &mut Vec<String>) {
         for node in nodes {
             let path = match prefix.is_empty() {
@@ -406,23 +411,29 @@ fn scaffolded(area: buildc::emit::schema_md::Area, file: &Path) {
             out.push(path);
         }
     }
-    fn matches(pattern: &str, path: &str) -> bool {
-        let path: Vec<&str> = path.split('/').collect();
-        for (at, part) in pattern.split('/').enumerate() {
-            if part == "**" {
-                return path.len() >= at;
-            }
-            if path.get(at).is_none_or(|seg| part != "*" && part != *seg) {
-                return false;
-            }
-        }
-        pattern.split('/').count() == path.len()
-    }
     let text =
         std::fs::read_to_string(file).unwrap_or_else(|err| panic!("{}: {err}", file.display()));
     let doc: kdl::KdlDocument = text.parse().expect("the scaffold is KDL");
-    let mut written = Vec::new();
-    walk(doc.nodes(), "", &mut written);
+    let mut out = Vec::new();
+    walk(doc.nodes(), "", &mut out);
+    out
+}
+
+fn matches(pattern: &str, path: &str) -> bool {
+    let path: Vec<&str> = path.split('/').collect();
+    for (at, part) in pattern.split('/').enumerate() {
+        if part == "**" {
+            return path.len() >= at;
+        }
+        if path.get(at).is_none_or(|seg| part != "*" && part != *seg) {
+            return false;
+        }
+    }
+    pattern.split('/').count() == path.len()
+}
+
+fn scaffolded(area: buildc::emit::schema_md::Area, file: &Path) {
+    let written = written(file);
     let marked = buildc::emit::schema_md::scaffold(area);
     for path in &written {
         assert!(
@@ -440,6 +451,17 @@ fn scaffolded(area: buildc::emit::schema_md::Area, file: &Path) {
     }
 }
 
+fn known(area: buildc::emit::schema_md::Area, file: &Path) {
+    let grammar = buildc::emit::schema_md::grammar(area);
+    for path in written(file) {
+        assert!(
+            grammar.iter().any(|pattern| matches(pattern, &path)),
+            "{}: `buildc create` writes `{path}`, which the grammar does not hold",
+            file.display()
+        );
+    }
+}
+
 fn flow_case(flow: &Flow) {
     match flow.target {
         "flow-create-repo"
@@ -447,7 +469,8 @@ fn flow_case(flow: &Flow) {
         | "flow-create-repo-signed-out"
         | "flow-create-repo-signed-in"
         | "flow-create-repo-forgejo"
-        | "flow-image-default" => setup_create_repo(flow),
+        | "flow-image-default"
+        | "flow-create-repo-minimal" => setup_create_repo(flow),
         "flow-create-repo-offer" => setup_create_repo_offer(flow),
         "flow-create-image" => setup_create_image(flow),
         "flow-check-unpinned" => setup_check_unpinned(flow),
@@ -458,44 +481,38 @@ fn flow_case(flow: &Flow) {
         }
         "flow-add-package" => setup_add_package(flow),
         "flow-component-two-images" => setup_component_two_images(flow),
-        "flow-create-flavour" => setup_create_flavour(flow),
-        "flow-component-in-flavour" => setup_component_in_flavour(flow),
         "flow-set-conforms" | "flow-set-conforms-again" => setup_set_conforms(flow),
-        "flow-import-conforms" => setup_import_conforms(flow),
-        "flow-import-conforms-declined" => setup_import_conforms_declined(flow),
         "flow-set-conforms-enforced" => setup_set_conforms_enforced(flow),
-        "flow-import-conforms-enforced" => setup_import_conforms_enforced(flow),
-        "flow-import-datastream" => setup_import_datastream(flow),
-        "flow-import-declined" => setup_import_declined(flow),
-        "flow-import-family" => setup_import_family(flow),
+        "flow-set-conforms-copy" => setup_set_conforms_copy(flow),
+        "flow-set-conforms-copy-cancelled" => setup_set_conforms_copy_cancelled(flow),
+        "flow-set-library-named" => setup_set_library_named(flow),
+        "flow-set-conforms-pinned" => setup_set_conforms_pinned(flow),
+        "flow-add-component-declined" => setup_add_component_declined(flow),
+        "flow-add-component-family" => setup_add_component_family(flow),
         "flow-set-claims" | "flow-set-claims-again" => setup_set_claims(flow),
         "flow-set-claims-two" => setup_set_claims_two(flow),
         "flow-set-workflows" => setup_workflows(flow),
-        "flow-import-requires" => setup_import_requires(flow),
-        "flow-import-requires-no-tui" => setup_import_requires_no_tui(flow),
-        "flow-import-requires-no-terminal" => setup_import_requires_no_terminal(flow),
-        "flow-import-requires-namesakes" => setup_import_requires_namesakes(flow),
-        "flow-import-dependencies" => setup_import_dependencies(flow),
+        "flow-add-component-requires" => setup_add_component_requires(flow),
+        "flow-add-component-requires-no-tui" => setup_add_component_requires_no_tui(flow),
+        "flow-add-component-requires-no-terminal" => setup_add_component_requires_no_terminal(flow),
+        "flow-add-component-requires-namesakes" => setup_add_component_requires_namesakes(flow),
+        "flow-add-component-dependencies" => setup_add_component_dependencies(flow),
         "flow-check-unmet" => setup_check_unmet(flow),
-        "flow-import-skip" => setup_import_skip(flow),
+        "flow-add-component-skip" => setup_add_component_skip(flow),
         "flow-check-unfetched" => setup_check_unfetched(flow),
-        "flow-import-kernel" => setup_import_kernel(flow),
-        "flow-import-component" => setup_import_component(flow),
-        "flow-import-none" => setup_import_none(flow),
-        "flow-import-present" | "flow-import-present-local" => setup_import_present(flow),
-        "flow-import-untracked" => setup_import_untracked(flow),
-        "flow-detach-component" => setup_detach_component(flow),
-        "flow-import-exclusive" | "flow-import-exclusive-no-tui" => setup_import_exclusive(flow),
-        "flow-import-unavailable" => setup_import_unavailable(flow),
-        "flow-import-default" | "flow-create-component-with-schema-issues" => {
-            setup_import_default(flow)
+        "flow-add-component" => setup_add_component(flow),
+        "flow-add-component-exclusive" | "flow-add-component-exclusive-no-tui" => {
+            setup_add_component_exclusive(flow)
+        }
+        "flow-add-component-unavailable" => setup_add_component_unavailable(flow),
+        "flow-add-component-default" | "flow-create-component-with-schema-issues" => {
+            setup_add_component_default(flow)
         }
         "import-edit-guards" => setup_import_edit_guards(flow),
-        "flow-import-several" => setup_import_several(flow),
-        "flow-import-nested" => setup_import_nested(flow),
-        "flow-import-suffix" => setup_import_suffix(flow),
-        "flow-import-suffix-ambiguous" => setup_import_suffix_ambiguous(flow),
-        "flow-import-collides" | "flow-check-collides" => setup_collides(flow),
+        "add-component-pin" => setup_add_component_pin(flow),
+        "flow-add-component-several" => setup_add_component_several(flow),
+        "flow-add-component-nested" => setup_add_component_nested(flow),
+        "flow-check-collides" => setup_collides(flow),
         "flow-key-absent" => setup_key_absent(flow),
         "flow-key-kinds" => setup_key_kinds(flow),
         "flow-key-undeclared" => setup_key_undeclared(flow),
@@ -515,20 +532,24 @@ fn datastream() -> String {
         .to_string()
 }
 
-fn scaffolded_sources() -> String {
-    buildc::init::sources_block(&buildc::setup::Libraries::every())
+// `example-library` names the root library because a `local` block replaces the implicit one. Each test library is copied into `libraries/` because a local library is a folder of the repository.
+fn local_libraries(root: &Path, libraries: &[(&str, &Path)]) -> String {
+    let mut out = String::from(
+        "libraries default=\"example-library\" {\n    local {\n        example-library { source \".\" }\n",
+    );
+    for (name, source) in libraries {
+        copy(source, &root.join("libraries").join(name));
+        out.push_str(&format!(
+            "        {name} {{ source \"libraries/{name}\" }}\n"
+        ));
+    }
+    out + "    }\n}\n"
 }
 
-fn import_sshd(stream: &str) -> [&str; 7] {
-    [
-        "--root",
-        ".",
-        "import",
-        "component",
-        "claims/sshd",
-        "--datastream",
-        stream,
-    ]
+fn scaffolded_sources() -> String {
+    buildc::init::libraries_block(&buildc::setup::Libraries::every(
+        &crate_dir().join("assets"),
+    ))
 }
 
 fn claims(stream: &str) -> [&str; 7] {
@@ -552,17 +573,36 @@ fn setup_create_repo(flow: &Flow) {
     };
     let dir = flow.empty(&format!("{target}-in"));
     seed_bases(&dir.join("example"));
-    flow.run(target, &dir, gh, &["create", "repo"]);
+    let mut args = vec!["create", "repo"];
+    if target == "flow-create-repo-forgejo" {
+        args.extend(["--host", "forge.example.org"]);
+    }
+    flow.run(target, &dir, gh, &args);
     if target == "flow-create-repo" {
         let created = flow.at("flow-create-repo-in").join("example");
+        let repo = std::fs::read_to_string(created.join("repo.kdl")).unwrap();
+        assert!(
+            repo.contains("base-url \"https://github.com/someone/example\""),
+            "{repo}"
+        );
+        assert!(repo.contains("registry \"ghcr.io/someone\""), "{repo}");
         scaffolded(
             buildc::emit::schema_md::Area::Repo,
             &created.join("repo.kdl"),
         );
-        scaffolded(
-            buildc::emit::schema_md::Area::Image,
-            &created.join("desktop.image.kdl"),
+        known(
+            buildc::emit::schema_md::Area::Component,
+            &created.join("example.kdl"),
         );
+    }
+    if target == "flow-create-repo-minimal" {
+        let created = flow.at("flow-create-repo-minimal-in").join("example");
+        let repo = std::fs::read_to_string(created.join("repo.kdl")).unwrap();
+        assert!(repo.contains("buildc { source "), "{repo}");
+        assert!(!repo.contains("workflows"), "{repo}");
+        assert!(!repo.contains("runner"), "{repo}");
+        assert!(!created.join("example.kdl").exists());
+        assert!(!created.join("runners").exists());
     }
 }
 
@@ -575,27 +615,21 @@ fn setup_create_image(flow: &Flow) {
     let target = flow.target;
     let root = flow.repo_sourced("flow-image");
     flow.run(target, &root, None, &["--root", ".", "create", "image"]);
-    let image = std::fs::read_to_string(root.join("beta.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(root.join("beta.kdl")).unwrap();
     assert!(!image.contains("fedora-family"), "{image}");
-    assert!(root.join("components/fedora-family/manifest.kdl").is_file());
+    assert!(!root.join("components/fedora-family").exists());
     flow.buildc(&root, &["--no-tui", "--root", ".", "check"]);
 
     let manifest = root.join("components/fedora-family/manifest.kdl");
-    let fork = std::fs::read_to_string(&manifest)
-        .unwrap()
-        .replace("provides \"build-environment\"\n", "");
-    std::fs::write(&manifest, &fork).unwrap();
-    let lock = std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap();
+    let fork = "schema-version 1\n\ndescription \"The user's own family\"\n";
+    std::fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+    std::fs::write(&manifest, fork).unwrap();
     flow.buildc(
         &root,
         &["--no-tui", "--root", ".", "create", "image", "Gamma"],
     );
     assert_eq!(std::fs::read_to_string(&manifest).unwrap(), fork);
-    assert_eq!(
-        std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap(),
-        lock
-    );
-    let gamma = std::fs::read_to_string(root.join("gamma.image.kdl")).unwrap();
+    let gamma = std::fs::read_to_string(root.join("gamma.kdl")).unwrap();
     assert!(!gamma.contains("fedora-family"), "{gamma}");
 }
 
@@ -620,11 +654,10 @@ fn setup_conforms(flow: &Flow) {
              satisfies {\n    cis-fedora \"5.2.20\"\n}\n",
     )
     .unwrap();
-    let image = conforms.join("example.image.kdl");
-    let declared = std::fs::read_to_string(&image).unwrap().replace(
-        "    base-image {",
-        "    conforms \"standard\"\n\n    base-image {",
-    );
+    let image = conforms.join("example.kdl");
+    let declared = std::fs::read_to_string(&image)
+        .unwrap()
+        .replace("\nbase-image {", "\nconforms \"standard\"\n\nbase-image {");
     assert!(declared.contains("conforms \"standard\""), "{declared}");
     std::fs::write(&image, declared).unwrap();
     flow.run(
@@ -657,10 +690,10 @@ fn setup_check_conforms_stranger(flow: &Flow) {
     let target = flow.target;
     let stream = datastream();
     let stranger = flow.repo("flow-conforms-stranger");
-    let image = stranger.join("example.image.kdl");
+    let image = stranger.join("example.kdl");
     let declared = std::fs::read_to_string(&image).unwrap().replace(
-        "    base-image {",
-        "    conforms \"cusp_fedora\"\n\n    base-image {",
+        "\nbase-image {",
+        "\nconforms \"cusp_fedora\"\n\nbase-image {",
     );
     std::fs::write(&image, declared).unwrap();
     flow.run(
@@ -718,7 +751,7 @@ fn setup_add_package(flow: &Flow) {
             "component",
             "apps",
             "--inline",
-            "--image",
+            "--build",
             "example",
             "--with",
             "description=Applications",
@@ -738,13 +771,13 @@ fn setup_add_package(flow: &Flow) {
             "wireguard-tools",
             "--component",
             "apps",
-            "--image",
+            "--build",
             "example",
         ],
     );
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(root.join("example.kdl")).unwrap();
     assert!(
-        image.contains("        packages \"firefox\" \"wireguard-tools\"\n"),
+        image.contains("    packages \"firefox\" \"wireguard-tools\"\n"),
         "{image}"
     );
     flow.buildc(
@@ -758,7 +791,7 @@ fn setup_add_package(flow: &Flow) {
             "htop",
             "--component",
             "apps",
-            "--image",
+            "--build",
             "example",
         ],
     );
@@ -773,13 +806,13 @@ fn setup_add_package(flow: &Flow) {
             "firefox",
             "--component",
             "apps",
-            "--image",
+            "--build",
             "example",
         ],
     );
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(root.join("example.kdl")).unwrap();
     assert!(
-        image.contains("        packages \"firefox\" \"wireguard-tools\" \"htop\"\n"),
+        image.contains("    packages \"firefox\" \"wireguard-tools\" \"htop\"\n"),
         "{image}"
     );
     flow.buildc(
@@ -811,10 +844,16 @@ fn setup_add_package(flow: &Flow) {
     let manifest =
         std::fs::read_to_string(root.join("components/local-tools/manifest.kdl")).unwrap();
     assert!(manifest.ends_with("\npackages \"nano\"\n"), "{manifest}");
-    let example = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    let example = std::fs::read_to_string(root.join("example.kdl")).unwrap();
+    std::fs::write(root.join("second.kdl"), example).unwrap();
+    let repo = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
     std::fs::write(
-        root.join("second.image.kdl"),
-        example.replace("image \"example\"", "image \"second\""),
+        root.join("repo.kdl"),
+        repo.replacen(
+            "builds default=\"example\" {\n",
+            "builds default=\"example\" {\n    second \"./second\"\n",
+            1,
+        ),
     )
     .unwrap();
     flow.buildc(
@@ -828,16 +867,16 @@ fn setup_add_package(flow: &Flow) {
             "htop",
             "--component",
             "tools",
-            "--image",
+            "--build",
             "example",
-            "--image",
+            "--build",
             "second",
         ],
     );
-    for file in ["example.image.kdl", "second.image.kdl"] {
+    for file in ["example.kdl", "second.kdl"] {
         let text = std::fs::read_to_string(root.join(file)).unwrap();
         assert!(
-            text.contains("    tools {\n        packages \"htop\"\n    }\n"),
+            text.contains("\ntools {\n    packages \"htop\"\n}\n"),
             "{file}: {text}"
         );
     }
@@ -852,59 +891,6 @@ fn setup_add_package(flow: &Flow) {
             "{image}: {script}"
         );
     }
-}
-
-fn setup_create_flavour(flow: &Flow) {
-    let target = flow.target;
-    let flavoured = flow.repo("flow-flavour");
-    flow.run(
-        target,
-        &flavoured,
-        None,
-        &["--root", ".", "create", "flavour"],
-    );
-    let image = std::fs::read_to_string(flavoured.join("example.image.kdl")).unwrap();
-    flow.note_assertion();
-    assert_golden(target, "example.image.kdl", &image);
-}
-
-fn setup_component_in_flavour(flow: &Flow) {
-    let target = flow.target;
-    let root = flow.repo("flow-gated");
-    flow.buildc(
-        &root,
-        &[
-            "--no-tui", "--root", ".", "create", "flavour", "dx", "--image", "example",
-        ],
-    );
-    flow.run(target, &root, None, &["--root", ".", "create", "component"]);
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
-    assert!(
-        image.contains("    flavour \"dx\" {\n        dev-tools\n    }\n"),
-        "{image}"
-    );
-
-    flow.buildc(
-        &root,
-        &[
-            "--no-tui", "--root", ".", "create", "flavour", "gaming", "--image", "example",
-        ],
-    );
-    let listed = |at: &str| {
-        let (list, _, _) = buildc::declarations(&root);
-        buildc::setup::Listing::collect(&root, vec![at.into()], &common::prompt::Prompt::silent())
-            .and_then(|listing| Ok(listing.refuse_duplicate(&list, "dev-tools")?))
-            .map_or_else(|err| err.message().to_string(), |()| String::new())
-    };
-    assert_eq!(
-        listed("example/dx"),
-        "`example/dx` already lists `dev-tools`"
-    );
-    assert_eq!(
-        listed("example"),
-        "`example/dx` already lists `dev-tools`, so `example` lists it twice"
-    );
-    assert_eq!(listed("example/gaming"), "");
 }
 
 fn setup_set_conforms(flow: &Flow) {
@@ -922,39 +908,95 @@ fn setup_set_conforms(flow: &Flow) {
             return;
         }
     }
-    let declared = std::fs::read_to_string(measured.join("example.image.kdl")).unwrap();
+    let declared = std::fs::read_to_string(measured.join("example.kdl")).unwrap();
     assert_eq!(declared.matches("conforms ").count(), 1, "{declared}");
     assert!(
-        declared.contains("    conforms \"ospp\"\n")
-            && buildc::parse::image::listings(&declared, "sshd") == [None]
-            && measured.join("components/sshd/manifest.kdl").is_file(),
+        declared.contains("\nconforms \"ospp\"\n")
+            && buildc::parse::image::listed(&declared, "sshd") == 1
+            && !measured.join("components/sshd").exists(),
         "{declared}"
     );
 }
 
-fn setup_import_conforms(flow: &Flow) {
+fn setup_set_conforms_copy(flow: &Flow) {
     let target = flow.target;
     let stream = datastream();
-    let claiming = flow.repo_claiming("flow-import-conforms-in");
-    flow.run(target, &claiming, None, &import_sshd(&stream));
-    let taken = std::fs::read_to_string(claiming.join("example.image.kdl")).unwrap();
+    let copied = flow.repo_claiming("flow-set-conforms-copy-in");
+    flow.run(
+        target,
+        &copied,
+        None,
+        &["--root", ".", "set", "conforms", "--datastream", &stream],
+    );
+    let image = std::fs::read_to_string(copied.join("example.kdl")).unwrap();
+    let origins = std::fs::read_to_string(copied.join("components/origins.kdl")).unwrap();
     assert!(
-        taken.contains("    conforms \"standard\"\n")
-            && buildc::parse::image::listings(&taken, "sshd") == [None],
-        "{taken}"
+        image.contains("\nsshd\n") && copied.join("components/sshd/manifest.kdl").is_file(),
+        "{image}"
+    );
+    assert!(origins.contains("component \"sshd\""), "{origins}");
+    flow.buildc(&copied, &["--no-tui", "--root", ".", "check"]);
+}
+
+fn setup_set_conforms_copy_cancelled(flow: &Flow) {
+    let stream = datastream();
+    let copied = flow.repo_claiming("flow-set-conforms-copy-cancelled-in");
+    let before = std::fs::read_to_string(copied.join("example.kdl")).unwrap();
+    flow.run(
+        flow.target,
+        &copied,
+        None,
+        &["--root", ".", "set", "conforms", "--datastream", &stream],
+    );
+    let image = std::fs::read_to_string(copied.join("example.kdl")).unwrap();
+    assert_eq!(image, before);
+    assert!(!copied.join("components/sshd").exists());
+}
+
+fn setup_set_library_named(flow: &Flow) {
+    let dir = flow.empty("flow-set-library-named-in");
+    std::fs::write(dir.join("repo.kdl"), "schema-version 1\n").unwrap();
+    flow.run_silent(
+        flow.target,
+        &dir,
+        &["--no-tui", "--root", ".", "set", "library", "buildc"],
+    );
+    let text = std::fs::read_to_string(dir.join("repo.kdl")).unwrap();
+    assert!(
+        text.contains("buildc { source \"https://github.com/buildc-org/library\" }"),
+        "{text}"
     );
 }
 
-fn setup_import_conforms_declined(flow: &Flow) {
+fn setup_set_conforms_pinned(flow: &Flow) {
     let target = flow.target;
     let stream = datastream();
-    let unmeasured = flow.repo_claiming("flow-import-conforms-none");
-    flow.run(target, &unmeasured, None, &import_sshd(&stream));
-    let left = std::fs::read_to_string(unmeasured.join("example.image.kdl")).unwrap();
-    assert!(
-        !left.contains("conforms") && buildc::parse::image::listings(&left, "sshd") == [None],
-        "{left}"
+    let pinned = flow.repo("flow-set-conforms-pinned-in");
+    seed_library(&pinned);
+    let keyed = buildc::collection::seed(
+        &pinned,
+        &crate::harness::library_url(),
+        "HEAD",
+        crate::harness::LIBRARY_COMMIT,
+    )
+    .unwrap();
+    copy(
+        &crate_dir().join("tests/collections/claims"),
+        &keyed.join("components"),
     );
+    flow.run(
+        target,
+        &pinned,
+        None,
+        &["--root", ".", "set", "conforms", "--datastream", &stream],
+    );
+    let image = std::fs::read_to_string(pinned.join("example.kdl")).unwrap();
+    let pin = crate::harness::LIBRARY_COMMIT;
+    assert!(
+        image.contains(&format!("\nsshd pin=\"{pin}\"\n")),
+        "{image}"
+    );
+    flow.buildc(&pinned, &["--no-tui", "--root", ".", "check"]);
 }
 
 fn setup_set_conforms_enforced(flow: &Flow) {
@@ -969,67 +1011,30 @@ fn setup_set_conforms_enforced(flow: &Flow) {
     );
 }
 
-fn setup_import_conforms_enforced(flow: &Flow) {
+fn setup_add_component_family(flow: &Flow) {
     let target = flow.target;
-    let stream = datastream();
-    let importing = flow.repo_enforcing("flow-import-conforms-enforced-in");
-    flow.run(target, &importing, None, &import_sshd(&stream));
-}
-
-fn setup_import_datastream(flow: &Flow) {
-    let target = flow.target;
-    let typo = flow.repo_claiming("flow-import-datastream-in");
-    flow.run(
-        target,
-        &typo,
-        None,
-        &[
-            "--root",
-            ".",
-            "import",
-            "component",
-            "claims/sshd",
-            "--datastream",
-            "no-such-datastream.xml",
-        ],
-    );
-    let untouched = std::fs::read_to_string(typo.join("example.image.kdl")).unwrap();
-    assert!(
-        buildc::parse::image::listings(&untouched, "sshd").is_empty()
-            && !typo.join("components/sshd").exists(),
-        "the refusal leaves the repository as it was: {untouched}"
-    );
-}
-
-fn setup_import_family(flow: &Flow) {
-    let target = flow.target;
-    let family = flow.repo_with("flow-import-family-in", "upstream");
+    let family = flow.repo_with("flow-add-component-family-in", "upstream");
     std::fs::create_dir_all(family.join("components/base-image/plain")).unwrap();
     std::fs::write(
         family.join("components/base-image/plain/manifest.kdl"),
         "schema-version 1\n\nbase \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\"; }\n",
     )
     .unwrap();
-    let image_file = family.join("example.image.kdl");
-    let image = std::fs::read_to_string(&image_file).unwrap().replace(
-        "        fedora {\n            version \"44\"\n",
-        "        plain {\n",
-    );
+    let image_file = family.join("example.kdl");
+    let image = std::fs::read_to_string(&image_file)
+        .unwrap()
+        .replace(
+            "    fedora signed=#false {\n        version \"44\"\n",
+            "    plain signed=#false {\n",
+        )
+        .replace("\nfedora-family\n", "\n");
     assert!(
-        buildc::parse::image::listings(&image, "base-image/plain") == [None],
+        buildc::parse::image::listed(&image, "base-image/plain") == 1
+            && buildc::parse::image::listed(&image, "fedora-family") == 0,
         "{image}"
     );
     std::fs::write(&image_file, image).unwrap();
     std::fs::remove_dir_all(family.join("components/fedora-family")).unwrap();
-    let lock_file = family.join("components/components.lock.kdl");
-    let lock = std::fs::read_to_string(&lock_file).unwrap();
-    let start = lock.find("component \"fedora-family\" {").unwrap();
-    let end = start + lock[start..].find("\n}\n").unwrap() + "\n}\n".len();
-    std::fs::write(
-        &lock_file,
-        format!("{}{}", &lock[..start], lock[end..].trim_start()),
-    )
-    .unwrap();
     flow.run(
         target,
         &family,
@@ -1037,14 +1042,16 @@ fn setup_import_family(flow: &Flow) {
         &[
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "upstream/needs-family",
+            "needs-family",
+            "--library",
+            "upstream",
         ],
     );
-    let listed = std::fs::read_to_string(family.join("example.image.kdl")).unwrap();
+    let listed = std::fs::read_to_string(family.join("example.kdl")).unwrap();
     assert!(
-        buildc::parse::image::listings(&listed, "fedora-family") == [None]
+        buildc::parse::image::listed(&listed, "fedora-family") == 1
             && !listed.contains("debian-family"),
         "the adapter brought has to support the base's family: {listed}"
     );
@@ -1114,17 +1121,9 @@ fn setup_workflows(flow: &Flow) {
         None,
         &["--root", ".", "set", "workflows"],
     );
-    let declaration =
-        "workflows at=\"05:45\" scan=\"scheduled\" {\n    build\n    base-sig-probe\n}";
+    let declaration = "github {\n    workflows {\n        image-build {\n            pr\n            push\n            schedule frequency=\"daily\" time=\"12:30\"\n        }\n        base-sig-probe\n    }\n}";
     let prompted_repo = std::fs::read_to_string(prompted.join("repo.kdl")).unwrap();
     assert!(prompted_repo.contains(declaration), "{prompted_repo}");
-
-    let direct = flow.repo("flow-cadence-direct");
-    let repo_path = direct.join("repo.kdl");
-    let mut direct_repo = std::fs::read_to_string(&repo_path).unwrap();
-    let span = buildc::parse::repo::workflows_span(&direct_repo).unwrap();
-    direct_repo.replace_range(span.offset..span.offset + span.len, declaration);
-    std::fs::write(&repo_path, direct_repo).unwrap();
 
     let generated_build = |root: &Path| {
         let run = buildc::run(Command::Generate, None, root);
@@ -1143,66 +1142,75 @@ fn setup_workflows(flow: &Flow) {
         );
         run.files
             .into_iter()
-            .find(|(path, _)| path == Path::new(".github/workflows/build.yml"))
+            .find(|(path, _)| path == Path::new(".github/workflows/image-build.yml"))
             .unwrap()
             .1
     };
-    let prompted_build = generated_build(&prompted);
-    let direct_build = generated_build(&direct);
-    assert_eq!(prompted_build, direct_build);
-    assert!(prompted_build.contains(
-        "    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'\n"
-    ));
-    assert!(!prompted_build.contains(
-        "    if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request' && needs.compute-matrix.outputs.scanned != '[]'\n"
-    ));
-
-    let cadence = flow.repo("flow-publish-cadence");
-    let repo_path = cadence.join("repo.kdl");
-    let push_build = generated_build(&cadence);
-    assert!(push_build.contains(
-        "    if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request' && needs.compute-matrix.outputs.scanned != '[]'\n"
-    ));
-    let repo = std::fs::read_to_string(&repo_path).unwrap();
-    std::fs::write(
-        &repo_path,
-        repo.replace("workflows {", "workflows publish=\"scheduled\" {"),
-    )
-    .unwrap();
-    let scheduled_build = generated_build(&cadence);
-    let publish_gate = r#"          if [ "${{ github.event_name }}" != "schedule" ] \
-             && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            publish=false
-          fi
-"#;
-    assert!(scheduled_build.contains(publish_gate), "{scheduled_build}");
-    assert_eq!(
-        scheduled_build.replace(publish_gate, "").replace(
-            "    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'\n",
-            "    if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request' && needs.compute-matrix.outputs.scanned != '[]'\n",
-        ),
-        push_build,
+    let scaffolded = generated_build(&prompted);
+    assert!(
+        scaffolded.contains("    - cron: '30 12 * * *'\n"),
+        "{scaffolded}"
     );
+    assert!(scaffolded.contains("  pull_request:\n"), "{scaffolded}");
+
+    let direct = flow.repo("flow-triggers-direct");
+    flow.buildc(
+        &direct,
+        &[
+            "--no-tui",
+            "--root",
+            ".",
+            "set",
+            "workflows",
+            "image-build",
+            "--on",
+            "push",
+            "--on",
+            "tag=v*",
+        ],
+    );
+    let direct_repo = std::fs::read_to_string(direct.join("repo.kdl")).unwrap();
+    assert!(
+        direct_repo.contains(
+            "        image-build {\n            push\n            tag \"v*\"\n        }\n"
+        ),
+        "{direct_repo}"
+    );
+    let tagged = generated_build(&direct);
+    assert!(tagged.contains("    tags:\n      - 'v*'\n"), "{tagged}");
+    assert!(!tagged.contains("  pull_request:\n"), "{tagged}");
+    assert!(!tagged.contains("- cron:"), "{tagged}");
 }
 
-fn setup_import_requires(flow: &Flow) {
+fn setup_add_component_requires(flow: &Flow) {
     let target = flow.target;
     let requires = flow.repo_sourced("flow-requires");
     flow.run(
         target,
         &requires,
         None,
-        &["--root", ".", "import", "component", "community/browser"],
+        &[
+            "--root",
+            ".",
+            "add",
+            "component",
+            "browser",
+            "--library",
+            "community",
+        ],
     );
-    let image = std::fs::read_to_string(requires.join("example.image.kdl")).unwrap();
-    assert!(image.contains("    flatpak\n    browser\n"), "{image}");
-    assert!(requires.join("components/flatpak/manifest.kdl").is_file());
+    let image = std::fs::read_to_string(requires.join("example.kdl")).unwrap();
+    assert!(
+        image.contains("\nflatpak\nbrowser library=\"community\"\n"),
+        "{image}"
+    );
+    assert!(!requires.join("components/flatpak").exists());
     flow.buildc(&requires, &["--no-tui", "--root", ".", "check"]);
 }
 
-fn setup_import_requires_no_tui(flow: &Flow) {
+fn setup_add_component_requires_no_tui(flow: &Flow) {
     let requires = flow.repo_sourced("flow-requires-no-tui");
-    let image = requires.join("example.image.kdl");
+    let image = requires.join("example.kdl");
     flow.run_silent(
         flow.target,
         &requires,
@@ -1210,54 +1218,54 @@ fn setup_import_requires_no_tui(flow: &Flow) {
             "--no-tui",
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "community/browser",
-            "--image",
-            "example",
+            "browser",
+            "--library",
+            "community",
         ],
     );
     let image = std::fs::read_to_string(image).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "browser") == [None],
+        buildc::parse::image::listed(&image, "browser") == 1,
         "{image}"
     );
     assert!(
-        buildc::parse::image::listings(&image, "flatpak").is_empty(),
+        buildc::parse::image::listed(&image, "flatpak") == 0,
         "{image}"
     );
 }
 
-fn setup_import_requires_no_terminal(flow: &Flow) {
+fn setup_add_component_requires_no_terminal(flow: &Flow) {
     let requires = flow.repo_sourced("flow-requires-no-terminal");
-    let image = requires.join("example.image.kdl");
+    let image = requires.join("example.kdl");
     flow.run_silent(
         flow.target,
         &requires,
         &[
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "community/browser",
-            "--image",
-            "example",
+            "browser",
+            "--library",
+            "community",
         ],
     );
     let image = std::fs::read_to_string(image).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "browser") == [None],
+        buildc::parse::image::listed(&image, "browser") == 1,
         "{image}"
     );
     assert!(
-        buildc::parse::image::listings(&image, "flatpak").is_empty(),
+        buildc::parse::image::listed(&image, "flatpak") == 0,
         "{image}"
     );
 }
 
-fn setup_import_dependencies(flow: &Flow) {
-    let requires = flow.repo_sourced("flow-import-dependencies");
-    let image = requires.join("example.image.kdl");
+fn setup_add_component_dependencies(flow: &Flow) {
+    let requires = flow.repo_sourced("flow-add-component-dependencies");
+    let image = requires.join("example.kdl");
     flow.run_silent(
         flow.target,
         &requires,
@@ -1265,120 +1273,113 @@ fn setup_import_dependencies(flow: &Flow) {
             "--no-tui",
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "community/browser",
-            "--image",
-            "example",
+            "browser",
+            "--library",
+            "community",
             "--dependencies",
         ],
     );
     let image = std::fs::read_to_string(image).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "browser") == [None],
+        buildc::parse::image::listed(&image, "browser") == 1,
         "{image}"
     );
     assert!(
-        buildc::parse::image::listings(&image, "flatpak") == [None],
+        buildc::parse::image::listed(&image, "flatpak") == 1,
         "{image}"
     );
-    assert!(requires.join("components/browser").is_dir());
-    assert!(requires.join("components/flatpak").is_dir());
+    assert!(!requires.join("components/browser").exists());
+    assert!(!requires.join("components/flatpak").exists());
 }
 
-fn setup_import_requires_namesakes(flow: &Flow) {
+fn setup_add_component_requires_namesakes(flow: &Flow) {
     let requires = flow.repo_with("flow-requires-namesakes", "namesakes");
     flow.run(
         flow.target,
         &requires,
         None,
-        &["--root", ".", "import", "component"],
+        &["--root", ".", "add", "component"],
     );
-    let image = std::fs::read_to_string(requires.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(requires.join("example.kdl")).unwrap();
     for component in ["apps/client", "desktop/client", "flatpak"] {
         assert!(
-            buildc::parse::image::listings(&image, component) == [None],
+            buildc::parse::image::listed(&image, component) == 1,
             "{image}"
         );
     }
 }
 
-fn import_declined(flow: &Flow) -> PathBuf {
+fn add_declined(flow: &Flow) -> PathBuf {
     let declined = flow.repo_sourced("flow-declined");
     flow.run(
-        "flow-import-declined",
+        "flow-add-component-declined",
         &declined,
         None,
         &[
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "community/browser",
-            "--image",
-            "example",
+            "browser",
+            "--library",
+            "community",
         ],
     );
-    let image = std::fs::read_to_string(declined.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(declined.join("example.kdl")).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "browser") == [None],
+        buildc::parse::image::listed(&image, "browser") == 1,
         "{image}"
     );
     assert!(
-        buildc::parse::image::listings(&image, "flatpak").is_empty(),
+        buildc::parse::image::listed(&image, "flatpak") == 0,
         "{image}"
     );
     declined
 }
 
-fn setup_import_declined(flow: &Flow) {
-    let _ = import_declined(flow);
+fn setup_add_component_declined(flow: &Flow) {
+    let _ = add_declined(flow);
 }
 
 fn setup_check_unmet(flow: &Flow) {
     let target = flow.target;
-    let declined = import_declined(flow);
+    let declined = add_declined(flow);
     flow.run(target, &declined, None, &["--root", ".", "check"]);
 }
 
-fn setup_import_skip(flow: &Flow) {
+fn setup_add_component_skip(flow: &Flow) {
     let skip = flow.repo_sourced("flow-skip");
     flow.buildc(
         &skip,
         &["--no-tui", "--root", ".", "create", "image", "Server"],
     );
-    flow.buildc(
-        &skip,
-        &[
-            "--no-tui",
-            "--root",
-            ".",
-            "import",
-            "component",
-            "upstream/flatpak",
-            "--image",
-            "example",
-        ],
+    copy(
+        &crate_dir().join("tests/collections/upstream/flatpak"),
+        &skip.join("components/flatpak"),
     );
     let held = contents(&skip.join("components/flatpak"));
     flow.run(
-        "flow-import-skip",
+        "flow-add-component-skip",
         &skip,
         None,
         &[
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "community/browser",
-            "--image",
+            "browser",
+            "--library",
+            "community",
+            "--in",
             "server",
         ],
     );
-    let server = std::fs::read_to_string(skip.join("server.image.kdl")).unwrap();
+    let server = std::fs::read_to_string(skip.join("server.kdl")).unwrap();
     assert!(
-        buildc::parse::image::listings(&server, "flatpak") == [None]
-            && buildc::parse::image::listings(&server, "browser") == [None],
+        buildc::parse::image::listed(&server, "flatpak") == 1
+            && buildc::parse::image::listed(&server, "browser") == 1,
         "{server}"
     );
     assert_eq!(contents(&skip.join("components/flatpak")), held);
@@ -1394,13 +1395,13 @@ fn setup_check_unfetched(flow: &Flow) {
         "schema-version 1\n\ndescription \"Builds things\"\n\ntargets \"fedora\"\n\nrequires \"flatpak\"\n",
     )
     .unwrap();
-    let image = unfetched.join("example.image.kdl");
+    let image = unfetched.join("example.kdl");
     let listed = listing(
         &std::fs::read_to_string(&image).unwrap(),
-        "    core {\n        one\n    }\n",
+        "core {\n    one\n}\n",
     );
     assert!(
-        buildc::parse::image::listings(&listed, "core/one") == [None],
+        buildc::parse::image::listed(&listed, "core/one") == 1,
         "{listed}"
     );
     std::fs::write(&image, listed).unwrap();
@@ -1414,125 +1415,33 @@ fn on_debian(root: &Path) -> PathBuf {
         "schema-version 1\n\nbase \"docker.io/library/debian:forky\" { family \"debian\"; }\n",
     )
     .unwrap();
-    let image_file = root.join("example.image.kdl");
+    let image_file = root.join("example.kdl");
     let image = std::fs::read_to_string(&image_file).unwrap().replace(
-        "        fedora {\n            version \"44\"\n",
-        "        debian {\n",
+        "    fedora signed=#false {\n        version \"44\"\n",
+        "    debian signed=#false {\n",
     );
     assert!(
-        buildc::parse::image::listings(&image, "base-image/debian") == [None],
+        buildc::parse::image::listed(&image, "base-image/debian") == 1,
         "{image}"
     );
     std::fs::write(&image_file, image).unwrap();
     image_file
 }
 
-fn setup_import_kernel(flow: &Flow) {
+fn setup_add_component(flow: &Flow) {
     let target = flow.target;
-    let kernel = flow.repo_sourced("flow-kernel");
-    flow.run(
-        target,
-        &kernel,
-        None,
-        &[
-            "--root",
-            ".",
-            "import",
-            "component",
-            "upstream/custom-kernel",
-        ],
-    );
-    assert!(std::fs::read_to_string(kernel.join("repo.kdl"))
-        .unwrap()
-        .contains("    kernel-freshness\n"));
-}
-
-fn setup_import_component(flow: &Flow) {
-    let target = flow.target;
-    let root = flow.repo_sourced("flow-import");
-    flow.run(target, &root, None, &["--root", ".", "import", "component"]);
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
-    assert!(image.contains("    browser\n"), "{image}");
-    assert!(root.join("components/browser/manifest.kdl").is_file());
-    let lock = std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap();
+    let root = flow.repo_sourced("flow-add");
+    flow.run(target, &root, None, &["--root", ".", "add", "component"]);
+    let image = std::fs::read_to_string(root.join("example.kdl")).unwrap();
     assert!(
-        lock.contains("component \"browser\" {\n    library \"upstream\"\n    path \"browser\"\n"),
-        "{lock}"
-    );
-    assert!(lock.contains("    track\n"), "{lock}");
-    assert!(!root.join("components/.remote").exists());
-}
-
-fn setup_import_none(flow: &Flow) {
-    let target = flow.target;
-    let root = flow.repo_sourced("flow-import-none");
-    flow.run(target, &root, None, &["--root", ".", "import", "component"]);
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
-    assert!(
-        buildc::parse::image::listings(&image, "browser").is_empty(),
+        image.contains("\nbrowser library=\"upstream\"\n"),
         "{image}"
     );
-    assert!(root.join("components/browser/manifest.kdl").is_file());
-    assert!(root.join("components/components.lock.kdl").is_file());
+    assert!(!root.join("components/browser").exists());
+    assert!(!root.join("components/origins.kdl").exists());
 }
 
-fn setup_import_present(flow: &Flow) {
-    let target = flow.target;
-    let root = flow.repo_sourced(target);
-    std::fs::create_dir_all(root.join("components/browser")).unwrap();
-    std::fs::write(root.join("components/browser/component.sh"), "echo local\n").unwrap();
-    if target == "flow-import-present-local" {
-        on_debian(&root);
-    }
-    flow.run(
-        target,
-        &root,
-        None,
-        &[
-            "--root",
-            ".",
-            "import",
-            "component",
-            "upstream/browser",
-            "--image",
-            "example",
-        ],
-    );
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
-    assert_eq!(
-        std::fs::read_to_string(root.join("components/browser/component.sh")).unwrap(),
-        "echo local\n"
-    );
-    match target {
-        "flow-import-present" => {
-            assert!(
-                buildc::parse::image::listings(&image, "browser@1") == [None],
-                "{image}"
-            );
-            let lock =
-                std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap();
-            assert!(
-                lock.contains(
-                    "component \"browser@1\" {\n    library \"upstream\"\n    path \"browser\"\n"
-                ),
-                "{lock}"
-            );
-            flow.buildc(&root, &["--no-tui", "--root", ".", "check"]);
-        }
-        _ => {
-            assert!(
-                buildc::parse::image::listings(&image, "browser") == [None],
-                "{image}"
-            );
-            assert!(!root.join("components/browser@1").exists());
-            let lock = std::fs::read_to_string(root.join("components/components.lock.kdl"))
-                .unwrap_or_default();
-            assert!(!lock.contains("component \"browser"), "{lock}");
-        }
-    }
-}
-
-fn setup_import_exclusive(flow: &Flow) {
+fn setup_add_component_exclusive(flow: &Flow) {
     let target = flow.target;
     let root = flow.repo_sourced(target);
     std::fs::create_dir_all(root.join("components/flathub")).unwrap();
@@ -1541,35 +1450,32 @@ fn setup_import_exclusive(flow: &Flow) {
         "schema-version 1\n\ndescription \"Flathub remote\"\n\nprovides \"flatpak\" exclusive=#true\n",
     )
     .unwrap();
-    let image_file = root.join("example.image.kdl");
-    let listed = listing(
-        &std::fs::read_to_string(&image_file).unwrap(),
-        "    flathub\n",
-    );
+    let image_file = root.join("example.kdl");
+    let listed = listing(&std::fs::read_to_string(&image_file).unwrap(), "flathub\n");
     assert!(
-        buildc::parse::image::listings(&listed, "flathub") == [None],
+        buildc::parse::image::listed(&listed, "flathub") == 1,
         "{listed}"
     );
     std::fs::write(&image_file, &listed).unwrap();
     let args = [
         "--root",
         ".",
-        "import",
+        "add",
         "component",
-        "upstream/flatpak",
-        "--image",
-        "example",
+        "flatpak",
+        "--library",
+        "upstream",
     ];
     match target {
-        "flow-import-exclusive" => {
+        "flow-add-component-exclusive" => {
             flow.run(target, &root, None, &args);
             let image = std::fs::read_to_string(&image_file).unwrap();
             assert!(
-                buildc::parse::image::listings(&image, "flatpak") == [None],
+                buildc::parse::image::listed(&image, "flatpak") == 1,
                 "{image}"
             );
             assert!(
-                buildc::parse::image::listings(&image, "flathub").is_empty(),
+                buildc::parse::image::listed(&image, "flathub") == 0,
                 "{image}"
             );
             assert!(root.join("components/flathub/manifest.kdl").is_file());
@@ -1583,92 +1489,36 @@ fn setup_import_exclusive(flow: &Flow) {
     }
 }
 
-fn setup_import_untracked(flow: &Flow) {
+fn setup_add_component_unavailable(flow: &Flow) {
     let target = flow.target;
-    let root = flow.repo_sourced("flow-import-untracked");
-    flow.run(
-        target,
-        &root,
-        None,
-        &[
-            "--root",
-            ".",
-            "import",
-            "component",
-            "upstream/flatpak",
-            "--image",
-            "example",
-        ],
-    );
-    let lock = std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap();
-    let entry = &lock[lock
-        .find("component \"flatpak\"")
-        .expect("the lock records flatpak")..];
-    let entry = &entry[..entry.find("\n}").expect("the entry closes")];
-    assert!(!entry.contains("track"), "{lock}");
-}
-
-fn setup_detach_component(flow: &Flow) {
-    let target = flow.target;
-    let root = flow.repo_sourced("flow-detach-component");
-    flow.buildc(
-        &root,
-        &[
-            "--no-tui",
-            "--root",
-            ".",
-            "import",
-            "component",
-            "upstream/flatpak",
-            "--image",
-            "example",
-        ],
-    );
-    let lock = root.join("components/components.lock.kdl");
-    let flatpak = || {
-        let lock = std::fs::read_to_string(&lock).unwrap();
-        let entry = &lock[lock
-            .find("component \"flatpak\"")
-            .expect("the lock records flatpak")..];
-        entry[..entry.find("\n}").expect("the entry closes")].to_string()
-    };
-    assert!(flatpak().contains("track"));
-    flow.run(target, &root, None, &["--root", ".", "detach", "component"]);
-    let entry = flatpak();
-    assert!(!entry.contains("track"), "{entry}");
-    assert!(entry.contains("library \"upstream\""), "{entry}");
-}
-
-fn setup_import_unavailable(flow: &Flow) {
-    let target = flow.target;
-    let root = flow.repo_with("flow-import-unavailable-in", "upstream");
+    let root = flow.repo_with("flow-add-component-unavailable-in", "upstream");
     let image_file = on_debian(&root);
-    flow.run(target, &root, None, &["--root", ".", "import", "component"]);
+    flow.run(target, &root, None, &["--root", ".", "add", "component"]);
     let image = std::fs::read_to_string(&image_file).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "debian-family") == [None],
+        buildc::parse::image::listed(&image, "debian-family") == 1,
         "{image}"
     );
     assert!(!root.join("components/flatpak").exists());
 }
 
-fn setup_import_default(flow: &Flow) {
+fn setup_add_component_default(flow: &Flow) {
     let target = flow.target;
-    let defaulted = flow.repo("flow-import-default-in");
+    let defaulted = flow.repo("flow-add-component-default-in");
     let repo = defaulted.join("repo.kdl");
     let text = std::fs::read_to_string(&repo)
         .unwrap()
         .replace(&scaffolded_sources(), "")
         + "unfinished-repo-property \"kept for buildc check\"\n"
-        + &format!(
-            "sources {{\n    components \"upstream\" {{ dir {:?} }}\n}}\n",
-            crate_dir().join("tests/collections/upstream").display()
+        + &local_libraries(
+            &defaulted,
+            &[("upstream", &crate_dir().join("tests/collections/upstream"))],
         );
     std::fs::write(&repo, text).unwrap();
-    let image_file = defaulted.join("example.image.kdl");
+    let image_file = defaulted.join("example.kdl");
     let image = std::fs::read_to_string(&image_file).unwrap().replace(
-        "    base-image {",
-        "    unfinished-image-property \"kept for buildc check\"\n    base-image {",
+        "\nbase-image {",
+        "\nunfinished-image-property \"kept for buildc check\"\nbase-image {",
     );
     std::fs::write(&image_file, image).unwrap();
     let (_, issues, _) = buildc::declarations(&defaulted);
@@ -1677,28 +1527,28 @@ fn setup_import_default(flow: &Flow) {
         "the fixture must prove edits do not depend on a clean check"
     );
     flow.run(
-        "flow-import-default",
+        "flow-add-component-default",
         &defaulted,
         None,
         &[
             "--no-tui",
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "upstream/browser",
-            "--image",
-            "example",
+            "browser",
+            "--library",
+            "upstream",
         ],
     );
     let declared = std::fs::read_to_string(&repo).unwrap();
-    let image = std::fs::read_to_string(defaulted.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(defaulted.join("example.kdl")).unwrap();
     assert!(
-        declared.contains("sources {\n    components \"upstream\"")
-            && buildc::parse::image::listings(&image, "browser") == [None],
+        declared.contains("\n        upstream { source")
+            && buildc::parse::image::listed(&image, "browser") == 1,
         "{declared}\n{image}"
     );
-    if target == "flow-import-default" {
+    if target == "flow-add-component-default" {
         return;
     }
     flow.run(
@@ -1716,21 +1566,21 @@ fn setup_import_default(flow: &Flow) {
             "description=Local tools",
             "--with",
             "targets=",
-            "--image",
+            "--build",
             "example",
         ],
     );
     let image = std::fs::read_to_string(&image_file).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "browser") == [None]
-            && buildc::parse::image::listings(&image, "local-tool") == [None],
+        buildc::parse::image::listed(&image, "browser") == 1
+            && buildc::parse::image::listed(&image, "local-tool") == 1,
         "{image}"
     );
 }
 
 fn setup_import_edit_guards(flow: &Flow) {
     let malformed = flow.repo_sourced("flow-malformed-edit-in");
-    let image_file = malformed.join("example.image.kdl");
+    let image_file = malformed.join("example.kdl");
     let mut image = std::fs::read_to_string(&image_file).unwrap();
     image.push_str("image {\n");
     std::fs::write(&image_file, image).unwrap();
@@ -1740,11 +1590,11 @@ fn setup_import_edit_guards(flow: &Flow) {
             "--no-tui",
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "upstream/browser",
-            "--image",
-            "example",
+            "browser",
+            "--library",
+            "upstream",
         ],
         vec![
             "--no-tui",
@@ -1757,7 +1607,7 @@ fn setup_import_edit_guards(flow: &Flow) {
             "description=",
             "--with",
             "targets=",
-            "--image",
+            "--build",
             "example",
         ],
     ] {
@@ -1775,16 +1625,16 @@ fn setup_import_edit_guards(flow: &Flow) {
 
     for (name, args, declaration) in [
         (
-            "flow-import-lists",
+            "flow-add-component-lists",
             vec![
                 "--no-tui",
                 "--root",
                 ".",
-                "import",
+                "add",
                 "component",
-                "upstream/browser",
-                "--image",
-                "example",
+                "browser",
+                "--library",
+                "upstream",
             ],
             "browser",
         ),
@@ -1801,213 +1651,83 @@ fn setup_import_edit_guards(flow: &Flow) {
                 "description=",
                 "--with",
                 "targets=",
-                "--image",
+                "--build",
                 "example",
             ],
             "local-tool",
         ),
     ] {
         let root = flow.repo_sourced(name);
-        let image_file = root.join("example.image.kdl");
+        let image_file = root.join("example.kdl");
         flow.buildc(&root, &args);
         let image = std::fs::read_to_string(&image_file).unwrap();
         assert!(
-            buildc::parse::image::listings(&image, declaration) == [None],
+            buildc::parse::image::listed(&image, declaration) == 1,
             "{image}"
         );
     }
+}
 
-    let root = flow.repo_sourced("flow-import-guards");
+fn setup_add_component_pin(flow: &Flow) {
+    let root = flow.repo("flow-add-component-pin");
+    seed_library(&root);
+    let pin = crate::harness::LIBRARY_COMMIT;
     flow.buildc(
         &root,
         &[
             "--no-tui",
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "upstream/browser",
-            "--image",
-            "example",
+            "flatpak",
+            "--pin",
+            pin,
         ],
     );
-    let (list, issues, _) = buildc::declarations(&root);
-    assert!(issues.is_empty(), "{}", issues.plain());
-    let import = |image: Option<&str>| {
-        buildc::import::Component::collect(
-            buildc::import::Request {
-                name: Some("upstream/flatpak".into()),
-                image: image.map(str::to_string),
-                datastream: None,
-                dependencies: false,
-            },
-            &root,
-            &list.sources,
-            false,
-            &common::prompt::Prompt::silent(),
-            &mut |_| {},
-        )
-    };
-    import(None)
-        .unwrap_or_else(|err| panic!("{}", err.message()))
-        .apply(&root, &list.sources)
-        .unwrap();
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(root.join("example.kdl")).unwrap();
     assert!(
-        buildc::parse::image::listings(&image, "flatpak").is_empty(),
+        image.contains(&format!("\nflatpak pin=\"{pin}\"\n")),
         "{image}"
     );
-    assert!(root.join("components/flatpak/manifest.kdl").is_file());
-
-    let fork = root.join("components/flatpak/fork.sh");
-    std::fs::write(&fork, "true\n").unwrap();
-    let held = import(Some("example"))
-        .err()
-        .map(|err| err.message().to_string())
-        .unwrap_or_default();
-    assert!(
-        held.starts_with("`flatpak` is already in this repository and differs"),
-        "{held}"
-    );
-
-    std::fs::remove_file(&fork).unwrap();
-    import(Some("example"))
-        .unwrap_or_else(|err| panic!("{}", err.message()))
-        .apply(&root, &list.sources)
-        .unwrap();
-    let image = std::fs::read_to_string(root.join("example.image.kdl")).unwrap();
-    assert!(
-        buildc::parse::image::listings(&image, "flatpak") == [None],
-        "{image}"
-    );
+    flow.buildc(&root, &["--no-tui", "--root", ".", "check"]);
 }
 
-fn setup_import_several(flow: &Flow) {
+fn setup_add_component_several(flow: &Flow) {
     let several = flow.repo_sourced("flow-several");
     flow.run(
-        "flow-import-several",
+        "flow-add-component-several",
         &several,
         None,
-        &["--root", ".", "import", "component"],
+        &["--root", ".", "add", "component"],
     );
-    let image = std::fs::read_to_string(several.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(several.join("example.kdl")).unwrap();
     for component in ["flatpak", "browser", "custom-kernel"] {
         assert!(
-            buildc::parse::image::listings(&image, component) == [None],
+            buildc::parse::image::listed(&image, component) == 1,
             "{image}"
         );
     }
-    assert!(std::fs::read_to_string(several.join("repo.kdl"))
-        .unwrap()
-        .contains("    kernel-freshness\n"));
     flow.buildc(&several, &["--no-tui", "--root", ".", "check"]);
 }
 
-fn setup_import_nested(flow: &Flow) {
+fn setup_add_component_nested(flow: &Flow) {
     let nested = flow.repo_with("flow-nested", "grouped");
     flow.run(
-        "flow-import-nested",
+        "flow-add-component-nested",
         &nested,
         None,
-        &["--root", ".", "import", "component"],
+        &["--root", ".", "add", "component"],
     );
-    let image = std::fs::read_to_string(nested.join("example.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(nested.join("example.kdl")).unwrap();
     assert!(
-        image.contains("    hardening {\n        coredumps\n    }\n"),
+        image.contains("\nhardening {\n    coredumps\n}\n"),
         "{image}"
     );
-    assert!(nested
-        .join("components/hardening/coredumps/manifest.kdl")
-        .is_file());
     flow.buildc(&nested, &["--no-tui", "--root", ".", "check"]);
     flow.buildc(&nested, &["--no-tui", "--root", ".", "generate"]);
-    assert!(nested
-        .join("generated/example/components/hardening/coredumps.sh")
-        .is_file());
-    let (list, _, _) = buildc::declarations(&nested);
-    let refused = buildc::import::find(
-        &nested,
-        &list.sources,
-        "grouped/hardening//coredumps",
-        false,
-    )
-    .err()
-    .expect("an empty part of a path is refused");
-    assert_eq!(
-        refused,
-        "`grouped/hardening//coredumps` is not a component: a component is named by a path of names, \
-             as `<path>`, or `<owner>/<path>` to name one collection, and no part of it may be \
-             empty or start with a dot"
-    );
-}
-
-fn setup_import_suffix(flow: &Flow) {
-    let suffix = flow.repo_with("flow-suffix", "grouped");
-    flow.run(
-        "flow-import-suffix",
-        &suffix,
-        None,
-        &[
-            "--root",
-            ".",
-            "import",
-            "component",
-            "coredumps",
-            "--image",
-            "example",
-        ],
-    );
-    let image = std::fs::read_to_string(suffix.join("example.image.kdl")).unwrap();
-    assert!(
-        image.contains("    hardening {\n        coredumps\n    }\n"),
-        "{image}"
-    );
-    assert!(
-        buildc::parse::image::listings(&image, "coredumps").is_empty(),
-        "{image}"
-    );
-    flow.buildc(&suffix, &["--no-tui", "--root", ".", "check"]);
-    flow.buildc(&suffix, &["--no-tui", "--root", ".", "generate"]);
-    assert!(suffix
-        .join("generated/example/components/hardening/coredumps.sh")
-        .is_file());
-}
-
-fn setup_import_suffix_ambiguous(flow: &Flow) {
-    let both = flow.repo("flow-suffix-ambiguous");
-    let collections = crate_dir().join("tests/collections");
-    let mut repo = std::fs::read_to_string(both.join("repo.kdl"))
-        .unwrap()
-        .replace(&scaffolded_sources(), "");
-    repo.push_str(&format!(
-        "sources {{\n    components \"grouped\" {{ dir {:?} }}\n    components \"namesake\" {{ dir {:?} }}\n}}\n",
-        collections.join("grouped").display(),
-        collections.join("namesake").display()
-    ));
-    std::fs::write(both.join("repo.kdl"), repo).unwrap();
-    flow.run(
-        "flow-import-suffix-ambiguous",
-        &both,
-        None,
-        &[
-            "--root",
-            ".",
-            "import",
-            "component",
-            "coredumps",
-            "--image",
-            "example",
-        ],
-    );
-    let image = std::fs::read_to_string(both.join("example.image.kdl")).unwrap();
-    assert!(
-        image.contains("    hardening {\n        coredumps\n    }\n"),
-        "{image}"
-    );
-    let lock = std::fs::read_to_string(both.join("components/components.lock.kdl")).unwrap();
-    assert!(lock.contains("    library \"grouped\"\n"), "{lock}");
-    assert!(!image.contains("namesake"), "{image}");
-    assert!(!image.contains("sandbox"), "{image}");
+    let plan = std::fs::read_to_string(nested.join("generated/plan.json")).unwrap();
+    assert!(plan.contains("\"path\": \"hardening/coredumps\""), "{plan}");
 }
 
 fn setup_collides(flow: &Flow) {
@@ -2021,25 +1741,24 @@ fn setup_collides(flow: &Flow) {
     )
     .unwrap();
     std::fs::write(collide.join(remotes).join("remotes.list"), "editor\n").unwrap();
-    let image = collide.join("example.image.kdl");
-    let listed = listing(&std::fs::read_to_string(&image).unwrap(), "    editor\n");
+    let image = collide.join("example.kdl");
+    let listed = listing(&std::fs::read_to_string(&image).unwrap(), "editor\n");
     assert!(
-        buildc::parse::image::listings(&listed, "editor") == [None],
+        buildc::parse::image::listed(&listed, "editor") == 1,
         "{listed}"
     );
     std::fs::write(&image, listed).unwrap();
-    flow.run(
-        "flow-import-collides",
+    flow.buildc(
         &collide,
-        None,
         &[
+            "--no-tui",
             "--root",
             ".",
-            "import",
+            "add",
             "component",
-            "upstream/flatpak",
-            "--image",
-            "example",
+            "flatpak",
+            "--library",
+            "upstream",
         ],
     );
     assert!(
@@ -2048,11 +1767,8 @@ fn setup_collides(flow: &Flow) {
             .issues
             .plain()
             .contains("`flatpak` overwrites `/usr/share/example/remotes.list`"),
-        "check reports the collision the import said"
+        "check reports the collision"
     );
-    if target == "flow-import-collides" {
-        return;
-    }
     flow.run(target, &collide, None, &["--root", ".", "check"]);
 }
 
@@ -2134,7 +1850,6 @@ flow_cases! {
     flow_check_unmet => "flow-check-unmet",
     flow_check_unpinned => "flow-check-unpinned",
     flow_coverage => "flow-coverage",
-    flow_create_flavour => "flow-create-flavour",
     flow_create_image => "flow-create-image",
     flow_create_component => "flow-create-component",
     flow_create_component_with_schema_issues => "flow-create-component-with-schema-issues",
@@ -2142,45 +1857,32 @@ flow_cases! {
     flow_create_repo => "flow-create-repo",
     flow_create_repo_forgejo => "flow-create-repo-forgejo",
     flow_create_repo_no_gh => "flow-create-repo-no-gh",
+    flow_create_repo_minimal => "flow-create-repo-minimal",
     flow_create_repo_offer => "flow-create-repo-offer",
     flow_create_repo_signed_in => "flow-create-repo-signed-in",
     flow_create_repo_signed_out => "flow-create-repo-signed-out",
     flow_image_default => "flow-image-default",
-    flow_import_collides => "flow-import-collides",
-    flow_import_conforms => "flow-import-conforms",
-    flow_import_conforms_declined => "flow-import-conforms-declined",
-    flow_import_conforms_enforced => "flow-import-conforms-enforced",
-    flow_import_datastream => "flow-import-datastream",
-    flow_import_declined => "flow-import-declined",
-    flow_import_dependencies => "flow-import-dependencies",
-    flow_import_exclusive => "flow-import-exclusive",
-    flow_import_exclusive_no_tui => "flow-import-exclusive-no-tui",
-    flow_import_default => "flow-import-default",
-    flow_import_family => "flow-import-family",
-    flow_import_kernel => "flow-import-kernel",
-    flow_import_component => "flow-import-component",
-    flow_import_none => "flow-import-none",
-    flow_import_present => "flow-import-present",
-    flow_import_present_local => "flow-import-present-local",
-    flow_import_nested => "flow-import-nested",
-    flow_import_requires => "flow-import-requires",
-    flow_import_requires_namesakes => "flow-import-requires-namesakes",
-    flow_import_requires_no_tui => "flow-import-requires-no-tui",
-    flow_import_requires_no_terminal => "flow-import-requires-no-terminal",
-    flow_import_several => "flow-import-several",
-    flow_import_skip => "flow-import-skip",
-    flow_import_suffix => "flow-import-suffix",
-    flow_import_suffix_ambiguous => "flow-import-suffix-ambiguous",
-    flow_import_unavailable => "flow-import-unavailable",
-    flow_import_untracked => "flow-import-untracked",
-    flow_detach_component => "flow-detach-component",
+    flow_add_component_declined => "flow-add-component-declined",
+    flow_add_component_dependencies => "flow-add-component-dependencies",
+    flow_add_component_exclusive => "flow-add-component-exclusive",
+    flow_add_component_exclusive_no_tui => "flow-add-component-exclusive-no-tui",
+    flow_add_component_default => "flow-add-component-default",
+    flow_add_component_family => "flow-add-component-family",
+    flow_add_component => "flow-add-component",
+    flow_add_component_nested => "flow-add-component-nested",
+    flow_add_component_requires => "flow-add-component-requires",
+    flow_add_component_requires_namesakes => "flow-add-component-requires-namesakes",
+    flow_add_component_requires_no_tui => "flow-add-component-requires-no-tui",
+    flow_add_component_requires_no_terminal => "flow-add-component-requires-no-terminal",
+    flow_add_component_several => "flow-add-component-several",
+    flow_add_component_skip => "flow-add-component-skip",
+    flow_add_component_unavailable => "flow-add-component-unavailable",
     flow_key_absent => "flow-key-absent",
     flow_key_kinds => "flow-key-kinds",
     flow_key_no_kind => "flow-key-no-kind",
     flow_key_refused => "flow-key-refused",
     flow_key_refused_no_kind => "flow-key-refused-no-kind",
     flow_key_undeclared => "flow-key-undeclared",
-    flow_component_in_flavour => "flow-component-in-flavour",
     flow_component_taken => "flow-component-taken",
     flow_component_two_images => "flow-component-two-images",
     flow_set_claims => "flow-set-claims",
@@ -2188,9 +1890,20 @@ flow_cases! {
     flow_set_claims_two => "flow-set-claims-two",
     flow_set_conforms => "flow-set-conforms",
     flow_set_conforms_again => "flow-set-conforms-again",
+    flow_set_conforms_copy => "flow-set-conforms-copy",
+    flow_set_conforms_copy_cancelled => "flow-set-conforms-copy-cancelled",
+    flow_set_library_named => "flow-set-library-named",
+    flow_set_conforms_pinned => "flow-set-conforms-pinned",
     flow_set_conforms_enforced => "flow-set-conforms-enforced",
     flow_set_workflows => "flow-set-workflows",
     flow_unanswered => "flow-unanswered",
+}
+
+#[test]
+fn add_component_pin() {
+    let flow = Flow::new("add-component-pin");
+    flow_case(&flow);
+    flow.done();
 }
 
 #[test]
@@ -2323,7 +2036,7 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
         (
             format!("'{binary}' --root . create image"),
             vec![(b"image name".as_slice(), b"\x1b".as_slice())],
-            "cancel-default.image.kdl",
+            "cancel-default.kdl",
         ),
         (
             format!("'{binary}' --root . create image"),
@@ -2331,7 +2044,7 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
                 (b"image name".as_slice(), b"Beta\r".as_slice()),
                 (b"base image".as_slice(), b"\x1b".as_slice()),
             ],
-            "beta.image.kdl",
+            "beta.kdl",
         ),
     ] {
         let before = std::fs::read_to_string(root.join("repo.kdl")).unwrap();
@@ -2359,7 +2072,7 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
         "{errors}{}",
         String::from_utf8_lossy(&raw)
     );
-    let image = std::fs::read_to_string(root.join("gamma.image.kdl")).unwrap();
+    let image = std::fs::read_to_string(root.join("gamma.kdl")).unwrap();
     assert!(!image.contains("family"), "{image}");
     let base =
         std::fs::read_to_string(root.join("components/base-image/own/manifest.kdl")).unwrap();

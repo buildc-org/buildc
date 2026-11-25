@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 pub const COMPONENTS: &str = "components";
+pub const ROOT_LIBRARY: &str = "local-library";
 pub const GENERATED: &str = "generated";
 pub const OUT: &str = "out";
 pub const KEYS: &str = "keys";
@@ -52,7 +53,7 @@ impl Policy {
     }
 }
 
-// A broad family precedes the specific families it covers, because the specific directory overrides the broad one.
+/// A broad family comes before each specific family that it covers because the specific folder overrides the broad one.
 pub const FAMILY_DIRS: [(&str, &[&str]); 6] = [
     ("deb", &["debian", "ubuntu"]),
     ("rpm", &["fedora", "rhel"]),
@@ -106,8 +107,6 @@ pub fn component_owned(name: &str) -> bool {
         || FAMILY_DIRS.iter().any(|(dir, _)| *dir == name)
 }
 
-/// Inside a component only `manifest.kdl` marks a nested component.
-/// The `marks` test applies only outside every component.
 pub fn component_dirs(
     tree: &Path,
     marks: impl Fn(&Path) -> bool,
@@ -118,34 +117,203 @@ pub fn component_dirs(
 
 fn walk_components(
     tree: &Path,
-    tree_is_component: bool,
+    in_component: bool,
     marks: impl Fn(&Path) -> bool,
     skip: impl Fn(&str) -> bool,
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let mut dirs = vec![(tree.to_path_buf(), tree_is_component, tree_is_component)];
-    while let Some((dir, dir_is_component, dir_in_component)) = dirs.pop() {
+    let mut dirs = vec![(tree.to_path_buf(), in_component)];
+    while let Some((dir, in_component)) = dirs.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             let path = entry.path();
-            if !path.is_dir() || skip(&name) || (dir_is_component && component_owned(&name)) {
+            if let Some(stem) = standalone(&name).filter(|stem| !skip(stem)) {
+                let named = dir.join(stem);
+                // If a folder of the stem exists, then the walk lists the component when it reaches that folder.
+                if !named.is_dir() && marks(&named) {
+                    out.push(named);
+                }
                 continue;
             }
-            let component = match dir_in_component {
-                true => is_member(&path),
-                false => marks(&path),
-            };
+            if !path.is_dir() || skip(&name) || (in_component && component_owned(&name)) {
+                continue;
+            }
+            let component = marks(&path);
             if component {
                 out.push(path.clone());
             }
-            // A symlinked directory is never entered, so a cycle through a link cannot repeat the walk.
+            // A link cycle cannot repeat the walk because the walk never enters a linked folder.
             if !entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
-                dirs.push((path, component, dir_in_component || component));
+                dirs.push((path, component));
             }
         }
     }
     out.sort();
     out
+}
+
+fn standalone(name: &str) -> Option<&str> {
+    name.strip_suffix(".kdl")
+        .filter(|_| name != MANIFEST_FILE && name != ORIGINS_FILE)
+}
+
+pub fn sibling(dir: &Path) -> PathBuf {
+    let mut name = dir.file_name().unwrap_or_default().to_os_string();
+    name.push(".kdl");
+    dir.with_file_name(name)
+}
+
+fn sibling_manifest(dir: &Path) -> bool {
+    sibling(dir).is_file()
+}
+
+pub enum Escape {
+    Outside {
+        at: PathBuf,
+        real: PathBuf,
+    },
+    /// A second path to the same files would let one component change another.
+    Aliased {
+        at: PathBuf,
+        real: PathBuf,
+    },
+    Leaves {
+        at: PathBuf,
+        real: PathBuf,
+    },
+    Loop(PathBuf),
+}
+
+pub fn leaves(dir: &Path, path: &Path) -> Option<Escape> {
+    let home = dir.canonicalize().ok()?;
+    let real = path.canonicalize().ok()?;
+    let inside =
+        real.starts_with(&home) && !real.ancestors().take_while(|at| *at != home).any(is_member);
+    (!inside).then(|| Escape::Leaves {
+        at: path.to_path_buf(),
+        real,
+    })
+}
+
+fn misplaced(tree: &Path, real_tree: &Path, at: &Path) -> Option<Escape> {
+    let real = at.canonicalize().ok()?;
+    if !real.starts_with(real_tree) {
+        return Some(Escape::Outside {
+            at: at.to_path_buf(),
+            real,
+        });
+    }
+    let placed = at.strip_prefix(tree).map(|rel| real_tree.join(rel));
+    placed
+        .is_ok_and(|placed| placed != real)
+        .then(|| Escape::Aliased {
+            at: at.to_path_buf(),
+            real,
+        })
+}
+
+fn holds_overlay(dir: &Path, at: &Path) -> bool {
+    let component = |at: &Path| at == dir || is_component(at);
+    component(at)
+        || (FAMILY_DIRS
+            .iter()
+            .any(|(name, _)| at.file_name().is_some_and(|last| last == *name))
+            && at.parent().is_some_and(component))
+}
+
+pub fn in_overlay(dir: &Path, rel: &Path) -> bool {
+    rel.ancestors().skip(1).any(|above| {
+        above.file_name().is_some_and(|name| name == OVERLAY)
+            && holds_overlay(dir, &dir.join(above.parent().unwrap_or(Path::new(""))))
+    })
+}
+
+pub fn escape(tree: &Path, dir: &Path) -> Option<Escape> {
+    let real_tree = tree.canonicalize().ok()?;
+    if let Some(found) =
+        misplaced(tree, &real_tree, dir).or_else(|| misplaced(tree, &real_tree, &sibling(dir)))
+    {
+        return Some(found);
+    }
+    let mut dirs: Vec<(PathBuf, PathBuf, Vec<PathBuf>)> =
+        vec![(dir.to_path_buf(), dir.to_path_buf(), Vec::new())];
+    while let Some((here, owner, followed)) = dirs.pop() {
+        for entry in std::fs::read_dir(&here).into_iter().flatten().flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            // The build copies a link inside an overlay into the image and never reads through it.
+            // The link resolves on the running system.
+            let overlay = entry.file_name() == OVERLAY && holds_overlay(&owner, &here);
+            if kind.is_symlink() {
+                if let Some(found) = leaves(&owner, &path) {
+                    return Some(found);
+                }
+                let Ok(real) = path.canonicalize() else {
+                    continue;
+                };
+                if overlay || !real.is_dir() {
+                    continue;
+                }
+                let real_here = here.canonicalize().ok();
+                if real_here
+                    .iter()
+                    .chain(&followed)
+                    .any(|at| at.starts_with(&real))
+                {
+                    return Some(Escape::Loop(path));
+                }
+                let mut next = followed.clone();
+                next.push(real);
+                dirs.push((path, owner.clone(), next));
+            } else if kind.is_dir() && !overlay {
+                let owner = match is_member(&path) {
+                    true => path.clone(),
+                    false => owner.clone(),
+                };
+                dirs.push((path, owner, followed.clone()));
+            }
+        }
+    }
+    None
+}
+
+pub fn contained(tree: &Path, dir: &Path, owner: &str, name: &str) -> Result<(), String> {
+    match escape(tree, dir) {
+        None => Ok(()),
+        Some(escape) => {
+            let (at, title) = escaped(&escape, &format!("`{name}` in library `{owner}`"));
+            Err(format!("{}: {title}", at.display()))
+        }
+    }
+}
+
+pub fn escaped<'a>(escape: &'a Escape, held: &str) -> (&'a Path, String) {
+    match escape {
+        Escape::Outside { at, real } => (
+            at,
+            format!("{held} resolves to {} outside its library", real.display()),
+        ),
+        Escape::Aliased { at, real } => (
+            at,
+            format!(
+                "{held} resolves through a link to {}, the path of another component",
+                real.display()
+            ),
+        ),
+        Escape::Leaves { at, real } => (
+            at,
+            format!(
+                "{held} holds a link to {} outside the component",
+                real.display()
+            ),
+        ),
+        Escape::Loop(at) => (
+            at,
+            format!("{held} holds a link that leads back into itself"),
+        ),
+    }
 }
 
 pub fn member_dirs(tree: &Path) -> Vec<PathBuf> {
@@ -160,10 +328,10 @@ pub fn held_components(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn is_member(path: &Path) -> bool {
-    path.join(MANIFEST_FILE).is_file()
+    path.join(MANIFEST_FILE).is_file() || sibling_manifest(path)
 }
 
-fn is_dot(name: &str) -> bool {
+pub(crate) fn is_dot(name: &str) -> bool {
     name.starts_with('.')
 }
 
@@ -177,8 +345,11 @@ pub fn script(root: &Path, name: &str) -> String {
 }
 
 pub fn is_component(dir: &Path) -> bool {
+    dir.join(MANIFEST_FILE).is_file() || sibling_manifest(dir) || has_content(dir)
+}
+
+pub fn has_content(dir: &Path) -> bool {
     [
-        MANIFEST_FILE,
         SCRIPT,
         REPO_SCRIPT,
         PACKAGES_SCRIPT,
@@ -193,28 +364,28 @@ pub fn is_component(dir: &Path) -> bool {
 pub const WORKFLOW_DIR: &str = ".github/workflows";
 
 pub const REPO_FILE: &str = "repo.kdl";
-pub const IMAGE_FILE: &str = "image.kdl";
-pub const IMAGE_SUFFIX: &str = ".image.kdl";
 pub const MANIFEST_FILE: &str = "manifest.kdl";
-pub const LOCK_FILE: &str = "components.lock.kdl";
+pub const ORIGINS_FILE: &str = crate::provenance::origins::FILE;
 
 pub const MOUNTED: &str = "out/buildc";
 pub const SOURCES_CACHE: &str = ".cache/sources";
 
-pub fn is_image_file(name: &str) -> bool {
-    name == IMAGE_FILE || name.ends_with(IMAGE_SUFFIX)
-}
-
-pub fn as_image_file(name: &str) -> String {
-    format!("{}{IMAGE_SUFFIX}", name.trim_end_matches(".kdl"))
-}
-
 pub fn components(root: &Path) -> PathBuf {
-    root.join(COMPONENTS)
+    let folder = std::fs::read_to_string(root.join(REPO_FILE))
+        .ok()
+        .and_then(|text| crate::parse::repo::components_folder(&text));
+    root.join(folder.as_deref().unwrap_or(COMPONENTS))
 }
 
-pub fn lock(root: &Path) -> PathBuf {
-    components(root).join(LOCK_FILE)
+pub fn library_components(tree: &Path) -> PathBuf {
+    match tree.join(REPO_FILE).is_file() {
+        true => components(tree),
+        false => tree.to_path_buf(),
+    }
+}
+
+pub fn origins(root: &Path) -> PathBuf {
+    components(root).join(ORIGINS_FILE)
 }
 
 pub fn component(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
@@ -236,7 +407,33 @@ pub fn nonempty(path: &Path) -> bool {
 }
 
 pub fn manifest(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
+    manifest_at(&component(root, dir))
+}
+
+pub fn manifest_at(dir: &Path) -> PathBuf {
+    match sibling_manifest(dir) {
+        true => sibling(dir),
+        false => dir.join(MANIFEST_FILE),
+    }
+}
+
+pub fn manifest_in_dir(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
     component(root, dir).join(MANIFEST_FILE)
+}
+
+pub fn manifest_file(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
+    sibling(&component(root, dir))
+}
+
+pub fn manifests(root: &Path, dir: impl AsRef<Path>) -> Vec<PathBuf> {
+    manifests_at(&component(root, dir))
+}
+
+pub fn manifests_at(dir: &Path) -> Vec<PathBuf> {
+    [sibling(dir), dir.join(MANIFEST_FILE)]
+        .into_iter()
+        .filter(|file| file.is_file())
+        .collect()
 }
 
 pub fn generated(root: &Path) -> PathBuf {
@@ -279,15 +476,19 @@ pub const REPOSITORY: Tree = Tree {
     places: &[
         Place { path: &[REPO_FILE], writer: "`buildc create repo`, then the user", tracked: true,
             what: "The settings of the whole repository. See [`repo.kdl`](repo.md)." },
-        Place { path: &[IMAGE_FILE], writer: "`buildc create image`, then the user", tracked: true,
-            what: "The images of the repository. See [`image.kdl`](image.md)." },
-        Place { path: &["<name>", IMAGE_SUFFIX], writer: "`buildc create image`, then the user", tracked: true,
-            what: "More images. The name in front of the suffix is decorative." },
-        Place { path: &[COMPONENTS, "/"], writer: "the user, `buildc create component` or `buildc import component`", tracked: true,
-            what: "The components of the repository, one directory each. See [Components](components.md)." },
-        Place { path: &[COMPONENTS, "/", LOCK_FILE], writer: "`buildc import component`, `buildc fetch components` and `buildc detach component`", tracked: true,
-            what: "Where each imported component came from, and what its content hashed to. See \
-                [`components.lock.kdl`](lock.md)." },
+        Place { path: &[crate::provenance::repo_lock::FILE], writer: "`buildc generate`", tracked: true,
+            what: "The commit and content hash of each remote component that each build reads. See \
+                [`repo.lock.kdl`](repo-lock.md)." },
+        Place { path: &[COMPONENTS, "/"], writer: "the user, `buildc create component` or `buildc copy component`", tracked: true,
+            what: "The components of the repository. A component is a directory, a `<name>.kdl` file \
+                beside where its directory would be, or an inline definition in another component. \
+                See [Components](components.md)." },
+        Place { path: &["<name>.kdl"], writer: "`buildc create image`, then the user", tracked: true,
+            what: "An image file at the repository root. `builds` in `repo.kdl` names it as \
+                `./<name>`, and a bare child in it reads from the library root." },
+        Place { path: &[COMPONENTS, "/", ORIGINS_FILE], writer: "`buildc copy component`", tracked: true,
+            what: "Where each copied component came from, and what its content hashed to. See \
+                [`origins.kdl`](origins.md)." },
         Place { path: &[KEYS, "/", PUBLIC_KEYS, "/"], writer: "`buildc create key` or `buildc set key`", tracked: true,
             what: "The public half of each key, at the path it has in the image." },
         Place { path: &[KEYS, "/", PRIVATE_KEYS, "/"], writer: "`buildc create key`", tracked: false,
@@ -299,12 +500,12 @@ pub const REPOSITORY: Tree = Tree {
             what: "The scripts that the repository keeps in place of the ones `buildc generate` \
                 writes into `generated/scripts/`." },
         Place { path: &[WORKFLOW_DIR, "/"], writer: "`buildc generate`", tracked: true,
-            what: "The CI workflows that `workflows` in `repo.kdl` names." },
+            what: "The CI workflows that the `github` block in `repo.kdl` names." },
         Place { path: &[OUT, "/"], writer: "`buildc`", tracked: false,
             what: "Local exports, caches and scratch. `buildc` reads nothing here as a declaration." },
         Place { path: &[SOURCES_CACHE, "/"], writer: "`buildc`", tracked: false,
-            what: "The libraries that `buildc import component` fetches and copies a component from. \
-                `buildc check`, `buildc generate` and `buildc build` read nothing here." },
+            what: "The remote libraries, one tree for each commit. A build reads a remote component \
+                from here at the commit that `repo.lock.kdl` records." },
         Place { path: &["disk_config/"], writer: "`buildc create repo`, then the user", tracked: true,
             what: "The settings that bootc-image-builder reads when it builds a Fedora or RHEL disk \
                 image. `disk.toml` sets the smallest size of `/`." },
@@ -322,16 +523,16 @@ pub const REPOSITORY: Tree = Tree {
 #[rustfmt::skip]
 pub const COMPONENT_DIR: Tree = Tree {
     root: "components/<component-name>/",
-    intro: "A component is a directory under `components/`, at whatever depth groups it, and its path \
-        names the component. The build reads the files below by convention, so a component can be as \
-        small as one `component.sh`. Any one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, \
-        `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component \
-        can also hold other components. Inside a component only `manifest.kdl` marks a nested \
-        component. Every other directory inside a component is content of the nearest component \
-        that holds it. An image that lists a nested component also gets the nearest \
-        component that holds it, and an image that lists the outer component gets none of the components \
-        inside it. The walk that finds \
-        components passes over the directories that the build of a component reads.",
+    intro: "A directory component is a directory under `components/`, at whatever depth groups it, \
+        and its path names the component. A component can also be a `<name>.kdl` file or an inline \
+        definition in another component, as [the component schema](component.md) describes. The build \
+        reads the files below by convention, so a component can be as small as one `component.sh`. Any \
+        one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, \
+        `Containerfile.inc` and `files/` marks a directory as a component. A component can also hold \
+        other components. A tree that lists a nested component under its bare parent segments, as \
+        `hardware { nvidia }`, also lists each parent segment that is a component. A tree that lists \
+        the outer component gets none of the components inside it. The walk that finds components \
+        passes over the directories that the build of a component reads.",
     places: &[
         Place { path: &[MANIFEST_FILE], writer: "", tracked: true,
             what: "What the component declares about itself. A component with only a script and \
@@ -414,6 +615,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_library_keeps_its_components_where_its_repo_file_says() {
+        let root = std::env::temp_dir().join(format!("buildc-library-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let folder = library_components(&root);
+        std::fs::write(root.join(REPO_FILE), "schema-version 1\n").unwrap();
+        let inferred = library_components(&root);
+        std::fs::write(
+            root.join(REPO_FILE),
+            "schema-version 1\nlibrary { components \"src/parts\" }\n",
+        )
+        .unwrap();
+        let declared = library_components(&root);
+        let own = components(&root);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(folder, root);
+        assert_eq!(inferred, root.join(COMPONENTS));
+        assert_eq!(declared, root.join("src/parts"));
+        assert_eq!(own, root.join("src/parts"));
+    }
+
+    #[test]
     fn a_held_component_is_what_the_library_lists_inside_the_component() {
         let root = std::env::temp_dir().join(format!("buildc-held-dirs-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -429,6 +652,27 @@ mod tests {
             ["a", "a/b", "a/group/files/d"].map(|dir| root.join(dir))
         );
         assert_eq!(held, [PathBuf::from("b"), PathBuf::from("group/files/d")]);
+    }
+
+    #[test]
+    fn the_walk_lists_a_standalone_file_once_and_passes_over_a_skipped_one() {
+        let root = std::env::temp_dir().join(format!("buildc-standalone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("b/files")).unwrap();
+        std::fs::create_dir_all(root.join("c")).unwrap();
+        // The `b.kdl` file and the `b` folder name one component.
+        for file in [
+            "a.kdl",
+            "b.kdl",
+            "c/manifest.kdl",
+            "_template.kdl",
+            ORIGINS_FILE,
+        ] {
+            std::fs::write(root.join(file), "").unwrap();
+        }
+        let found = component_dirs(&root, is_component, |name| name == "_template");
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(found, ["a", "b", "c"].map(|dir| root.join(dir)));
     }
 
     #[test]
@@ -456,35 +700,6 @@ mod tests {
         .collect();
         assert_eq!(found, ["a", "a/b", "group/f", "linked"]);
         std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn below_a_component_only_a_manifest_marks_a_nested_component() {
-        let root = std::env::temp_dir().join(format!("buildc-nested-line-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        for (dir, file) in [
-            ("a", SCRIPT),
-            ("a/script", SCRIPT),
-            ("a/vendor/deep", SCRIPT),
-            ("a/listed", "flatpaks.list"),
-            ("a/own", MANIFEST_FILE),
-            ("a/vendor/owned", MANIFEST_FILE),
-            ("top", "flatpaks.list"),
-        ] {
-            std::fs::create_dir_all(root.join(dir)).unwrap();
-            std::fs::write(root.join(dir).join(file), "").unwrap();
-        }
-
-        let found: Vec<String> = component_dirs(
-            &root,
-            |path| is_component(path) || path.join("flatpaks.list").is_file(),
-            |name| name.starts_with('.'),
-        )
-        .iter()
-        .map(|path| path.strip_prefix(&root).unwrap().display().to_string())
-        .collect();
-        std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(found, ["a", "a/own", "a/vendor/owned", "top"]);
     }
 
     #[test]

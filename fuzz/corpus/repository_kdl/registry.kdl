@@ -1,0 +1,5 @@
+hschema-version 1
+registry "ghcr.io/fuzz"
+builds default="fuzz" {
+    fuzz "./image"
+}

@@ -2,7 +2,7 @@
 source: tests/golden/harness.rs
 ---
   x `core/hello` is not a component
-    ,-[tests/repos/wrong-pin/image.kdl:9:9]
+    ,-[tests/repos/wrong-pin/components/minimal.kdl:9:9]
   8 |     core {
   9 |         hello
     :         ^^|^^

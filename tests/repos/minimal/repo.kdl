@@ -1,2 +1,10 @@
 schema-version 1
 name "Minimal"
+
+builds {
+    minimal {
+        install {
+            bootloader "grub2"
+        }
+    }
+}

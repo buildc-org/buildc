@@ -1,4 +1,0 @@
-dev-tools
-A set of developer tools
-fedora
-2

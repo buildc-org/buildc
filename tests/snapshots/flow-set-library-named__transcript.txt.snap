@@ -1,0 +1,9 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+
+flow-set-library-named--flow-set-library-named-in/
+└── ~ repo.kdl  `buildc` added to libraries under `remote`
+==== exit 0

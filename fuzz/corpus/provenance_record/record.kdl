@@ -1,1 +1,3 @@
-imported "library" { content "abc" pin { version "v1" } }
+origin "https://github.com/buildc-org/library" {
+    component "browser/firefox" as="firefox" pin="0123456789abcdef0123456789abcdef01234567" hash="abc"
+}

@@ -89,13 +89,13 @@ workstation/
 ├── scripts/
 │   └── Containerfile.skeleton
 ├── repo.kdl
-└── workstation.image.kdl
+└── workstation.kdl
 ```
 
-Optionally copy a component from a library the repository declares:
+Optionally add a component from a library the repository declares:
 
 ```sh
-buildc import component
+buildc add component
 ```
 
 Generate the build files and configured CI workflows:
@@ -143,10 +143,10 @@ The full documentation is at
 - [KDL syntax](docs/kdl.md)
 - [Repository layout](docs/schema/repository.md)
 - [Repository schema](docs/schema/repo.md)
-- [Image schema](docs/schema/image.md)
 - [Component layout](docs/schema/components.md)
 - [Component schema](docs/schema/component.md)
-- [Component lock schema](docs/schema/lock.md)
+- [Repository lock schema](docs/schema/repo-lock.md)
+- [Component origins schema](docs/schema/origins.md)
 
 The schema references are generated from the same definitions that `buildc`
 uses to validate repositories.

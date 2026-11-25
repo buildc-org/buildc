@@ -1,0 +1,18 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+Dependencies the images do not provide:
+
+  community/browser > example
+    requires: flatpak
+    provider component: upstream/flatpak
+
+Add these provider components? (Yes/No)
+No
+
+
+example/
+└── ~ example.kdl  `browser` added to `example`
+==== exit 0

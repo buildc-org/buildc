@@ -31,11 +31,9 @@ A claim the tool records rather than certifies. The scan is what confirms it.
 | --- | --- |
 | declared | `ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca` |
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `one` | https://github.com/owner/components/archive/refs/tags/{version}.tar.gz | v1.0.0 | not declared | none |
+It is the repository's own copy of `hello` from `https://github.com/owner/components` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was imported.** It is the repository's own copy, and the lock entry records where it came from.
+**It has been edited since it was copied.**
 
 ## What it pulls in
 
@@ -90,16 +88,12 @@ It enables one, in `components/one/hello/repo.sh`. There is no grammar for that 
   ],
   "content": "ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca",
   "built": null,
+  "library": null,
+  "settings": [],
   "imported": {
-    "collection": "one",
-    "pin": {
-      "name": "collection",
-      "locator": "https://github.com/owner/components/archive/refs/tags/{version}.tar.gz",
-      "selector": "v1.0.0",
-      "verifier": null,
-      "tracker": "none"
-    },
-    "tracked": false
+    "origin": "https://github.com/owner/components",
+    "path": "hello",
+    "pin": "0123456789abcdef0123456789abcdef01234567"
   },
   "modified": true,
   "fetches": [
@@ -117,7 +111,7 @@ It enables one, in `components/one/hello/repo.sh`. There is no grammar for that 
 }
 ==== unknown
   x `nosuch` is not a component this repository lists
-  help: components: consumer, hello
+  help: components: consumer, enforced, hello
 
 ==== from the baked manifest, with no repository
 # one/hello
@@ -149,11 +143,9 @@ A claim the tool records rather than certifies. The scan is what confirms it.
 | --- | --- |
 | declared | `ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca` |
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `one` | https://github.com/owner/components/archive/refs/tags/{version}.tar.gz | v1.0.0 | not declared | none |
+It is the repository's own copy of `hello` from `https://github.com/owner/components` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was imported.** It is the repository's own copy, and the lock entry records where it came from.
+**It has been edited since it was copied.**
 
 ## What it pulls in
 
@@ -168,7 +160,7 @@ It enables one, in `components/one/hello/repo.sh`. There is no grammar for that 
 Not readable from here: a finished image carries the manifest, not the component tree.
 
 ==== the names it knows
-consumer, hello
+consumer, enforced, hello
 ==== against a build record that disagrees
 
 
@@ -179,8 +171,6 @@ consumer, hello
 
 **The two documents disagree**, which they cannot if both came from this build.
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `one` | https://github.com/owner/components/archive/refs/tags/{version}.tar.gz | v1.0.0 | not declared | none |
+It is the repository's own copy of `hello` from `https://github.com/owner/components` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was imported.** It is the repository's own copy, and the lock entry records where it came from.
+**It has been edited since it was copied.**

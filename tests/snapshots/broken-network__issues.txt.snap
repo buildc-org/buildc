@@ -8,13 +8,13 @@ source: tests/golden/harness.rs
 
   x `core/fetcher` declares that its scripts reach the network, and repo.kdl
   | denies it
-   ,-[tests/repos/broken-network/components/core/fetcher/manifest.kdl:7:1]
- 6 | 
- 7 | network "scripts"
-   : ^^^|^^^
-   :    `-- denied by `scripts "deny"`
- 8 | 
-   `----
+    ,-[tests/repos/broken-network/components/core/fetcher/manifest.kdl:9:9]
+  8 |     scripts {
+  9 |         network #true
+    :         ^^^|^^^
+    :            `-- denied by `scripts "deny"`
+ 10 |     }
+    `----
   help: set `scripts "strict"` in repo.kdl's `security-policy { network }` to
         honour this declaration, or leave this component out of the image
 
@@ -27,16 +27,17 @@ source: tests/golden/harness.rs
  8 |     pin {
    `----
   help: set `scripts "strict"` in repo.kdl's `security-policy { network }` and
-        declare `network "scripts"`, or leave this component out of the image
+        declare `permissions { scripts { network #true } }`, or leave this
+        component out of the image
 
   x `core/fragment-only` declares a script step it has not got
-   ,-[tests/repos/broken-network/components/core/fragment-only/manifest.kdl:7:1]
- 6 | 
- 7 | network "scripts"
-   : ^^^|^^^
-   :    `-- no standard layer
- 8 | 
-   `----
+    ,-[tests/repos/broken-network/components/core/fragment-only/manifest.kdl:9:9]
+  8 |     scripts {
+  9 |         network #true
+    :         ^^^|^^^
+    :            `-- no standard layer
+ 10 |     }
+    `----
   help: `standard-layer #false` leaves the fragment the only thing this
         component emits, and a fragment's own RUN lines are emitted as written
 
@@ -49,4 +50,5 @@ source: tests/golden/harness.rs
  2 | 
    `----
   help: set `scripts "strict"` in repo.kdl's `security-policy { network }` and
-        declare `network "scripts"`, or leave this component out of the image
+        declare `permissions { scripts { network #true } }`, or leave this
+        component out of the image

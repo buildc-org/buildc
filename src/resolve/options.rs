@@ -1,7 +1,9 @@
 use crate::diag::{Issue, Issues, Source};
 use crate::model::component::Component;
 use crate::model::image::{Entry, Image};
-use crate::model::options::{check_values, env_name, env_value, Opt, Value, Variant};
+use crate::model::options::{
+    check_values, env_name, env_value, Change, Opt, OptType, Value, Variant, Verb,
+};
 
 pub fn resolve(
     options: &[Opt],
@@ -10,17 +12,12 @@ pub fn resolve(
     entry: &Entry,
     image: &Image,
     issues: &mut Issues,
-) -> Vec<(String, String)> {
+) -> (Vec<(String, String)>, Vec<Change>) {
     let selected = entry.variant.as_ref();
-    let set = &entry.options;
     let component_path = entry.path.as_str();
     let list_src = &image.src;
 
     let image_id = [("image-id", image.id.as_str())];
-    let set_from = [
-        ("image-id", image.id.as_str()),
-        ("base-url", image.repo_base_url.as_str()),
-    ];
     let mut resolved: Vec<(String, Vec<Value>)> = options
         .iter()
         .map(|o| {
@@ -94,62 +91,9 @@ pub fn resolve(
         }
     }
 
-    let mut seen: Vec<&str> = Vec::new();
-    for (name, values, span) in set {
-        let Some(opt) = find(name) else {
-            let known: Vec<&str> = options.iter().map(|o| o.name.as_str()).collect();
-            issues.push(
-                Issue::new(
-                    format!("`{component_path}` has no option `{name}`"),
-                    list_src,
-                )
-                .at(*span, "not declared by this component")
-                .help(if known.is_empty() {
-                    "this component declares no options".to_string()
-                } else {
-                    format!("declared options: {}", known.join(", "))
-                }),
-            );
-            continue;
-        };
-        if seen.contains(&name.as_str()) {
-            issues.push(
-                Issue::new(
-                    format!("`{name}` is set twice on `{component_path}`"),
-                    list_src,
-                )
-                .at(*span, "set again here")
-                .help("resolution is a single pass, so a second value is an error"),
-            );
-            continue;
-        }
-        seen.push(name.as_str());
+    let changes = layered(options, entry, image, &mut resolved, issues);
 
-        let values = &match filled(values, &set_from) {
-            Ok(values) => values,
-            Err(reference) => {
-                issues.push(
-                    Issue::new(
-                        format!("`{name}` on `{component_path}` reads `{{{reference}}}`, which nothing declares"),
-                        list_src,
-                    )
-                    .at(*span, "an unknown reference")
-                    .help(match reference.as_str() {
-                        "base-url" => "declare `base-url \"https://host/owner/repository\"` in repo.kdl".to_string(),
-                        _ => "an option value may read `{base-url}` and `{image-id}`".to_string(),
-                    }),
-                );
-                continue;
-            }
-        };
-        if check_values(name, opt.ty, values, list_src, *span, issues) {
-            if let Some(slot) = resolved.iter_mut().find(|(n, _)| n == name) {
-                slot.1 = values.clone();
-            }
-        }
-    }
-
-    options
+    let env = options
         .iter()
         .map(|opt| {
             let values = resolved
@@ -159,16 +103,150 @@ pub fn resolve(
                 .unwrap_or_default();
             (env_name(&opt.name), env_value(opt.ty, &values))
         })
-        .collect()
+        .collect();
+    (env, changes)
 }
 
-// An empty value counts as undeclared. A reference to an unset `base-url` is refused.
+pub(crate) const BUILD_VALUES: [&str; 2] = ["image-id", "base-url"];
+
+fn layered(
+    options: &[Opt],
+    entry: &Entry,
+    image: &Image,
+    resolved: &mut [(String, Vec<Value>)],
+    issues: &mut Issues,
+) -> Vec<Change> {
+    let component_path = entry.path.as_str();
+    let list_src = &image.src;
+    let set_from = [
+        (BUILD_VALUES[0], image.id.as_str()),
+        (BUILD_VALUES[1], image.repo_base_url.as_str()),
+    ];
+    let find = |name: &str| options.iter().find(|o| o.name == name);
+    let mut changes = Vec::new();
+    let mut replaced: Vec<&str> = Vec::new();
+    for layer in &entry.options {
+        let by = layer.by.as_deref().unwrap_or(&image.id);
+        let mut seen: Vec<&str> = Vec::new();
+        for setting in &layer.settings {
+            let name = setting.name.as_str();
+            let span = setting.span;
+            let Some(opt) = find(name) else {
+                let known: Vec<&str> = options.iter().map(|o| o.name.as_str()).collect();
+                issues.push(
+                    Issue::new(
+                        format!("`{component_path}` has no option `{name}`"),
+                        list_src,
+                    )
+                    .at(span, "not declared by this component")
+                    .help(if known.is_empty() {
+                        "this component declares no options".to_string()
+                    } else {
+                        format!("declared options: {}", known.join(", "))
+                    }),
+                );
+                continue;
+            };
+            if seen.contains(&name) {
+                issues.push(
+                    Issue::new(
+                        format!("`{name}` is set twice on `{component_path}`"),
+                        list_src,
+                    )
+                    .at(span, "set again here")
+                    .help("one segment sets each option once; keep one of the two values"),
+                );
+                continue;
+            }
+            seen.push(name);
+            if !setting.removes.is_empty() && opt.ty != OptType::List {
+                issues.push(
+                    Issue::new(format!("`{by}` removes a value of `{name}` on `{component_path}`, which is no list"), list_src)
+                        .at(span, "not a list option")
+                        .help("`remove` takes a value out of a `list` option; a string or a bool takes its new value"),
+                );
+                continue;
+            }
+            let (values, removes) = match (
+                filled(&setting.values, &set_from),
+                filled(&setting.removes, &set_from),
+            ) {
+                (Ok(values), Ok(removes)) => (values, removes),
+                (Err(reference), _) | (_, Err(reference)) => {
+                    issues.push(
+                        Issue::new(
+                            format!("`{name}` on `{component_path}` reads `{{{reference}}}`, which nothing declares"),
+                            list_src,
+                        )
+                        .at(span, "an unknown reference")
+                        .help(match reference.as_str() {
+                            "base-url" => "declare `base-url \"https://host/owner/repository\"` in repo.kdl".to_string(),
+                            _ => "an option value may read `{base-url}` and `{image-id}`".to_string(),
+                        }),
+                    );
+                    continue;
+                }
+            };
+            if !check_values(name, opt.ty, &values, list_src, span, issues) {
+                continue;
+            }
+            let Some((_, slot)) = resolved.iter_mut().find(|(n, _)| n == name) else {
+                continue;
+            };
+            let change = |verb, values: &[Value]| Change {
+                option: name.to_string(),
+                by: by.to_string(),
+                verb,
+                values: values.iter().map(Value::kdl).collect(),
+            };
+            match opt.ty {
+                OptType::List => {
+                    for value in &removes {
+                        let before = slot.len();
+                        slot.retain(|held| held != value);
+                        if slot.len() == before {
+                            issues.push(
+                                Issue::new(
+                                    format!("`{by}` removes {} from `{name}` on `{component_path}`, which does not hold it", value.kdl()),
+                                    list_src,
+                                )
+                                .at(span, "not in the list")
+                                .help("a `remove` takes out a value that the default or a component further from the build put in"),
+                            );
+                        }
+                    }
+                    slot.extend(values.iter().cloned());
+                    if !removes.is_empty() {
+                        changes.push(change(Verb::Removes, &removes));
+                    }
+                    if !values.is_empty() {
+                        changes.push(change(Verb::Appends, &values));
+                    }
+                }
+                OptType::String | OptType::Bool => {
+                    let verb = match replaced.contains(&name) {
+                        true => Verb::Replaces,
+                        false => Verb::Sets,
+                    };
+                    replaced.push(name);
+                    changes.push(change(verb, &values));
+                    *slot = values;
+                }
+            }
+        }
+    }
+
+    changes
+}
+
 fn filled(values: &[Value], known: &[(&str, &str)]) -> Result<Vec<Value>, String> {
     let mut unknown = None;
     let out = values
         .iter()
         .map(|held| match held {
             Value::String(text) => Value::String(interpolate(text, |name| {
+                // An empty build value counts as undeclared.
+                // A reference to an unset `base-url` is then refused.
                 match known
                     .iter()
                     .find(|(have, value)| *have == name && !value.is_empty())
@@ -189,7 +267,6 @@ fn filled(values: &[Value], known: &[(&str, &str)]) -> Result<Vec<Value>, String
     }
 }
 
-// A doubled brace writes a literal brace. A value can hold one next to a reference.
 pub fn interpolate(text: &str, mut value: impl FnMut(&str) -> String) -> String {
     let mut out = String::new();
     let mut rest = text;
@@ -197,6 +274,8 @@ pub fn interpolate(text: &str, mut value: impl FnMut(&str) -> String) -> String 
         out.push_str(&rest[..at]);
         let after = &rest[at + 1..];
         let brace = &rest[at..=at];
+        // A doubled brace writes one literal brace.
+        // A value can then hold a brace next to a reference.
         if after.starts_with(brace) {
             out.push_str(brace);
             rest = &after[1..];
@@ -232,7 +311,11 @@ pub fn apply(component: &mut Component, entry: &Entry, image: &Image, issues: &m
             .iter()
             .find(|(have, _)| *have == env)
             .map(|(_, value)| value.clone())
-            .unwrap_or_default()
+            // A build value stays a reference until `layered` fills it or refuses it.
+            .unwrap_or_else(|| match BUILD_VALUES.contains(&name) {
+                true => format!("{{{name}}}"),
+                false => String::new(),
+            })
     };
     for batch in component
         .packages
@@ -262,8 +345,8 @@ pub fn apply(component: &mut Component, entry: &Entry, image: &Image, issues: &m
     }
     for import in &mut component.imports {
         import.path = interpolate(&import.path, value);
-        for (_, values) in &mut import.options {
-            for held in values {
+        for setting in &mut import.options {
+            for held in setting.values.iter_mut().chain(&mut setting.removes) {
                 if let Value::String(text) = held {
                     *text = interpolate(text, value);
                 }
@@ -303,7 +386,7 @@ mod tests {
 
     #[test]
     fn text_before_a_brace_does_not_hang() {
-        // A regression that loops would hang the suite. Wait from outside the loop.
+        // The test waits from outside the worker thread because a regression that loops would hang the suite.
         let (done, finished) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             interpolate("a{version}", |_| "x".to_string());

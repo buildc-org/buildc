@@ -1,6 +1,5 @@
 ---
 source: tests/golden/harness.rs
-assertion_line: 41
 ---
 ==== markdown
 # flatpak
@@ -10,6 +9,12 @@ A component imported from the collection this repository publishes
 ## Where it is built
 
 example
+
+## How its options are set
+
+| Build | Option | Set by | Value |
+| --- | --- | --- | --- |
+| `example` | `system-wide` | `example` | sets #false |
 
 ## What it exchanges
 
@@ -33,11 +38,9 @@ Nothing. It declares no `satisfies`.
 | --- | --- |
 | declared | `deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be` |
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `buildc-org` | https://github.com/buildc-org/modules | v1.0.0 | not declared | none |
+It is the repository's own copy of `flatpak` from `https://github.com/buildc-org/modules` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was imported**, and it tracks its library, so `buildc check`, `buildc generate` and `buildc build` refuse it.
+**It has been edited since it was copied.**
 
 ## What it pulls in
 
@@ -77,35 +80,30 @@ None. It declares no `copr` and ships no `repo.sh` file.
   "satisfies": [],
   "content": "deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
   "built": null,
+  "library": null,
+  "settings": [
+    {
+      "image": "example",
+      "option": "system-wide",
+      "by": "example",
+      "verb": "sets",
+      "values": [
+        "#false"
+      ]
+    }
+  ],
   "imported": {
-    "collection": "buildc-org",
-    "pin": {
-      "name": "collection",
-      "locator": "https://github.com/buildc-org/modules",
-      "selector": "v1.0.0",
-      "verifier": null,
-      "tracker": "none"
-    },
-    "tracked": true
+    "origin": "https://github.com/buildc-org/modules",
+    "path": "flatpak",
+    "pin": "0123456789abcdef0123456789abcdef01234567"
   },
   "modified": true,
   "fetches": [],
   "repo": null
 }
 ==== unknown
-  x `components/flatpak` tracks its library, and its content no longer matches
-  | its lock entry
-   ,-[tests/repos/seeding/components/components.lock.kdl:1:1]
- 1 | component "flatpak" {
-   : ^^^^|^^^^
-   :     `-- this entry
- 2 |     library "buildc-org"
-   `----
-  help: undo the edit to `components/flatpak`, or run `buildc detach component
-        flatpak` to make the copy the repository's own
-
   x `nosuch` is not a component this repository lists
-  help: components: drivers, fedora-family, flatpak, hello
+  help: components: example, fedora-family, flatpak, hello
 
 ==== from the baked manifest, with no repository
 # flatpak
@@ -114,9 +112,7 @@ A component imported from the collection this repository publishes
 
 ## Where it is built
 
-example, example-nvidia
-
-The build record names no target, so this is read across every target the baked manifest holds and may describe an image other than the one running.
+example
 
 ## What it exchanges
 
@@ -140,11 +136,9 @@ Nothing. It declares no `satisfies`.
 | --- | --- |
 | declared | `deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be` |
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `buildc-org` | https://github.com/buildc-org/modules | v1.0.0 | not declared | none |
+It is the repository's own copy of `flatpak` from `https://github.com/buildc-org/modules` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was imported**, and it tracks its library, so `buildc check`, `buildc generate` and `buildc build` refuse it.
+**It has been edited since it was copied.**
 
 ## What it pulls in
 
@@ -155,7 +149,7 @@ Nothing. It declares no `asset`.
 None. It declares no `copr` and ships no `repo.sh` file.
 
 ==== the names it knows
-drivers, fedora-family, flatpak, hello
+example, fedora-family, flatpak, hello
 ==== against a build record that disagrees
 
 
@@ -166,8 +160,6 @@ drivers, fedora-family, flatpak, hello
 
 **The two documents disagree**, which they cannot if both came from this build.
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `buildc-org` | https://github.com/buildc-org/modules | v1.0.0 | not declared | none |
+It is the repository's own copy of `flatpak` from `https://github.com/buildc-org/modules` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was imported**, and it tracks its library, so `buildc check`, `buildc generate` and `buildc build` refuse it.
+**It has been edited since it was copied.**

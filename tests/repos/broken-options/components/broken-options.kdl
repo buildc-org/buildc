@@ -1,0 +1,16 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    core {
+        configurable variant="nonexistent" {
+            fonts "Fira Code"
+            starship "yes"
+            colour "blue"
+            starship #true
+        }
+    }
+}

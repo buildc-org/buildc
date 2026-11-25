@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "signing",
   "pr_target": "signing",
   "pr_published": "signing",
-  "ungated_target": "signing",
-  "ungated_published": "signing",
   "cache_image": "signing-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "signing",
-      "file": "./image.kdl",
+      "file": "./components/signing.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -54,23 +52,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "signing",
           "image": "signing",
-          "flavour": null,
           "published": "signing",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "kernel/signed-kernel",
-              "flavour": null,
               "variant": null,
               "description": "A kernel that signs its own modules against a Secure Boot key",
               "options": {},
@@ -127,7 +121,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "drivers/kvmfr",
-              "flavour": null,
               "variant": null,
               "description": "A DKMS module built and signed against the kernel above",
               "options": {},
@@ -164,6 +157,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "signing",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -186,6 +206,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/signing/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

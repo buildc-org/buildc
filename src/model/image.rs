@@ -1,13 +1,11 @@
 use crate::diag::{Issue, Source, Span};
 use crate::model::component::{Access, Capability, Component, Coverage, Refusal, Requirement};
-use crate::model::options::Value;
+use crate::model::options::Setting;
 use crate::model::remote::Collection;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
 pub const BUILDC_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-pub const NO_FLAVOUR: &str = "none";
 
 pub fn is_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -16,6 +14,17 @@ pub fn is_name(name: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+pub fn is_segment(segment: &str) -> bool {
+    segment.split('.').all(is_name_part) && segment.starts_with(|c: char| c.is_ascii_lowercase())
+}
+
+fn is_name_part(part: &str) -> bool {
+    !part.is_empty()
+        && part
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 pub fn is_local_path(path: &str) -> bool {
@@ -36,51 +45,56 @@ pub fn is_local_path(path: &str) -> bool {
         }
         None => last,
     };
-    is_name(last) && parents.is_none_or(|parents| parents.split('/').all(is_name))
+    is_segment(last) && parents.is_none_or(|parents| parents.split('/').all(is_segment))
 }
 
 #[derive(Clone)]
 pub struct Target {
     pub image: String,
-    pub flavour: String,
+    publish: Option<String>,
+    registry: Option<String>,
 }
 
 impl Target {
     pub fn published(&self) -> String {
-        match self.flavour.as_str() {
-            NO_FLAVOUR => self.image.clone(),
-            flavour => format!("{}-{flavour}", self.image),
+        match &self.publish {
+            Some(publish) => publish.rsplit('/').next().unwrap_or(publish).to_string(),
+            None => self.image.clone(),
+        }
+    }
+
+    /// The reference holds no tag and does not read the `IMAGE_REGISTRY` override.
+    pub fn reference(&self) -> Option<String> {
+        match &self.publish {
+            Some(publish) if publish.contains('/') => Some(publish.clone()),
+            _ => Some(format!("{}/{}", self.registry.as_ref()?, self.published())),
         }
     }
 }
 
 impl std::fmt::Display for Target {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.flavour.as_str() {
-            NO_FLAVOUR => write!(f, "{}", self.image),
-            flavour => write!(f, "{}/{flavour}", self.image),
-        }
+        write!(f, "{}", self.image)
     }
 }
 
 pub struct Image {
     pub src: Source,
+    pub file: String,
     pub id: String,
+    pub component: String,
     pub repo_base_url: String,
     pub description: String,
     pub keywords: Vec<String>,
     pub logo_url: String,
     pub conforms: String,
-    pub boot: String,
-    pub boot_at: Option<Span>,
     pub base: Option<Base>,
     pub base_entry: Option<BaseEntry>,
-    pub defined: Vec<String>,
     pub layout: Option<Layout>,
     pub allows: Vec<Refusal>,
-    pub flavours: Vec<Flavour>,
     pub entries: Vec<Entry>,
     pub suppressed: Vec<Entry>,
+    pub outside: bool,
     pub span: Span,
 }
 
@@ -111,8 +125,9 @@ impl Base {
             .any(|decl| crate::resolve::meets(&decl.name, required))
     }
 
+    /// An empty capability set is not covered.
+    /// A component that declares no capability then never counts as one that the base supplies.
     pub fn covers<'a>(&self, provides: impl IntoIterator<Item = &'a str>) -> bool {
-        // An empty set is not covered, so a component that declares no capability is not treated as one the base supplies.
         let mut provides = provides.into_iter().peekable();
         provides.peek().is_some()
             && provides.all(|name| self.provides.iter().any(|decl| decl.name == name))
@@ -134,6 +149,7 @@ pub struct BaseEntry {
 
 pub struct Base {
     pub path: String,
+    pub library: Option<String>,
     pub image: String,
     pub family: String,
     pub provides: Vec<Capability>,
@@ -145,12 +161,12 @@ pub struct Base {
     pub bootloaders: Vec<String>,
     pub files: Vec<crate::model::component::Located>,
     pub tracker: Option<crate::model::options::VersionTracker>,
-    pub imported: Option<crate::provenance::lock::Record>,
     pub scap_content: String,
     pub scap_pin: Option<crate::provenance::Evidence>,
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct Layout {
     pub filesystem: String,
     pub bootloader: String,
@@ -158,45 +174,148 @@ pub struct Layout {
     pub generic: Option<bool>,
     pub admin_group: String,
     pub span: Span,
+    pub src: Source,
 }
 
 pub use crate::model::component::Decl;
 
-pub struct Flavour {
-    pub name: String,
-    pub default: bool,
-    pub pr_build: bool,
-    pub conforms: String,
-    pub span: Span,
-}
-
 pub struct Workflow {
     pub name: String,
     pub span: Span,
-    pub schedule: Option<String>,
+    pub builds: Selection,
+    pub triggers: Vec<Trigger>,
 }
 
+pub struct Trigger {
+    pub on: On,
+    pub builds: Selection,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum On {
+    Push,
+    Pr,
+    Schedule {
+        weekly: Option<bool>,
+        time: Option<(u32, u32)>,
+    },
+    Tag(String),
+}
+
+#[derive(Clone, Default)]
+pub struct Selection {
+    pub named: Vec<String>,
+    pub removed: Vec<String>,
+    pub span: Option<Span>,
+}
+
+impl Selection {
+    pub fn written(&self) -> bool {
+        self.span.is_some()
+    }
+
+    pub fn of(&self, from: &[String]) -> Vec<String> {
+        let held = match self.named.is_empty() {
+            true => from.to_vec(),
+            false => self.named.clone(),
+        };
+        held.into_iter()
+            .filter(|build| !self.removed.contains(build))
+            .collect()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Layer {
+    pub by: Option<String>,
+    pub settings: Vec<Setting>,
+}
+
+pub struct Setter {
+    /// `None` marks the component that the build names.
+    pub by: Option<String>,
+    pub variant: Option<String>,
+    pub pin: Option<String>,
+    pub settings: Vec<Setting>,
+    pub src: Source,
+    pub span: Span,
+}
+
+impl Setter {
+    pub(crate) fn layer(&self) -> Layer {
+        Layer {
+            by: self.by.clone(),
+            settings: self.settings.clone(),
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct Entry {
     pub path: String,
-    pub flavour: Option<String>,
     pub variant: Option<String>,
-    pub options: Vec<(String, Vec<Value>, Span)>,
+    pub pin: Option<String>,
+    pub digest: Option<(String, Span)>,
+    pub signed: Option<(bool, Span)>,
+    pub options: Vec<Layer>,
+    pub setters: Vec<Setter>,
     pub span: Span,
     pub component: Option<Component>,
     pub imported_by: Option<String>,
-    pub inline: Option<Vec<Span>>,
-    pub organises: bool,
+    pub inline: Option<Inline>,
+    pub held: Option<Held>,
+    pub home: Option<std::path::PathBuf>,
+}
+
+#[derive(Clone)]
+pub struct Inline {
+    pub src: Source,
+    pub spans: Vec<Span>,
+}
+
+#[derive(Clone)]
+pub struct Held {
+    pub library: String,
+    pub tree: std::path::PathBuf,
+    pub components: std::path::PathBuf,
+    pub remote: Option<Revision>,
+}
+
+#[derive(Clone)]
+pub struct Revision {
+    pub source: String,
+    pub commit: String,
 }
 
 impl Entry {
+    pub(crate) fn settings(&self) -> impl Iterator<Item = &Setting> {
+        self.options.iter().flat_map(|layer| &layer.settings)
+    }
+
     pub fn qualified(&self, publishes_as: &str) -> String {
-        match self
-            .component
-            .as_ref()
-            .and_then(|component| component.imported.as_ref())
-        {
-            Some(record) => format!("{}/{}", record.library, record.upstream),
+        match &self.held {
+            Some(held) => format!("{}/{}", held.library, self.path),
             None => format!("{publishes_as}/{}", self.path),
+        }
+    }
+
+    pub fn library(&self) -> Option<&str> {
+        self.held.as_ref().map(|held| held.library.as_str())
+    }
+
+    pub fn dir(&self, root: &std::path::Path) -> std::path::PathBuf {
+        match (&self.home, &self.held) {
+            (Some(home), _) => home.clone(),
+            (None, Some(held)) => held.components.join(&self.path),
+            (None, None) => crate::layout::component(root, &self.path),
+        }
+    }
+
+    pub fn tree<'a>(&'a self, root: &'a std::path::Path) -> &'a std::path::Path {
+        match (&self.home, &self.held) {
+            (None, Some(held)) => &held.tree,
+            _ => root,
         }
     }
 }
@@ -230,18 +349,35 @@ impl Backend {
     }
 }
 
+#[derive(Clone)]
+pub struct Build {
+    pub name: String,
+    pub component: String,
+    pub publish: Option<String>,
+    pub install: Option<Layout>,
+    pub span: Span,
+}
+
+pub(crate) fn child(scope: Option<&str>, name: &str) -> String {
+    match scope {
+        Some(scope) => format!("{scope}/{name}"),
+        None => name.to_string(),
+    }
+}
+
 pub struct List {
     pub name: String,
     pub base_url: String,
     pub id: String,
     pub images: Vec<Image>,
+    pub builds: Vec<Build>,
+    pub registry: Option<String>,
     pub workflows: Vec<Workflow>,
-    pub workflows_at: (u32, u32),
-    pub publishes_scheduled: bool,
-    pub scans_scheduled: bool,
-    pub sources: Vec<Collection>,
+    pub libraries: Vec<Collection>,
+    pub root_library: Option<String>,
+    pub default_library: Option<(String, Span)>,
+    pub resolver: crate::resolve::library::Libraries,
     pub default_image_id: Option<String>,
-    pub pr_image_id: Option<String>,
     pub seed: Option<Seed>,
     pub manifest_label: bool,
     pub backend: Backend,
@@ -307,7 +443,7 @@ impl Image {
     }
 
     pub fn answers(&self, required: &str) -> bool {
-        let kept = |name: &str| self.removing(name, |at| at.is_none()).is_none();
+        let kept = |name: &str| self.remover(name).is_none();
         self.base.as_ref().is_some_and(|base| {
             base.provides
                 .iter()
@@ -325,73 +461,43 @@ impl Image {
         })
     }
 
+    /// A fragment that reads `${SPLIT_BASE}` takes part in the two-pass seal of a UKI.
+    pub fn seals_uki(&self) -> bool {
+        self.components().any(|component| {
+            component
+                .fragment
+                .as_deref()
+                .is_some_and(|fragment| fragment.contains("${SPLIT_BASE}"))
+        })
+    }
+
     pub fn is_bootc(&self) -> bool {
         self.answers("bootc")
     }
 
-    pub fn remover(&self, name: &str, flavour: Option<&str>) -> Option<&Component> {
-        self.removing(name, |at| crate::resolve::meet(at, flavour))
-    }
-
-    fn removing(&self, name: &str, reaches: impl Fn(Option<&str>) -> bool) -> Option<&Component> {
+    pub fn remover(&self, name: &str) -> Option<&Component> {
         self.components()
-            .find(|component| component.withdraws(name) && reaches(component.flavour.as_deref()))
+            .find(|component| component.withdraws(name))
     }
 
-    pub fn base_meets(&self, required: &str, flavour: Option<&str>) -> bool {
+    pub fn base_meets(&self, required: &str) -> bool {
         self.base.as_ref().is_some_and(|base| {
             base.provides.iter().any(|decl| {
-                crate::resolve::meets(&decl.name, required)
-                    && self.remover(&decl.name, flavour).is_none()
+                crate::resolve::meets(&decl.name, required) && self.remover(&decl.name).is_none()
             })
         })
     }
 
-    pub fn component_meets(
-        &self,
-        component: &Component,
-        required: &str,
-        flavour: Option<&str>,
-    ) -> bool {
+    pub fn component_meets(&self, component: &Component, required: &str) -> bool {
         crate::resolve::answers(
             &component.path,
             component
                 .provides
                 .iter()
                 .map(|decl| decl.name.as_str())
-                .filter(|name| self.remover(name, flavour).is_none()),
+                .filter(|name| self.remover(name).is_none()),
             required,
         )
-    }
-
-    pub fn conforms_of(&self, flavour: &str) -> &str {
-        match flavour {
-            NO_FLAVOUR => &self.conforms,
-            name => self
-                .flavours
-                .iter()
-                .find(|f| f.name == name)
-                .map_or("", |f| f.conforms.as_str()),
-        }
-    }
-
-    pub fn declares_conforms(&self) -> bool {
-        !self.conforms.is_empty() || self.flavours.iter().any(|f| !f.conforms.is_empty())
-    }
-
-    pub fn default_flavour(&self) -> Option<&str> {
-        self.flavours
-            .iter()
-            .find(|f| f.default)
-            .map(|f| f.name.as_str())
-    }
-
-    pub fn pr_flavour(&self) -> Option<&str> {
-        self.flavours
-            .iter()
-            .find(|f| f.pr_build)
-            .map(|f| f.name.as_str())
-            .or_else(|| self.default_flavour())
     }
 }
 
@@ -411,15 +517,15 @@ impl List {
         self.default_image_id.is_none().then(|| {
             Issue::new(
                 format!(
-                    "{} images are declared and none is the default",
+                    "{} builds are declared and none is the default",
                     self.images.len()
                 ),
                 &self.repo_src,
             )
             .help(format!(
-                "the default image is what a command given no image answers about, and what a \
-                 bare `buildc build` builds; a repository with one image falls back to that one, \
-                 and a repository with more says which: `default-image \"{}\"` in {}",
+                "the default build is what a command given no build answers about, and what a \
+                 bare `buildc build` builds; a repository with one build falls back to that one, \
+                 and a repository with more says which: `builds default=\"{}\"` in {}",
                 first.id,
                 crate::layout::REPO_FILE
             ))
@@ -427,25 +533,29 @@ impl List {
     }
 
     pub fn pr_image(&self) -> Option<&Image> {
-        match &self.pr_image_id {
+        let built = crate::resolve::workflow::builds_on(
+            self,
+            crate::resolve::workflow::IMAGE_BUILD,
+            &On::Pr,
+        );
+        match built.first() {
             Some(id) => self.images.iter().find(|i| &i.id == id),
             None => self.default_image(),
         }
     }
 
-    pub fn targets(&self) -> Vec<Target> {
-        let mut out = Vec::new();
-        for image in &self.images {
-            out.push(Target {
-                image: image.id.clone(),
-                flavour: NO_FLAVOUR.to_string(),
-            });
-            out.extend(image.flavours.iter().map(|f| Target {
-                image: image.id.clone(),
-                flavour: f.name.clone(),
-            }));
+    /// A `./` build component has no path in a library.
+    /// A child path of that build takes no prefix.
+    pub(crate) fn scope(&self, build: &str) -> Option<&str> {
+        let build = self.builds.iter().find(|held| held.name == build)?;
+        match build.component.starts_with("./") {
+            true => None,
+            false => Some(&build.component),
         }
-        out
+    }
+
+    pub fn targets(&self) -> Vec<Target> {
+        self.images.iter().map(|image| self.target(image)).collect()
     }
 
     pub fn find_target(&self, name: &str) -> Result<Target, String> {
@@ -467,17 +577,7 @@ impl List {
     }
 
     pub fn default_target(&self) -> Option<Target> {
-        self.default_image().map(|image| Target {
-            image: image.id.clone(),
-            flavour: image.default_flavour().unwrap_or(NO_FLAVOUR).to_string(),
-        })
-    }
-
-    pub fn ungated_target(&self) -> Option<Target> {
-        self.default_image().map(|image| Target {
-            image: image.id.clone(),
-            flavour: NO_FLAVOUR.to_string(),
-        })
+        self.default_image().map(|image| self.target(image))
     }
 
     pub fn cache_image(&self) -> Option<String> {
@@ -486,16 +586,47 @@ impl List {
     }
 
     pub fn pr_target(&self) -> Option<Target> {
-        self.pr_image().map(|image| Target {
+        self.pr_image().map(|image| self.target(image))
+    }
+
+    fn target(&self, image: &Image) -> Target {
+        Target {
             image: image.id.clone(),
-            flavour: image.pr_flavour().unwrap_or(NO_FLAVOUR).to_string(),
-        })
+            publish: self
+                .builds
+                .iter()
+                .find(|build| build.name == image.id)
+                .and_then(|build| build.publish.clone()),
+            registry: self.registry.clone(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_build_publishes_under_its_registry_unless_publish_holds_a_reference() {
+        let target = |publish: Option<&str>, registry: Option<&str>| Target {
+            image: "work".into(),
+            publish: publish.map(str::to_string),
+            registry: registry.map(str::to_string),
+        };
+        let reference = |target: Target| target.reference();
+        assert_eq!(
+            reference(target(None, Some("ghcr.io/o"))).as_deref(),
+            Some("ghcr.io/o/work")
+        );
+        assert_eq!(
+            reference(target(Some("nightly"), Some("ghcr.io/o"))).as_deref(),
+            Some("ghcr.io/o/nightly")
+        );
+        let full = target(Some("quay.io/team/box"), Some("ghcr.io/o"));
+        assert_eq!(full.published(), "box");
+        assert_eq!(reference(full).as_deref(), Some("quay.io/team/box"));
+        assert_eq!(reference(target(Some("nightly"), None)), None);
+    }
 
     #[test]
     fn a_local_path_admits_one_tag_on_its_last_part() {
@@ -507,5 +638,8 @@ mod tests {
         assert!(!is_local_path("desktop@1/kde"));
         assert!(!is_local_path("Browser"));
         assert!(!is_local_path("/browser"));
+        assert!(is_local_path("images/workstation.image"));
+        assert!(!is_local_path(".hidden"));
+        assert!(!is_local_path("a..b"));
     }
 }

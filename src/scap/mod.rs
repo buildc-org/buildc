@@ -8,7 +8,7 @@ pub fn fuzz_xml(text: &str) {
 
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::emit::plan::of_target;
-use crate::model::image::{Entry, Image, List, NO_FLAVOUR};
+use crate::model::image::{Entry, Image, List};
 use crate::provider::Index;
 use crate::resolve::overlay;
 use common::json::{self, Json};
@@ -73,10 +73,7 @@ pub fn conformance(
         None => None,
     };
     let mut out = Vec::new();
-    let measured = list
-        .images
-        .iter()
-        .filter(|i| !i.conforms.is_empty() || i.flavours.iter().any(|f| !f.conforms.is_empty()));
+    let measured = list.images.iter().filter(|i| !i.conforms.is_empty());
     for image in measured {
         out.extend(unremediated(image, index));
         out.extend(allows_nothing(image));
@@ -364,8 +361,8 @@ pub fn tailoring_for(
         return Ok(Verdict::Wrong);
     };
     let name = target(&list, named)?;
-    let (image, flavour, _) = of_target(&list, &name).ok_or_else(|| unknown(&name))?;
-    let conforms = image.conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR));
+    let (image, _) = of_target(&list, &name).ok_or_else(|| unknown(&name))?;
+    let conforms = image.conforms.as_str();
     if conforms.is_empty() {
         return Ok(Verdict::Clean);
     }
@@ -412,11 +409,8 @@ fn tailoring(content: &Content, profile: &Profile) -> String {
 
 pub fn datastream(list: &List, named: Option<&str>) -> Result<String, String> {
     let name = target(list, named)?;
-    let (image, flavour, _) = of_target(list, &name).ok_or_else(|| unknown(&name))?;
-    if image
-        .conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR))
-        .is_empty()
-    {
+    let (image, _) = of_target(list, &name).ok_or_else(|| unknown(&name))?;
+    if image.conforms.is_empty() {
         return Ok(String::new());
     }
     let base = image
@@ -441,7 +435,7 @@ pub(crate) fn check_content(list: &List, issues: &mut Issues) {
         let Some(base) = &image.base else {
             continue;
         };
-        if !image.declares_conforms() || base.scap_pin.is_some() {
+        if image.conforms.is_empty() || base.scap_pin.is_some() {
             continue;
         }
         issues.push(
@@ -528,10 +522,9 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
         return Ok(Verdict::Wrong);
     };
     let name = target(&list, named)?;
-    let (image, flavour, entries) = of_target(&list, &name).ok_or_else(|| unknown(&name))?;
+    let (image, entries) = of_target(&list, &name).ok_or_else(|| unknown(&name))?;
     let at = list.images.iter().position(|have| have.id == image.id);
     let shipped = &resolved[at.unwrap_or_default()].shipped;
-    let gate = flavour.as_deref().unwrap_or(NO_FLAVOUR);
 
     let datastream = match &opts.datastream {
         Some(path) => path.clone(),
@@ -583,7 +576,6 @@ pub fn run(root: &Path, arf: &Path, opts: &Options) -> Result<Verdict, String> {
             image,
             entries: &entries,
             shipped,
-            gate,
             content: &content,
             measured: &measured,
             base: base.as_ref(),
@@ -636,7 +628,6 @@ struct Measured<'a> {
     image: &'a Image,
     entries: &'a [&'a Entry],
     shipped: &'a overlay::Index,
-    gate: &'a str,
     content: &'a Content,
     measured: &'a BTreeMap<String, String>,
     base: Option<&'a BTreeSet<String>>,
@@ -689,7 +680,7 @@ fn claims(out: &mut String, found: &mut Vec<Finding>, m: Measured) {
                 if result != "fail" {
                     continue;
                 }
-                let lost = overridden(m.image, m.shipped, m.gate, &entry.path);
+                let lost = overridden(m.image, m.shipped, &entry.path);
                 let help = lost
                     .first()
                     .map(|(path, by)| {
@@ -923,13 +914,8 @@ fn baseline(doc: &Json) -> Option<BTreeSet<String>> {
     )
 }
 
-fn overridden(
-    image: &Image,
-    shipped: &overlay::Index,
-    gate: &str,
-    component: &str,
-) -> Vec<(String, String)> {
-    crate::emit::plan::overrides(image, shipped, gate)
+fn overridden(image: &Image, shipped: &overlay::Index, component: &str) -> Vec<(String, String)> {
+    crate::emit::plan::overrides(image, shipped)
         .into_iter()
         .filter(|(_, loser, _)| loser == component)
         .map(|(path, _, by)| (path, by))
@@ -1102,11 +1088,11 @@ impl Content {
         self.select(id, 0)
     }
 
+    // A profile's extends can name a cycle. The walk stops at a fixed depth.
     fn select(&self, id: &str, depth: usize) -> BTreeSet<String> {
         let Some(profile) = self.profiles.iter().find(|have| have.id == id) else {
             return BTreeSet::new();
         };
-        // A profile's `extends` can name a cycle, so the walk stops at a fixed depth.
         let mut out = match profile.extends.is_empty() || depth > 8 {
             true => BTreeSet::new(),
             false => self.select(&profile.extends, depth + 1),
@@ -1311,8 +1297,13 @@ mod tests {
             "schema-version 1\nname \"Example\"\n",
         )
         .unwrap();
-        let image = "schema-version 1\n\nimage \"example\" {\n    conforms \"standard\"\n    base-image {\n        centos\n    }\n}\n";
-        crate::init::put(&root.join("image.kdl"), image).unwrap();
+        crate::testing::images(
+            &root,
+            &[(
+                "example",
+                "conforms \"standard\"\ncomponent \"/\" {\n    base-image {\n        centos\n    }\n}\n",
+            )],
+        );
         let base = |content: &str| {
             crate::init::put(
                 &root.join("components/base-image/centos/manifest.kdl"),
@@ -1335,20 +1326,6 @@ mod tests {
         assert!(refused.contains("a `pin`"), "{refused}");
         let pinned = "scap-content \"ssg-cs10-ds.xml\" {\n        pin {\n            manual \"a test\"\n            url \"ssg-cs10-ds.xml\"\n            sha256 \"4cd9aa720c627f6357ef6e7d0b777395e5b3c7dbec84ca7ba3f178ebc1a8f48b\"\n        }\n    }";
         assert_eq!(checked(pinned), "");
-        base(named);
-        let flavoured = image.replace(
-            "    conforms \"standard\"\n",
-            "    flavours { gpu conforms=\"standard\" }\n",
-        );
-        crate::init::put(&root.join("image.kdl"), &flavoured).unwrap();
-        let (list, _, _) = crate::declarations(&root);
-        let mut issues = Issues::default();
-        check_content(&list, &mut issues);
-        assert!(
-            issues.plain().contains("pins no SCAP content"),
-            "{}",
-            issues.plain()
-        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -1536,7 +1513,10 @@ mod tests {
         let loaded = crate::load(&root);
         let image = loaded.list.images.first().expect("one image");
         assert!(
-            image.entries.is_empty(),
+            image
+                .entries
+                .iter()
+                .all(|entry| entry.path == image.component),
             "the base covers the only component"
         );
         assert_eq!(
@@ -1572,7 +1552,10 @@ mod tests {
         );
         let image = loaded.list.images.first().expect("one image");
         assert!(
-            image.entries.is_empty(),
+            image
+                .entries
+                .iter()
+                .all(|entry| entry.path == image.component),
             "the base covers the only component"
         );
         assert_eq!(

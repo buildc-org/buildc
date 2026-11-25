@@ -1,13 +1,11 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-6 components, the ungated set.
+4 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `core/nameless` |  |  | `cis-fedora: ` `stig: R1` `stig: R2` |  |
 | `core/missing` |  |  |  |  |
 | `core/latin` |  |  |  |  |
-| `core/latin/inner` |  |  |  |  |
-| `core/latin/absent` |  |  |  |  |
-| `core/importer` |  |  |  |  |
+| `broken-component` |  |  |  |  |

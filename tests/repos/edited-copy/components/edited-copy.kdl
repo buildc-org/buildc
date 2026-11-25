@@ -1,0 +1,15 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    fedora-family
+    core {
+        edited
+    }
+    core {
+        owned
+    }
+}

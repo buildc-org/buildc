@@ -1,170 +1,80 @@
 # Creating a bootc image
 
-This tutorial teaches how the repository and schema work by building two
-workstation images from the same requirements. It starts with the familiar
-components of container building, a script the Containerfile runs and a file
-tree copied into the image, and then introduces the schema features that
-describe the same work declaratively.
+A bootc image is a container image that a machine boots and updates from, rather than a container that runs as a process. This tutorial teaches how a buildc repository and its schema work by building two workstation images from the same requirements: fedora-bootc 44 as the base, the KDE Plasma desktop, the Firefox browser, and Flatpak with one Flatpak app, Bazaar, a Flatpak app store.
 
-The tutorial is a thorough starting point, not the fastest way to a working
-image. Use `buildc create repo` to scaffold a repository with sensible defaults
-in one command.
+The tutorial starts from what you already know from a Containerfile: a script that runs in the build and a file tree copied into the image. It then adds the schema features that describe the same work declaratively. `workstation-1` is written by hand. Its one component of its own is a shell script and a file tree, exactly as a Containerfile would do it. `workstation-2` builds the same desktop from a component library and the buildc commands instead. The library components it uses add package installs that know which family they are installing for, and dependencies that buildc checks before you build. The last part of the tutorial builds `workstation-1` locally and sets up CI that publishes a signed image.
 
-## What will you build?
-
-This tutorial creates a repository that generates two workstation images with
-different methods. Each workstation includes:
-
-- fedora-bootc:44 as the base image
-- KDE Plasma desktop environment
-- Firefox browser
-- Flatpak and a Flatpak app (Bazaar, a Flatpak app store)
-
-Workstation-1 is hand-written. Its component holds a Bash script to run commands
-and a file tree to copy into the image, exactly as a Containerfile would.
-
-Workstation-2 implements the same configuration with the built-in commands. It
-uses a component library and a component manifest, which add declarative, family
-aware, dependency checked behaviour.
-
-The last part of the tutorial builds the image locally and in CI, producing a
-signed image.
+This is a thorough introduction and not the fastest route to a working repository. `buildc create repo` scaffolds a ready repository with defaults in one command. This page instead adds one line at a time so you see what each line does.
 
 > [!NOTE]
-> The tutorial creates its own keys and fetches the `buildc`
-> library. Run it somewhere disposable.
+> Run this tutorial somewhere disposable. It creates signing keys and reads the `buildc` library.
 
 ## Create the repository
 
-First, create a Buildc repository from scratch. The basic repository
-structure looks like this:
-
-```text
-buildc-tutorial/
-├── .gitignore
-├── components/
-├── image.kdl
-└── repo.kdl
-```
-
-Navigate to a location where you would like to create this repository and run
-the following commands:
+Create a directory, put it under Git, and create the starting files:
 
 ```sh
 mkdir buildc-tutorial
 cd buildc-tutorial
 buildc create git
-touch repo.kdl image.kdl
 mkdir components
+touch repo.kdl workstation-1.kdl
 ```
 
-Below is a summary of each file and directory:
+`buildc create git` runs `git init` and writes a `.gitignore` that ignores `keys/private/`, `out/` and `.cache/`. It refuses a directory that is already inside a Git repository, because a repository does not nest.
 
-- `repo.kdl` defines repository-wide configuration such as the schema version,
-  the component libraries it reads, the security policy and the CI workflows.
-- `image.kdl` or `<name>.image.kdl` files define the recipe for an image and its
-  flavours: the image's identity, its base image, the components it includes and
-  its installation settings.
-- `components/` holds the components you create. A component is any directory under
-  `components/`.
+You now have:
 
-This is the minimal file and directory structure for a repository. The
-documentation provides the full [repository
-layout](https://buildc-org.github.io/buildc/schema/repository/) schema.
+```text
+buildc-tutorial/
+├── .gitignore
+├── components/
+├── repo.kdl
+└── workstation-1.kdl
+```
 
-> [!NOTE]
-> `buildc create git` puts the directory under git control and writes the
-> `.gitignore` this repository keeps, which ignores `keys/private/`, `out/`
-> and `.cache/`. A directory that is already inside a git repository
-> is refused, because a repository does not nest.
+`repo.kdl` holds the repository settings: the schema version, the name, the builds, the libraries it reads, where images publish, and the CI workflows. `workstation-1.kdl` is an image file. An image file is a component file at the repository root, and a build in `repo.kdl` names it. `components/` holds the components you write yourself. A component is a directory under `components/`.
 
-> [!NOTE]
-> `buildc create repo` scaffolds a repository with configuration defaults. This
-> tutorial deliberately introduces features one line at a time, so you can
-> build an image repository with as much or as little schema as you choose.
+The [repository layout](https://buildc-org.github.io/buildc/schema/repository/) page has the full layout, including files this tutorial does not touch.
 
-## Writing `repo.kdl`
+## Write repo.kdl
 
-Add the following to `repo.kdl`:
+Write this into `repo.kdl`:
 
 <!-- kdl-file: repo.kdl -->
 ```kdl
 schema-version 1
+name "Buildc Tutorial"
+
+builds {
+    workstation-1 "./workstation-1"
+}
 ```
 
-`schema-version` is the only required field. The
-[repo.kdl](https://buildc-org.github.io/buildc/schema/repo/) documentation
-lists every property that this file can hold.
+`schema-version` is the one required line. `name` is the repository name. Commands derive ids from it, such as the name of the repository's own library later on. `builds` lists the images the repository builds. Each entry is a build name and the component file it reads, so `"./workstation-1"` reads `workstation-1.kdl` at the repository root. A build name is the published image name, the build target and the cache tag. It takes lowercase letters, digits and dashes, and it starts with a letter.
 
-## Creating image definitions
+Every node `repo.kdl` takes is on the [repo.kdl](https://buildc-org.github.io/buildc/schema/repo/) page.
 
-Images are defined with `image` nodes in `image.kdl` or `<name>.image.kdl`
-files.
+## Write the image file
 
-### Writing an `image.kdl` file
+Write this into `workstation-1.kdl`:
 
-Add the following to `image.kdl` in the repository root:
-
-<!-- kdl-file: image.kdl -->
+<!-- kdl-file: workstation-1.kdl -->
 ```kdl
 schema-version 1
 
-image "workstation-1" {
-    base-image {
-        base "quay.io/fedora/fedora-bootc:44" {
-            family "fedora"
-        }
+base-image {
+    base "quay.io/fedora/fedora-bootc:44" {
+        family "fedora"
     }
 }
 ```
 
-`base-image` defines the image's base inline. `base` names the bootc image
-that the build starts from, by its image reference. The `family` in its block
-tells components which package manager and package names the base has.
+Each node in an image file names a component by its path, one path segment per node. A segment that holds component properties defines that component inline, so it needs no directory. Here `base-image` is a component defined inline. Its `base` makes it the base: it names the bootc image reference the build starts from. `family` tells components which package manager and package names the base has. An image holds one base, and every layer builds on it.
 
-> [!NOTE]
-> `buildc` parses every `image.kdl` and `<name>.image.kdl` file at the root of
-> the repository, and reads the `image` nodes within them. The filenames are
-> purely decorative and allow the repository organisation that suits you:
->
-> - `image.kdl` is sufficient for a single image.
-> - A repository that builds several images can use named files, such as
->   `fedora-workstation.image.kdl` and `debian-workstation.image.kdl`.
-> - The filenames can group images by category, such as `servers.image.kdl`
->   and `iot.image.kdl`, where each file contains several related images.
+The image's display name is not a field of the image. The `os-release` component's `name` option sets it. The component writes the name into `/usr/lib/os-release`, where the boot menu and the desktop read it. An image that does not list `os-release`, or lists it without `name`, keeps the name its base image ships. When an image lists `os-release`, its `default-hostname` option defaults to the build name.
 
-### `image` nodes
-
-An `image` node defines a single image and its flavours.
-
-The node's argument is the image's id, which is required. The id names the
-published image, the build target and the cache tag. It takes lowercase
-letters, digits and dashes, and it starts with a letter.
-
-The image's own name is not an image field. To name the image, list the
-`os-release` component in the image and set its `name` option. The component
-writes the name into `/usr/lib/os-release`, where the boot menu and the desktop
-read it. If an image does not build `os-release`, or builds the component with
-no `name`, it keeps the name that its base image ships. When the
-image builds the component, its `default-hostname` option defaults to the
-image id. The id is therefore the default hostname unless the image sets that
-option.
-
-A reference is written `{name}` in a base image reference, an import, a package
-name and an option value. An option value that an image sets can read two
-values that `buildc` supplies. `{image-id}` is the image's id. `{base-url}` is
-the repository URL that `repo.kdl` declares as `base-url`. `buildc generate`
-writes each value in place of its reference. The generated files hold the text
-itself. A doubled brace writes a literal brace. A dollar sign is not a
-reference. An empty `os-release` option writes no line, and the base image's
-value stays.
-
-If `repo.kdl` sets no `base-url`, then `buildc check` refuses the fragment
-below. `buildc create repo` writes the declaration from the forge when the user
-gives an owner. In a repository written by hand, you add
-`base-url "https://github.com/you/your-repository"` to `repo.kdl`. A component's
-option default may read `{image-id}` alone. It has no repository URL to read
-because a component is shared across repositories.
+An option value can read two values that buildc supplies: `{image-id}` is the build name, and `{base-url}` is the repository URL that `repo.kdl` declares as `base-url`. `buildc generate` writes the value in place of the reference, so the generated files hold the text itself. For example, an `os-release` block could use them like this:
 
 <!-- kdl-fragment -->
 ```kdl
@@ -175,80 +85,153 @@ os-release {
 }
 ```
 
-Every other node in the image that is not a property of the image names a
-component by its path under `components/`, one segment per node. A segment
-that holds component properties, such as `base` or `packages`, defines its
-component inline, and no directory is needed. One component is the base that
-every layer builds on.
+If `repo.kdl` declares no `base-url`, `buildc check` refuses a value that reads `{base-url}` and tells you to declare `base-url "https://host/owner/repository"` in `repo.kdl`. `buildc create repo` writes `base-url` when you give it an owner. In a repository written by hand, as here, you add the line yourself if you need it.
 
-The [image](https://buildc-org.github.io/buildc/schema/image/) schema in
-the documentation lists every node that an image node can accept.
+A doubled brace writes a literal brace. A dollar sign is not a reference. An empty `os-release` option writes no line, and the base's value stays.
 
-### Creating a second image
+Every node an image file takes is on the [component schema](https://buildc-org.github.io/buildc/schema/component/) page.
 
-An easier way to scaffold an image file is to use the `buildc create image`
-command, which provides prompts to configure and generate an image.
+## Write a component by hand
 
-#### Adding a component library
+Create a directory for the `kde` component:
 
-The inline base names only the image that the build starts from and its family.
-A base component in a library also holds what the base image ships and what it
-imports. A component library holds base components and feature components that
-you can import. A library is declared in the `sources` node in `repo.kdl`:
+```sh
+mkdir components/kde
+```
+
+Write this into `components/kde/component.sh`:
+
+```sh
+dnf5 install -y plasma-desktop
+```
+
+It installs KDE Plasma with the Fedora base's package manager. `buildc generate` gives `component.sh` its own `RUN` layer in the generated Containerfile.
+
+Create a file tree for the component:
+
+```sh
+mkdir -p components/kde/files/etc/skel/.config
+```
+
+Write this into `components/kde/files/etc/skel/.config/kdeglobals`:
+
+```ini
+[General]
+ColorScheme=BreezeDark
+```
+
+Everything under a component's `files/` directory is copied into the image at the same path, so this file lands at `/etc/skel/.config/kdeglobals`. The generated Containerfile copies the tree from `generated/<build>/components/kde/files/`.
+
+Now list `kde` in `workstation-1.kdl`:
+
+<!-- kdl-file: workstation-1.kdl -->
+```kdl
+schema-version 1
+
+base-image {
+    base "quay.io/fedora/fedora-bootc:44" {
+        family "fedora"
+    }
+}
+kde
+```
+
+An image lists a component by its path under `components/`, one segment per node. `components/dev/git` and `components/dev/brew` would be listed as a `dev` block holding `git` and `brew`, with `dev` then a directory that holds components rather than a component itself.
+
+Run the check:
+
+```sh
+buildc check
+```
+
+```text
+buildc: 1 images, 2 components
+```
+
+The image checks with one image and two components: the base and `kde`. `kde` needs no manifest. A script and a file tree are enough to make a component.
+
+Every file and directory a component can use is on the [component directory layouts](https://buildc-org.github.io/buildc/schema/components/) page.
+
+## Declare a library
+
+A library is a Git repository of base components and feature components. A base component in a library holds the facts about a base image: what it ships, the components every image on it needs, its family and its bootloader. The default `buildc` library holds base components for Fedora, CentOS Stream, RHEL, AlmaLinux, Rocky Linux, Debian, Ubuntu and the Universal Blue images under `base-image/`, and feature components for many other uses.
+
+Run:
+
+```sh
+buildc set library buildc
+```
+
+A name on its own adds that default library and asks nothing. Without an argument, a terminal offers the default libraries and another location. `--source` declares a library at an HTTPS Git URL or a path.
+
+`repo.kdl` now reads:
 
 <!-- kdl-file: repo.kdl -->
 ```kdl
 schema-version 1
+name "Buildc Tutorial"
 
-sources {
-    components "buildc" {
-        url "https://github.com/buildc-org/library"
-        path "components"
+builds {
+    workstation-1 "./workstation-1"
+}
+
+libraries default="local-library" {
+    local {
+        local-library { source "." }
+    }
+    remote {
+        buildc { source "https://github.com/buildc-org/library" }
     }
 }
 ```
 
-The default library holds base components for Fedora, CentOS Stream, RHEL,
-AlmaLinux, Rocky Linux, Debian, Ubuntu and the Universal Blue images under
-`base-image/`, and feature components for many use cases.
+The `remote` entry is the `buildc` library. The `local` entry `local-library` names this repository's own components as a library too. A path that only one library holds reads that library, so `kde` still reads `components/kde`. When several libraries hold a path, it reads the library of the file that lists it. If that library does not hold the path, `default=` names the library it reads instead.
 
-#### Creating an image with the CLI
+## Create an image with the CLI
 
-To name the image and the base without their pickers, add the image name and a
-`--base` argument to the command. The command derives the image id by
-lowercasing the name and turning each space into a dash. Run the following
-within the repository:
+Run:
 
 ```sh
 buildc create image workstation-2 --base base-image/fedora-bootc
 ```
 
-This copies the library's `base-image/fedora-bootc` component, and the
-components it imports, into `components/`. The base imports no `os-release`
-component. `buildc create image` therefore offers the library's `os-release`.
-When you accept, the command copies the component and sets its `name` option
-to the image name. It writes a new `workstation-2.image.kdl` file
-that lists the base and `os-release`. Because the
-repository now has two images, `buildc` also records `default-image
-"workstation-1"` in `repo.kdl`.
+`--base` names the library's `base-image/fedora-bootc` base component and skips the base picker. Without arguments, `buildc create image` asks for the image name and the base.
 
-The image lists the base component by its path segments, and the base's
-segment holds the values this image sets on it:
+The command writes the new `workstation-2.kdl` at the repository root:
+
+<!-- kdl-file: workstation-2.kdl -->
+```kdl
+schema-version 1
+
+base-image {
+    fedora-bootc signed=#false {
+        version "44"
+    }
+}
+os-release {
+    name "workstation-2"
+}
+```
+
+It also adds the build to `repo.kdl`:
 
 <!-- kdl-fragment -->
 ```kdl
-base-image {
-    fedora-bootc {
-        version "44"
-        signed #false
+builds default="workstation-1" {
+    workstation-1 "./workstation-1"
+    workstation-2 "./workstation-2" {
+        install {
+            bootloader "grub2"
+        }
     }
 }
 ```
 
-##### The base component
+Nothing is copied into the repository. The image file lists each library component by its path, and the build reads it straight from the library. The base lists one bootloader, `grub2`, so the command asked no bootloader question and wrote it into the build's `install` block directly. A base with several bootloaders would ask one. The base lists no `os-release` of its own, so the command offered the library's `os-release` and set its `name` option to the image name. Without a terminal it takes that offer automatically. The repository now has two builds, so the command set `default="workstation-1"` on `builds`. A bare `buildc build` still builds what it built before.
 
-The library's base component holds the facts about the base image, and its
-`base` reads the `version` that the image sets:
+`version "44"` sets the `version` option of the base component. `signed=#false` records that the base publishes no signature. A separate base signature probe workflow corrects this later.
+
+This is the library's base component, `base-image/fedora-bootc`, shortened where the comment says:
 
 <!-- kdl-fragment -->
 ```kdl
@@ -258,11 +241,15 @@ provides {
     "initramfs-generation" witness="/usr/bin/dracut"
     "selinux-policy" witness="/usr/sbin/semodule"
     "ssh" witness="/usr/sbin/sshd"
-    "package-manager/dnf5" witness="/usr/bin/dnf5"
+    "package-manager/dnf5" witness="/usr/bin/dnf5" package="dnf5"
     // and the rest of what the base image ships
 }
 
-imports "fedora/build-environment"
+component "/" {
+    fedora {
+        build-environment
+    }
+}
 
 base "quay.io/fedora/fedora-bootc:{version}" {
     family "fedora"
@@ -276,224 +263,133 @@ base "quay.io/fedora/fedora-bootc:{version}" {
         }
     }
 }
-```
 
-`base` makes the component a base, and an image holds one base. Its block
-states the base's family, its bootloaders and its benchmark content. The
-`provides` block declares capabilities baked into the base image that
-components might require. It lists one capability on each line. A short list
-can go on one line instead, as `provides "rechunking" "luks-initramfs"`. A
-`witness` names the path that proves the capability is there, and the build
-checks the finished image for it. The `imports` node names the components
-every image on this base needs. `buildc create image` copied
-`fedora/build-environment` into `components/`. The image does not list it,
-because the base's import builds it into every image on the base. `scap-content`
-names the benchmark content
-that remediates the image and that a compliance scan of it reads. Its `pin`
-says where `buildc generate` fetches that file from, and the hash the file must
-match.
-
-`signed` records whether the base image publishes a signature. The base
-signature probe workflow corrects it.
-
-## Adding components
-
-### How components work
-
-A component is a directory that encapsulates a feature, or a collection of
-related features. A component directory can contain Bash scripts, files to copy
-into the image, Containerfile fragments and more.
-
-For a component to be included in an image, the image lists its path relative
-to the `components/` directory, one segment per node.
-
-> [!NOTE]
-> For these component directories:
->
-> - `components/custom-component`
-> - `components/dev/git`
-> - `components/dev/brew`
->
-> They are listed in the image like this:
->
-> <!-- kdl-fragment -->
-> ```kdl
-> custom-component
-> dev {
->     git
->     brew
-> }
-> ```
->
-> `dev` is a directory that holds components, so it lists nothing itself.
-
-The [component directory
-layouts](https://buildc-org.github.io/buildc/schema/components/) documentation
-shows every type of file and directory a component can use.
-
-### Creating a component
-
-For this tutorial you will create a new KDE Plasma component.
-
-Create the `kde` component directory:
-
-```sh
-mkdir components/kde
-```
-
-Create the component script file `components/kde/component.sh`:
-
-> [!NOTE]
-> `buildc generate` picks up `component.sh` and gives it its own `RUN` layer in the
-> generated `Containerfile`.
-
-Edit `components/kde/component.sh` and add the following command, which installs
-KDE Plasma from the Fedora base image's package manager:
-
-```sh
-dnf5 install -y plasma-desktop
-```
-
-A component can also ship a file tree. Everything under a component's `files/`
-directory is copied into the image at the same path. Create a default user
-configuration:
-
-```sh
-mkdir -p components/kde/files/etc/skel/.config
-```
-
-and write `components/kde/files/etc/skel/.config/kdeglobals`:
-
-```ini
-[General]
-ColorScheme=BreezeDark
-```
-
-During the build, this tree is copied into the image at the same path, so
-`components/kde/files/etc/skel/.config/kdeglobals` lands at
-`/etc/skel/.config/kdeglobals`. The generated Containerfile places the resolved
-tree with a `COPY` from `generated/<image>/components/kde/files/`.
-
-Include the `kde` component in the `workstation-1` image node in `image.kdl`:
-
-<!-- kdl-file: image.kdl -->
-```kdl
-schema-version 1
-
-image "workstation-1" {
-    base-image {
-        base "quay.io/fedora/fedora-bootc:44" {
-            family "fedora"
-        }
-    }
-    kde
+option "version" type="string" {
+    default "44"
 }
 ```
 
-#### Importing a component from a library
+`base` makes it a base, and its block states the family, the bootloader and the benchmark content. `provides` lists capabilities that the base image already ships, one per line, so components that need them are satisfied. A short list can go on one line, such as `provides "rechunking" "luks-initramfs"`. A `witness` names a path that proves the capability is there. The build checks the finished image for it. The `component "/"` block lists components from the library root that every image on this base builds. Here the base brings `fedora/build-environment`, so `workstation-2.kdl` does not need to list it itself. `scap-content` names the benchmark content that remediates the image and that a compliance scan reads. Its `pin` says where `buildc generate` fetches the file and the hash it must match.
 
-Rather than writing every component from scratch, you can import existing
-components from a library to add features quickly and avoid duplicating code.
-The library you declared for workstation-2 also holds feature components.
-
-Now run:
+Run the check again:
 
 ```sh
-buildc import component
+buildc check
 ```
 
-The first prompt asks which image the components are for. Select `workstation-2`
-and press enter:
-
-```ansi
-image or flavour
-  workstation-1
-> workstation-2
-  None, only add it to the repository
-↑↓ navigate • ⏎  select • Esc cancel
+```text
+buildc: `workstation-2` reads `base-image/fedora-bootc` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
+buildc: `workstation-2` reads `fedora/build-environment` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
+buildc: `workstation-2` reads `os-release` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
+buildc: 2 images, 5 components
 ```
 
-You will then be prompted with a populated list of components from the default
-component library. A component that cannot build on the image's base family is
-listed with the reason beside it, and cannot be selected. Tab hides and shows
-those components. Scroll to the
-`desktop-environment` section, expand it with the → key, and toggle
-`kde-plasma` with the space bar:
+The commit in your own output will differ from the one above. Each library component is read at a commit. `repo.lock.kdl` records the commit and the content hash of each library component a build reads. Until `buildc generate` writes the lock, `buildc check` reports each component the lock does not yet record.
 
-```ansi
-components
-  [ ] ▸ browsers
-  [-] ▾ desktop-environment
-    [ ] buildc/desktop-environment/gamemode
-    [ ] buildc/desktop-environment/gnome
-  > [x] buildc/desktop-environment/kde-plasma
-    [ ] buildc/desktop-environment/krunner-bazaar
-  [ ] ▸ fedora
-  [ ] ▸ hardening
-↑↓ • ←/→ open • ␣ toggle • ⇥ hide • ⏎  confirm • Esc cancel
+The lock file format is on the [repo.lock.kdl](https://buildc-org.github.io/buildc/schema/repo-lock/) page.
+
+## Create a component with the CLI
+
+Run:
+
+```sh
+buildc create component browser --build workstation-2
 ```
 
-`kde-plasma` requires a `build-environment`, which is explained later in the
-[Component manifests](#component-manifests) section. The base already imports
-`fedora/build-environment`, so the import asks for nothing more. The last
-prompt asks whether the copy tracks its library. Select Yes:
+`--build workstation-2` lists the new component in that build's image file. Without arguments, `buildc create component` asks for the name, an optional description, optional base families and the builds that list it.
 
-```ansi
-Track upstream for `desktop-environment/kde-plasma`?
-> Yes
-  No
-↑↓ navigate • ⏎  confirm • Esc cancel
+The component gets a `manifest.kdl` with no packages. `buildc create component` asks nothing about packages itself.
+
+Add the package:
+
+```sh
+buildc add package firefox --component browser
 ```
 
-This adds the imported component to `workstation-2.image.kdl`:
+`components/browser/manifest.kdl` now reads:
 
-<!-- kdl-file: workstation-2.image.kdl -->
+<!-- kdl-file: components/browser/manifest.kdl -->
 ```kdl
 schema-version 1
 
-image "workstation-2" {
-    layout {
-        bootloader "grub2"
-    }
+packages "firefox"
+```
 
-    base-image {
-        fedora-bootc {
-            version "44"
-            signed #false
-        }
+`buildc add package` writes only the names the component does not already list, so it is safe to repeat. Without `--component`, a terminal asks for the group name and offers a picker of the components the repository holds. A path the repository does not hold writes a new component instead. With `--no-tui`, neither command prompts. `buildc create component <name>` then writes the component with no description and lists it in no build. `buildc add package` without `--component` fails and names that flag.
+
+The [CLI reference](cli.md) lists every argument of both commands.
+
+## Declare a dependency
+
+A missing dependency is expensive to find during the image build or at runtime. `provides` and `requires` in a manifest let buildc find it before the build files even exist.
+
+Firefox is a graphical app, so add `requires "graphical-session"` to the browser's manifest:
+
+<!-- kdl-file: components/browser/manifest.kdl -->
+```kdl
+schema-version 1
+
+packages "firefox"
+
+requires "graphical-session"
+```
+
+Run `buildc check` again:
+
+```text
+  × `browser` requires `graphical-session`, which nothing enabled provides
+   ╭─[./components/browser/manifest.kdl:5:10]
+ 4 │ 
+ 5 │ requires "graphical-session"
+   ·          ─────────┬─────────
+   ·                   ╰── unsatisfied
+   ╰────
+  help: no component in the repository declares `provides "graphical-
+        session"`, and neither does the base `base-image/fedora-bootc`.
+        `buildc add component` lists what the declared libraries provide
+
+buildc: 1 problem in ./components/browser/manifest.kdl; none in ./repo.kdl, ./workstation-1.kdl, ./workstation-2.kdl
+buildc: `workstation-2` reads `base-image/fedora-bootc` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
+buildc: `workstation-2` reads `fedora/build-environment` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
+buildc: `workstation-2` reads `os-release` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
+```
+
+Nothing in `workstation-2` provides `graphical-session` yet. The help text names `buildc add component`, which lists what the declared libraries provide. Nothing adds a component to an image on its own. The check only names the gap, and you choose the provider.
+
+## Add components from a library
+
+Run:
+
+```sh
+buildc add component desktop-environment/kde-plasma --in workstation-2
+```
+
+This adds the library's `desktop-environment/kde-plasma` to `workstation-2`. `buildc add component` copies nothing. The image file references the component, and the build reads it from the library. In a terminal, with no arguments, the command asks which component takes the reference, which components to add, and whether to add the providers they require. A component that a chosen build cannot use names that build after `does not support`.
+
+`workstation-2.kdl` now reads:
+
+<!-- kdl-file: workstation-2.kdl -->
+```kdl
+schema-version 1
+
+base-image {
+    fedora-bootc signed=#false {
+        version "44"
     }
-    os-release {
-        name "workstation-2"
-    }
-    desktop-environment {
-        kde-plasma
-    }
+}
+os-release {
+    name "workstation-2"
+}
+browser
+
+desktop-environment {
+    kde-plasma
 }
 ```
 
-The import copies each component into `components/`, at its path in the library,
-and the image lists it like a component you wrote yourself.
-`components/components.lock.kdl` records the library each copy came from and what
-its content hashed to. The entry of a tracked copy carries `track`. A tracked
-copy is immutable: if it no longer matches its entry, then `buildc check`,
-`buildc generate` and `buildc build` refuse it. An untracked copy is yours to edit, and `buildc why` shows that it
-was edited.
+Run `buildc check` again. It passes, because KDE Plasma provides `graphical-session`. `desktop-environment/kde-plasma` itself requires `build-environment`, and the base already brings `fedora/build-environment`.
 
-A tracked copy changes only when its library moves. `buildc fetch components`
-copies each tracked component again from its library and records the new hash in
-the lock. The `update-components` workflow runs it on a schedule and opens a pull
-request. To edit a tracked copy, first run `buildc detach component <path>`. The command
-makes the copy yours.
-
-If `components/` already holds a component at that path, then the import asks
-whether to list the component you hold or to import the library's under another
-name, such as `desktop-environment/kde-plasma@1`.
-
-#### Component manifests
-
-Looking at `components/desktop-environment/kde-plasma`,
-you will see it contains a `manifest.kdl` file. This is a component manifest. It
-includes the following nodes:
+This is part of the library manifest of `desktop-environment/kde-plasma`:
 
 <!-- kdl-fragment -->
 ```kdl
@@ -504,6 +400,7 @@ provides {
     "wayland"
     "plasma-desktop" witness="/usr/bin/plasmashell"
 }
+
 provides "display-manager" exclusive=#true
 
 requires "build-environment"
@@ -511,7 +408,6 @@ requires "build-environment"
 packages {
     "plasma-desktop"
     "plasma-workspace"
-    "plasma-nm"
     "dolphin"
     "konsole"
     "kate"
@@ -521,202 +417,25 @@ packages {
 on "fedora" {
     packages "plasma-login-manager" "kcm-plasmalogin" "kwin" "kscreenlocker"
 }
-
-on "ubuntu" {
-    packages "plasma-session-wayland" "plasma-session-x11"
-}
-
-on "debian" "ubuntu" {
-    packages "systemsettings" "sddm" "kwin-wayland"
-}
 ```
 
-##### Manifest fields
+`targets` restricts a component to the base families it lists. `provides` and `requires` name capabilities that a component supplies or needs: a graphical app requires `graphical-session`, and a desktop provides it. `exclusive=#true` means a second provider conflicts. `buildc check` refuses a build that would hold two display managers. `packages` installs through the base's package manager, which the `build-environment` component supplies for each family. A short list goes on one line, and a long one goes in a block with one name per line. Each `packages` node installs as one batch. `on "fedora"` gates the declarations inside it to the named families, so one component can handle the differences between families itself.
 
-- **targets** restricts this component to the base families it lists.
-- **provides** and **requires** name capabilities a component provides or needs
-  from other components. For example, a GUI app can declare that it requires a
-  `graphical-session`, and components that add a desktop can declare that they
-  provide it. `witness` names the path that proves the capability is in the
-  finished image. `exclusive=#true` says that a second provider conflicts, so
-  `buildc check` refuses an image or flavour that would hold two display
-  managers.
-- **packages** resolves to the base image's package manager, which the
-  `build-environment` component supplies for each family. A short list goes
-  on one line, and a long one goes in a block with one name on each line.
-  Each `packages` node installs as one batch, so an `enablerepo=` on the node
-  covers every name in it.
-- **on "fedora" "rhel" "debian" "ubuntu"** gates any of the component's
-  top-level configuration for one or more families, so a component can handle
-  the differences between them.
+The manifest is opt-in. `workstation-1`'s `kde` builds without one, and its author owns its compatibility with the base.
 
-### Creating a component with the CLI
+## Extend buildc with a component
 
-Create the `browser` component now. Run `buildc create component` with no
-arguments and it walks you through the choices:
+A component can also add to the `buildc` tool itself and to the generation step.
+
+**Key hook.** A component's `key` node makes `buildc create key` generate a key pair for it. The public half is installed in the image where the component says. `buildc create key` writes the private half under `keys/private/` and prints the command that stores it as a GitHub secret.
+
+Run:
 
 ```sh
-buildc create component
+buildc add component updates/signature-policy --in workstation-2
 ```
 
-```ansi
-component name: browser
-
-description (optional) []:
-
-supported base families, separated by spaces (optional) []:
-
-images and flavours that list it
-  [ ] workstation-1
-> [x] workstation-2
-↑↓ navigate • ␣ toggle • ⏎  confirm • Esc cancel
-```
-
-Answer the name, an optional description, an optional base-family
-restriction, and then check the images and flavours that should list the
-component, the same multi-select picker you already used earlier in this
-tutorial. The command does not ask about packages, and there is no flag for
-them either. Whatever you answer, you get an empty component ready for its
-first package.
-
-If you already know the name and the image, skip the prompts and pass them
-as arguments instead:
-
-```sh
-buildc create component browser --image workstation-2
-```
-
-This creates the same empty `browser` component without asking you
-anything.
-
-You have an empty `browser` component. Add your first package to it:
-
-```sh
-buildc add package firefox --component browser
-```
-
-`buildc add package` puts packages into a package group. A package group is
-an ordinary component and `browser` is one.
-
-A package group can live in its own directory under `components/`, the way
-`browser` does. It can also be a block declared inline inside an image file.
-The command works the same either way.
-
-Run the command again whenever you want more packages in the group. It adds
-only the names the group does not already list. Running it again with a
-package the group already has is safe.
-
-Leave out `--component` and the command asks you instead. It shows a screen
-with two rows. The first row is `group name`, where you type a name. Leave
-it empty and the command uses the group `apps`. The second row is `select
-component` and it opens a picker of the components in your repository.
-Choose one and the command fills in its name. A component marked `hidden
-#true` stays out of that picker until you press `h`. The [`hidden`
-node](schema/component.md#hidden) documents the flag itself.
-
-Naming a group your repository does not hold yet creates it. The command
-then asks which images get the new group, as a multi-select of every image
-and flavour. Each image you select gets its own inline copy of the group.
-Select none and the group becomes a directory component under `components/`
-instead.
-
-`--image <name>` picks an image for a new group without asking that
-question. Give it a flavour instead as `<image>/<flavour>`. Repeat the
-option to pick more than one image. The [CLI
-reference](cli.md#buildc-add-package) covers what happens when a group
-already has copies in several images. It also covers the other cases where
-the command refuses.
-
-Add `--no-tui` to `buildc create component` or to `buildc add package` when
-you run them in scripts or in CI. With `--no-tui`, a question the command
-would otherwise ask fails instead and names the flag you left out.
-
-#### `buildc create component` arguments
-
-- **name** (positional, optional): the component's name. Prompted for if
-  left out.
-- **`--image <name>`**: the image or flavour that should list the new
-  component. Prompted for if left out.
-- **`--no-tui`**: fail instead of prompting, naming the missing argument.
-
-#### `buildc add package` arguments
-
-- **names** (positional, one or more): the package names to add.
-- **`--component <path>`**: the package group to add the packages to. A path
-  the repository does not hold yet creates a new group. Leaving out the
-  option shows the group name screen and the component picker.
-- **`--image <name>`**: an image that gets an inline copy of a new group, or
-  a flavour as `<image>/<flavour>`. Repeat it to pick more than one. A new
-  group with no image given becomes a directory component.
-- **`--no-tui`**: make the command fail instead of asking. It names the
-  argument you left out.
-
-Review the `manifest.kdl` file in `components/browser/`:
-
-<!-- kdl-file: manifest.kdl -->
-```kdl
-schema-version 1
-
-packages "firefox"
-```
-
-#### Declaring dependencies
-
-A missing dependency is expensive to catch during the image build or at
-runtime.
-
-Declaring `provides` and `requires` in a component's `manifest.kdl` manifest lets
-`buildc` catch them before the build files are generated.
-
-Since Firefox is a GUI app, it requires a graphical session. Add the following
-line to `components/browser/manifest.kdl`:
-
-<!-- kdl-file: manifest.kdl -->
-```kdl
-schema-version 1
-
-packages "firefox"
-
-requires "graphical-session"
-```
-
-If an image lists `browser` and no component in the repository provides
-`graphical-session`, then `buildc check` and `buildc generate` report the missing
-dependency immediately:
-
-```
-  × `browser` requires `graphical-session`, which nothing enabled provides
-   ╭─[./components/browser/manifest.kdl:5:1]
- 4 │
- 5 │ requires "graphical-session"
-   · ────┬───
-   ·     ╰── unsatisfied
-   ╰────
-  help: no component in the repository declares `provides "graphical-
-        session"`, and neither does the base `base-image/fedora-bootc`. `buildc
-        import component` lists what the declared libraries provide
-```
-
-Nothing adds a component to the image on its own. `buildc check`'s help names
-each component under `components/` that could provide the capability, to add
-to the image. If none is there, then the help names `buildc import component`,
-which lists what the declared libraries provide. `generated/plan.json`
-records whether each component is `listed` or `imported`, and names the
-component that imported it. `buildc why` names that component too.
-
-### Hook components
-
-The components so far add features to the image. A component can also add
-functionality to the `buildc` tool itself and to the generation stage.
-
-#### Key hook
-
-A component can hook into the key generator, `buildc create key`, and add new key
-pairs with the `key` node in its `manifest.kdl` file. The private key then goes
-into a secrets vault, and the public key is installed at the location the
-component declares in the image.
-
-The `key` node takes these fields:
+This verifies image updates with cosign. Its `key` node reads:
 
 <!-- kdl-fragment -->
 ```kdl
@@ -727,23 +446,12 @@ key "cosign" {
 }
 ```
 
-`generator` is one of `cosign`, `openssl` or `ssh-keygen`.
-
-Add the signature-policy component, `updates/signature-policy`, to the image
-with:
-
-```sh
-buildc import component updates/signature-policy --image workstation-2
-```
-
-then create the cosign keys with:
+`generator` is one of `cosign`, `openssl` or `ssh-keygen`. Run:
 
 <!-- transcript-command: buildc create key cosign -->
 ```sh
 buildc create key cosign
 ```
-
-This prints:
 
 <!-- transcript-output: buildc create key cosign -->
 ```bash
@@ -759,26 +467,15 @@ next:
   gh secret set SIGNING_SECRET < keys/private/cosign.key
 ```
 
-> [!NOTE]
-> The `.gitignore` that `buildc create git` wrote already ignores
-> `keys/private/`. `buildc create key` warns when nothing ignores the private
-> half.
+The `.gitignore` from `buildc create git` already ignores `keys/private/`. `buildc create key` warns when nothing ignores the private half. `buildc check` refuses a component whose key has no public half yet, and its help says to run `buildc create key`.
 
-#### Collection components
-
-A component can also collect and organise files from the components it depends on.
-
-For example, a Flatpak component can collect a `flatpaks.list` file from any
-component in the image.
-
-Add Flatpak and Bazaar to workstation-2 with:
+**Collection.** A component can gather one named file from every component in the image. Run:
 
 ```sh
-buildc import component flatpak --image workstation-2
-buildc import component apps/bazaar --image workstation-2
+buildc add component flatpak apps/bazaar --in workstation-2
 ```
 
-The Flatpak `manifest.kdl` at `components/flatpak` holds:
+This adds Flatpak and Bazaar. Part of the Flatpak manifest reads:
 
 <!-- kdl-fragment -->
 ```kdl
@@ -787,46 +484,30 @@ collects "flatpaks.list" into="/usr/share/flatpak-defaults/apps.list" priority=5
 provides "flatpak" witness="/usr/bin/flatpak"
 ```
 
-The Bazaar component at `components/apps/bazaar` has a manifest that requires
-`flatpak` and `graphical-session`, and a `flatpaks.list` file holding:
+It collects every `flatpaks.list` into one list in the image. Bazaar's own `flatpaks.list` holds:
 
 ```text
 io.github.kolunmi.Bazaar
 ```
 
-#### Build helper script components
+Bazaar's manifest requires `flatpak` and `graphical-session`.
 
-A component can provide build helper scripts to every other component with the
-`helpers` node in `manifest.kdl`.
+**Helpers.** A component's `helpers` node shares files with every other component's layer. `fedora/build-environment` shares `lib/family.sh`, which installs packages with the right command for the family.
 
-For example, the `fedora/build-environment` component provides
-`lib/family.sh`, which other components use to install packages with the right
-command for the family.
+## Check and generate
 
-## Check the repository
-
-Run the check:
+Run:
 
 ```sh
 buildc check
-```
-
-Errors name what is missing.
-
-## Generate and review the build files
-
-```sh
 buildc generate
 ```
 
-This creates a `generated` directory. Each image gets a
-`generated/<image>/` directory holding its `Containerfile`, its component scripts
-under `components/`, `finalize.sh` and the capability graph (`graph.md`).
-`generated/plan.json` records the resolved plan, and `generated/lib/` and
-`generated/scripts/` hold the shared helpers and scripts.
+`buildc check` names what is missing at the line that caused it. `buildc generate` writes `generated/`. Each build gets `generated/<build>/` with its `Containerfile`, its component scripts under `components/`, `finalize.sh` and the capability graph `graph.md`. `generated/plan.json` records the resolved plan, and `generated/lib/` and `generated/scripts/` hold shared helpers and scripts.
 
-`buildc graph` prints the capability graph generated at
-`generated/workstation-1/graph.md`:
+`buildc generate` also writes `repo.lock.kdl`. It moves each library component to the library's current version and records its commit and content hash. Every other command then reads each library component at the commit the lock records. Commit the lock.
+
+Run:
 
 <!-- transcript-command: buildc graph -->
 ```sh
@@ -842,15 +523,26 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["kde"]
+    m1["workstation-1"]
+    m1 ==>|"lists"| m0
 ```
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `kde` | `workstation-1` | lists |
 ````
 
-`buildc summary` prints what the target is made of:
+This is the capability graph of the default build, `workstation-1`. The image file is a component too, so the graph shows `workstation-1` listing `kde`.
+
+Run:
 
 <!-- transcript-command: buildc summary -->
 ```sh
@@ -859,25 +551,24 @@ buildc summary
 
 <!-- transcript-output: buildc summary -->
 ```markdown
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `kde` |  |  |  |  |
+| `workstation-1` |  |  |  |  |
 ```
 
-`buildc why bazaar` prints where each part of the Bazaar component came from:
+This lists what the default build is made of. Run:
 
-<!-- transcript-command: buildc why bazaar -->
+<!-- transcript-command: buildc why browser -->
 ```sh
-buildc why bazaar
+buildc why browser
 ```
 
-<!-- transcript-output: buildc why bazaar -->
+<!-- transcript-output: buildc why browser -->
 ```markdown
-# apps/bazaar
-
-Bazaar, the Flatpak storefront
+# browser
 
 ## Where it is built
 
@@ -887,9 +578,13 @@ workstation-2
 
 | Direction | What | With |
 | --- | --- | --- |
-| provides | `bazaar` | nothing |
-| requires | `flatpak` | flatpak |
 | requires | `graphical-session` | desktop-environment/kde-plasma |
+
+## What it declares to install
+
+| Family | Packages | Enabled repository |
+| --- | --- | --- |
+| `fedora` | `firefox` | default |
 
 ## What it claims
 
@@ -899,13 +594,9 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `0329331475c534107db0404630eb33cef466ca52542b1cd67d70b718ca51c07c` |
+| declared | `d402c6c8e5d8b2946930e88be8de074e183fd0dd7bee5022c03d87fd1c72cd5b` |
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `buildc` | https://github.com/buildc-org/library | not declared | not declared | none |
-
-It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.
+It was written in this repository, so no library holds a version to compare it against.
 
 ## What it pulls in
 
@@ -916,28 +607,39 @@ Nothing. It declares no `asset`.
 None. It declares no `copr` and ships no `repo.sh` file.
 ```
 
+This shows where the browser is built, what it exchanges with other components, what it installs and where it came from. `buildc why` on a library component instead says which library it is read from.
+
+## Copy a component to edit it
+
+A library component is read in place, so you cannot edit it inside the repository as it stands. Run:
+
+```sh
+buildc copy component buildc/desktop-environment/kde-plasma
+```
+
+`buildc copy component` copies the component into `components/` and records the library source it came from, the commit and the content hash in `components/origins.kdl`. The copy is the repository's own, and you may edit it freely.
+
+The image file still lists `desktop-environment/kde-plasma`. Two libraries hold that path now, and `workstation-2.kdl` belongs to this repository's own library, so the path reads the copy. `buildc why` on the copy says where it came from and whether it has been edited since. An edit is reported plainly and is not an error.
+
+The origins file format is on the [origins.kdl](https://buildc-org.github.io/buildc/schema/origins/) page.
+
 ## Build the image
 
-To build the image run:
+Run:
 
 <!-- transcript-command: buildc build -->
 ```sh
 buildc build
 ```
 
-`buildc build` verifies the generated files, then builds the default image. Name
-another target, such as `buildc build workstation-2`, to build it instead. With
-the default buildah backend, the image lands in the local Podman store. The
-walkthrough's default tag is printed before the build starts:
+`buildc build` checks that the generated files are current, then builds the default build. `buildc build workstation-2` builds the other one. The image builds on the host with `buildah` and lands in the local Podman store. One line of its output names the tag it builds:
 
 <!-- transcript-output: buildc build -->
 ```text
 buildc: tags workstation-1:latest
 ```
 
-Once `IMAGE_REGISTRY` is set, or the repository has a GitHub `origin`,
-`buildc registry ref` prints the full reference the image publishes under. For
-example:
+An image publishes under a registry namespace. `IMAGE_REGISTRY` sets it for one command, and `registry "ghcr.io/<owner>"` in `repo.kdl` sets it for the whole repository. Run:
 
 <!-- transcript-command: IMAGE_REGISTRY=ghcr.io/example buildc registry ref -->
 ```sh
@@ -949,16 +651,32 @@ IMAGE_REGISTRY=ghcr.io/example buildc registry ref
 ghcr.io/example/workstation-1:latest
 ```
 
+This is the reference the default build publishes under.
+
 ## Publish with CI
 
-`buildc set workflows` chooses the GitHub Actions workflows and writes them into
-`repo.kdl`. Pick `build`, the workflow that builds and publishes the image.
-`buildc generate` then writes `.github/workflows/build.yml`. Push the repository
-to GitHub, and the workflow builds the image, pushes it to
-`ghcr.io/<owner>/<image>`, signs the digest with the key from
-`SIGNING_SECRET`, attests its SBOM, and runs the scans. The schedule in the
-workflow comes from `at=`, the image version comes from the build, and
-`buildc registry namespace` prints the namespace the image publishes under.
-Pick `update-components` as well, and the tracked components are refreshed once a
-week.
-[repo.kdl](schema/repo.md#workflows) documents the block.
+Run:
+
+```sh
+buildc set workflows image-build
+buildc generate
+```
+
+`buildc set workflows` chooses the GitHub Actions workflows and writes them into `repo.kdl`:
+
+<!-- kdl-fragment -->
+```kdl
+github {
+    workflows {
+        image-build
+    }
+}
+```
+
+`buildc generate` then writes `.github/workflows/image-build.yml`. In a terminal without a workflow name, `buildc set workflows` offers every workflow, and a workflow the repository cannot run shows its reason.
+
+Pushed to GitHub, `image-build` builds each image, generates its SBOM (software bill of materials), pushes it to the registry, signs it with cosign using the key in the `SIGNING_SECRET` secret, and attests the SBOM. A build whose image declares `conforms` is also scanned against its benchmark profile. This tutorial declares no `conforms`, so its images skip that scan.
+
+The `update-components` workflow runs `buildc generate` on a schedule. It opens a pull request that moves `repo.lock.kdl` to the libraries' new commits, so each library update is reviewed before it builds.
+
+The `github` block is documented on the [repo.kdl workflows](schema/repo.md#github) page.

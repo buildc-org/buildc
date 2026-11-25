@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "custom-workstation",
   "pr_target": "custom-workstation",
   "pr_published": "custom-workstation",
-  "ungated_target": "custom-workstation",
-  "ungated_published": "custom-workstation",
   "cache_image": "custom-workstation-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "custom-workstation",
-      "file": "./image.kdl",
+      "file": "./components/custom-workstation.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -43,23 +41,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "custom-workstation",
           "image": "custom-workstation",
-          "flavour": null,
           "published": "custom-workstation",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "kde",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -84,6 +78,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "custom-workstation",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -99,6 +120,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/custom-workstation/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
@@ -108,7 +130,9 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]

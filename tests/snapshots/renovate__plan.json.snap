@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "renovate",
   "pr_target": "renovate",
   "pr_published": "renovate",
-  "ungated_target": "renovate",
-  "ungated_published": "renovate",
   "cache_image": "renovate-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "renovate",
-      "file": "./image.kdl",
+      "file": "./components/renovate.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "",
@@ -49,34 +47,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [
-        {
-          "name": "beta",
-          "default": false,
-          "pr_build": false
-        }
-      ],
-      "default_flavour": null,
       "targets": [
         {
           "name": "renovate",
           "image": "renovate",
-          "flavour": null,
           "published": "renovate",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [
-            {
-              "name": "renovate/beta",
-              "published": "renovate-beta"
-            }
-          ],
           "components": [
             {
               "path": "fedora-family",
-              "flavour": null,
               "variant": null,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
@@ -106,7 +89,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "apps/browser",
-              "flavour": null,
               "variant": null,
               "description": "A browser whose image entry sets the version",
               "options": {
@@ -145,7 +127,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "apps/editor",
-              "flavour": null,
               "variant": null,
               "description": "An editor whose image entry leaves the version at its default",
               "options": {
@@ -183,7 +164,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "apps/image-viewer@1",
-              "flavour": null,
               "variant": null,
               "description": "A viewer imported under a local name, whose entry sits on one line",
               "options": {
@@ -218,6 +198,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "renovate",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -233,240 +240,13 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/renovate/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=renovate",
               "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb apps/browser|97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044 apps/editor|36d3856b67abbd26da0eb450cec7d0d4b96b1833d7d87cad40e673aa31408886 apps/image-viewer@1|72ccfe481ba1956dfab74ebaeb61aba802464dba992d55b7d1a3e497e561f501",
               "ASSET_RESOLUTIONS=",
-              "FLAVOUR=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        },
-        {
-          "name": "renovate/beta",
-          "image": "renovate",
-          "flavour": "beta",
-          "published": "renovate-beta",
-          "conforms": "",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [
-            {
-              "name": "renovate",
-              "published": "renovate"
-            }
-          ],
-          "components": [
-            {
-              "path": "fedora-family",
-              "flavour": null,
-              "variant": null,
-              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
-              "options": {},
-              "provides": [
-                "build-environment"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
-                "resolved": "63e02c5ee645e8ab913a8613a284caec1d0aa38476f11ac43660dae33065c0ea",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "apps/browser",
-              "flavour": null,
-              "variant": null,
-              "description": "A browser whose image entry sets the version",
-              "options": {
-                "OPT_LANG_VERSION": "2",
-                "OPT_VERSION": "128.0"
-              },
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "firefox"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "apps/editor",
-              "flavour": null,
-              "variant": null,
-              "description": "An editor whose image entry leaves the version at its default",
-              "options": {
-                "OPT_VERSION": "9.1"
-              },
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "vim-enhanced"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "36d3856b67abbd26da0eb450cec7d0d4b96b1833d7d87cad40e673aa31408886",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "apps/image-viewer@1",
-              "flavour": null,
-              "variant": null,
-              "description": "A viewer imported under a local name, whose entry sits on one line",
-              "options": {
-                "OPT_VERSION": "3.1"
-              },
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "eog"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "72ccfe481ba1956dfab74ebaeb61aba802464dba992d55b7d1a3e497e561f501",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "apps/browser",
-              "flavour": "beta",
-              "variant": null,
-              "description": "A browser whose image entry sets the version",
-              "options": {
-                "OPT_LANG_VERSION": "1",
-                "OPT_VERSION": "129.0"
-              },
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "firefox"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": null,
-          "build": {
-            "containerfile": "generated/renovate/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=renovate/beta",
-              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb apps/browser|97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044 apps/editor|36d3856b67abbd26da0eb450cec7d0d4b96b1833d7d87cad40e673aa31408886 apps/image-viewer@1|72ccfe481ba1956dfab74ebaeb61aba802464dba992d55b7d1a3e497e561f501 apps/browser|97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044",
-              "ASSET_RESOLUTIONS=",
-              "FLAVOUR=beta",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
             "unresolved": [],

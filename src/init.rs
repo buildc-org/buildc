@@ -77,22 +77,23 @@ pub fn drifted(root: &Path) -> Vec<String> {
         .collect()
 }
 
-pub fn sources_block(chosen: &[&crate::collection::DefaultLibrary]) -> String {
-    if chosen.is_empty() {
-        return String::new();
-    }
-    let mut out = String::from("sources {\n");
-    for library in chosen {
-        let _ = std::fmt::Write::write_fmt(
-            &mut out,
-            format_args!(
-                "    {} \"{}\" {{\n        url \"{}\"\n        path \"{}\"\n    }}\n",
-                library.kind.as_str(),
-                library.alias,
-                crate::collection::LIBRARY_URL,
-                library.path
-            ),
-        );
+pub fn libraries_block(chosen: &[crate::model::remote::DefaultLibrary]) -> String {
+    let own = layout::ROOT_LIBRARY;
+    let mut out = format!(
+        "libraries default=\"{own}\" {{\n    local {{\n        {own} {{ source \".\" }}\n    }}\n"
+    );
+    if !chosen.is_empty() {
+        out.push_str("    remote {\n");
+        for library in chosen {
+            let _ = std::fmt::Write::write_fmt(
+                &mut out,
+                format_args!(
+                    "        {} {{ source {:?} }}\n",
+                    library.name, library.source
+                ),
+            );
+        }
+        out.push_str("    }\n");
     }
     out.push('}');
     out
@@ -127,8 +128,8 @@ pub fn assets() -> Result<PathBuf, String> {
     }
 }
 
+// The XDG base directory specification counts an empty `XDG_DATA_HOME` as unset.
 pub(crate) fn data_home() -> Option<PathBuf> {
-    // The XDG base directory specification counts an empty XDG_DATA_HOME as unset.
     std::env::var_os("XDG_DATA_HOME")
         .filter(|dir| !dir.is_empty())
         .map(PathBuf::from)
@@ -150,8 +151,9 @@ pub fn write(
     root: &Path,
     name: &str,
     base_url: Option<&str>,
+    registry: Option<&str>,
     assets: &Path,
-    sources: &str,
+    libraries: &str,
 ) -> Result<Vec<PathBuf>, String> {
     if root.join(layout::REPO_FILE).exists() {
         return Err(format!("{} is already a repository", root.display()));
@@ -164,22 +166,26 @@ pub fn write(
             Path::new("lib"),
             Path::new(layout::SCRIPTS),
             Path::new(layout::WORKFLOW_DIR),
+            Path::new(crate::collection::DEFAULTS_FILE),
         ],
     )?;
 
     let base_url = base_url
         .map(|url| format!("base-url \"{url}\"\n"))
         .unwrap_or_default();
-    let sources = match sources.is_empty() {
+    let registry = registry
+        .map(|registry| format!("registry \"{registry}\"\n"))
+        .unwrap_or_default();
+    let libraries = match libraries.is_empty() {
         true => String::new(),
-        false => format!("\n{sources}\n"),
+        false => format!("\n{libraries}\n"),
     };
     put(
         &root.join(layout::REPO_FILE),
         &format!(
             "schema-version {SCHEMA_VERSION}\n\
              name \"{name}\"\n\
-             {base_url}{sources}\n{RENOVATE}"
+             {base_url}{registry}{libraries}\n{RENOVATE}"
         ),
     )?;
     put(&root.join("README.md"), &format!("# {name}\n"))?;
@@ -200,6 +206,72 @@ pub(crate) fn remove(path: &Path) -> Result<(), String> {
         }
         Ok(()) | Err(_) => Ok(()),
     }
+}
+
+pub(crate) fn undone(err: String, failed: &[String]) -> String {
+    match failed.is_empty() {
+        true => err,
+        false => format!(
+            "{err}\n\nThe undo left these changes in place, and each needs undoing by hand:\n{}",
+            failed.join("\n")
+        ),
+    }
+}
+
+pub(crate) type Kept = Vec<(PathBuf, Option<String>)>;
+
+pub(crate) fn restore(kept: &[(PathBuf, Option<String>)]) -> Vec<String> {
+    kept.iter()
+        .filter_map(|(file, text)| match text {
+            Some(text) => put(file, text).err(),
+            None => remove(file).err(),
+        })
+        .collect()
+}
+
+pub(crate) fn undoable<T>(
+    root: &Path,
+    files: &[PathBuf],
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let mut kept: Kept = Vec::new();
+    for file in files {
+        let text = match file.symlink_metadata().is_ok() {
+            true => {
+                Some(fs::read_to_string(file).map_err(|err| format!("{}: {err}", file.display()))?)
+            }
+            false => None,
+        };
+        kept.push((file.clone(), text));
+    }
+    // The undo also removes the outermost folder that the write creates for a file. A dangling link counts as present and stays.
+    for file in files {
+        let created = file
+            .ancestors()
+            .skip(1)
+            .take_while(|dir| dir.symlink_metadata().is_err())
+            .last();
+        if let Some(dir) = created {
+            if !kept.iter().any(|(held, _)| held == dir) {
+                kept.push((dir.to_path_buf(), None));
+            }
+        }
+    }
+    let blocking = || crate::load(root).issues.blocking_edits();
+    // A load failure undoes the edit only if the builds loaded before it.
+    let loaded = blocking().is_empty();
+    write()
+        .and_then(|done| {
+            let issues = blocking();
+            match loaded && !issues.is_empty() {
+                true => Err(format!(
+                    "the change is undone, because the builds no longer load with it:\n\n{}",
+                    issues.plain()
+                )),
+                false => Ok(done),
+            }
+        })
+        .map_err(|err| undone(err, &restore(&kept)))
 }
 
 pub(crate) fn tidy(path: &Path) {
@@ -223,14 +295,19 @@ pub(crate) fn put(path: &Path, text: &str) -> Result<(), String> {
     fs::write(path, text).map_err(|err| format!("{}: {err}", path.display()))
 }
 
-pub(crate) fn copy_component(from: &Path, to: &Path) -> Result<Vec<PathBuf>, String> {
-    let held = layout::held_components(from);
-    let skip: Vec<&Path> = held.iter().map(PathBuf::as_path).collect();
-    copy_tree_except(from, to, &skip)
+/// The calling command must run `layout::contained` on the component first. This copy follows a link and a link can point back up the tree.
+pub(crate) fn copy_component_tree(from: &Path, to: &Path) -> Result<Vec<PathBuf>, String> {
+    copy_below(from, to, Path::new(""), &[], Links::Component)
 }
 
 fn copy_tree_except(from: &Path, to: &Path, skip: &[&Path]) -> Result<Vec<PathBuf>, String> {
-    copy_below(from, to, Path::new(""), skip)
+    copy_below(from, to, Path::new(""), skip, Links::Refuse)
+}
+
+#[derive(Clone, Copy)]
+enum Links {
+    Refuse,
+    Component,
 }
 
 fn copy_below(
@@ -238,6 +315,7 @@ fn copy_below(
     to: &Path,
     under: &Path,
     skip: &[&Path],
+    links: Links,
 ) -> Result<Vec<PathBuf>, String> {
     let dest_dir = to.join(under);
     fs::create_dir_all(&dest_dir).map_err(|err| format!("{}: {err}", dest_dir.display()))?;
@@ -251,20 +329,34 @@ fn copy_below(
             continue;
         }
         let source = entry.path();
+        let dest = to.join(&rel);
         let kind = entry
             .file_type()
             .map_err(|err| format!("{}: {err}", source.display()))?;
-        // The component copy refuses symbolic links, because a symbolic link can point outside the component and bring a host file into the image.
+        // An overlay link such as a masked unit must reach the image as a link. A component copy reads through any other link that stays inside the component.
         if kind.is_symlink() {
-            return Err(format!(
-                "{} is a symbolic link, and a component copy holds files and directories only",
-                source.display()
-            ));
+            if matches!(links, Links::Refuse) {
+                return Err(format!(
+                    "{} is a symbolic link, and a repository copy holds files and directories only",
+                    source.display()
+                ));
+            }
+            if layout::in_overlay(from, &rel) {
+                let target =
+                    fs::read_link(&source).map_err(|err| format!("{}: {err}", source.display()))?;
+                std::os::unix::fs::symlink(&target, &dest)
+                    .map_err(|err| format!("{}: {err}", dest.display()))?;
+                wrote.push(rel);
+                continue;
+            }
+            if let Some(escape) = layout::leaves(from, &source) {
+                let (at, title) = layout::escaped(&escape, "the component copy");
+                return Err(format!("{}: {title}", at.display()));
+            }
         }
-        if kind.is_dir() {
-            wrote.extend(copy_below(from, to, &rel, skip)?);
+        if source.is_dir() {
+            wrote.extend(copy_below(from, to, &rel, skip, links)?);
         } else {
-            let dest = to.join(&rel);
             fs::copy(&source, &dest).map_err(|err| format!("{}: {err}", dest.display()))?;
             wrote.push(rel);
         }
@@ -277,16 +369,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_symbolic_link_in_a_component_is_refused() {
+    fn an_undo_keeps_a_link_to_a_missing_folder() {
+        let at = std::env::temp_dir().join(format!("buildc-undo-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&at);
+        fs::create_dir_all(&at).unwrap();
+        std::os::unix::fs::symlink(at.join("unmounted"), at.join("components")).unwrap();
+        let file = at.join("components/.gitkeep");
+        let undone = undoable(&at, std::slice::from_ref(&file), || {
+            Err::<(), _>("stop".to_string())
+        });
+        let kept = at.join("components").symlink_metadata().is_ok();
+        fs::remove_dir_all(&at).unwrap();
+        assert!(undone.is_err());
+        assert!(kept);
+    }
+
+    #[test]
+    fn a_component_copy_refuses_a_link_outside_the_component() {
         let at = std::env::temp_dir().join(format!("buildc-link-{}", std::process::id()));
-        put(&at.join("secret"), "token\n").unwrap();
+        put(&at.join("library/shared/notes"), "shared\n").unwrap();
         put(&at.join("library/browser/manifest.kdl"), "").unwrap();
-        std::os::unix::fs::symlink(at.join("secret"), at.join("library/browser/notes")).unwrap();
-        let refused = copy_component(&at.join("library/browser"), &at.join("components/browser"))
-            .unwrap_err();
-        assert!(refused.contains("is a symbolic link"), "{refused}");
+        std::os::unix::fs::symlink(
+            at.join("library/shared/notes"),
+            at.join("library/browser/notes"),
+        )
+        .unwrap();
+        let refused =
+            copy_component_tree(&at.join("library/browser"), &at.join("components/browser"))
+                .unwrap_err();
+        assert!(refused.contains("outside the component"), "{refused}");
         assert!(!at.join("components/browser/notes").exists());
         fs::remove_dir_all(at).unwrap();
+    }
+
+    #[test]
+    fn a_component_copy_keeps_an_overlay_link_and_copies_through_its_own_link() {
+        let at = std::env::temp_dir().join(format!("buildc-link-kept-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&at);
+        let from = at.join("library/browser");
+        put(&from.join("manifest.kdl"), "").unwrap();
+        put(&from.join("lib/family.sh"), "true\n").unwrap();
+        fs::create_dir_all(from.join("files/etc")).unwrap();
+        std::os::unix::fs::symlink("/dev/null", from.join("files/etc/masked.service")).unwrap();
+        std::os::unix::fs::symlink("lib", from.join("tools")).unwrap();
+        copy_component_tree(&from, &at.join("to")).unwrap();
+        let masked = fs::read_link(at.join("to/files/etc/masked.service")).ok();
+        let tools = fs::symlink_metadata(at.join("to/tools")).map(|meta| meta.is_dir());
+        let script = fs::read_to_string(at.join("to/tools/family.sh")).ok();
+        fs::remove_dir_all(at).unwrap();
+        assert_eq!(masked, Some(PathBuf::from("/dev/null")));
+        assert!(matches!(tools, Ok(true)));
+        assert_eq!(script.as_deref(), Some("true\n"));
     }
 
     #[test]
@@ -314,28 +447,6 @@ mod tests {
     }
 
     #[test]
-    fn a_component_copy_leaves_out_the_components_it_holds() {
-        let root = std::env::temp_dir().join(format!("buildc-copy-held-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let from = root.join("from");
-        put(&from.join(layout::MANIFEST_FILE), "").unwrap();
-        put(&from.join("component.sh"), "true\n").unwrap();
-        put(&from.join("cuda").join(layout::MANIFEST_FILE), "").unwrap();
-        put(&from.join("cuda/component.sh"), "true\n").unwrap();
-
-        let mut wrote = copy_component(&from, &root.join("to")).unwrap();
-        wrote.sort();
-        let _ = fs::remove_dir_all(&root);
-        assert_eq!(
-            wrote,
-            [
-                PathBuf::from("component.sh"),
-                PathBuf::from(layout::MANIFEST_FILE)
-            ]
-        );
-    }
-
-    #[test]
     fn a_scratch_tree_is_gone_once_its_guard_drops() {
         let root = std::env::temp_dir().join(format!("buildc-scratch-{}", std::process::id()));
         put(&root.join("inner/private.key"), "secret").unwrap();
@@ -348,7 +459,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-scaffold-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
-        let mut wrote: Vec<String> = write(&root, "Example", None, &assets, "")
+        let mut wrote: Vec<String> = write(&root, "Example", None, None, &assets, "")
             .unwrap()
             .iter()
             .map(|path| path.display().to_string())
@@ -371,6 +482,24 @@ mod tests {
     }
 
     #[test]
+    fn create_repo_declares_this_repository_and_each_chosen_library() {
+        let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+        let block = libraries_block(&crate::collection::defaults(&assets));
+        assert_eq!(
+            block,
+            "libraries default=\"local-library\" {\n    local {\n        local-library { source \".\" }\n    }\n    remote {\n        buildc { source \"https://github.com/buildc-org/library\" }\n    }\n}"
+        );
+        let text = format!("schema-version 1\nname \"Example\"\n{block}\n");
+        let issues = crate::parse::schema::check_text(&text, &crate::parse::repo::REPO, false)
+            .unwrap_or_else(|err| panic!("{err}: {text}"));
+        assert!(issues.is_empty(), "{}", issues.plain());
+        assert_eq!(
+            libraries_block(&[]),
+            "libraries default=\"local-library\" {\n    local {\n        local-library { source \".\" }\n    }\n}"
+        );
+    }
+
+    #[test]
     fn a_repository_written_into_a_full_directory_keeps_the_users_files() {
         let root = std::env::temp_dir().join(format!("buildc-keep-{}", std::process::id()));
         if root.exists() {
@@ -385,7 +514,7 @@ mod tests {
             put(&root.join(path), "mine\n").unwrap();
         }
         let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
-        write(&root, "Example", None, &assets, "").unwrap();
+        write(&root, "Example", None, None, &assets, "").unwrap();
         for path in mine {
             assert_eq!(
                 fs::read_to_string(root.join(path)).unwrap(),

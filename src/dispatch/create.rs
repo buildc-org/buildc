@@ -64,7 +64,7 @@ pub(super) fn image(call: Call) -> Result<ExitCode, Error> {
             root: &root,
             repo: &repo,
             url,
-            sources_text: "",
+            libraries_text: "",
         },
         name,
         base,
@@ -74,25 +74,6 @@ pub(super) fn image(call: Call) -> Result<ExitCode, Error> {
         prompt,
     )?
     .apply(&root)?;
-    crate::report::report(&root, &wrote);
-    Ok(ExitCode::SUCCESS)
-}
-
-pub(super) fn flavour(call: Call) -> Result<ExitCode, Error> {
-    let Call {
-        name,
-        rest,
-        prompt,
-        here,
-        flags,
-        ..
-    } = call;
-    let Flags { images, .. } = flags;
-    let name = one_name(rest, name)?;
-    let Some(root) = open(here)? else {
-        return Ok(ExitCode::from(REPO_ERROR));
-    };
-    let wrote = crate::create::Flavour::collect(&root, name, images, prompt)?.apply(&root)?;
     crate::report::report(&root, &wrote);
     Ok(ExitCode::SUCCESS)
 }
@@ -107,17 +88,26 @@ pub(super) fn component(call: Call) -> Result<ExitCode, Error> {
         ..
     } = call;
     let Flags {
-        images,
+        builds,
         with,
         inline,
+        inside,
         ..
     } = flags;
     let name = one_name(rest, name)?;
     let Some(root) = open(here)? else {
         return Ok(ExitCode::from(REPO_ERROR));
     };
-    let wrote = crate::create::Component::collect(&root, name, with, images, inline, prompt)?
-        .apply(&root)?;
+    let wrote = crate::create::Component::collect(
+        &root,
+        name,
+        with,
+        builds,
+        inside.into_iter().next_back(),
+        inline,
+        prompt,
+    )?
+    .apply(&root)?;
     crate::report::report(&root, &wrote);
     Ok(ExitCode::SUCCESS)
 }
@@ -131,7 +121,7 @@ pub(super) fn add_package(call: Call) -> Result<ExitCode, Error> {
         ..
     } = call;
     let Flags {
-        images,
+        builds,
         component: component_arg,
         ..
     } = flags;
@@ -140,11 +130,45 @@ pub(super) fn add_package(call: Call) -> Result<ExitCode, Error> {
     };
     let names: Vec<String> = rest.iter().map(|name| (*name).to_string()).collect();
     let Some(packages) =
-        crate::add::Packages::collect(&root, names, component_arg, images, prompt)?
+        crate::add::Packages::collect(&root, names, component_arg, builds, prompt)?
     else {
         return Ok(ExitCode::SUCCESS);
     };
     let wrote = packages.apply(&root)?;
+    crate::report::report(&root, &wrote);
+    Ok(ExitCode::SUCCESS)
+}
+
+pub(super) fn add_component(call: Call) -> Result<ExitCode, Error> {
+    let Call {
+        rest,
+        prompt,
+        here,
+        flags,
+        ..
+    } = call;
+    let Flags {
+        inside,
+        library,
+        pin,
+        dependencies,
+        providers,
+        ..
+    } = flags;
+    let Some(root) = open(here)? else {
+        return Ok(ExitCode::from(REPO_ERROR));
+    };
+    let request = crate::add_component::Request {
+        paths: rest.iter().map(|path| (*path).to_string()).collect(),
+        inside,
+        library,
+        pin,
+        dependencies,
+        providers,
+    };
+    let mut say = |text: &str| print!("{text}");
+    let add = crate::add_component::Add::collect(request, &root, prompt, &mut say)?;
+    let wrote = add.apply(&root)?;
     crate::report::report(&root, &wrote);
     Ok(ExitCode::SUCCESS)
 }

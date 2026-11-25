@@ -4,3 +4,7 @@ name "Enforced"
 audit {
     enforce #true
 }
+
+builds {
+    enforced
+}

@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": null,
   "pr_target": null,
   "pr_published": null,
-  "ungated_target": null,
-  "ungated_published": null,
   "cache_image": null,
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },

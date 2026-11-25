@@ -1,4 +1,22 @@
 schema-version 1
 name "Deb Families"
 
-default-image "debian"
+builds default="debian" {
+    debian {
+        install {
+            filesystem "btrfs"
+            bootloader "systemd"
+        }
+    }
+    forky {
+        install {
+            bootloader "grub2"
+        }
+    }
+    ubuntu {
+        install {
+            bootloader "grub2"
+        }
+    }
+}
+

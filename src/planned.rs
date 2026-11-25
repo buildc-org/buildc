@@ -25,7 +25,6 @@ pub(crate) struct Cloned {
 
 pub(crate) struct Built {
     pub path: String,
-    pub flavour: Option<String>,
     pub witnessed: Vec<String>,
 }
 
@@ -41,14 +40,6 @@ impl Planned {
             .map_err(|err| format!("{}: {err}; run `buildc generate`", path.display()))?;
         let json = Json::parse(&text).map_err(|err| format!("{}: {err}", path.display()))?;
         Ok(Some(Self { json, generated }))
-    }
-
-    pub(crate) fn backend(&self) -> Result<Backend, String> {
-        let name = json::text(&self.json, "backend").unwrap_or_default();
-        Backend::parse(&name).ok_or_else(|| {
-            "generated/plan.json names no backend; run `buildc generate`, which writes it"
-                .to_string()
-        })
     }
 
     pub(crate) fn audit_enforce(&self) -> bool {
@@ -97,11 +88,11 @@ impl Target<'_> {
         json::text(self.target, "published").unwrap_or_default()
     }
 
-    pub(crate) fn siblings(&self) -> Vec<String> {
-        json::items(self.target, "siblings")
-            .iter()
-            .filter_map(|sibling| json::text(sibling, "published"))
-            .collect()
+    pub(crate) fn reference(&self) -> Option<String> {
+        crate::registry::overridden(
+            json::text(self.target, "reference").as_deref(),
+            &self.published(),
+        )
     }
 
     pub(crate) fn containerfile(&self) -> PathBuf {
@@ -110,6 +101,16 @@ impl Target<'_> {
 
     pub(crate) fn uki(&self) -> bool {
         flag(self.build, "uki")
+    }
+
+    pub(crate) fn backend(&self) -> Result<Backend, String> {
+        let name = json::text(self.build, "backend").unwrap_or_default();
+        Backend::parse(&name).ok_or_else(|| {
+            format!(
+                "`{}` in generated/plan.json names no backend; run `buildc generate`",
+                self.name
+            )
+        })
     }
 
     pub(crate) fn family(&self) -> String {
@@ -175,7 +176,6 @@ impl Target<'_> {
             .iter()
             .map(|component| Built {
                 path: json::text(component, "path").unwrap_or_default(),
-                flavour: json::text(component, "flavour"),
                 witnessed: json::strings(component, "witnessed"),
             })
             .collect()
@@ -221,12 +221,12 @@ mod tests {
         "manifest_label": true,
         "audit": {"enforce": true},
         "images": [{"targets": [
-            {"name": "box", "published": "box", "siblings": [{"name": "box/dev", "published": "box-dev"}],
+            {"name": "box", "published": "box",
              "datastream": "generated/box/scap/ssg-fedora-ds.xml",
-             "components": [{"path": "core/one", "flavour": null, "witnessed": ["/usr/bin/one"]}],
+             "components": [{"path": "core/one", "witnessed": ["/usr/bin/one"]}],
              "overlay_files": {"/etc/one": "core/one"},
              "assets": [{"component": "core/one", "name": "src", "pin": {"locator": "https://example.com/src.git"}}],
-             "build": {"containerfile": "generated/box/Containerfile", "uki": true, "family": "fedora",
+             "build": {"containerfile": "generated/box/Containerfile", "uki": true, "backend": "buildx", "family": "fedora",
                        "base": "quay.io/fedora/fedora-bootc:44", "args": ["TARGET=box", "ASSET_RESOLUTIONS=core/one|src|v1|abc"],
                        "unresolved": ["`core/one` asset `x` names no `version` to resolve"],
                        "validate": ["LUKS_INITRAMFS=true"]}},
@@ -244,7 +244,10 @@ mod tests {
     #[test]
     fn the_plan_answers_every_repository_fact_the_build_reads() {
         let plan = plan();
-        assert_eq!(plan.backend(), Ok(Backend::Buildx));
+        assert_eq!(
+            plan.target(Some("box")).expect("box is planned").backend(),
+            Ok(Backend::Buildx)
+        );
         assert!(plan.audit_enforce());
         assert!(plan.manifest_label());
         assert_eq!(plan.cache_image().as_deref(), Some("box"));
@@ -258,7 +261,6 @@ mod tests {
         let plan = plan();
         let target = plan.target(Some("box")).expect("box is planned");
         assert_eq!(target.published(), "box");
-        assert_eq!(target.siblings(), vec!["box-dev"]);
         assert_eq!(
             target.containerfile(),
             PathBuf::from("generated/box/Containerfile")
@@ -289,7 +291,6 @@ mod tests {
         let components = target.components();
         assert_eq!(components.len(), 1);
         assert_eq!(components[0].path, "core/one");
-        assert_eq!(components[0].flavour, None);
         assert_eq!(components[0].witnessed, vec!["/usr/bin/one"]);
         assert_eq!(
             target.overlay_owners().get("/etc/one").map(String::as_str),
@@ -320,7 +321,7 @@ mod tests {
         assert!(refused.contains("names no cloned asset"), "{refused}");
         let refused = plan.target(Some("old")).err().unwrap_or_default();
         assert!(refused.contains("run `buildc generate`"), "{refused}");
-        assert!(plan.backend().is_err());
+        assert!(target.backend().is_err());
         assert!(!plan.audit_enforce());
         assert!(!plan.manifest_label());
     }

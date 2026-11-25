@@ -14,22 +14,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- uki ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/shim/components/uki.sh,target=/generated/shim/components/uki.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/shim/components/uki.sh
-
-# ---- enrolment ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/shim/components/enrolment.sh,target=/generated/shim/components/enrolment.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/shim/components/enrolment.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -67,3 +51,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     IMAGE_ID="${IMAGE_ID}" IMAGE_VERSION="${IMAGE_VERSION}" bash /ctx/lib/build-record.sh
 
 RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
+
+# verbatim from components/uki/Containerfile.inc:
+FROM ${SPLIT_BASE} AS split

@@ -68,35 +68,33 @@ buildc: 2 of 4 rules are unclaimed
 ==== conforming to a profile the content does not carry
   × `enforced` conforms to `nosuch`, which is none of the profiles this
   │ datastream carries
-   ╭─[./example.image.kdl:3:1]
+   ╭─[./components/enforced.kdl:1:1]
+ 1 │ schema-version 1
+   · ▲
+   · ╰── this is what it is measured against
  2 │ 
- 3 │ image "enforced" {
-   · ──┬──
-   ·   ╰── this is what it is measured against
- 4 │     conforms "nosuch"
    ╰────
   help: the datastream carries: standard, ospp
 
-buildc: 1 problem in ./example.image.kdl; none in ./repo.kdl
+buildc: 1 problem in ./components/enforced.kdl; none in ./repo.kdl
 ==== exit 2
 ==== and measured against nothing at all
   × `minimal` declares no `conforms`
-   ╭─[./image.kdl:3:1]
+   ╭─[./components/minimal.kdl:1:1]
+ 1 │ schema-version 1
+   · ▲
+   · ╰── this image is measured against nothing
  2 │ 
- 3 │ image "minimal" {
-   · ──┬──
-   ·   ╰── this image is measured against nothing
- 4 │     base-image {
    ╰────
   help: `conforms "<profile>"` is the profile a scan measures it against, and
         what this read-out is coverage of
 
-buildc: 1 problem in ./image.kdl; none in ./repo.kdl
+buildc: 1 problem in ./components/minimal.kdl; none in ./repo.kdl
 ==== exit 2
 ==== and a datastream that is not one
 Buildc v{version}
 
-Error: example.image.kdl: invalid XML: text outside the root element.
+Error: components/enforced.kdl: invalid XML: text outside the root element.
 
 Run 'buildc --help' to list the commands
 ==== exit 1

@@ -1,17 +1,17 @@
 use crate::layout;
 use crate::parse::schema::{Arg, Kind, Node, Prop};
 use crate::parse::{component, repo};
-use crate::provenance::lock;
+use crate::provenance::{origins, repo_lock};
 use std::fmt::Write as _;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Area {
     Repository,
     Repo,
-    Image,
     Components,
     Component,
-    Lock,
+    Origins,
+    RepoLock,
 }
 
 impl Area {
@@ -19,10 +19,10 @@ impl Area {
         match self {
             Area::Repository => "repository.md",
             Area::Repo => "repo.md",
-            Area::Image => "image.md",
             Area::Components => "components.md",
             Area::Component => "component.md",
-            Area::Lock => "lock.md",
+            Area::Origins => "origins.md",
+            Area::RepoLock => "repo-lock.md",
         }
     }
 
@@ -30,10 +30,10 @@ impl Area {
         match self {
             Area::Repository => "The repository",
             Area::Repo => "The repository file",
-            Area::Image => "Image files",
             Area::Components => "Components",
             Area::Component => "Component manifests",
-            Area::Lock => "The component lock",
+            Area::Origins => "The origins of copies",
+            Area::RepoLock => "The build lock",
         }
     }
 }
@@ -50,15 +50,16 @@ struct Section {
 const SECTIONS: &[Section] = &[
     Section { name: "repo.kdl", node: &repo::REPO, declared: false, area: Area::Repo,
         at: "The root of the repository." },
-    Section { name: "image.kdl", node: &repo::IMAGE_FILE, declared: false, area: Area::Image,
-        at: "The root of the repository, as `image.kdl` or `<name>.image.kdl`." },
     Section { name: "manifest.kdl", node: &component::COMPONENT, declared: false, area: Area::Component,
-        at: "`components/<component-name>/manifest.kdl`, in the directory of the component." },
-    Section { name: "components.lock.kdl", node: &lock::LOCK_FILE, declared: false, area: Area::Lock,
-        at: "`components/components.lock.kdl`, at the root of `components/`." },
+        at: "`components/<name>.kdl`, or `components/<name>/manifest.kdl` in the directory of the component. A build can also name a `<name>.kdl` file at the repository root as `./<name>`." },
+    Section { name: "origins.kdl", node: &origins::ORIGINS_FILE, declared: false, area: Area::Origins,
+        at: "The root of the components folder of each local library. In this repository that is `components/` unless `library { components }` in `repo.kdl` moves it." },
+    Section { name: "repo.lock.kdl", node: &repo_lock::LOCK_FILE, declared: false, area: Area::RepoLock,
+        at: "The root of the repository." },
 ];
 
-// The name and the description identify a node because a `const` node has no fixed address.
+/// A `const` schema node is copied into each place that names it.
+/// Its name and description identify it because it has no fixed address.
 fn section_of(node: &Node) -> Option<&'static Section> {
     SECTIONS
         .iter()
@@ -76,6 +77,7 @@ fn accepts(node: &Node, fields: &str) -> Option<String> {
     let value = match node.arg {
         Arg::None => None,
         Arg::Str => Some("*string*".to_string()),
+        Arg::MaybeStr => Some("optionally a *string*".to_string()),
         Arg::Bool => Some("*boolean*".to_string()),
         Arg::Int => Some("*number*".to_string()),
         Arg::Strs => Some("*list of strings*".to_string()),
@@ -84,9 +86,13 @@ fn accepts(node: &Node, fields: &str) -> Option<String> {
                 "*list of strings*, or {{&nbsp;[one name per line]({fields})&nbsp;}}"
             ))
         }
-        Arg::StrPair(first, second) => Some(format!("*{first}*, then *{second}*")),
+        Arg::StrPair(first, second) | Arg::Keyed(first, second) => {
+            Some(format!("*{first}*, then *{second}*"))
+        }
         Arg::One(set) => Some(closed(set)),
         Arg::MaybeOne(set) => Some(format!("optionally {}", closed(set))),
+        Arg::Many(None) => Some("optionally a *list of strings*".to_string()),
+        Arg::Many(Some(set)) => Some(format!("optionally any of {}", closed(set))),
     };
     let block = match (node.children.is_empty(), block_required(node)) {
         (true, _) => None,
@@ -215,11 +221,13 @@ fn head(node: &Node) -> String {
     };
     let arg = match node.arg {
         Arg::None => String::new(),
-        Arg::Str => " \"…\"".into(),
+        Arg::Str | Arg::MaybeStr => " \"…\"".into(),
         Arg::Bool => " #true|#false".into(),
         Arg::Int => " <number>".into(),
-        Arg::Strs | Arg::Names => " \"…\" …".into(),
+        Arg::Strs | Arg::Names | Arg::Many(None) => " \"…\" …".into(),
+        Arg::Many(Some(set)) => format!(" {} …", either(set)),
         Arg::StrPair(..) => " \"…\" \"…\"".into(),
+        Arg::Keyed(..) => " \"…\" …".into(),
         Arg::One(set) | Arg::MaybeOne(set) => format!(" {}", either(set)),
     };
     line.push_str(&arg);
@@ -259,12 +267,15 @@ fn opener(node: &Node) -> String {
         Arg::Names => node.name.to_string(),
         Arg::None
         | Arg::Str
+        | Arg::MaybeStr
         | Arg::Bool
         | Arg::Int
         | Arg::Strs
         | Arg::StrPair(..)
+        | Arg::Keyed(..)
         | Arg::One(..)
-        | Arg::MaybeOne(..) => example(node),
+        | Arg::MaybeOne(..)
+        | Arg::Many(..) => example(node),
     }
 }
 
@@ -305,7 +316,7 @@ fn kdl(
         .iter()
         .filter(|c| show.keeps(node, c))
         .collect();
-    // The example shows the first child because this node refuses an empty block.
+    // A node that refuses an empty block shows its first child so that the example stays valid.
     if shown.is_empty() && !node.empty.text.is_empty() {
         shown.extend(node.children.first());
     }
@@ -349,19 +360,23 @@ fn file(section: &Section, show: Show) -> String {
 }
 
 pub fn scaffold(area: Area) -> Vec<String> {
+    paths(area, |parent, child| parent.scaffolds.contains(&child.name))
+}
+
+pub fn grammar(area: Area) -> Vec<String> {
+    paths(area, |_, _| true)
+}
+
+fn paths(area: Area, keep: fn(&Node, &Node) -> bool) -> Vec<String> {
     let mut out = Vec::new();
     for s in SECTIONS.iter().filter(|s| s.area == area && !s.declared) {
-        scaffolded(s.node, "", &mut out);
+        walked(s.node, "", keep, &mut out);
     }
     out
 }
 
-fn scaffolded(parent: &Node, prefix: &str, out: &mut Vec<String>) {
-    for child in parent
-        .children
-        .iter()
-        .filter(|c| parent.scaffolds.contains(&c.name))
-    {
+fn walked(parent: &Node, prefix: &str, keep: fn(&Node, &Node) -> bool, out: &mut Vec<String>) {
+    for child in parent.children.iter().filter(|c| keep(parent, c)) {
         let name = match child.name.is_empty() {
             true => "*",
             false => child.name,
@@ -377,7 +392,7 @@ fn scaffolded(parent: &Node, prefix: &str, out: &mut Vec<String>) {
                 out.push(path);
             }
             None => {
-                scaffolded(child, &path, out);
+                walked(child, &path, keep, out);
                 out.push(path);
             }
         }
@@ -426,12 +441,12 @@ fn table(
     }
     out.push_str("| Field | Accepts | Description |\n| --- | --- | --- |\n");
     for child in node.children {
+        // A node that recurs under another parent links to the first section written for it.
         let link = match (
             section_of(child),
             seen.iter().find(|(desc, _)| *desc == child.desc),
         ) {
             (Some(s), _) => href(s, from),
-            // A node that recurs under another parent links to the first section written for it.
             (None, Some((_, at))) => format!("#{at}"),
             (None, None) => {
                 let at = anchor(path, child);
@@ -521,10 +536,10 @@ fn section(section: &Section, depth: usize) -> String {
 const AREAS: [Area; 6] = [
     Area::Repository,
     Area::Repo,
-    Area::Image,
     Area::Components,
     Area::Component,
-    Area::Lock,
+    Area::Origins,
+    Area::RepoLock,
 ];
 
 pub fn areas() -> Vec<Area> {
@@ -619,7 +634,7 @@ pub fn page(area: Area) -> String {
     match area {
         Area::Repository => return tree_page(area.title(), &layout::REPOSITORY),
         Area::Components => return tree_page(area.title(), &layout::COMPONENT_DIR),
-        Area::Repo | Area::Image | Area::Component | Area::Lock => {}
+        Area::Repo | Area::Component | Area::Origins | Area::RepoLock => {}
     }
     let schemas: Vec<&Section> = SECTIONS.iter().filter(|s| s.area == area).collect();
     let mut out = String::new();

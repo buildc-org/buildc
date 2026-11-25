@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "arch",
   "pr_target": "arch",
   "pr_published": "arch",
-  "ungated_target": "arch",
-  "ungated_published": "arch",
   "cache_image": "arch-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "arch",
-      "file": "./image.kdl",
+      "file": "./components/arch.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "btrfs",
@@ -46,20 +44,45 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "arch",
           "image": "arch",
-          "flavour": null,
           "published": "arch",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
-          "components": [],
+          "components": [
+            {
+              "path": "arch",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
           "suppressed": [],
           "secrets": [],
           "contract_files": [],
@@ -73,6 +96,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/arch/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "arch",
             "base": "ghcr.io/someone/arch-bootc:latest",
             "args": [
@@ -82,7 +106,9 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=ghcr.io/someone/arch-bootc:latest"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]

@@ -9,37 +9,55 @@ source: tests/golden/harness.rs
   "default_published": "example",
   "pr_target": "example",
   "pr_published": "example",
-  "ungated_target": "example",
-  "ungated_published": "example",
   "cache_image": "example-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [
-    {
-      "file": "build.yml",
-      "schedule": "30 12 * * *"
+  "workflows": {
+    "image-build": {
+      "file": "image-build.yml",
+      "schedule": "30 12 * * *",
+      "builds": {
+        "push": [
+          "example"
+        ],
+        "pr": [
+          "example"
+        ],
+        "schedule": [
+          "example"
+        ],
+        "tag": [],
+        "dispatch": [
+          "example"
+        ]
+      }
     },
-    {
-      "file": "build-disk.yml",
-      "schedule": null
-    },
-    {
-      "file": "base-sig-probe.yml",
-      "schedule": "30 6 * * *"
-    },
-    {
+    "cleanup-registry": {
       "file": "cleanup-registry.yml",
-      "schedule": "30 14 * * *"
+      "schedule": "0 8 * * *",
+      "builds": null
     },
-    {
+    "smoke-test": {
       "file": "smoke-test.yml",
-      "schedule": "30 3 * * 1"
+      "schedule": "0 6 * * 1",
+      "builds": {
+        "push": [],
+        "pr": [],
+        "schedule": [
+          "example"
+        ],
+        "tag": [],
+        "dispatch": [
+          "example"
+        ]
+      }
     },
-    {
+    "update-components": {
       "file": "update-components.yml",
-      "schedule": "30 5 * * 1"
+      "schedule": "30 5 * * 1",
+      "builds": null
     }
-  ],
+  },
   "audit": {
     "enforce": false
   },
@@ -47,12 +65,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "example",
-      "file": "./example.image.kdl",
+      "file": "./example.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "",
@@ -112,23 +130,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "example",
           "image": "example",
-          "flavour": null,
           "published": "example",
+          "reference": "ghcr.io/someone/example",
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "fedora-family",
-              "flavour": null,
               "variant": null,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
@@ -148,26 +162,38 @@ source: tests/golden/harness.rs
                 "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
                 "resolved": "5667fbcb4d6d83bfb0d2e15d84b1091e491a61163ae9763a8d8a5609de1227fd",
                 "repo": false,
-                "imported": {
-                  "library": "buildc",
-                  "path": "fedora-family",
-                  "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
-                  "pin": {
-                    "locator": "https://github.com/buildc-org/library",
-                    "selector": null,
-                    "verifier": null,
-                    "tracker": "none",
-                    "reason": null,
-                    "from": "asset",
-                    "path": null,
-                    "resolved": "https://github.com/buildc-org/library"
-                  },
-                  "tracked": true
-                }
+                "imported": null
               },
               "origin": {
                 "how": "imported",
                 "by": "base-image/fedora"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "example",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
               },
               "satisfies": [],
               "refuses": []
@@ -194,6 +220,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/example/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

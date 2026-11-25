@@ -1,0 +1,17 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    core {
+        one
+    }
+    core {
+        two
+    }
+    core {
+        three
+    }
+}

@@ -28,15 +28,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=secret,id=mok_privkey,target=/run/secrets/mok_privkey,required=false \
     KERNEL=${KERNEL} bash /generated/signing/components/kernel/signed-kernel.sh
 
-# ---- drivers/kvmfr ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/signing/components/drivers/kvmfr.sh,target=/generated/signing/components/drivers/kvmfr.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=secret,id=mok_privkey,target=/run/secrets/mok_privkey,required=false \
-    bash /generated/signing/components/drivers/kvmfr.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 

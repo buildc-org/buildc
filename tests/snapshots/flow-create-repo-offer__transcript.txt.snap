@@ -8,43 +8,32 @@ Example
 
 Creating example...
 
-Host this repo on a provider? (Yes/No)
-No
+  1) sensible defaults  fill every row that has a default
+  2) minimal repo  write only the tree, git and repo.kdl
+repo setup [1-2, 0 for none]: 1
 
-  1) [x] components "buildc"  Feature components and base images for many use cases
-libraries [1, 0 for none]: 
+  1) github.com  Github, with the workflows Buildc ships
+  2) forgejo  a Forgejo instance
+repo host [1-2, 0 for none]: 1
+
+Github username
+github.com/someone
+
+Create the repo on Github? (Yes/Skip)
+Skip
 
 Define an image? (Yes/No)
 Yes
 
-image name [Example]
-Example
-
-  1) example.invalid/collected:1 (buildc/base-image/collected)  A base only the collection knows about
-  2) quay.io/fedora/fedora-bootc:44 (buildc/base-image/fedora)  Fedora, as this collection describes it
-base image [1-2, 0 for none]: 1
-
-  1) [x] Containerfile.skeleton  the Containerfile around the generated component layers
-  2) [ ] lint.sh  the repository's lint, as CI runs it
-  3) [ ] buildc.sh  fetches and runs the buildc release that repo.kdl pins
-  4) [ ] smoke.sh  boots a built image under qemu and waits for ssh
-  5) [ ] vm.sh  builds a disk image and boots it
-  6) [ ] media.sh  assembles the installer media and boots it
-files to keep in scripts/ [1-6, several, 0 for none]: 1
+  1) quay.io/fedora/fedora-bootc:44 (buildc/base-image/fedora)  Fedora, as this collection describes it
+  2) example.invalid/collected:1 (buildc/base-image/collected)  A base only the collection knows about
+base image [1-2, 0 for none]: 2
 
 initialised a git repository in example
 
 example/
 ├── components/
-│   ├── base-image/
-│   │   └── collected/
-│   │       └── + manifest.kdl
-│   ├── fedora-family/
-│   │   ├── lib/
-│   │   │   └── + family.sh
-│   │   └── + manifest.kdl
-│   ├── + .gitkeep
-│   └── + components.lock.kdl
+│   └── + .gitkeep
 ├── disk_config/
 │   └── + disk.toml
 ├── scripts/
@@ -54,12 +43,13 @@ example/
 ├── + .gitignore
 ├── + .shellcheckrc
 ├── + README.md
-├── + example.image.kdl
-└── + repo.kdl
+├── + example.kdl
+└── ~ repo.kdl  the workflows it generates
 
 next:
   cd example
   buildc generate
   git add -A && git commit
+  gh repo create someone/example --source=. --push
 
 ==== exit 0

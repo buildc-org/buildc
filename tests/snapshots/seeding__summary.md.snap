@@ -1,10 +1,11 @@
 ---
 source: tests/golden/harness.rs
 ---
-3 components, the ungated set.
+4 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `fedora-family` | dnf5 and its plugins, which every fedora build layer reaches for |  |  |  |
 | `hello` | A component this repository writes and publishes |  |  |  |
 | `flatpak` `variant=beta` | A component imported from the collection this repository publishes | `OPT_REMOTES="flathub flathub-beta"` `OPT_SYSTEM_WIDE="0"` |  |  |
+| `example` |  |  |  |  |

@@ -1,7 +1,7 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-6 components, the ungated set.
+7 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
@@ -11,3 +11,4 @@ source: tests/golden.rs
 | `core/asset-only` | Fetches a pinned release with nothing opening its script step |  |  |  |
 | `core/fragment-only` | Emits its fragment alone |  |  |  |
 | `core/installer` | Installs a package from its own script |  |  |  |
+| `broken-network` |  |  |  |  |

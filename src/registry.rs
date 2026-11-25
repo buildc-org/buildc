@@ -1,40 +1,45 @@
 use crate::model::image::List;
-use std::path::Path;
-use std::process::Command;
 
-const GITHUB: [&str; 3] = [
-    "git@github.com:",
-    "ssh://git@github.com/",
-    "https://github.com/",
-];
-
-pub fn namespace(root: &Path) -> Result<String, String> {
-    if let Some(set) = std::env::var("IMAGE_REGISTRY")
-        .ok()
-        .filter(|s| !s.is_empty())
-    {
-        return Ok(set.to_lowercase());
-    }
-    let url = origin(root)
-        .ok_or("no IMAGE_REGISTRY set and no github origin remote to derive one from")?;
-    let owner = owner(&url)
-        .ok_or_else(|| format!("`{url}` is not a github remote to derive a namespace from"))?;
-    Ok(format!("ghcr.io/{owner}").to_lowercase())
+pub fn namespace(list: &List) -> Result<String, String> {
+    environment()
+        .or_else(|| list.registry.clone())
+        .ok_or_else(|| NOWHERE.to_string())
 }
 
-pub fn reference(
-    list: &List,
-    root: &Path,
-    target: Option<&str>,
-    tag: Option<&str>,
-) -> Result<String, String> {
+pub fn reference(list: &List, target: Option<&str>, tag: Option<&str>) -> Result<String, String> {
     let target = match target {
         Some(name) => list.find_target(name)?,
         None => list
-            .ungated_target()
+            .default_target()
             .ok_or("no default image to take a target from")?,
     };
-    Ok(at(&namespace(root)?, &target.published(), &self::tag(tag)))
+    let reference = overridden(target.reference().as_deref(), &target.published())
+        .ok_or_else(|| format!("`{target}` publishes nowhere: {NOWHERE}"))?;
+    Ok(format!("{reference}:{}", self::tag(tag)))
+}
+
+const NOWHERE: &str = "repo.kdl names no `registry`, such as `registry \"ghcr.io/owner\"`, \
+    and `IMAGE_REGISTRY` is not set";
+
+// IMAGE_REGISTRY replaces the namespace of a full reference. A publish target follows the caller's registry.
+pub fn overridden(declared: Option<&str>, published: &str) -> Option<String> {
+    match environment() {
+        Some(namespace) => Some(format!("{namespace}/{published}")),
+        None => declared.map(str::to_string),
+    }
+}
+
+pub fn namespace_of(reference: &str) -> &str {
+    reference
+        .rsplit_once('/')
+        .map_or(reference, |(namespace, _)| namespace)
+}
+
+fn environment() -> Option<String> {
+    std::env::var("IMAGE_REGISTRY")
+        .ok()
+        .filter(|set| !set.is_empty())
+        .map(|set| set.to_lowercase())
 }
 
 pub fn tag(given: Option<&str>) -> String {
@@ -49,44 +54,4 @@ pub fn tag(given: Option<&str>) -> String {
 
 pub fn at(namespace: &str, published: &str, tag: &str) -> String {
     format!("{namespace}/{published}:{tag}")
-}
-
-fn origin(root: &Path) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["config", "--get", "remote.origin.url"])
-        .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        .filter(|url| !url.is_empty())
-}
-
-fn owner(url: &str) -> Option<&str> {
-    let rest = GITHUB.iter().find_map(|prefix| url.strip_prefix(prefix))?;
-    let (owner, _) = rest.split_once('/')?;
-    (!owner.is_empty()).then_some(owner)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn owner() {
-        for url in [
-            "git@github.com:Someone/example.git",
-            "ssh://git@github.com/Someone/example",
-            "https://github.com/Someone/example.git",
-        ] {
-            assert_eq!(super::owner(url), Some("Someone"));
-        }
-        for url in [
-            "https://gitlab.com/someone/example.git",
-            "https://github.com/someone",
-            "https://github.com//example",
-        ] {
-            assert_eq!(super::owner(url), None);
-        }
-    }
 }

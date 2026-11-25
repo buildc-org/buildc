@@ -1,11 +1,10 @@
 use crate::emit::plan::of_target;
-use crate::model::image::{List, NO_FLAVOUR};
+use crate::model::image::List;
 use common::json::{field, items, strings, text, Json};
 use std::fmt::Write as _;
 
 struct Row {
     path: String,
-    flavour: Option<String>,
     variant: Option<String>,
     description: String,
     options: Vec<(String, String)>,
@@ -14,7 +13,7 @@ struct Row {
 }
 
 pub fn render(list: &List, target: &str) -> Option<String> {
-    let (image, flavour, entries) = of_target(list, target)?;
+    let (image, entries) = of_target(list, target)?;
     let lifted: Vec<&str> = image.allows.iter().map(|a| a.rule.as_str()).collect();
     let rows: Vec<Row> = entries
         .iter()
@@ -22,7 +21,6 @@ pub fn render(list: &List, target: &str) -> Option<String> {
             let component = entry.component.as_ref();
             Row {
                 path: entry.path.clone(),
-                flavour: entry.flavour.clone(),
                 variant: entry.variant.clone(),
                 description: component.map(|m| m.description.clone()).unwrap_or_default(),
                 options: component
@@ -51,11 +49,7 @@ pub fn render(list: &List, target: &str) -> Option<String> {
             }
         })
         .collect();
-    Some(table(
-        flavour.as_deref(),
-        image.conforms_of(flavour.as_deref().unwrap_or(NO_FLAVOUR)),
-        &rows,
-    ))
+    Some(table(&image.conforms, &rows))
 }
 
 pub fn on_host(target: &Json) -> String {
@@ -67,7 +61,6 @@ pub fn on_host(target: &Json) -> String {
         .iter()
         .map(|component| Row {
             path: text(component, "path").unwrap_or_default(),
-            flavour: text(component, "flavour"),
             variant: text(component, "variant"),
             description: text(component, "description").unwrap_or_default(),
             options: match field(component, "options") {
@@ -115,25 +108,17 @@ pub fn on_host(target: &Json) -> String {
         })
         .collect();
     table(
-        text(target, "flavour").as_deref(),
         text(target, "conforms").as_deref().unwrap_or_default(),
         &rows,
     )
 }
 
-fn table(flavour: Option<&str>, conforms: &str, rows: &[Row]) -> String {
+fn table(conforms: &str, rows: &[Row]) -> String {
     let noun = match rows.len() {
         1 => "component",
         _ => "components",
     };
-    let mut out = match flavour {
-        None => format!("{} {noun}, the ungated set.\n", rows.len()),
-        Some(flavour) => format!(
-            "{} {noun}, {} gated to `{flavour}`.\n",
-            rows.len(),
-            rows.iter().filter(|row| row.flavour.is_some()).count()
-        ),
-    };
+    let mut out = format!("{} {noun}.\n", rows.len());
     if !conforms.is_empty() {
         let _ = write!(out, "\nIt declares `conforms \"{}\"`.\n", cell(conforms));
     }
@@ -143,9 +128,6 @@ fn table(flavour: Option<&str>, conforms: &str, rows: &[Row]) -> String {
     );
     for row in rows {
         let _ = write!(out, "| `{}`", row.path);
-        if let Some(flavour) = &row.flavour {
-            let _ = write!(out, " `[{flavour}]`");
-        }
         if let Some(variant) = &row.variant {
             let _ = write!(out, " `variant={variant}`");
         }
@@ -211,10 +193,7 @@ mod tests {
                 ]),
             ),
         ]);
-        let out = on_host(&Json::object([
-            ("flavour", Json::Null),
-            ("components", Json::array([component])),
-        ]));
+        let out = on_host(&Json::object([("components", Json::array([component]))]));
         assert_eq!(
             out.lines().last(),
             Some(

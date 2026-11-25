@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "versioned",
   "pr_target": "versioned",
   "pr_published": "versioned",
-  "ungated_target": "versioned",
-  "ungated_published": "versioned",
   "cache_image": "versioned-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "versioned",
-      "file": "./image.kdl",
+      "file": "./components/versioned.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -47,23 +45,19 @@ source: tests/golden/harness.rs
         ],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "versioned",
           "image": "versioned",
-          "flavour": null,
           "published": "versioned",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/needs",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -97,7 +91,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/tools",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -133,7 +126,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/needs-build-tool",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -168,7 +160,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/needs-dnf5",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -200,6 +191,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "versioned",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -217,6 +235,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/versioned/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
             "args": [
@@ -228,6 +247,7 @@ source: tests/golden/harness.rs
             "unresolved": [],
             "validate": [
               "CONTRACT_FILES=/usr/bin/dnf5",
+              "BOOTC=false",
               "VERSIONED=core/tools|package-manager/dnf5|dnf5",
               "FLOORS=package-manager/dnf5|5.0|core/needs-dnf5 package-manager/dnf5|5.0|example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
             ]
@@ -237,12 +257,12 @@ source: tests/golden/harness.rs
     },
     {
       "id": "measured",
-      "file": "./image.kdl",
+      "file": "./components/measured.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -262,23 +282,19 @@ source: tests/golden/harness.rs
         ],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "measured",
           "image": "measured",
-          "flavour": null,
           "published": "measured",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
           "components": [
             {
               "path": "core/tools",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -302,6 +318,33 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "measured",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -328,6 +371,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/measured/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
             "args": [
@@ -339,6 +383,7 @@ source: tests/golden/harness.rs
             "unresolved": [],
             "validate": [
               "CONTRACT_FILES=/usr/bin/dnf5",
+              "BOOTC=false",
               "VERSIONED=core/tools|package-manager/dnf5|dnf5",
               "FLOORS=package-manager/dnf5|5.0|example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
             ]
@@ -348,12 +393,12 @@ source: tests/golden/harness.rs
     },
     {
       "id": "recordonly",
-      "file": "./image.kdl",
+      "file": "./components/recordonly.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -371,23 +416,19 @@ source: tests/golden/harness.rs
         ],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "recordonly",
           "image": "recordonly",
-          "flavour": null,
           "published": "recordonly",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
           "components": [
             {
               "path": "core/tools",
-              "flavour": null,
               "variant": null,
               "description": "",
               "options": {},
@@ -420,6 +461,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "recordonly",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -437,6 +505,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/recordonly/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "example.invalid/plain:1",
             "args": [
@@ -448,6 +517,7 @@ source: tests/golden/harness.rs
             "unresolved": [],
             "validate": [
               "CONTRACT_FILES=/usr/bin/dnf5",
+              "BOOTC=false",
               "VERSIONED=core/tools|package-manager/dnf5|dnf5",
               "FLOORS=package-manager/dnf5|5.0|example.invalid/plain:1"
             ]

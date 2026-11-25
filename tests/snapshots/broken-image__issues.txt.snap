@@ -1,9 +1,30 @@
 ---
 source: tests/golden/harness.rs
 ---
+  x `Not An Id` is not a build name
+   ,-[tests/repos/broken-image/repo.kdl:5:5]
+ 4 | builds {
+ 5 |     "Not An Id"
+   :     ^^^^^|^^^^^
+   :          `-- not a build name
+ 6 |     broken-image
+   `----
+  help: a build name takes lowercase letters, digits and dashes, starting with
+        a letter
+
+  x `broken-image` lists no base
+   ,-[tests/repos/broken-image/components/broken-image.kdl:1:1]
+ 1 | schema-version 1
+   : ^
+   : `-- nothing to build on
+ 2 | 
+   `----
+  help: list a base component, such as `base-image { fedora-bootc { version
+        "44" } }`, or define one inline with `base "<image reference>"`
+
   x `name` takes no argument
-   ,-[tests/repos/broken-image/image.kdl:4:5]
- 3 | image "Not An Id" {
+   ,-[tests/repos/broken-image/components/broken-image.kdl:4:5]
+ 3 | component "/" {
  4 |     name "Broken Image"
    :     ^^|^
    :       `-- a path segment
@@ -11,24 +32,3 @@ source: tests/golden/harness.rs
    `----
   help: the os-release fields are options of the `os-release` component; list
         `os-release` in the image and set `name` in its block
-
-  x invalid image id `Not An Id`
-   ,-[tests/repos/broken-image/image.kdl:3:1]
- 2 | 
- 3 | image "Not An Id" {
-   : ^^|^^
-   :   `-- must be lowercase letters, digits and dashes, starting with a letter
- 4 |     name "Broken Image"
-   `----
-  help: it becomes an image tag and a cache tag, both of which restrict it
-
-  x `Not An Id` lists no base
-   ,-[tests/repos/broken-image/image.kdl:3:1]
- 2 | 
- 3 | image "Not An Id" {
-   : ^^|^^
-   :   `-- nothing to build on
- 4 |     name "Broken Image"
-   `----
-  help: list a base component, such as `base-image { fedora-bootc { version
-        "44" } }`, or define one inline with `base "<image reference>"`

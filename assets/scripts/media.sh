@@ -20,11 +20,10 @@ usage: scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)

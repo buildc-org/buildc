@@ -1,33 +1,53 @@
 ---
 name: VM boot smoke test
 on:
-  # buildc:only push-publish
   schedule:
-    - cron: '30 3 * * 1'  # buildc:schedule
-  # buildc:end
-  # buildc:only scheduled-publish
-  workflow_run:
-    workflows: ['Build container image']
-    types: [completed]
-  # buildc:end
+    - cron: '0 6 * * 1'  # buildc:schedule
   workflow_dispatch:
 
 permissions: {}
 
-env:
-  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
-
 jobs:
-  smoke-test:
+  select:
     runs-on: ubuntu-24.04
-    # buildc:only scheduled-publish
-    # A push build publishes no image, so only a successful scheduled or dispatched build is smoked.
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      (github.event.workflow_run.event == 'schedule' ||
-      github.event.workflow_run.event == 'workflow_dispatch'))
-    # buildc:end
+    permissions:
+      contents: read
+    outputs:
+      builds: ${{ steps.set.outputs.builds }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - id: set
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) trigger="pr" ;;
+            schedule) trigger="schedule" ;;
+            push)
+              case "$GITHUB_REF" in
+                refs/tags/*) trigger="tag" ;;
+                *) trigger="push" ;;
+              esac
+              ;;
+            *) trigger="dispatch" ;;
+          esac
+          builds="$(./scripts/buildc.sh plan --json \
+            | jq -c --arg t "$trigger" '.workflows["smoke-test"].builds[$t] // []')"
+          echo "builds=${builds}" >> "$GITHUB_OUTPUT"
+
+  smoke-test:
+    needs: [select]
+    # A trigger can select no build and GitHub refuses an empty matrix.
+    if: needs.select.outputs.builds != '[]'
+    name: Smoke test (${{ matrix.build }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        build: ${{ fromJson(needs.select.outputs.builds) }}
+      fail-fast: false
     permissions:
       contents: read
       packages: read
@@ -50,10 +70,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
 
-      - name: Resolve image name
+      - name: Resolve the image reference
+        env:
+          BUILD: ${{ matrix.build }}
         run: |
-          echo "IMAGE_NAME=$(./scripts/buildc.sh plan --json | jq -r .ungated_published)" \
-            >> "${GITHUB_ENV}"
+          ref="$(./scripts/buildc.sh registry ref --target "$BUILD")"
+          echo "IMAGE_REF=${ref}" >> "${GITHUB_ENV}"
 
       - name: Login to GitHub Container Registry (root)
         run: |
@@ -62,12 +84,12 @@ jobs:
 
       - name: Pull published image
         run: |
-          sudo podman pull "${IMAGE_REGISTRY}/${IMAGE_NAME}:latest"
+          sudo podman pull "${IMAGE_REF}"
 
       - name: Install and boot the image
         timeout-minutes: 30
         run: |
-          ./scripts/smoke.sh "${IMAGE_REGISTRY}/${IMAGE_NAME}:latest" "${RUNNER_TEMP}/vm"
+          ./scripts/smoke.sh "${IMAGE_REF}" "${RUNNER_TEMP}/vm"
 
       - name: Assertions
         timeout-minutes: 10
@@ -82,7 +104,7 @@ jobs:
           s bootc status || { echo "FAIL: bootc status"; exit 1; }
 
           echo "==> systemctl is-system-running"
-          # A degraded system makes is-system-running exit non-zero, so its status cannot end the step.
+          # is-system-running exits non-zero on a degraded system. The state check below reports it.
           state="$(s systemctl is-system-running --wait)" || true
 
           echo "==> systemctl --failed"
@@ -101,7 +123,7 @@ jobs:
           fi
 
           echo "==> selinux denials"
-          # A permissive denial does not block the service, so it is not a failed assertion.
+          # grep exits 1 when no denial was logged. A permissive denial does not block the service.
           denials="$(s journalctl -b --no-pager | grep -Ei 'avc:[[:space:]]+denied' | grep -v 'permissive=1')" || true
           if [ -n "$denials" ]; then
             printf '%s\n' "$denials"

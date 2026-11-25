@@ -6,7 +6,7 @@ FROM ${BASE} AS rootfs
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" PROVIDES="libostree|libostree-1-1" FLOORS="libostree|2025.3||core/needs" \
+    FAMILY=fedora PROVIDES="libostree|libostree-1-1" FLOORS="libostree|2025.3|core/needs" \
     bash /ctx/lib/measure-base.sh
 
 ## Component layers
@@ -19,14 +19,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- core/needs ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/versioned/components/core/needs.sh,target=/generated/versioned/components/core/needs.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/versioned/components/core/needs.sh
-
 # ---- core/tools ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=bind,from=ctx,source=/generated/versioned/components/core/tools.sh,target=/generated/versioned/components/core/tools.sh \
@@ -34,22 +26,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/versioned/components/core/tools.sh
-
-# ---- core/needs-build-tool ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/versioned/components/core/needs-build-tool.sh,target=/generated/versioned/components/core/needs-build-tool.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/versioned/components/core/needs-build-tool.sh
-
-# ---- core/needs-dnf5 ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/versioned/components/core/needs-dnf5.sh,target=/generated/versioned/components/core/needs-dnf5.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/versioned/components/core/needs-dnf5.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -83,7 +59,7 @@ ARG BUILDC_VERSION=""
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" MEASURED="core/tools|package-manager/dnf5|dnf5|" \
+    FAMILY=fedora MEASURED="core/tools|package-manager/dnf5|dnf5" \
     bash /ctx/lib/measure-image.sh
 
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \

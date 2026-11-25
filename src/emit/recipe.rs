@@ -3,6 +3,7 @@ use crate::model::image::{Layout, List};
 use common::json::Json;
 
 pub const LUKS_INITRAMFS: &str = "luks-initramfs";
+pub const UKI_FILESYSTEM: &str = "btrfs";
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 struct Family {
@@ -30,19 +31,18 @@ fn family(name: &str) -> Option<Family> {
     })
 }
 
-fn settle(family: Option<&str>, layout: Option<&Layout>, boot: &str) -> Option<(Family, String)> {
+fn settle(family: Option<&str>, layout: Option<&Layout>, uki: bool) -> Option<(Family, String)> {
     let known = family.and_then(self::family);
-    let uki = !boot.is_empty();
     let told = |pick: fn(&Layout) -> &str| {
         layout
             .map(pick)
             .filter(|declared| !declared.is_empty())
             .map(str::to_string)
     };
-    let bootloader = if boot.is_empty() {
-        told(|l| &l.bootloader)?
-    } else {
+    let bootloader = if uki {
         "systemd".into()
+    } else {
+        told(|l| &l.bootloader)?
     };
     let family = Family {
         composefs: uki
@@ -54,7 +54,7 @@ fn settle(family: Option<&str>, layout: Option<&Layout>, boot: &str) -> Option<(
                 .and_then(|l| l.generic)
                 .or(known.as_ref().map(|f| f.generic))?,
         filesystem: if uki {
-            "btrfs".into()
+            UKI_FILESYSTEM.into()
         } else {
             told(|l| &l.filesystem).or_else(|| known.as_ref().map(|f| f.filesystem.clone()))?
         },
@@ -63,24 +63,24 @@ fn settle(family: Option<&str>, layout: Option<&Layout>, boot: &str) -> Option<(
     Some((family, bootloader))
 }
 
-pub fn unanswered(family: &str, layout: Option<&Layout>, boot: &str) -> Vec<&'static str> {
-    if settle(Some(family), layout, boot).is_some() {
+pub fn unanswered(family: &str, layout: Option<&Layout>, uki: bool) -> Vec<&'static str> {
+    if settle(Some(family), layout, uki).is_some() {
         return Vec::new();
     }
     let known = self::family(family);
     let told = |pick: fn(&Layout) -> &str| layout.is_some_and(|l| !pick(l).is_empty());
     [
-        ("filesystem", told(|l| &l.filesystem) || !boot.is_empty()),
+        ("filesystem", told(|l| &l.filesystem) || uki),
         (
             "composefs",
-            layout.is_some_and(|l| l.composefs.is_some()) || !boot.is_empty(),
+            layout.is_some_and(|l| l.composefs.is_some()) || uki,
         ),
         (
             "generic-image",
-            layout.is_some_and(|l| l.generic.is_some()) || !boot.is_empty(),
+            layout.is_some_and(|l| l.generic.is_some()) || uki,
         ),
         ("admin-group", told(|l| &l.admin_group)),
-        ("bootloader", told(|l| &l.bootloader) || !boot.is_empty()),
+        ("bootloader", told(|l| &l.bootloader) || uki),
     ]
     .into_iter()
     .filter(|(name, _)| known.is_none() || *name == "bootloader")
@@ -103,17 +103,16 @@ pub fn refusal(list: &List, name: &str) -> String {
     };
     format!(
         "`{name}` answers no {}, and guessing one erases a disk before it fails to \
-         boot\n\nhelp: declare it in the image's `layout {{ }}`; the bootloader is one \
-         what the base component lists",
-        unanswered(&base.family, image.layout.as_ref(), &image.boot).join(", ")
+         boot\n\nhelp: declare each in the build's `install {{ }}` block in repo.kdl; the bootloader is \
+         one of those the base component lists",
+        unanswered(&base.family, image.layout.as_ref(), image.seals_uki()).join(", ")
     )
 }
 
-pub fn seals(family: &str, layout: Option<&Layout>, boot: &str) -> bool {
-    !boot.is_empty()
-        || layout
-            .and_then(|l| l.composefs)
-            .unwrap_or_else(|| self::family(family).is_some_and(|f| f.composefs))
+pub fn seals(family: &str, layout: Option<&Layout>, uki: bool) -> bool {
+    uki || layout
+        .and_then(|l| l.composefs)
+        .unwrap_or_else(|| self::family(family).is_some_and(|f| f.composefs))
 }
 
 pub fn build(
@@ -128,12 +127,12 @@ pub fn build(
         .into_iter()
         .find(|target| target.to_string() == name)?
         .published();
-    let (declared, _, entries) = of_target(list, name)?;
+    let (declared, entries) = of_target(list, name)?;
     let layout = declared.layout.as_ref();
     let (settled, bootloader) = settle(
         Some(&declared.base.as_ref()?.family),
         layout,
-        &declared.boot,
+        declared.seals_uki(),
     )?;
 
     let mut fields = vec![
@@ -149,9 +148,6 @@ pub fn build(
             Json::object([("groups", Json::strings([&settled.admin]))]),
         ),
     ];
-    if !declared.boot.is_empty() {
-        fields.push(("boot", Json::string(&declared.boot)));
-    }
     if provides(declared, &entries, LUKS_INITRAMFS) {
         fields.push(("luksInitramfs", Json::Bool(true)));
     }
@@ -180,7 +176,7 @@ pub fn media(list: &List, name: &str, image: &str, imgref: &str) -> Option<Json>
     settle(
         Some(&declared.base.as_ref()?.family),
         declared.layout.as_ref(),
-        &declared.boot,
+        declared.seals_uki(),
     )?;
     let published = target.published();
 
@@ -258,7 +254,7 @@ mod tests {
         assert_eq!(field(&deb, "ubuntu", "user"), field(&deb, "forky", "user"));
 
         let fedora = fixture("minimal");
-        let target = fedora.ungated_target().expect("the fixture publishes one");
+        let target = fedora.default_target().expect("the fixture publishes one");
         let target = target.to_string();
         assert_eq!(
             field(&fedora, &target, "composeFsBackend").as_deref(),
@@ -306,16 +302,19 @@ mod tests {
 
     #[test]
     fn a_sealed_family_is_the_only_one_that_refuses_a_filesystem() {
-        assert!(seals("debian", None, ""));
-        assert!(seals("ubuntu", None, ""));
-        assert!(!seals("fedora", None, ""));
-        assert!(!seals("plan9", None, ""));
+        assert!(seals("debian", None, false));
+        assert!(seals("ubuntu", None, false));
+        assert!(!seals("fedora", None, false));
+        assert!(!seals("plan9", None, false));
 
         let sealing = layout(Some(true));
         let plain = layout(Some(false));
-        assert!(seals("plan9", Some(&sealing), ""));
-        assert!(seals("fedora", Some(&sealing), ""), "the image overrides");
-        assert!(!seals("debian", Some(&plain), ""), "in both directions");
+        assert!(seals("plan9", Some(&sealing), false));
+        assert!(
+            seals("fedora", Some(&sealing), false),
+            "the image overrides"
+        );
+        assert!(!seals("debian", Some(&plain), false), "in both directions");
     }
 
     fn layout(composefs: Option<bool>) -> crate::model::image::Layout {
@@ -326,6 +325,7 @@ mod tests {
             generic: None,
             admin_group: String::new(),
             span: crate::diag::Span::default(),
+            src: crate::diag::Source::new("repo.kdl", ""),
         }
     }
 
@@ -333,24 +333,24 @@ mod tests {
     fn rhel_installs_the_way_fedora_does() {
         let mut grub = layout(None);
         grub.bootloader = "grub2".into();
-        assert!(settle(Some("rhel"), Some(&grub), "").is_some());
+        assert!(settle(Some("rhel"), Some(&grub), false).is_some());
         assert_eq!(
-            settle(Some("rhel"), Some(&grub), ""),
-            settle(Some("fedora"), Some(&grub), "")
+            settle(Some("rhel"), Some(&grub), false),
+            settle(Some("fedora"), Some(&grub), false)
         );
-        assert_eq!(unanswered("rhel", Some(&grub), ""), Vec::<&str>::new());
-        assert!(!seals("rhel", None, ""));
+        assert_eq!(unanswered("rhel", Some(&grub), false), Vec::<&str>::new());
+        assert!(!seals("rhel", None, false));
     }
 
     #[test]
     fn the_bootloader_is_the_image_s_own_answer() {
-        assert_eq!(unanswered("fedora", None, ""), ["bootloader"]);
-        assert_eq!(settle(Some("debian"), None, ""), None);
+        assert_eq!(unanswered("fedora", None, false), ["bootloader"]);
+        assert_eq!(settle(Some("debian"), None, false), None);
         let deb = fixture("deb-families");
         assert!(build(&deb, "ubuntu", "image", "imgref", &[]).is_some());
 
         let silent = fixture("multi-image");
-        let name = silent.ungated_target().expect("a target").to_string();
+        let name = silent.default_target().expect("a target").to_string();
         assert!(build(&silent, &name, "image", "imgref", &[]).is_none());
         assert!(refusal(&silent, &name).contains("answers no bootloader"));
     }
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn an_unmeasured_family_answers_for_itself_in_full_or_not_at_all() {
         assert_eq!(
-            unanswered("plan9", None, ""),
+            unanswered("plan9", None, false),
             [
                 "filesystem",
                 "composefs",
@@ -371,19 +371,19 @@ mod tests {
         let mut half = layout(Some(true));
         half.filesystem = "btrfs".into();
         assert_eq!(
-            unanswered("plan9", Some(&half), ""),
+            unanswered("plan9", Some(&half), false),
             ["generic-image", "admin-group", "bootloader"]
         );
-        assert_eq!(unanswered("fedora", Some(&half), ""), ["bootloader"]);
-        assert_eq!(unanswered("plan9", None, "uki-db"), ["admin-group"]);
+        assert_eq!(unanswered("fedora", Some(&half), false), ["bootloader"]);
+        assert_eq!(unanswered("plan9", None, true), ["admin-group"]);
 
         let mut whole = half;
         whole.generic = Some(true);
         whole.admin_group = "wheel".into();
         whole.bootloader = "systemd".into();
-        assert_eq!(unanswered("plan9", Some(&whole), ""), Vec::<&str>::new());
+        assert_eq!(unanswered("plan9", Some(&whole), false), Vec::<&str>::new());
         let (settled, bootloader) =
-            settle(Some("plan9"), Some(&whole), "").expect("all five are declared");
+            settle(Some("plan9"), Some(&whole), false).expect("all five are declared");
         assert_eq!(bootloader, "systemd");
         assert_eq!(settled.filesystem, "btrfs");
         assert_eq!(settled.admin, "wheel");
@@ -505,31 +505,31 @@ mod tests {
 
     #[test]
     fn a_family_with_no_measured_answer_is_refused_rather_than_defaulted() {
-        assert!(settle(Some("plan9"), None, "").is_none());
-        assert!(settle(Some(""), None, "").is_none());
+        assert!(settle(Some("plan9"), None, false).is_none());
+        assert!(settle(Some(""), None, false).is_none());
         let mut half = layout(Some(true));
         half.filesystem = "btrfs".into();
-        assert!(settle(Some("plan9"), Some(&half), "").is_none());
+        assert!(settle(Some("plan9"), Some(&half), false).is_none());
         let deb = fixture("deb-families");
         assert!(build(&deb, "not-a-target", "image", "imgref", &[]).is_none());
     }
 
     #[test]
     fn a_uki_chain_sets_systemd_boot_without_a_layout_answer() {
-        let (family, bootloader) = settle(Some("fedora"), None, "uki-db").expect("a known family");
+        let (family, bootloader) = settle(Some("fedora"), None, true).expect("a known family");
         assert_eq!(bootloader, "systemd");
         assert!(family.composefs);
         assert!(family.generic);
         assert_eq!(family.filesystem, "btrfs");
-        assert!(seals("fedora", None, "uki-db"));
-        assert_eq!(unanswered("fedora", None, "uki-db"), Vec::<&str>::new());
+        assert!(seals("fedora", None, true));
+        assert_eq!(unanswered("fedora", None, true), Vec::<&str>::new());
 
-        let list = fixture("uki");
+        let list = crate::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/uki")).list;
         let recipe = build(&list, "shim", "image", "imgref", &[])
             .expect("an installable UKI image")
             .render();
         assert!(recipe.contains("\"bootloader\": \"systemd\""), "{recipe}");
-        assert!(recipe.contains("\"boot\": \"uki-shim\""), "{recipe}");
+        assert!(!recipe.contains("\"boot\""), "{recipe}");
         assert!(recipe.contains("\"luksInitramfs\": true"), "{recipe}");
     }
 }

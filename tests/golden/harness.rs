@@ -38,6 +38,17 @@ pub(super) fn assert_golden(name: &str, file: &str, actual: &str) {
     settings.set_prepend_module_to_snapshot(false);
     settings.set_omit_expression(true);
     settings.add_filter(&env!("CARGO_PKG_VERSION").replace('.', r"\."), "{version}");
+    // The crate path differs on each machine. The filter escapes each character in its regex set that a test path holds.
+    let crate_path: String = crate_dir()
+        .display()
+        .to_string()
+        .chars()
+        .flat_map(|at| match r"\.+*?()|[]{}^$".contains(at) {
+            true => vec!['\\', at],
+            false => vec![at],
+        })
+        .collect();
+    settings.add_filter(&crate_path, "{crate}");
     settings.bind(|| insta::assert_snapshot!(format!("{name}__{file}"), actual));
 }
 
@@ -79,8 +90,18 @@ pub(super) fn copy(from: &Path, to: &Path) {
     }
 }
 
+pub(super) const LIBRARY_COMMIT: &str = "1111111111111111111111111111111111111111";
+
+pub(super) fn library_url() -> String {
+    buildc::collection::defaults(&crate_dir().join("assets"))
+        .into_iter()
+        .next()
+        .expect("the assets offer a default library")
+        .source
+}
+
 pub(super) fn seed_bases(root: &Path) {
-    let keyed = buildc::collection::cache_path(root, buildc::collection::LIBRARY_URL, "HEAD")
+    let keyed = buildc::collection::seed(root, &library_url(), "HEAD", LIBRARY_COMMIT)
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
     copy(
@@ -91,13 +112,20 @@ pub(super) fn seed_bases(root: &Path) {
         &collections.join("fedora-family"),
         &keyed.join("components/fedora-family"),
     );
+    library_root(&keyed);
+}
+
+// A cache with a `repo.kdl` is read as a repository. A repository keeps its components in `components/`.
+fn library_root(keyed: &Path) {
+    std::fs::write(keyed.join("repo.kdl"), "schema-version 1\n").unwrap();
 }
 
 pub(super) fn seed_library(root: &Path) {
-    let keyed = buildc::collection::cache_path(root, buildc::collection::LIBRARY_URL, "HEAD")
+    let keyed = buildc::collection::seed(root, &library_url(), "HEAD", LIBRARY_COMMIT)
         .expect("the default library URL hashes");
     let collections = crate_dir().join("tests/collections/upstream");
     copy(&collections, &keyed.join("components"));
+    library_root(&keyed);
 }
 
 pub(super) fn walk(dir: &Path) -> Vec<PathBuf> {

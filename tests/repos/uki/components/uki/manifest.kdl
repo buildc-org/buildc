@@ -3,3 +3,9 @@ schema-version 1
 description "UKI provider fixture"
 targets "fedora"
 provides "boot-chain-uki"
+
+option "trust" type="string" {
+    default ""
+}
+
+fragment position="tail"

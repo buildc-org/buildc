@@ -9,36 +9,22 @@ provides "editor"
 packages "nano"
 ==== components/plain/manifest.kdl
 schema-version 1
-==== example.image.kdl
+==== example.kdl
 schema-version 1
 
-image "example" {
-    layout {
-        bootloader "grub2"
+base-image {
+    fedora signed=#false {
+        version "44"
     }
-
-    base-image {
-        fedora {
-            version "44"
-            signed #false
-        }
-    }
-    my-editor
 }
-==== server.image.kdl
+my-editor
+==== server.kdl
 schema-version 1
 
-image "server" {
-    layout {
-        bootloader "grub2"
+base-image {
+    fedora signed=#false {
+        version "44"
     }
-
-    base-image {
-        fedora {
-            version "44"
-            signed #false
-        }
-    }
-    my-editor
 }
+my-editor
 ==== check

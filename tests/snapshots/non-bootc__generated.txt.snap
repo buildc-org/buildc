@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,15 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- fedora-family ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/runner/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/runner/components/fedora-family.sh,target=/generated/runner/components/fedora-family.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/runner/components/fedora-family.sh
-
 # ---- tool/hello ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
     --mount=type=bind,from=ctx,source=/generated/runner/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
@@ -973,13 +963,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/runner/components/fedora-family.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/fedora-family
-export COMPONENT_DIR
 ==== generated/runner/components/tool/hello.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1141,12 +1124,16 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["registry.fedoraproject.org/fedora:44"]
     m0["fedora-family"]
     m1["tool/hello"]
+    m2["runner"]
+    m2 ==>|"lists"| m0
+    m2 ==>|"lists"| m1
 ```
 
 ## Capabilities
@@ -1154,6 +1141,13 @@ graph LR
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
 | `build-environment` | capability | `fedora-family` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `fedora-family` | `runner` | lists |
+| `tool/hello` | `runner` | lists |
 ==== generated/runner/graph.json
 {
   "image": "runner",
@@ -1168,13 +1162,24 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "fedora-family",
+      "by": "runner",
+      "how": "lists"
+    },
+    {
+      "component": "tool/hello",
+      "by": "runner",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "e9b25157bc084bfecb393894235e8842394292405d0ec08620634c00e9283b3e",
-  "files": 27
+  "root": "5fac0d1a76bee2de94a84b2f78f2742b99137e4c84526fcbf05fc07d63a8db12",
+  "files": 26
 }
 ==== generated/runner/components/fedora-family/lib/family.sh

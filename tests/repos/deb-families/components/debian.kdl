@@ -1,0 +1,15 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        debian-forky-debian
+    }
+
+    debian-family
+    core {
+        menu
+    }
+    core {
+        shared
+    }
+}

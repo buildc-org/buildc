@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues, Source};
-use crate::model::options::{check_values, Opt, OptType, Value, Variant, VersionTracker};
+use crate::model::options::{check_values, Opt, OptType, Setting, Value, Variant, VersionTracker};
 use crate::parse::schema::{Arg, Kind, Node, Prop, Say};
 use crate::parse::{child, kids, prop, string_arg};
 use kdl::{KdlNode, KdlValue};
@@ -85,7 +85,7 @@ pub const VARIANT: Node = Node::new("variant",
         Node::new("description", "What the variant is for.").example("\"Skip the metadata and .NET payloads\"")
             .arg(Arg::Str, Say::NONE).once(""),
         Node::new("set", "One option that this variant sets, where the option value follows the option name. A string value may read `{image-id}` alone.").example("\"dotnet\" #false")
-            .arg(Arg::Str, Say::new("`set` needs an option name", "no option named", "")),
+            .arg(Arg::Keyed("option name", "its value"), Say::new("`set` needs an option name", "no option named", "")),
     ], Say::new("unknown node `{}` in a variant", "not part of the schema",
         "a variant holds `description` and `set`"))
     .notes(&[
@@ -113,6 +113,40 @@ pub fn args(node: &KdlNode) -> Vec<Value> {
         .collect()
 }
 
+pub(crate) const REMOVE: &str = "remove";
+
+fn removes(kid: &KdlNode) -> bool {
+    kid.name().value() == REMOVE && !args(kid).is_empty()
+}
+
+/// A node with only `remove` children sets a list option and is no path segment.
+pub(crate) fn is_setting(kid: &KdlNode) -> bool {
+    !args(kid).is_empty() || (!kids(kid).is_empty() && kids(kid).iter().all(removes))
+}
+
+pub(crate) fn setting(kid: &KdlNode, src: &Source, issues: &mut Issues) -> Setting {
+    let name = kid.name().value().to_string();
+    let mut removed = Vec::new();
+    for held in kids(kid) {
+        match removes(held) {
+            true => removed.extend(args(held)),
+            false => issues.push(
+                Issue::new(format!("`{}` is not a `remove` of `{name}`", held.name().value()), src)
+                    .at(held.name().span(), "not a value to remove")
+                    .help(format!(
+                        "an option value holds `remove \"<value>\"` nodes alone, as `{name} \"a\" {{ remove \"b\" }}`"
+                    )),
+            ),
+        }
+    }
+    Setting {
+        name,
+        values: args(kid),
+        removes: removed,
+        span: kid.name().span().into(),
+    }
+}
+
 pub fn parse_option(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option<Opt> {
     let name = string_arg(node)?.to_string();
 
@@ -133,6 +167,25 @@ pub fn parse_option(node: &KdlNode, src: &Source, issues: &mut Issues) -> Option
             Issue::new("`pin` is not usable as an option name", src)
                 .at(node.name().span(), "reserved")
                 .help("an image refuses a `pin` child of a list entry, so this option could never be set"),
+        );
+    }
+
+    if name == REMOVE {
+        issues.push(
+            Issue::new("`remove` is not usable as an option name", src)
+                .at(node.name().span(), "reserved")
+                .help("a `remove` node in an option value takes a value out of a list"),
+        );
+    }
+
+    if crate::parse::image::is_manifest_node(&name) {
+        issues.push(
+            Issue::new(format!("`{name}` is not usable as an option name"), src)
+                .at(node.name().span(), "a manifest node")
+                .help(format!(
+                    "a component file reads a `{name}` child of a path segment as the manifest node. \
+                     This option could never be set; give the option another name"
+                )),
         );
     }
 
@@ -219,6 +272,15 @@ mod tests {
         assert_eq!(tracker.datasource, "repology");
         assert_eq!(tracker.dep_name, "fedora_rawhide/firefox");
         assert_eq!(tracker.extract_version, None);
+    }
+
+    #[test]
+    fn an_option_named_after_a_manifest_node_is_refused() {
+        let (_, said) = parsed("option \"mode\" type=\"string\" {\n    default \"1\"\n}\n");
+        assert!(
+            said.contains("`mode` is not usable as an option name"),
+            "{said}"
+        );
     }
 
     #[test]

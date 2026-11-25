@@ -1,0 +1,9 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+
+example/
+└── ~ example.kdl  `browser` added to `example`
+==== exit 0

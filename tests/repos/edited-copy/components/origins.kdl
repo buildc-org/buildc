@@ -1,0 +1,5 @@
+origin "https://github.com/owner/upstream" {
+    // The all-zero hash matches no content and makes core/edited read as an edited copy.
+    component "edited" as="core/edited" pin="0123456789abcdef0123456789abcdef01234567" hash="0000000000000000000000000000000000000000000000000000000000000000"
+    component "owned" as="core/owned" pin="0123456789abcdef0123456789abcdef01234567" hash="af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1"
+}

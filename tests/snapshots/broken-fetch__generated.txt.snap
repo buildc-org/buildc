@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -1124,11 +1123,14 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["core/grabber"]
+    m1["broken-fetch"]
+    m1 ==>|"lists"| m0
 ```
 
 ## Capabilities
@@ -1137,6 +1139,12 @@ graph LR
 |---|---|---|---|---|
 | `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/grabber` | `broken-fetch` | lists |
 ==== generated/broken-fetch/graph.json
 {
   "image": "broken-fetch",
@@ -1159,13 +1167,19 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/grabber",
+      "by": "broken-fetch",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "6619991461d5935e3c468c31abd4be26e4b79a97d4f418d061d7ae5ebdd5e997",
+  "root": "ad96b53ba748d24c10e6f2c859042a952d4de6cba241dfbc294c3e4aca7a3800",
   "files": 26
 }
 ==== generated/broken-fetch/components/core/grabber/component.sh

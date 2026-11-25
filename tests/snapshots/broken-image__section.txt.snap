@@ -18,16 +18,16 @@ ARG IMAGE_VERSION=dev
 ARG FAMILY=
 
 # ---- image identity ----
-ARG IMAGE_ID="Not An Id"
+ARG IMAGE_ID="broken-image"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --mount=type=bind,from=ctx,source=/generated/Not An Id/finalize.sh,target=/generated/Not An Id/finalize.sh \
+RUN --mount=type=bind,from=ctx,source=/generated/broken-image/finalize.sh,target=/generated/broken-image/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/Not An Id/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/broken-image/finalize.sh
 
 
 COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json

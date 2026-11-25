@@ -58,7 +58,7 @@ fn coverage() {
     let root = tmp().join("coverage");
     let _ = std::fs::remove_dir_all(&root);
     copy(&enforced, &root);
-    let image = root.join("example.image.kdl");
+    let image = root.join("components/enforced.kdl");
     let text = std::fs::read_to_string(&image).unwrap();
     std::fs::write(
         &image,
@@ -82,7 +82,7 @@ fn coverage() {
             ".",
             "coverage",
             "--datastream",
-            "example.image.kdl",
+            "components/enforced.kdl",
         ],
     );
     out.push_str(&format!(
@@ -117,9 +117,9 @@ fn scap() {
     let claim_only = tmp().join("scap-claim-only");
     let _ = std::fs::remove_dir_all(&claim_only);
     copy(&enforced, &claim_only);
-    let image = claim_only.join("example.image.kdl");
+    let image = claim_only.join("components/enforced.kdl");
     let text = std::fs::read_to_string(&image).unwrap();
-    std::fs::write(&image, text.replace("    conforms \"standard\"\n", "")).unwrap();
+    std::fs::write(&image, text.replace("conforms \"standard\"\n", "")).unwrap();
 
     let (report, said, code) = scap_run(
         &claim_only,
@@ -198,7 +198,7 @@ fn scap() {
         "the base-regression help did not name the base: {said}"
     );
 
-    let image = root.join("example.image.kdl");
+    let image = root.join("components/enforced.kdl");
     let text = std::fs::read_to_string(&image).unwrap();
     std::fs::write(
         &image,

@@ -1,4 +1,15 @@
-pub fn render(body: &str, schedule: Option<&str>, facts: &[&str]) -> String {
+use crate::model::image::On;
+
+pub fn render(
+    body: &str,
+    triggers: Option<&[On]>,
+    schedule: Option<&str>,
+    facts: &[&str],
+) -> String {
+    let body = match triggers {
+        Some(triggers) => retriggered(body, triggers),
+        None => body.to_string(),
+    };
     let mut out = String::new();
     let mut keep = true;
     for line in body.lines() {
@@ -23,6 +34,93 @@ pub fn render(body: &str, schedule: Option<&str>, facts: &[&str]) -> String {
     out
 }
 
+/// Each shipped workflow writes a trigger key at a two-space indent with no value on its line.
+fn trigger_chunks(section: &[&str]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for line in section.iter().filter(|line| !line.trim().is_empty()) {
+        let key = line
+            .strip_prefix("  ")
+            .filter(|rest| !rest.starts_with(' ') && !rest.starts_with('#'))
+            .and_then(|rest| rest.strip_suffix(':'));
+        match (key, out.last_mut()) {
+            (Some(key), _) => out.push((key.to_string(), format!("{line}\n"))),
+            (None, Some((_, text))) => {
+                text.push_str(line);
+                text.push('\n');
+            }
+            (None, None) => {}
+        }
+    }
+    out
+}
+
+fn retriggered(body: &str, triggers: &[On]) -> String {
+    let lines: Vec<&str> = body.lines().collect();
+    let Some(start) = lines.iter().position(|line| *line == "on:") else {
+        return body.to_string();
+    };
+    let end = lines[start + 1..]
+        .iter()
+        .position(|line| !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#'))
+        .map_or(lines.len(), |at| start + 1 + at);
+    let shipped = trigger_chunks(&lines[start + 1..end]);
+    let take = |key: &str| {
+        shipped
+            .iter()
+            .find(|(held, _)| held == key)
+            .map(|(_, text)| text.clone())
+    };
+    let (mut pr, mut pushed, mut schedule, mut tag) = (false, false, false, None);
+    for on in triggers {
+        match on {
+            On::Pr => pr = true,
+            On::Push => pushed = true,
+            On::Schedule { .. } => schedule = true,
+            // YAML doubles a single quote inside a single-quoted scalar.
+            On::Tag(glob) => tag = Some(glob.replace('\'', "''")),
+        }
+    }
+
+    let mut section = String::from("on:\n");
+    if pr {
+        section.push_str(
+            &take("pull_request")
+                .unwrap_or_else(|| "  pull_request:\n    branches:\n      - main\n".into()),
+        );
+    }
+    let push = pushed
+        .then(|| take("push").unwrap_or_else(|| "  push:\n    branches:\n      - main\n".into()));
+    match (push, tag) {
+        (Some(push), Some(glob)) => {
+            section.push_str(&format!("{push}    tags:\n      - '{glob}'\n"))
+        }
+        (Some(push), None) => section.push_str(&push),
+        (None, Some(glob)) => section.push_str(&format!("  push:\n    tags:\n      - '{glob}'\n")),
+        (None, None) => {}
+    }
+    if schedule {
+        section.push_str(&take("schedule").unwrap_or_else(|| {
+            // The buildc:schedule marker makes render write the declared cron over this placeholder.
+            "  schedule:\n    - cron: '0 0 * * *'  # buildc:schedule\n".into()
+        }));
+    }
+    section.push_str(&take("workflow_dispatch").unwrap_or_else(|| "  workflow_dispatch:\n".into()));
+
+    let mut out: String = lines[..start]
+        .iter()
+        .map(|line| format!("{line}\n"))
+        .collect();
+    out.push_str(&section);
+    if lines[end - 1].trim().is_empty() {
+        out.push('\n');
+    }
+    for line in &lines[end..] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 fn scheduled(line: &str, schedule: Option<&str>) -> String {
     let Some(cron) = schedule else {
         return line.to_string();
@@ -41,16 +139,17 @@ fn scheduled(line: &str, schedule: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::render;
+    use crate::model::image::On;
 
-    const BODY: &str = include_str!("../../assets/.github/workflows/build.yml");
+    const BODY: &str = include_str!("../../assets/.github/workflows/image-build.yml");
 
     #[test]
     fn the_kernel_input_is_there_only_for_a_repository_that_has_one() {
-        let with = render(BODY, None, &["kernel"]);
+        let with = render(BODY, None, None, &["kernel"]);
         assert!(with.contains("inputs:"), "{with}");
         assert!(with.contains("    - cron: '45 9 1 * *'"), "{with}");
 
-        let without = render(BODY, None, &["no-kernel"]);
+        let without = render(BODY, None, None, &["no-kernel"]);
         assert!(!without.contains("inputs:"), "{without}");
         assert!(!without.contains("- cron: '45 9 1 * *'"), "{without}");
         assert!(without.contains("  workflow_dispatch:\n"), "{without}");
@@ -61,11 +160,11 @@ mod tests {
 
     #[test]
     fn the_build_job_runs_the_declared_backend() {
-        let buildah = render(BODY, None, &["no-kernel", "backend-buildah"]);
+        let buildah = render(BODY, None, None, &["no-kernel", "backend-buildah"]);
         assert!(buildah.contains("sudo env \\"), "{buildah}");
         assert!(!buildah.contains("setup-buildx-action"), "{buildah}");
         assert!(!buildah.contains("--oci-output"), "{buildah}");
-        let buildx = render(BODY, None, &["no-kernel", "backend-buildx"]);
+        let buildx = render(BODY, None, None, &["no-kernel", "backend-buildx"]);
         assert!(buildx.contains("setup-buildx-action"), "{buildx}");
         assert!(
             buildx.contains("args+=(--oci-output \"$archive\")"),
@@ -80,9 +179,9 @@ mod tests {
 
     #[test]
     fn the_declared_schedule_replaces_the_shipped_one() {
-        let out = render(BODY, Some("0 5 * * 1"), &["no-kernel"]);
+        let out = render(BODY, None, Some("0 5 * * 1"), &["no-kernel"]);
         assert!(out.contains("    - cron: '0 5 * * 1'\n"), "{out}");
-        assert!(!out.contains("30 12 * * *"), "{out}");
+        assert!(!out.contains("0 4 * * *"), "{out}");
     }
 
     #[test]
@@ -93,99 +192,90 @@ mod tests {
     }
 
     #[test]
-    fn a_scheduled_scan_is_absent_from_pushes() {
-        let out = render(BODY, None, &["no-kernel", "scheduled-scan"]);
-        assert!(
-            out.contains(
-                "    if: needs.build_push.outputs.publish == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.compute-matrix.outputs.scanned != '[]'\n"
-            ),
-            "{out}"
-        );
-        assert!(
-            !out.contains(
-                "    if: needs.build_push.outputs.publish == 'true' && github.event_name != 'pull_request' && needs.compute-matrix.outputs.scanned != '[]'\n"
-            ),
-            "{out}"
-        );
-    }
-
-    #[test]
-    fn only_a_target_asking_to_be_measured_is_scanned() {
+    fn only_a_published_target_asking_to_be_measured_is_scanned() {
         assert!(BODY.contains("target: ${{ fromJson(needs.compute-matrix.outputs.scanned) }}"));
-        assert!(BODY.contains("select(.conforms != \"\") | .name"));
-        for facts in [
-            &["no-kernel", "push-scan"][..],
-            &["no-kernel", "scheduled-scan"][..],
-        ] {
-            let out = render(BODY, None, facts);
-            assert_eq!(
-                out.matches("needs.compute-matrix.outputs.scanned != '[]'")
-                    .count(),
-                1,
-                "{out}"
-            );
-        }
-    }
-
-    #[test]
-    fn scheduled_publishing_is_absent_from_pushes_but_not_dispatches() {
-        let gate = r#"          if [ "${{ github.event_name }}" != "schedule" ] \
-             && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            publish=false
-          fi
-"#;
-        let scheduled = render(BODY, None, &["no-kernel", "scheduled-publish"]);
-        assert!(scheduled.contains(gate), "{scheduled}");
-        assert!(scheduled
-            .contains("    outputs:\n      publish: ${{ steps.prepare.outputs.publish }}\n"));
-        assert!(scheduled.contains("      - name: Prepare environment\n        id: prepare\n"));
-        assert!(scheduled.contains(
-            "          echo \"PUBLISH=${publish}\" >> \"${GITHUB_ENV}\"\n          echo \"publish=${publish}\" >> \"${GITHUB_OUTPUT}\"\n"
-        ));
-        assert!(scheduled.contains(
-            "      - name: Login to GitHub Container Registry\n        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0\n"
-        ));
-
-        let pushed = render(BODY, None, &["no-kernel", "push-publish"]);
-        assert!(!pushed.contains(gate), "{pushed}");
-    }
-
-    #[test]
-    fn a_scheduled_publisher_smoke_tests_the_run_that_published() {
-        let body = crate::resolve::workflow::find("smoke-test").unwrap().body;
-
-        assert!(
-            body.find("systemctl --failed --no-legend") < body.find("expected running"),
-            "{body}"
+        assert!(BODY.contains("select(.conforms != \"\" and .reference != null) | .name"));
+        assert!(BODY.contains("if: needs.compute-matrix.outputs.publishing == 'true'"));
+        assert!(!BODY.contains("needs.build_push.outputs"));
+        let out = render(BODY, None, None, &["no-kernel"]);
+        assert_eq!(
+            out.matches("needs.compute-matrix.outputs.scanned != '[]'")
+                .count(),
+            1,
+            "{out}"
         );
+    }
 
-        let scheduled = render(
+    #[test]
+    fn listed_triggers_replace_the_shipped_ones_and_keep_dispatch() {
+        let out = render(BODY, Some(&[On::Tag("v*".into())]), None, &["no-kernel"]);
+        let on = &out[out.find("\non:\n").unwrap()..out.find("\nenv:").unwrap()];
+        assert!(on.contains("  push:\n    tags:\n      - 'v*'\n"), "{on}");
+        assert!(!on.contains("pull_request"), "{on}");
+        assert!(!on.contains("cron"), "{on}");
+        assert!(!on.contains("branches"), "{on}");
+        assert!(on.contains("  workflow_dispatch:\n"), "{on}");
+    }
+
+    #[test]
+    fn a_push_and_a_tag_share_one_push_key_with_its_shipped_filters() {
+        let out = render(
+            BODY,
+            Some(&[On::Push, On::Tag("v*".into()), On::Pr]),
+            Some("0 1 * * *"),
+            &["no-kernel"],
+        );
+        let on = &out[out.find("\non:\n").unwrap()..out.find("\nenv:").unwrap()];
+        assert_eq!(on.matches("  push:\n").count(), 1, "{on}");
+        assert!(on.contains("    paths-ignore:\n"), "{on}");
+        assert!(on.contains("      - 'v*'\n"), "{on}");
+        assert!(
+            on.contains("  pull_request:\n    branches:\n      - main\n"),
+            "{on}"
+        );
+        assert!(!on.contains("cron"), "{on}");
+    }
+
+    #[test]
+    fn a_listed_schedule_on_a_workflow_without_one_takes_the_declared_time() {
+        let body = crate::resolve::workflow::find("build-disk").unwrap().body;
+        let out = render(
             body,
-            Some("0 18 * * 1"),
-            &["no-kernel", "scheduled-publish"],
+            Some(&[On::Schedule {
+                weekly: None,
+                time: None,
+            }]),
+            Some("0 5 * * 1"),
+            &["no-kernel"],
         );
-        assert!(scheduled.contains("  workflow_run:\n"), "{scheduled}");
-        assert!(!scheduled.contains("cron"), "{scheduled}");
+        let on = &out[out.find("\non:\n").unwrap()..out.find("\npermissions:").unwrap()];
         assert!(
-            scheduled.contains("github.event.workflow_run.conclusion == 'success'"),
-            "{scheduled}"
+            on.contains("  schedule:\n    - cron: '0 5 * * 1'\n"),
+            "{on}"
         );
-
-        let pushed = render(body, Some("0 18 * * 1"), &["no-kernel", "push-publish"]);
-        assert!(pushed.contains("    - cron: '0 18 * * 1'\n"), "{pushed}");
-        assert!(!pushed.contains("workflow_run"), "{pushed}");
+        assert!(!on.contains("pull_request"), "{on}");
+        assert!(
+            out.contains("  workflow_dispatch:\n\npermissions:"),
+            "{out}"
+        );
     }
 
     #[test]
-    fn only_the_update_workflow_fetches_components() {
-        for shipped in crate::resolve::workflow::SHIPPED {
-            assert_eq!(
-                shipped.body.contains("fetch components"),
-                shipped.stem == "update-components",
-                "{}",
-                shipped.stem
-            );
-        }
+    fn the_rebuilt_section_leaves_every_line_around_it_in_place() {
+        let body = "name: x\non:\n  push:\n    branches:\n      - main\n\n  workflow_dispatch:\n\njobs:\n  a:\n    runs-on: x\n";
+        assert_eq!(
+            render(body, Some(&[On::Push]), None, &[]),
+            "name: x\non:\n  push:\n    branches:\n      - main\n  workflow_dispatch:\n\njobs:\n  a:\n    runs-on: x\n"
+        );
+        assert_eq!(
+            render(body, Some(&[On::Tag("it's".into())]), None, &[]),
+            "name: x\non:\n  push:\n    tags:\n      - 'it''s'\n  workflow_dispatch:\n\njobs:\n  a:\n    runs-on: x\n"
+        );
+        let tight = "---\nname: x\non:\n  push:\n  workflow_dispatch:\njobs:\n  a: {}\n";
+        assert_eq!(
+            render(tight, Some(&[On::Push]), None, &[]),
+            "---\nname: x\non:\n  push:\n  workflow_dispatch:\njobs:\n  a: {}\n"
+        );
     }
 
     #[test]
@@ -208,12 +298,9 @@ mod tests {
     #[test]
     fn no_marker_reaches_a_generated_file() {
         for shipped in crate::resolve::workflow::SHIPPED {
-            for facts in [
-                &["kernel", "push-scan"][..],
-                &["no-kernel", "scheduled-publish", "scheduled-scan"][..],
-            ] {
+            for facts in [&["kernel"][..], &["no-kernel"][..]] {
                 for schedule in [None, Some("0 5 * * 1")] {
-                    let out = render(shipped.body, schedule, facts);
+                    let out = render(shipped.body, None, schedule, facts);
                     assert!(!out.contains("buildc:"), "{}\n{out}", shipped.stem);
                     if schedule.is_some() && out.contains("- cron: '") {
                         assert!(

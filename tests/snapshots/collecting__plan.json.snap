@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "collecting",
   "pr_target": "collecting",
   "pr_published": "collecting",
-  "ungated_target": "collecting",
-  "ungated_published": "collecting",
   "cache_image": "collecting-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "collecting",
-      "file": "./image.kdl",
+      "file": "./components/collecting.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "collecting",
           "image": "collecting",
-          "flavour": null,
           "published": "collecting",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/menu",
-              "flavour": null,
               "variant": null,
               "description": "Assembles every contributed justfile fragment into one file",
               "options": {},
@@ -90,7 +84,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/power",
-              "flavour": null,
               "variant": null,
               "description": "Power recipes, contributed to the menu after the defaults",
               "options": {},
@@ -118,7 +111,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/network",
-              "flavour": null,
               "variant": null,
               "description": "Network recipes, contributed to the menu before the defaults",
               "options": {},
@@ -135,6 +127,33 @@ source: tests/golden/harness.rs
                 "defined": null,
                 "content": "8cf21304bcd71e5df803c9f2c4047ce3451e0f8bc9f7175db53a44c78a1799af",
                 "resolved": "0cbe661699219f85b278107f4cd3339346b431818a1b87c601a405987875c376",
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "collecting",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -173,6 +192,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/collecting/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

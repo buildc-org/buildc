@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,15 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- fedora-family ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/minimal/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/minimal/components/fedora-family.sh,target=/generated/minimal/components/fedora-family.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/minimal/components/fedora-family.sh
-
 # ---- core/hello ----
 RUN --mount=type=bind,from=ctx,source=/generated/minimal/components/core/hello,target=/ctx/components/core/hello \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
@@ -976,13 +966,6 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/minimal/components/fedora-family.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/fedora-family
-export COMPONENT_DIR
 ==== generated/minimal/components/core/hello.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1159,12 +1142,16 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["fedora-family"]
     m1["core/hello"]
+    m2["minimal"]
+    m2 ==>|"lists"| m0
+    m2 ==>|"lists"| m1
 ```
 
 ## Capabilities
@@ -1174,6 +1161,13 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `fedora-family` | `minimal` | lists |
+| `core/hello` | `minimal` | lists |
 ==== generated/minimal/graph.json
 {
   "image": "minimal",
@@ -1204,14 +1198,25 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "fedora-family",
+      "by": "minimal",
+      "how": "lists"
+    },
+    {
+      "component": "core/hello",
+      "by": "minimal",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "83ee7f384fc5ab7f9ecc447e8d303da168e121cbb4cdd4159e58fdf26b9f1762",
-  "files": 28
+  "root": "e479f13eea6cbf0af7ef6aadb37f11f5f07184f1842ecb150520dcc93c234669",
+  "files": 27
 }
 ==== generated/minimal/components/fedora-family/lib/family.sh
 ==== generated/minimal/components/core/hello/repo.sh

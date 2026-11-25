@@ -1,2 +1,6 @@
-schema-version 2
+schema-version 3
 name "Future Schema"
+
+builds {
+    minimal
+}

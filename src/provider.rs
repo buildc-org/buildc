@@ -1,4 +1,4 @@
-use crate::model::remote::{Collection, Kind as SourceKind};
+use crate::model::remote::Collection;
 use crate::parse::component::Summary;
 use crate::parse::disk::Disk;
 use crate::{layout, parse};
@@ -45,9 +45,7 @@ impl Index {
         Self {
             held: own(root, disk),
             unread: Vec::new(),
-            sourced: sources
-                .iter()
-                .any(|collection| collection.kind == SourceKind::Components),
+            sourced: !sources.is_empty(),
             unreached: None,
         }
     }
@@ -68,18 +66,14 @@ impl Index {
                 true => Vec::new(),
                 false => sources
                     .iter()
-                    .filter(|collection| collection.kind == SourceKind::Components)
                     .filter(|collection| {
-                        !crate::collection::cached(root, collection).is_some_and(|dir| {
-                            dir.join(collection.subtree().unwrap_or("")).is_dir()
-                        })
+                        !crate::collection::cached(root, collection)
+                            .is_some_and(|dir| crate::layout::library_components(&dir).is_dir())
                     })
                     .map(|collection| collection.name.clone())
                     .collect(),
             },
-            sourced: sources
-                .iter()
-                .any(|collection| collection.kind == SourceKind::Components),
+            sourced: !sources.is_empty(),
         }
     }
 
@@ -97,19 +91,17 @@ impl Index {
 
     pub fn unsearched(&self) -> String {
         if let Some(why) = &self.unreached {
-            return format!(
-                "A declared collection could not be read, so nothing searched it: {why}"
-            );
+            return format!("A declared library could not be read, so nothing searched it: {why}");
         }
         let named: Vec<String> = self.unread.iter().map(|name| format!("`{name}`")).collect();
         match named.len() {
             0 => String::new(),
             1 => format!(
-                "The {} collection is declared but not on this machine, so nothing read it: `buildc import component` fetches it",
+                "The {} library is declared but not on this machine, so nothing read it: `buildc generate` fetches it",
                 named.join(", ")
             ),
             _ => format!(
-                "The {} collections are declared but not on this machine, so nothing read them: `buildc import component` fetches them",
+                "The {} libraries are declared but not on this machine, so nothing read them: `buildc generate` fetches them",
                 named.join(", ")
             ),
         }
@@ -128,11 +120,11 @@ impl Index {
             .collect()
     }
 
+    /// A provider that supplies `base-image` is a whole base and never fits as the component that adds one capability.
     pub fn fitting(&self, capability: &str, family: &str) -> Vec<&Provider> {
         self.of(capability)
             .into_iter()
             .filter(|held| crate::resolve::targets(&held.declares.targets, family))
-            // A provider that supplies `base-image` is a whole base, so its capabilities come with the image and it never fits as the component that adds one.
             .filter(|held| {
                 !held
                     .declares
@@ -166,6 +158,10 @@ impl Index {
             .collect()
     }
 
+    pub fn holders(&self, name: &str) -> usize {
+        self.held.iter().filter(|held| held.name == name).count()
+    }
+
     pub fn at(&self, dir: &str) -> Option<&Provider> {
         self.held
             .iter()
@@ -176,9 +172,6 @@ impl Index {
 pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<Provider>, String> {
     let mut listed: Vec<Provider> = Vec::new();
     for collection in sources {
-        if collection.kind != SourceKind::Components {
-            continue;
-        }
         let tree = match fetch {
             true => crate::collection::tree(root, collection)?,
             false => match crate::collection::cached(root, collection) {
@@ -186,7 +179,7 @@ pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<P
                 None => continue,
             },
         };
-        let tree = tree.join(collection.subtree().unwrap_or(""));
+        let tree = crate::layout::library_components(&tree);
         if let Err(err) = std::fs::read_dir(&tree) {
             if !fetch {
                 continue;
@@ -197,7 +190,8 @@ pub fn catalog(root: &Path, sources: &[Collection], fetch: bool) -> Result<Vec<P
             listed.push(Provider {
                 owner: Some(collection.name.clone()),
                 declares: crate::parse::component::summary(
-                    &tree.join(&name).join(layout::MANIFEST_FILE),
+                    &layout::manifest_at(&tree.join(&name)),
+                    &name,
                 ),
                 name,
                 here: false,
@@ -214,7 +208,7 @@ fn own(root: &Path, disk: &Disk) -> Vec<Provider> {
             owner: None,
             name: dir.to_string(),
             here: true,
-            declares: parse::component::summary(&layout::manifest(root, dir)),
+            declares: parse::component::summary(&layout::manifest(root, dir), dir),
         })
         .collect()
 }
@@ -222,6 +216,26 @@ fn own(root: &Path, disk: &Disk) -> Vec<Provider> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn the_unsearched_note_names_each_library_not_on_this_machine() {
+        let index = |unread: &[&str], unreached: Option<&str>| Index {
+            held: Vec::new(),
+            unread: unread.iter().map(|name| name.to_string()).collect(),
+            sourced: true,
+            unreached: unreached.map(str::to_string),
+        };
+        assert_eq!(index(&[], None).unsearched(), "");
+        assert!(index(&["one"], None)
+            .unsearched()
+            .starts_with("The `one` library is declared"));
+        assert!(index(&["one", "two"], None)
+            .unsearched()
+            .starts_with("The `one`, `two` libraries are declared"));
+        assert!(index(&["one"], Some("offline"))
+            .unsearched()
+            .ends_with("nothing searched it: offline"));
+    }
 
     pub(crate) fn two_providers(name: &str) -> std::path::PathBuf {
         let root =

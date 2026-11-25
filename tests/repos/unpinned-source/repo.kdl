@@ -3,10 +3,15 @@ name "Unpinned Source"
 
 seed "example" collection="buildc-org"
 
-sources {
-    components "buildc-org" {
-        url "https://github.com/buildc-org/modules"
-        version "main"
-        unpinned "the library this tool is published alongside, followed at its branch head"
+libraries {
+    remote {
+        buildc-org {
+            source "https://github.com/buildc-org/modules"
+            version "main"
+        }
     }
+}
+
+builds {
+    example
 }

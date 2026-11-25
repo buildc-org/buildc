@@ -13,10 +13,7 @@ else
 fi
 
 for entry in ${MEASURED:-}; do
-    IFS='|' read -r component name package flavour <<< "$entry"
-    if [ -n "$flavour" ] && [ "${FLAVOUR:-}" != "$flavour" ]; then
-        continue
-    fi
+    IFS='|' read -r component name package <<< "$entry"
     version="$(query_installed "$FAMILY" "$package")" || {
         echo "buildc: \`$component\` provides \`$name\` from \`$package\`. The image has no such package." >&2
         exit 1

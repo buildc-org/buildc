@@ -11,13 +11,13 @@ supported base families, separated by spaces (optional) []: fedora
 
   1) example
   2) server
-images and flavours that list it [1-2, several, 0 for none]: 1 2
+builds that list it [1-2, several, 0 for none]: 1 2
 
 
 example/
 ├── components/
 │   └── my-editor/
 │       └── + manifest.kdl
-├── ~ example.image.kdl  my-editor added to components
-└── ~ server.image.kdl  my-editor added to components
+├── ~ example.kdl  my-editor added to components
+└── ~ server.kdl  my-editor added to components
 ==== exit 0

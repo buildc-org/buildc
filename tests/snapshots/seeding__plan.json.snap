@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "example",
   "pr_target": "example",
   "pr_published": "example",
-  "ungated_target": "example",
-  "ungated_published": "example",
   "cache_image": "example-cache",
   "backend": "buildah",
   "manifest_label": true,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "example",
-      "file": "./example.image.kdl",
+      "file": "./components/example.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -50,34 +48,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [
-        {
-          "name": "nvidia",
-          "default": false,
-          "pr_build": false
-        }
-      ],
-      "default_flavour": null,
       "targets": [
         {
           "name": "example",
           "image": "example",
-          "flavour": null,
           "published": "example",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [
-            {
-              "name": "example/nvidia",
-              "published": "example-nvidia"
-            }
-          ],
           "components": [
             {
               "path": "fedora-family",
-              "flavour": null,
               "variant": null,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
@@ -107,7 +90,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "hello",
-              "flavour": null,
               "variant": null,
               "description": "A component this repository writes and publishes",
               "options": {},
@@ -143,7 +125,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "flatpak",
-              "flavour": null,
               "variant": "beta",
               "description": "A component imported from the collection this repository publishes",
               "options": {
@@ -179,21 +160,38 @@ source: tests/golden/harness.rs
                 "resolved": null,
                 "repo": false,
                 "imported": {
-                  "library": "buildc-org",
+                  "origin": "https://github.com/buildc-org/modules",
                   "path": "flatpak",
                   "content": "92b59a9174674c7508a790d68206326d8816d9b17a472093acace7b6ee01a114",
-                  "pin": {
-                    "locator": "https://github.com/buildc-org/modules",
-                    "selector": "v1.0.0",
-                    "verifier": null,
-                    "tracker": "none",
-                    "reason": null,
-                    "from": "asset",
-                    "path": null,
-                    "resolved": "https://github.com/buildc-org/modules"
-                  },
-                  "tracked": true
+                  "pin": "0123456789abcdef0123456789abcdef01234567"
                 }
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "example",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
               },
               "origin": {
                 "how": "listed"
@@ -217,222 +215,13 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/example/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=example",
               "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd hello|fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666 flatpak|deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
               "ASSET_RESOLUTIONS=",
-              "FLAVOUR=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": [
-              "CONTRACT_FILES=/usr/bin/flatpak"
-            ]
-          }
-        },
-        {
-          "name": "example/nvidia",
-          "image": "example",
-          "flavour": "nvidia",
-          "published": "example-nvidia",
-          "conforms": "",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [
-            {
-              "name": "example",
-              "published": "example"
-            }
-          ],
-          "components": [
-            {
-              "path": "fedora-family",
-              "flavour": null,
-              "variant": null,
-              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
-              "options": {},
-              "provides": [
-                "build-environment"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
-                "resolved": "5667fbcb4d6d83bfb0d2e15d84b1091e491a61163ae9763a8d8a5609de1227fd",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "hello",
-              "flavour": null,
-              "variant": null,
-              "description": "A component this repository writes and publishes",
-              "options": {},
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "fastfetch"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "flatpak",
-              "flavour": null,
-              "variant": "beta",
-              "description": "A component imported from the collection this repository publishes",
-              "options": {
-                "OPT_REMOTES": "flathub flathub-beta",
-                "OPT_SYSTEM_WIDE": "0"
-              },
-              "provides": [
-                "flatpak"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [
-                "/usr/bin/flatpak"
-              ],
-              "removes": [],
-              "files": {
-                "flatpak": "/usr/bin/flatpak"
-              },
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "flatpak"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
-                "resolved": null,
-                "repo": false,
-                "imported": {
-                  "library": "buildc-org",
-                  "path": "flatpak",
-                  "content": "92b59a9174674c7508a790d68206326d8816d9b17a472093acace7b6ee01a114",
-                  "pin": {
-                    "locator": "https://github.com/buildc-org/modules",
-                    "selector": "v1.0.0",
-                    "verifier": null,
-                    "tracker": "none",
-                    "reason": null,
-                    "from": "asset",
-                    "path": null,
-                    "resolved": "https://github.com/buildc-org/modules"
-                  },
-                  "tracked": true
-                }
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "drivers",
-              "flavour": "nvidia",
-              "variant": null,
-              "description": "A component only one flavour builds",
-              "options": {},
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "akmod-nvidia"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "44b3527a8df4588fb97df9a7570afc0b25b9514f24d95da407c08e14df593094",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [
-            "/usr/bin/flatpak"
-          ],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": null,
-          "build": {
-            "containerfile": "generated/example/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=example/nvidia",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd hello|fd3c031c50af3533886a0def0a92fe3888bd2fbac321667da37d058a5ad07666 flatpak|deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be drivers|44b3527a8df4588fb97df9a7570afc0b25b9514f24d95da407c08e14df593094",
-              "ASSET_RESOLUTIONS=",
-              "FLAVOUR=nvidia",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
             "unresolved": [],

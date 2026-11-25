@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -1108,6 +1107,7 @@ right.
 ```mermaid
 graph LR
     base["ghcr.io/someone/arch-bootc:latest"]
+    m0["arch"]
 ```
 ==== generated/arch/graph.json
 {
@@ -1120,6 +1120,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "0cf0ea7e1bdc7544b61108bd85c290698a9feb8bca3bf7922588e781649aebe8",
+  "root": "012128f5ac464a1da73c34ae3f660e54786a68bbbd08ad8a552485416ce33d25",
   "files": 24
 }

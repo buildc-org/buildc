@@ -1,9 +1,10 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-2 components, the ungated set.
+3 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
+| `broken-cycle` |  |  |  |  |
 | `core/a` | Requires what requires it back |  |  |  |
 | `core/b` | The other half of the cycle |  |  |  |

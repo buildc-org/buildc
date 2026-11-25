@@ -1,9 +1,9 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-2 components, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
-| `uki` | UKI provider fixture |  |  |  |
-| `enrolment` | Secure Boot enrollment provider fixture |  |  |  |
+| `uki` | UKI provider fixture | `OPT_TRUST="shim"` |  |  |
+| `shim` |  |  |  |  |

@@ -3,7 +3,7 @@ name: Clean up registry
 
 on:
   schedule:
-    - cron: '30 14 * * *'  # buildc:schedule
+    - cron: '0 8 * * *'  # buildc:schedule
   workflow_dispatch:
     inputs:
       dry-run:
@@ -55,11 +55,13 @@ jobs:
           }
 
           ./scripts/buildc.sh plan --json > plan.json
-          mapfile -t packages < <(jq -r '.images[].targets[].published' plan.json)
+          # The packages API names a ghcr.io package by its path below the owner. A signature or attestation goes when the image version it names goes.
+          mapfile -t packages < <(jq -r --arg owner "ghcr.io/${OWNER,,}/" '
+            .images[].targets[].reference // empty | ascii_downcase
+            | select(startswith($owner)) | ltrimstr($owner) | select(contains("/") | not)' plan.json)
           for pkg in "${packages[@]}"; do
             echo "== ${pkg}"
             versions="$(list_versions "${pkg}")" || continue
-            # A signature or attestation is kept only while an image tag it names survives.
             deletions="$(printf '%s' "${versions}" | jq -s 'add' | jq -r --argjson keep "${KEEP}" '
               def is_sig: test("^sha256-[0-9a-f]{64}\\.(sig|att)$");
               map({id, name, created_at, tags: .metadata.container.tags})

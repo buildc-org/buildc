@@ -1,6 +1,6 @@
 use crate::diag::{Issue, Issues};
 use crate::layout;
-use crate::model::image::{Backend, List};
+use crate::model::image::{Backend, List, On};
 use crate::parse::component::rpm;
 use std::path::{Path, PathBuf};
 
@@ -21,17 +21,48 @@ impl Needs {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    Build,
+    Repository,
+}
+
+#[derive(Clone, Copy)]
+pub struct Schedule {
+    pub hour: u32,
+    pub weekly: bool,
+}
+
 pub struct Shipped {
     pub stem: &'static str,
     pub body: &'static str,
     pub about: &'static str,
     pub needs: Needs,
-    pub at: Option<(i64, &'static str)>,
+    pub scope: Scope,
+    pub schedule: Option<Schedule>,
 }
 
 impl Shipped {
     pub fn file(&self) -> String {
         format!("{}.yml", self.stem)
+    }
+
+    /// The match reads the trigger keys at the two-space indent of the shipped workflow files.
+    /// GitHub nests a tag filter as `tags:` under `push:`.
+    pub fn ships(&self, on: &On) -> bool {
+        let key = match on {
+            On::Push => "  push:",
+            On::Pr => "  pull_request:",
+            On::Schedule { .. } => "  schedule:",
+            On::Tag(_) => "    tags:",
+        };
+        let section = self
+            .body
+            .lines()
+            .skip_while(|line| *line != "on:")
+            .skip(1)
+            .take_while(|line| line.is_empty() || line.starts_with(' ') || line.starts_with('#'));
+        section.into_iter().any(|line| line == key)
     }
 
     pub fn met(&self, basis: &Basis) -> bool {
@@ -44,67 +75,86 @@ impl Shipped {
 }
 
 macro_rules! shipped {
-    ($stem:literal, $about:literal, $needs:expr, $at:expr) => {
+    ($stem:literal, $about:literal, $needs:expr, $scope:expr, $schedule:expr) => {
         Shipped {
             stem: $stem,
             body: include_str!(concat!("../../assets/.github/workflows/", $stem, ".yml")),
             about: $about,
             needs: $needs,
-            at: $at,
+            scope: $scope,
+            schedule: $schedule,
         }
     };
 }
 
+const fn daily(hour: u32) -> Option<Schedule> {
+    Some(Schedule {
+        hour,
+        weekly: false,
+    })
+}
+
+const fn weekly(hour: u32) -> Option<Schedule> {
+    Some(Schedule { hour, weekly: true })
+}
+
+pub const IMAGE_BUILD: &str = "image-build";
+
 pub const SHIPPED: &[Shipped] = &[
     shipped!(
-        "build",
+        "image-build",
         "builds, scans, signs and publishes every image",
         Needs::Nothing,
-        Some((0, "*"))
+        Scope::Build,
+        daily(4)
     ),
     shipped!(
         "build-disk",
         "builds a disk image with bootc-image-builder",
         Needs::Selinux,
+        Scope::Build,
         None
     ),
     shipped!(
         "base-sig-probe",
         "measures what each base signs and ships, and fixes it",
         Needs::Nothing,
-        Some((-6, "*"))
+        Scope::Repository,
+        daily(3)
     ),
     shipped!(
         "cleanup-registry",
         "prunes old versions of the images off the registry",
         Needs::Nothing,
-        Some((2, "*"))
+        Scope::Repository,
+        daily(8)
     ),
     shipped!(
         "kernel-freshness",
         "tracks the kernel a component pins, and proposes a bump",
         Needs::Kernel,
-        Some((-3, "*"))
+        Scope::Repository,
+        daily(3)
     ),
     shipped!(
         "smoke-test",
         "installs the image to a disk and boots it under qemu",
         Needs::Nothing,
-        Some((-9, "1"))
+        Scope::Build,
+        weekly(6)
     ),
     shipped!(
         "update-components",
-        "refreshes tracked components and opens a pull request",
+        "moves remote components and opens a pull request",
         Needs::Nothing,
-        Some((-7, "1"))
+        Scope::Repository,
+        weekly(2)
     ),
 ];
 
 pub fn find(stem: &str) -> Option<&'static Shipped> {
     SHIPPED.iter().find(|shipped| shipped.stem == stem)
 }
-
-pub const DEFAULT_AT: (u32, u32) = (12, 30);
 
 pub struct Basis {
     pub selinux: bool,
@@ -152,24 +202,11 @@ pub fn unlocked(list: &List, args: &[String]) -> Vec<&'static Shipped> {
         .collect()
 }
 
-pub fn facts(
-    basis: &Basis,
-    scans_scheduled: bool,
-    publishes_scheduled: bool,
-    backend: Backend,
-) -> Vec<&'static str> {
+pub fn facts(basis: &Basis, backend: Backend) -> Vec<&'static str> {
     let mut facts = match basis.kernel {
         true => vec!["kernel"],
         false => vec!["no-kernel"],
     };
-    facts.push(match publishes_scheduled {
-        true => "scheduled-publish",
-        false => "push-publish",
-    });
-    facts.push(match scans_scheduled || publishes_scheduled {
-        true => "scheduled-scan",
-        false => "push-scan",
-    });
     facts.push(match backend {
         Backend::Buildah => "backend-buildah",
         Backend::Buildx => "backend-buildx",
@@ -179,34 +216,73 @@ pub fn facts(
 
 pub struct Declared {
     pub file: String,
-    pub schedule: Option<String>,
     pub body: &'static str,
+    pub triggers: Option<Vec<On>>,
+    pub cron: Option<String>,
+}
+
+fn names(list: &List) -> Vec<String> {
+    list.builds.iter().map(|build| build.name.clone()).collect()
+}
+
+fn default_build(list: &List) -> Option<String> {
+    match (&list.default_image_id, list.builds.as_slice()) {
+        (Some(name), _) => Some(name.clone()),
+        (None, [only]) => Some(only.name.clone()),
+        (None, _) => None,
+    }
+}
+
+/// Listed triggers replace the shipped triggers of the workflow.
+/// A pull request with no `builds` of its own builds the default build alone if the workflow selects it.
+pub fn builds_on(list: &List, stem: &str, on: &On) -> Vec<String> {
+    let Some(workflow) = list.workflows.iter().find(|w| w.name == stem) else {
+        return Vec::new();
+    };
+    let held = workflow.builds.of(&names(list));
+    let trigger = workflow
+        .triggers
+        .iter()
+        .find(|trigger| std::mem::discriminant(&trigger.on) == std::mem::discriminant(on));
+    let pr = matches!(on, On::Pr);
+    match trigger {
+        Some(trigger) if pr && !trigger.builds.written() => default_build(list)
+            .filter(|build| held.contains(build))
+            .into_iter()
+            .collect(),
+        Some(trigger) => trigger.builds.of(&held),
+        None if !workflow.triggers.is_empty() => Vec::new(),
+        None if !find(stem).is_some_and(|shipped| shipped.ships(on)) => Vec::new(),
+        None if pr => default_build(list)
+            .filter(|build| held.contains(build))
+            .into_iter()
+            .collect(),
+        None => held,
+    }
+}
+
+pub fn dispatched_builds(list: &List, stem: &str) -> Vec<String> {
+    list.workflows
+        .iter()
+        .find(|w| w.name == stem)
+        .map_or_else(Vec::new, |workflow| workflow.builds.of(&names(list)))
 }
 
 pub fn resolve(list: &List, basis: &Basis, issues: &mut Issues) -> Vec<Declared> {
+    let known = names(list);
     for declared in &list.workflows {
         let Some(shipped) = find(&declared.name) else {
-            let known: Vec<&str> = SHIPPED.iter().map(|s| s.stem).collect();
+            let stems: Vec<&str> = SHIPPED.iter().map(|s| s.stem).collect();
             issues.push(
                 Issue::new(
                     format!("`{}` is not a workflow", declared.name),
                     &list.repo_src,
                 )
                 .at(declared.span, "nothing ships one by that name")
-                .help(format!("workflows: {}", known.join(", "))),
+                .help(format!("workflows: {}", stems.join(", "))),
             );
             continue;
         };
-        if declared.schedule.is_some() && shipped.at.is_none() {
-            issues.push(
-                Issue::new(
-                    format!("`{}` runs on no schedule", declared.name),
-                    &list.repo_src,
-                )
-                .at(declared.span, "`schedule` has nothing to replace")
-                .help("drop `schedule` from it"),
-            );
-        }
         if !shipped.met(basis) {
             issues.push(
                 Issue::new(
@@ -214,8 +290,55 @@ pub fn resolve(list: &List, basis: &Basis, issues: &mut Issues) -> Vec<Declared>
                     &list.repo_src,
                 )
                 .at(declared.span, shipped.needs.unmet())
-                .help("drop it from `workflows`, or declare what it needs"),
+                .help("drop it from `github { workflows }`, or declare what it needs"),
             );
+        }
+        let selections = std::iter::once(&declared.builds)
+            .chain(declared.triggers.iter().map(|trigger| &trigger.builds));
+        for selection in selections {
+            let Some(span) = selection.span else {
+                continue;
+            };
+            if shipped.scope == Scope::Repository {
+                issues.push(
+                    Issue::new(
+                        format!("`{}` runs once for the repository", declared.name),
+                        &list.repo_src,
+                    )
+                    .at(span, "it selects no build")
+                    .help("drop `builds` from it"),
+                );
+                continue;
+            }
+            for name in selection
+                .named
+                .iter()
+                .chain(&selection.removed)
+                .filter(|name| !known.contains(name))
+            {
+                issues.push(
+                    Issue::new(
+                        format!("`{}` selects `{name}`, which is not a build", declared.name),
+                        &list.repo_src,
+                    )
+                    .at(span, "no build has that name")
+                    .help(format!("builds: {}", known.join(", "))),
+                );
+            }
+        }
+        for trigger in &declared.triggers {
+            if let On::Schedule { time: None, .. } = trigger.on {
+                if shipped.schedule.is_none() {
+                    issues.push(
+                        Issue::new(
+                            format!("`{}` ships no schedule", declared.name),
+                            &list.repo_src,
+                        )
+                        .at(trigger.span, "no time to default to")
+                        .help("give the schedule a time: `schedule time=\"12:30\"`"),
+                    );
+                }
+            }
         }
     }
 
@@ -223,22 +346,38 @@ pub fn resolve(list: &List, basis: &Basis, issues: &mut Issues) -> Vec<Declared>
         .iter()
         .filter_map(|shipped| {
             let declared = list.workflows.iter().find(|w| w.name == shipped.stem)?;
+            let schedule = declared
+                .triggers
+                .iter()
+                .find_map(|trigger| match trigger.on {
+                    On::Schedule { weekly, time } => Some((weekly, time)),
+                    _ => None,
+                });
+            let cron = match (schedule, shipped.schedule) {
+                (Some((weekly, time)), shipped) => {
+                    let weekly = weekly.unwrap_or(shipped.is_some_and(|s| s.weekly));
+                    let time = time.or(shipped.map(|s| (s.hour, 0)));
+                    time.map(|time| cron(time, weekly))
+                }
+                (None, Some(shipped)) => Some(cron((shipped.hour, 0), shipped.weekly)),
+                (None, None) => None,
+            };
             Some(Declared {
                 file: shipped.file(),
-                schedule: shipped.at.map(|(offset, day)| {
-                    declared
-                        .schedule
-                        .clone()
-                        .unwrap_or_else(|| cron(list.workflows_at, offset, day))
-                }),
                 body: shipped.body,
+                triggers: (!declared.triggers.is_empty())
+                    .then(|| declared.triggers.iter().map(|t| t.on.clone()).collect()),
+                cron,
             })
         })
         .collect()
 }
 
-fn cron((hour, minute): (u32, u32), offset: i64, day: &str) -> String {
-    let hour = (i64::from(hour) + offset).rem_euclid(24);
+fn cron((hour, minute): (u32, u32), weekly: bool) -> String {
+    let day = match weekly {
+        true => "1",
+        false => "*",
+    };
     format!("{minute} {hour} * * {day}")
 }
 
@@ -252,7 +391,8 @@ pub fn orphans(root: &Path, generated: &[(PathBuf, String)]) -> Vec<PathBuf> {
         .collect()
 }
 
-const RETIRED: [&str; 3] = [
+const RETIRED: [&str; 4] = [
+    ".github/workflows/build.yml",
     ".github/workflows/reconcile-workflows.yml",
     "scripts/render-iso-config.sh",
     "disk_config/iso.template.toml",
@@ -282,10 +422,19 @@ mod tests {
             let scheduled = shipped.body.contains("# buildc:schedule");
             assert_eq!(
                 scheduled,
-                shipped.at.is_some(),
+                shipped.schedule.is_some(),
                 "{} disagrees about having a schedule",
                 shipped.stem
             );
+            if let Some(schedule) = shipped.schedule {
+                let day = if schedule.weekly { "1" } else { "*" };
+                let line = format!("- cron: '0 {} * * {day}'  # buildc:schedule", schedule.hour);
+                assert!(
+                    shipped.body.contains(&line),
+                    "{} ships another time",
+                    shipped.stem
+                );
+            }
             assert!(
                 shipped.about.len() <= 55,
                 "{} does not fit a picker row",
@@ -301,7 +450,7 @@ mod tests {
             kernel: false,
         };
         let met = |stem: &str| find(stem).expect(stem).met(&deb);
-        assert!(met("build"));
+        assert!(met(IMAGE_BUILD));
         assert!(
             met("smoke-test"),
             "it installs out of the image, not a family"
@@ -310,50 +459,9 @@ mod tests {
     }
 
     #[test]
-    fn a_schedule_is_the_build_time_plus_its_offset() {
-        assert_eq!(cron((12, 30), 0, "*"), "30 12 * * *");
-        assert_eq!(cron((12, 30), 2, "*"), "30 14 * * *");
-        assert_eq!(cron((12, 30), -6, "*"), "30 6 * * *");
-        assert_eq!(cron((3, 0), -9, "1"), "0 18 * * 1");
-    }
-
-    #[test]
-    fn publishing_on_schedule_also_schedules_scanning() {
-        let basis = Basis {
-            selinux: true,
-            kernel: false,
-        };
-        assert_eq!(
-            facts(&basis, false, false, Backend::Buildah),
-            ["no-kernel", "push-publish", "push-scan", "backend-buildah"]
-        );
-        assert_eq!(
-            facts(&basis, false, true, Backend::Buildah),
-            [
-                "no-kernel",
-                "scheduled-publish",
-                "scheduled-scan",
-                "backend-buildah"
-            ]
-        );
-        assert_eq!(
-            facts(&basis, true, false, Backend::Buildah),
-            [
-                "no-kernel",
-                "push-publish",
-                "scheduled-scan",
-                "backend-buildah"
-            ]
-        );
-        assert_eq!(
-            facts(&basis, true, true, Backend::Buildah),
-            [
-                "no-kernel",
-                "scheduled-publish",
-                "scheduled-scan",
-                "backend-buildah"
-            ]
-        );
+    fn a_weekly_schedule_runs_on_monday() {
+        assert_eq!(cron((4, 0), false), "0 4 * * *");
+        assert_eq!(cron((12, 30), true), "30 12 * * 1");
     }
 
     #[test]
@@ -363,8 +471,8 @@ mod tests {
             kernel: false,
         };
         assert_eq!(
-            facts(&basis, false, false, Backend::Buildx).last(),
-            Some(&"backend-buildx")
+            facts(&basis, Backend::Buildx),
+            ["no-kernel", "backend-buildx"]
         );
     }
 }

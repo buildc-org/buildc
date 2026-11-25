@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-network",
   "pr_target": "broken-network",
   "pr_published": "broken-network",
-  "ungated_target": "broken-network",
-  "ungated_published": "broken-network",
   "cache_image": "broken-network-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -53,12 +51,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-network",
-      "file": "./image.kdl",
+      "file": "./components/broken-network.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "",
@@ -80,23 +78,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-network",
           "image": "broken-network",
-          "flavour": null,
           "published": "broken-network",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "fedora-family",
-              "flavour": null,
               "variant": null,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
@@ -126,7 +120,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/tools",
-              "flavour": null,
               "variant": null,
               "description": "Installs a package, then configures it with no network",
               "options": {},
@@ -162,7 +155,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/fetcher",
-              "flavour": null,
               "variant": null,
               "description": "Fetches a pinned release in its own script",
               "options": {},
@@ -177,7 +169,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "41b4646d1a76519666611cf2770a41c627cbd5df5411672dd1201f573fad4db1",
+                "content": "ab449aa82a661c050ac3bb3a1fedb5e2c22821c0136f2c7ea2a7429900b60490",
                 "resolved": "7b3a1cd5ea3bcc7a682b1be16f7d9cd1cf88a8e400fc125d3811aafb08d92757",
                 "repo": false,
                 "imported": null
@@ -190,7 +182,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/asset-only",
-              "flavour": null,
               "variant": null,
               "description": "Fetches a pinned release with nothing opening its script step",
               "options": {},
@@ -218,7 +209,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/fragment-only",
-              "flavour": null,
               "variant": null,
               "description": "Emits its fragment alone",
               "options": {},
@@ -233,7 +223,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "a200889542fd8add6f02c5a06b3ef6e7a750a04c688f885f8fce81e8633ca403",
+                "content": "d2bf3d0ec30dd9da7bca307fc36a6b2e59631b0e79ed00aec39456d96967a7ac",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -246,7 +236,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/installer",
-              "flavour": null,
               "variant": null,
               "description": "Installs a package from its own script",
               "options": {},
@@ -263,6 +252,33 @@ source: tests/golden/harness.rs
                 "defined": null,
                 "content": "5cf6025dba4e199a21893c520bc77066754d1d7d0a0978b62c04c4347a4a7752",
                 "resolved": "d9b34a29275c4e081e6681aaaf96c197a8d22227b438015abfbb54efe17a7d70",
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "broken-network",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
                 "repo": false,
                 "imported": null
               },
@@ -317,11 +333,12 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-network/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-network",
-              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb core/tools|c8207a96d5ceeed98fc5ef3b0e7853f47b2f6ede78efd153784531d9c639b745 core/fetcher|41b4646d1a76519666611cf2770a41c627cbd5df5411672dd1201f573fad4db1 core/asset-only|fbead409b6b7c0fb0c496ab4bbea459be059999f7ef2729e6e03cbad0447fecd core/fragment-only|a200889542fd8add6f02c5a06b3ef6e7a750a04c688f885f8fce81e8633ca403 core/installer|5cf6025dba4e199a21893c520bc77066754d1d7d0a0978b62c04c4347a4a7752",
+              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb core/tools|c8207a96d5ceeed98fc5ef3b0e7853f47b2f6ede78efd153784531d9c639b745 core/fetcher|ab449aa82a661c050ac3bb3a1fedb5e2c22821c0136f2c7ea2a7429900b60490 core/asset-only|fbead409b6b7c0fb0c496ab4bbea459be059999f7ef2729e6e03cbad0447fecd core/fragment-only|d2bf3d0ec30dd9da7bca307fc36a6b2e59631b0e79ed00aec39456d96967a7ac core/installer|5cf6025dba4e199a21893c520bc77066754d1d7d0a0978b62c04c4347a4a7752",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

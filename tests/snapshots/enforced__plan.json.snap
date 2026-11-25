@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "enforced",
   "pr_target": "enforced",
   "pr_published": "enforced",
-  "ungated_target": "enforced",
-  "ungated_published": "enforced",
   "cache_image": "enforced-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": true
   },
@@ -38,12 +36,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "enforced",
-      "file": "./example.image.kdl",
+      "file": "./components/enforced.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "standard",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -71,23 +69,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "enforced",
           "image": "enforced",
-          "flavour": null,
           "published": "enforced",
+          "reference": null,
           "conforms": "standard",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "one/hello",
-              "flavour": null,
               "variant": null,
               "description": "An imported component edited since it was imported",
               "options": {},
@@ -108,20 +102,10 @@ source: tests/golden/harness.rs
                 "resolved": "332df36f257264c8fe08c55158401ee1af6630a93efd379f149e648808edc197",
                 "repo": true,
                 "imported": {
-                  "library": "one",
+                  "origin": "https://github.com/owner/components",
                   "path": "hello",
                   "content": "0000000000000000000000000000000000000000000000000000000000000000",
-                  "pin": {
-                    "locator": "https://github.com/owner/components/archive/refs/tags/{version}.tar.gz",
-                    "selector": "v1.0.0",
-                    "verifier": null,
-                    "tracker": "none",
-                    "reason": null,
-                    "from": "asset",
-                    "path": null,
-                    "resolved": "https://github.com/owner/components/archive/refs/tags/v1.0.0.tar.gz"
-                  },
-                  "tracked": false
+                  "pin": "0123456789abcdef0123456789abcdef01234567"
                 }
               },
               "origin": {
@@ -147,7 +131,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/consumer",
-              "flavour": null,
               "variant": null,
               "description": "Requires what the imported component provides",
               "options": {},
@@ -170,6 +153,33 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "86d957ad1d583f68d0267d961c5017cf3464b86e1b65420590171d56f2cc7cef",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "enforced",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -210,6 +220,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/enforced/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

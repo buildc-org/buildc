@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-options",
   "pr_target": "broken-options",
   "pr_published": "broken-options",
-  "ungated_target": "broken-options",
-  "ungated_published": "broken-options",
   "cache_image": "broken-options-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-options",
-      "file": "./image.kdl",
+      "file": "./components/broken-options.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-options",
           "image": "broken-options",
-          "flavour": null,
           "published": "broken-options",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/configurable",
-              "flavour": null,
               "variant": "nonexistent",
               "description": "Declares two options, and a variant that sets an undeclared one",
               "options": {
@@ -90,6 +84,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "broken-options",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -105,6 +126,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-options/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

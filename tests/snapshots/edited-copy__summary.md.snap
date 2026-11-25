@@ -1,0 +1,11 @@
+---
+source: tests/golden/harness.rs
+---
+4 components.
+
+| Component | Description | Options | Satisfies | Refuses |
+| --- | --- | --- | --- | --- |
+| `fedora-family` | dnf5 and its plugins, which every fedora build layer reaches for |  |  |  |
+| `core/edited` | A copy that origins.kdl records |  |  |  |
+| `core/owned` | A copy that origins.kdl records |  |  |  |
+| `edited-copy` |  |  |  |  |

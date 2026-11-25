@@ -1,4 +1,4 @@
 My Editor
 A graphical editor
 fedora
-Yes
+1

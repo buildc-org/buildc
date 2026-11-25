@@ -1,0 +1,20 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    core {
+        menu
+    }
+    core {
+        absent
+    }
+    core {
+        unclaimed
+    }
+    core {
+        shipper
+    }
+}

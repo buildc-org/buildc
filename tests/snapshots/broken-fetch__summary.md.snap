@@ -1,8 +1,9 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `core/grabber` | Reaches the network with nothing declaring what it pulls |  |  |  |
+| `broken-fetch` |  |  |  |  |

@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "example",
   "pr_target": "example",
   "pr_published": "example",
-  "ungated_target": "example",
-  "ungated_published": "example",
   "cache_image": "example-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "example",
-      "file": "./example.image.kdl",
+      "file": "./components/example.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -43,23 +41,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "example",
           "image": "example",
-          "flavour": null,
           "published": "example",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/hello",
-              "flavour": null,
               "variant": null,
               "description": "A component no declared collection provides",
               "options": {},
@@ -84,6 +78,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "example",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -99,6 +120,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/example/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
@@ -108,7 +130,9 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]

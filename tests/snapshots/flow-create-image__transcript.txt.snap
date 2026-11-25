@@ -6,17 +6,12 @@ Buildc v{version}
 image name [example]
 Beta
 
-  1) quay.io/fedora/fedora-bootc:44 (base-image/fedora)  Fedora, as this collection describes it
+  1) quay.io/fedora/fedora-bootc:44 (upstream/base-image/fedora)  Fedora, as this collection describes it
   2) example.invalid/collected:1 (upstream/base-image/collected)  A base only the collection knows about
 base image [1-2, 0 for none]: 2
 
 
 example/
-├── components/
-│   ├── base-image/
-│   │   └── collected/
-│   │       └── + manifest.kdl
-│   └── ~ components.lock.kdl  base-image/collected recorded
-├── + beta.image.kdl
-└── ~ repo.kdl  example set as the default image
+├── + beta.kdl
+└── ~ repo.kdl  `beta` added as a build
 ==== exit 0

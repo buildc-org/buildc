@@ -1,9 +1,9 @@
 ---
 source: tests/golden/harness.rs
 ---
-  x this repository is written against schema version 2
+  x this repository is written against schema version 3
    ,-[tests/repos/future-schema/repo.kdl:1:1]
- 1 | schema-version 2
+ 1 | schema-version 3
    : ^^^^^^^|^^^^^^
    :        `-- this tool knows 1
  2 | name "Future Schema"

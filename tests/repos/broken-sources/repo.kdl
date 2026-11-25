@@ -1,24 +1,31 @@
 schema-version 1
 name "Broken Sources"
 
-sources {
-    components "buildc-org" {
-        url "https://github.com/buildc-org/modules"
-        version "v1.0.0"
-        sha256 "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3"
+libraries default="absent" {
+    local {
+        broken-sources-library { source "." }
+        buildc-org { source "../components" }
+        Scratch { source "../components" }
+        pinned {
+            source "../components"
+            version "v1.0.0"
+        }
+        hosted { source "https://github.com/buildc-org/modules" }
     }
-    components "buildc-org" {
-        dir "../components"
+    remote {
+        buildc-org {
+            source "https://github.com/buildc-org/modules"
+            version "v1.0.0"
+        }
+        insecure { source "http://github.com/buildc-org/modules" }
+        unfetched { source "../components" }
+        nowhere
     }
-    components "Scratch" {
-        dir "../components"
-    }
-    components "local" {
-        dir "../components"
-        version "v1.0.0"
-    }
-    components "bare" {}
-    components "insecure" {
-        url "http://github.com/buildc-org/modules"
-    }
+    stray { source "../components" }
+}
+
+library { components "../outside" }
+
+builds {
+    broken-sources
 }

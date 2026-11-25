@@ -1,17 +1,16 @@
 use crate::diag::{Issue, Issues};
 use crate::model::image::{Entry, Image};
-use crate::parse::disk::Disk;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type Index = BTreeMap<String, Vec<usize>>;
 
-pub fn index(image: &Image, disk: &Disk) -> Index {
+pub fn index(image: &Image) -> Index {
     let mut shipped: Index = BTreeMap::new();
     for (index, entry) in image.entries.iter().enumerate() {
         let Some(component) = &entry.component else {
             continue;
         };
-        for path in disk.overlays.get(&component.dir).into_iter().flatten() {
+        for path in &crate::parse::disk::shipped(&component.home) {
             shipped.entry(path.clone()).or_default().push(index);
         }
         for key in &component.keys {
@@ -113,11 +112,5 @@ pub fn collisions(image: &Image, shipped: &Index, brought: &BTreeSet<String>) ->
 }
 
 fn coinstalled(a: &Entry, b: &Entry) -> bool {
-    if a.path == b.path {
-        return false;
-    }
-    match (&a.flavour, &b.flavour) {
-        (Some(a), Some(b)) => a == b,
-        _ => true,
-    }
+    a.path != b.path
 }

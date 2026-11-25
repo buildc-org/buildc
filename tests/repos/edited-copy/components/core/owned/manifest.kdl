@@ -1,0 +1,7 @@
+schema-version 1
+
+description "A copy that origins.kdl records"
+
+targets "fedora"
+
+packages "fastfetch"

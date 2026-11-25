@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,15 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- fedora-family ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/renovate/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/renovate/components/fedora-family.sh,target=/generated/renovate/components/fedora-family.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/renovate/components/fedora-family.sh
-
 # ---- apps/browser ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
     --mount=type=bind,from=ctx,source=/generated/renovate/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
@@ -944,19 +934,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/renovate/components/apps/image-viewer@1.sh
 
-# ---- flavour gate ----
-ARG FLAVOUR
-
-# ---- [beta] ----
-# ---- apps/browser ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/renovate/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/renovate/components/apps/browser@beta.sh,target=/generated/renovate/components/apps/browser@beta.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/renovate/components/apps/browser@beta.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -973,7 +950,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/renovate/finalize.sh,target=/ge
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/renovate/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/renovate/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1006,13 +983,6 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/renovate/components/fedora-family.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/fedora-family
-export COMPONENT_DIR
 ==== generated/renovate/components/apps/browser.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1055,26 +1025,6 @@ export OPT_VERSION="3.1"
 source /ctx/lib/family.sh
 
 dnf install -y 'eog'
-stash_systemctl
-==== generated/renovate/components/apps/browser@beta.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/apps/browser
-export COMPONENT_DIR
-
-if [ "${FLAVOUR:-}" != "beta" ]; then
-    echo "skipping apps/browser: not built for '${FLAVOUR:-the ungated build}'"
-    exit 0
-fi
-
-export OPT_LANG_VERSION="1"
-export OPT_VERSION="129.0"
-
-source /ctx/lib/family.sh
-
-dnf install -y 'firefox'
 stash_systemctl
 ==== generated/renovate/finalize.sh
 #!/usr/bin/env bash
@@ -1225,6 +1175,7 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
@@ -1233,6 +1184,11 @@ graph LR
     m1["apps/browser"]
     m2["apps/editor"]
     m3["apps/image-viewer@1"]
+    m4["renovate"]
+    m4 ==>|"lists"| m0
+    m4 ==>|"lists"| m1
+    m4 ==>|"lists"| m2
+    m4 ==>|"lists"| m3
 ```
 
 ## Capabilities
@@ -1242,6 +1198,15 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `build-environment` | capability | `fedora-family` |  |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `fedora-family` | `renovate` | lists |
+| `apps/browser` | `renovate` | lists |
+| `apps/editor` | `renovate` | lists |
+| `apps/image-viewer@1` | `renovate` | lists |
 ==== generated/renovate/graph.json
 {
   "image": "renovate",
@@ -1272,7 +1237,28 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "fedora-family",
+      "by": "renovate",
+      "how": "lists"
+    },
+    {
+      "component": "apps/browser",
+      "by": "renovate",
+      "how": "lists"
+    },
+    {
+      "component": "apps/editor",
+      "by": "renovate",
+      "how": "lists"
+    },
+    {
+      "component": "apps/image-viewer@1",
+      "by": "renovate",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== .github/renovate.json5
@@ -1343,9 +1329,9 @@ graph LR
     },
     {
       "customType": "regex",
-      "description": "`version` of apps/browser in image.kdl",
+      "description": "`version` of apps/browser in renovate.kdl",
       "managerFilePatterns": [
-        "/^image\\.kdl$/"
+        "/^renovate\\.kdl$/"
       ],
       "matchStrings": [
         "(?:^|[\\s{;])(?:\"apps\"|apps)(?:[ \\t][^{\\n;]*)?\\{(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?(?:^|[\\s{;])(?:\"browser\"|browser)(?:[ \\t][^{\\n;]*)?\\{(?:(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?[;\\n])?\\s*version\\s+\"(?<currentValue>[^\"]+)\""
@@ -1355,9 +1341,9 @@ graph LR
     },
     {
       "customType": "regex",
-      "description": "`version` of apps/image-viewer@1 in image.kdl",
+      "description": "`version` of apps/image-viewer@1 in renovate.kdl",
       "managerFilePatterns": [
-        "/^image\\.kdl$/"
+        "/^renovate\\.kdl$/"
       ],
       "matchStrings": [
         "(?:^|[\\s{;])(?:\"apps\"|apps)(?:[ \\t][^{\\n;]*)?\\{(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?(?:^|[\\s{;])(?:\"image-viewer@1\"|image-viewer@1)(?:[ \\t][^{\\n;]*)?\\{(?:(?:[^{}]|\\{(?:[^{}]|\\{(?:[^{}]|\\{[^{}]*\\})*\\})*\\})*?[;\\n])?\\s*version\\s+\"(?<currentValue>[^\"]+)\""
@@ -1371,7 +1357,7 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "0943484abe7bdeb501273f7b8b4e1201aa79666204bb6d68a16e4eab0e2bebfd",
-  "files": 30
+  "root": "bbd4674b3537cf7d870cf9f5eceabc29fc3e7afe6268d5a7531c4bac6f015194",
+  "files": 28
 }
 ==== generated/renovate/components/fedora-family/lib/family.sh

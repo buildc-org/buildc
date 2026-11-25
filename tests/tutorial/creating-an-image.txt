@@ -17,22 +17,30 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["kde"]
+    m1["workstation-1"]
+    m1 ==>|"lists"| m0
 ```
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `kde` | `workstation-1` | lists |
 ==== buildc summary
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `kde` |  |  |  |  |
-==== buildc why bazaar
-# apps/bazaar
-
-Bazaar, the Flatpak storefront
+| `workstation-1` |  |  |  |  |
+==== buildc why browser
+# browser
 
 ## Where it is built
 
@@ -42,9 +50,13 @@ workstation-2
 
 | Direction | What | With |
 | --- | --- | --- |
-| provides | `bazaar` | nothing |
-| requires | `flatpak` | flatpak |
 | requires | `graphical-session` | desktop-environment/kde-plasma |
+
+## What it declares to install
+
+| Family | Packages | Enabled repository |
+| --- | --- | --- |
+| `fedora` | `firefox` | default |
 
 ## What it claims
 
@@ -54,13 +66,9 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `0329331475c534107db0404630eb33cef466ca52542b1cd67d70b718ca51c07c` |
+| declared | `d402c6c8e5d8b2946930e88be8de074e183fd0dd7bee5022c03d87fd1c72cd5b` |
 
-| Collection | Locator | Selector | Verifier | Tracker |
-| --- | --- | --- | --- | --- |
-| `buildc` | https://github.com/buildc-org/library | not declared | not declared | none |
-
-It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.
+It was written in this repository, so no library holds a version to compare it against.
 
 ## What it pulls in
 

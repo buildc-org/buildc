@@ -1,1 +1,5 @@
-gbase { image "example.invalid/fuzz:1" about "Fuzz" family "fedora" bootloader "grub2" }
+gschema-version 1
+base "example.invalid/fuzz:1" {
+    family "fedora"
+    bootloader "grub2"
+}

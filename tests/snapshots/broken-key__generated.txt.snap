@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -921,14 +920,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/broken-key/components/core/keys.sh
 
-# ---- core/signer ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-key/components/core/signer.sh,target=/generated/broken-key/components/core/signer.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/broken-key/components/core/signer.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -993,13 +984,6 @@ if [ ! -e '/usr/share/secureboot/sb_cert.der' ]; then
     echo "component core/keys provides secureboot-key, and its witness /usr/share/secureboot/sb_cert.der is missing" >&2
     exit 1
 fi
-==== generated/broken-key/components/core/signer.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/signer
-export COMPONENT_DIR
 ==== generated/broken-key/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1149,12 +1133,16 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["core/keys"]
     m1["core/signer"]
+    m2["broken-key"]
+    m2 ==>|"lists"| m0
+    m2 ==>|"lists"| m1
 ```
 
 ## Capabilities
@@ -1165,6 +1153,13 @@ graph LR
 | `cosign-key` | capability |  | `core/signer` |  |
 | `rechunking` | capability | `base` |  |  |
 | `secureboot-key` | file | `core/keys` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/keys` | `broken-key` | lists |
+| `core/signer` | `broken-key` | lists |
 ==== generated/broken-key/graph.json
 {
   "image": "broken-key",
@@ -1205,12 +1200,23 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/keys",
+      "by": "broken-key",
+      "how": "lists"
+    },
+    {
+      "component": "core/signer",
+      "by": "broken-key",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "59e50b9c914aed9f874139770be87318c20625da19b178d34dab42b3b1c8df11",
-  "files": 26
+  "root": "57f5f493e218be366766d80d8a200e914f4edc6a6cd1ad221710877b21a4c0ae",
+  "files": 25
 }

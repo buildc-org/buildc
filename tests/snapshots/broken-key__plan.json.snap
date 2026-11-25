@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-key",
   "pr_target": "broken-key",
   "pr_published": "broken-key",
-  "ungated_target": "broken-key",
-  "ungated_published": "broken-key",
   "cache_image": "broken-key-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-key",
-      "file": "./image.kdl",
+      "file": "./components/broken-key.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -50,23 +48,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-key",
           "image": "broken-key",
-          "flavour": null,
           "published": "broken-key",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/keys",
-              "flavour": null,
               "variant": null,
               "description": "Every way a key declaration can be wrong",
               "options": {},
@@ -100,7 +94,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/signer",
-              "flavour": null,
               "variant": null,
               "description": "Requires a key whose declaration is refused",
               "options": {},
@@ -118,6 +111,33 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "f4ec478fe7587b5b940d0c91dd7afe02eecc4804439d074e34f711f12534c8f5",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "broken-key",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -146,6 +166,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-key/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

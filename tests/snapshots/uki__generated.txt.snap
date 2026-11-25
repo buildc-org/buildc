@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -910,22 +909,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- uki ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/shim/components/uki.sh,target=/generated/shim/components/uki.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/shim/components/uki.sh
-
-# ---- enrolment ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/shim/components/enrolment.sh,target=/generated/shim/components/enrolment.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/shim/components/enrolment.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -970,29 +953,14 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 
 # ---- BEGIN GENERATED (tail fragments) ----
 
+# verbatim from components/uki/Containerfile.inc:
+FROM ${SPLIT_BASE} AS split
+
 # ---- END GENERATED (tail fragments) ----
 
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/shim/components/uki.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/uki
-export COMPONENT_DIR
-BOOT_CHAIN='uki-shim'
-export BOOT_CHAIN
-==== generated/shim/components/enrolment.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/enrolment
-export COMPONENT_DIR
-BOOT_CHAIN='uki-shim'
-export BOOT_CHAIN
 ==== generated/shim/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1142,12 +1110,14 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["uki"]
-    m1["enrolment"]
+    m1["shim"]
+    m1 ==>|"lists"| m0
 ```
 
 ## Capabilities
@@ -1158,7 +1128,12 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `bootupctl` | capability | `base` |  |  |
 | `luks-initramfs` | capability | `base` |  |  |
-| `secureboot-enrolment` | capability | `enrolment` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `uki` | `shim` | lists |
 ==== generated/shim/graph.json
 {
   "image": "shim",
@@ -1194,18 +1169,16 @@ graph LR
       "provider": "base",
       "required_by": [],
       "after": []
-    },
-    {
-      "name": "secureboot-enrolment",
-      "kind": "capability",
-      "build_only": false,
-      "provider": "enrolment",
-      "required_by": [],
-      "after": []
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "uki",
+      "by": "shim",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/db/Containerfile
@@ -1232,22 +1205,6 @@ RUN mv /opt /opt.bak && mkdir /opt
 RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
-
-# ---- uki ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/db/components/uki.sh,target=/generated/db/components/uki.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/db/components/uki.sh
-
-# ---- enrolment ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/db/components/enrolment.sh,target=/generated/db/components/enrolment.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/db/components/enrolment.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -1293,29 +1250,14 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 
 # ---- BEGIN GENERATED (tail fragments) ----
 
+# verbatim from components/uki/Containerfile.inc:
+FROM ${SPLIT_BASE} AS split
+
 # ---- END GENERATED (tail fragments) ----
 
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/db/components/uki.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/uki
-export COMPONENT_DIR
-BOOT_CHAIN='uki-db'
-export BOOT_CHAIN
-==== generated/db/components/enrolment.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/enrolment
-export COMPONENT_DIR
-BOOT_CHAIN='uki-db'
-export BOOT_CHAIN
 ==== generated/db/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1465,12 +1407,14 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["uki"]
-    m1["enrolment"]
+    m1["db"]
+    m1 ==>|"lists"| m0
 ```
 
 ## Capabilities
@@ -1481,7 +1425,12 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `bootupctl` | capability | `base` |  |  |
 | `luks-initramfs` | capability | `base` |  |  |
-| `secureboot-enrolment` | capability | `enrolment` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `uki` | `db` | lists |
 ==== generated/db/graph.json
 {
   "image": "db",
@@ -1517,25 +1466,21 @@ graph LR
       "provider": "base",
       "required_by": [],
       "after": []
-    },
-    {
-      "name": "secureboot-enrolment",
-      "kind": "capability",
-      "build_only": false,
-      "provider": "enrolment",
-      "required_by": [],
-      "after": []
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "uki",
+      "by": "db",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
-==== generated/missing/Containerfile
+==== generated/plain/Containerfile
 # GENERATED FILE, do not edit. Produced by `buildc generate` from
-# scripts/Containerfile.skeleton and the missing image definition.
-
-ARG SPLIT_BASE=kernel-split
+# scripts/Containerfile.skeleton and the plain image definition.
 
 ARG BASE
 FROM scratch AS ctx
@@ -1563,16 +1508,16 @@ ARG IMAGE_VERSION=dev
 ARG FAMILY=fedora
 
 # ---- image identity ----
-ARG IMAGE_ID="missing"
+ARG IMAGE_ID="plain"
 ARG IMAGE_REGISTRY=""
 
 # ---- finalize ----
-RUN --mount=type=bind,from=ctx,source=/generated/missing/finalize.sh,target=/generated/missing/finalize.sh \
+RUN --mount=type=bind,from=ctx,source=/generated/plain/finalize.sh,target=/generated/plain/finalize.sh \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/missing/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/plain/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -1605,7 +1550,7 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/missing/finalize.sh
+==== generated/plain/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
 set -euxo pipefail
@@ -1746,8 +1691,8 @@ for ((i = ${#var_remove[@]} - 1; i >= 0; i--)); do
         rm -f "$path"
     fi
 done
-==== generated/missing/graph.md
-# `missing` capability graph
+==== generated/plain/graph.md
+# `plain` capability graph
 
 GENERATED FILE, do not edit.
 
@@ -1758,6 +1703,7 @@ right.
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
+    m0["plain"]
 ```
 
 ## Capabilities
@@ -1767,9 +1713,9 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `bootupctl` | capability | `base` |  |  |
 | `luks-initramfs` | capability | `base` |  |  |
-==== generated/missing/graph.json
+==== generated/plain/graph.json
 {
-  "image": "missing",
+  "image": "plain",
   "capabilities": [
     {
       "name": "bootc",
@@ -1803,6 +1749,6 @@ graph LR
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "107f5b2ed48e02ba7a36f34e5e4b0c8c3175f11dcce6ea882c65a5bd8b9db309",
-  "files": 36
+  "root": "0ac737512cfa07b091a019930d6feeec9cb6f6f243c731429d07c48feaec656a",
+  "files": 32
 }

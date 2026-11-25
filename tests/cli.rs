@@ -31,14 +31,17 @@ fn generate_leaves_the_image_file_byte_identical() {
     let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-generate");
     let _ = std::fs::remove_dir_all(&root);
     let files = [
-        ("repo.kdl", "schema-version 1\nname \"Checked\"\n"),
         (
-            "image.kdl",
-            "schema-version 1\n\nimage \"checked\" {\n    base-image {\n        example\n    }\n    consumer { runtime \"two\"; }\n}\n",
+            "repo.kdl",
+            "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        ),
+        (
+            "components/checked.kdl",
+            "schema-version 1\n\ncomponent \"/\" {\n    base-image {\n        example\n    }\n    consumer { runtime \"two\"; }\n}\n",
         ),
         (
             "components/consumer/manifest.kdl",
-            "schema-version 1\nrequires \"tool\"\nimports \"{runtime}\"\noption \"runtime\" type=\"string\" { default \"one\"; }\n",
+            "schema-version 1\nrequires \"tool\"\ncomponent \"/\" { \"{runtime}\"; }\noption \"runtime\" type=\"string\" { default \"one\"; }\n",
         ),
         (
             "components/base-image/example/manifest.kdl",
@@ -62,8 +65,10 @@ fn generate_leaves_the_image_file_byte_identical() {
         )
         .output()
         .expect("the binary runs");
-    let image = std::fs::read_to_string(root.join("image.kdl")).unwrap_or_default();
-    let imported = root.join("generated/checked/components/two.sh").is_file();
+    let image = std::fs::read_to_string(root.join("components/checked.kdl")).unwrap_or_default();
+    let imported = std::fs::read_to_string(root.join("generated/plan.json"))
+        .unwrap_or_default()
+        .contains("\"path\": \"two\"");
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         out.status.success(),
@@ -91,7 +96,7 @@ fn create_image_refuses_a_base_path_no_component_names() {
         root.to_str().expect("the temporary path is UTF-8"),
         "--no-tui",
     ]);
-    let wrote = root.join("typo.image.kdl").exists();
+    let wrote = root.join("components/typo.kdl").exists();
     let _ = std::fs::remove_dir_all(&root);
     assert_ne!(code, 0, "{stderr}");
     assert!(
@@ -99,29 +104,4 @@ fn create_image_refuses_a_base_path_no_component_names() {
         "{stderr}"
     );
     assert!(!wrote, "the refused image was written");
-}
-
-#[test]
-fn detach_component_takes_the_short_yes() {
-    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-detach");
-    let _ = std::fs::remove_dir_all(&root);
-    let lock = root.join("components/components.lock.kdl");
-    std::fs::create_dir_all(lock.parent().expect("the lock has a parent"))
-        .expect("the test repository is writable");
-    std::fs::write(root.join("repo.kdl"), "schema-version 1\n")
-        .expect("the test repository is writable");
-    std::fs::write(
-        &lock,
-        "component \"browser\" {\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n    track\n}\n",
-    )
-    .expect("the test repository is writable");
-    let out = Command::new(env!("CARGO_BIN_EXE_buildc"))
-        .args(["--no-tui", "detach", "component", "browser", "-y"])
-        .current_dir(&root)
-        .output()
-        .expect("the binary runs");
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(out.status.success(), "{stderr}");
-    let written = std::fs::read_to_string(&lock).expect("the lock stays");
-    assert!(!written.contains("track"), "{written}");
 }

@@ -1,5 +1,5 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
   x `core/grabber` fetches in component.sh with nothing declaring what
    ,-[tests/repos/broken-fetch/components/core/grabber/manifest.kdl:1:1]

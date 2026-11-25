@@ -1,0 +1,18 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+  1) community/browser  A browser, from the second collection (requires flatpak)
+  2) upstream/browser  A browser, from the first collection
+  3) upstream/custom-kernel  A kernel the image pins, swapped in over the base's own
+  4) upstream/fedora-family  dnf5 and its plugins, which every fedora build layer reaches for
+  5) upstream/flatpak  Flatpak client and a daily update timer
+  6) upstream/needs-family  A component that needs the family adapter under it (requires build-environment)
+  7) upstream/signature-policy  Sigstore signature verification for the image's own updates
+components [1-7, several, 0 for none]: 2
+
+
+example/
+└── ~ example.kdl  `browser` added to `example`
+==== exit 0

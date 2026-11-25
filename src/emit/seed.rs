@@ -1,8 +1,7 @@
 use crate::layout;
 use crate::model::image::{Entry, List, SCHEMA_VERSION};
 use crate::model::options::Value;
-use crate::model::remote::{At, Collection, Kind as SourceKind};
-use crate::provenance::Tracker;
+use crate::model::remote::{At, Collection};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
@@ -14,11 +13,13 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
     let components: Vec<(String, &Entry)> = image
         .entries
         .iter()
+        // The build's own component is the image. The seed lists only the components it holds.
+        .filter(|entry| entry.path != image.component)
         .map(|entry| (entry.qualified(&seed.collection), entry))
         .collect();
 
-    let qualified = match &base.imported {
-        Some(record) => format!("{}/{}", record.library, record.upstream),
+    let qualified = match &base.library {
+        Some(library) => format!("{library}/{}", base.path),
         None => format!("{}/{}", seed.collection, base.path),
     };
     let mut out = format!(
@@ -31,10 +32,10 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
     let set: Vec<String> = image
         .base_entry
         .iter()
-        .flat_map(|held| &held.entry.options)
-        .map(|(name, values, _)| {
-            let values: Vec<String> = values.iter().map(Value::kdl).collect();
-            format!("    {name} {}\n", values.join(" "))
+        .flat_map(|held| held.entry.settings())
+        .map(|setting| {
+            let values: Vec<String> = setting.values.iter().map(Value::kdl).collect();
+            format!("    {} {}\n", setting.name, values.join(" "))
         })
         .collect();
     match set.is_empty() {
@@ -51,14 +52,25 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
         .filter_map(|name| name.split('/').next())
         .collect();
     let sources: Vec<&Collection> = list
-        .sources
+        .libraries
         .iter()
-        .filter(|c| c.kind == SourceKind::Components && owners.contains(&c.name.as_str()))
+        .filter(|c| owners.contains(&c.name.as_str()))
         .collect();
     if !sources.is_empty() {
-        out.push_str("\nsources {\n");
-        for collection in sources {
-            out.push_str(&source(collection));
+        out.push_str("\nlibraries {\n");
+        for (block, remote) in [("local", false), ("remote", true)] {
+            let held: Vec<&&Collection> = sources
+                .iter()
+                .filter(|collection| collection.pin().is_some() == remote)
+                .collect();
+            if held.is_empty() {
+                continue;
+            }
+            let _ = writeln!(out, "\x20   {block} {{");
+            for collection in held {
+                out.push_str(&source(collection));
+            }
+            out.push_str("\x20   }\n");
         }
         out.push_str("}\n");
     }
@@ -66,10 +78,8 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
     out.push('\n');
     for (name, entry) in components {
         let _ = write!(out, "component {name:?}");
-        for (prop, value) in [("flavour", &entry.flavour), ("variant", &entry.variant)] {
-            if let Some(value) = value {
-                let _ = write!(out, " {prop}={value:?}");
-            }
+        if let Some(variant) = &entry.variant {
+            let _ = write!(out, " variant={variant:?}");
         }
         out.push('\n');
     }
@@ -79,33 +89,16 @@ pub fn file(list: &List) -> Option<(PathBuf, String)> {
 
 fn source(collection: &Collection) -> String {
     let name = &collection.name;
-    let mut out = format!("\x20   components {name:?} {{\n");
     match &collection.at {
-        At::Dir(path) => {
-            let _ = writeln!(out, "\x20       dir {path:?}");
-        }
+        At::Dir(path) => format!("\x20       {name} {{ source {path:?} }}\n"),
         At::Git(pin) => {
-            if let Tracker::Unpinned(why) = &pin.tracker {
-                if !why.is_empty() {
-                    let _ = writeln!(out, "\x20       unpinned {why:?}");
-                }
-            }
-            let _ = writeln!(
-                out,
-                "\x20       url {:?}",
-                pin.url.clone().unwrap_or_default()
-            );
-            if let Some(version) = &pin.version {
-                let _ = writeln!(out, "\x20       version {version:?}");
-            }
-            if let Some(sha256) = &pin.sha256 {
-                let _ = writeln!(out, "\x20       sha256 {sha256:?}");
-            }
-            if let Some(path) = &pin.path {
-                let _ = writeln!(out, "\x20       path {path:?}");
+            let url = pin.url.clone().unwrap_or_default();
+            match &pin.version {
+                Some(version) => format!(
+                    "\x20       {name} {{\n\x20           source {url:?}\n\x20           version {version:?}\n\x20       }}\n"
+                ),
+                None => format!("\x20       {name} {{ source {url:?} }}\n"),
             }
         }
     }
-    out.push_str("\x20   }\n");
-    out
 }

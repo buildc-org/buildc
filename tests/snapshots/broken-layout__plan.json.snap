@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "sealed",
   "pr_target": "sealed",
   "pr_published": "sealed",
-  "ungated_target": "sealed",
-  "ungated_published": "sealed",
   "cache_image": "sealed-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "sealed",
-      "file": "./image.kdl",
+      "file": "./components/sealed.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "xfs",
@@ -46,20 +44,45 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "sealed",
           "image": "sealed",
-          "flavour": null,
           "published": "sealed",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
-          "components": [],
+          "components": [
+            {
+              "path": "sealed",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
           "suppressed": [],
           "secrets": [],
           "contract_files": [],
@@ -73,6 +96,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/sealed/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "debian",
             "base": "docker.io/library/debian:forky",
             "args": [
@@ -82,19 +106,21 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=docker.io/library/debian:forky"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]
     },
     {
       "id": "halfway",
-      "file": "./image.kdl",
+      "file": "./components/halfway.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "zfs",
@@ -113,20 +139,45 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "halfway",
           "image": "halfway",
-          "flavour": null,
           "published": "halfway",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
-          "components": [],
+          "components": [
+            {
+              "path": "halfway",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
           "suppressed": [],
           "secrets": [],
           "contract_files": [],
@@ -140,6 +191,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/halfway/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "arch",
             "base": "ghcr.io/someone/arch-bootc:latest",
             "args": [
@@ -149,7 +201,9 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=ghcr.io/someone/arch-bootc:latest"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]

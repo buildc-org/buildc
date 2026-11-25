@@ -330,10 +330,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -508,7 +508,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -600,11 +600,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -903,7 +902,7 @@ FROM ${BASE} AS rootfs
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" PROVIDES="libostree|libostree-1-1" FLOORS="libostree|2025.3||core/needs" \
+    FAMILY=fedora PROVIDES="libostree|libostree-1-1" FLOORS="libostree|2025.3|core/needs" \
     bash /ctx/lib/measure-base.sh
 
 ## Component layers
@@ -916,14 +915,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- core/needs ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/versioned/components/core/needs.sh,target=/generated/versioned/components/core/needs.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/versioned/components/core/needs.sh
-
 # ---- core/tools ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=bind,from=ctx,source=/generated/versioned/components/core/tools.sh,target=/generated/versioned/components/core/tools.sh \
@@ -931,22 +922,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/versioned/components/core/tools.sh
-
-# ---- core/needs-build-tool ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/versioned/components/core/needs-build-tool.sh,target=/generated/versioned/components/core/needs-build-tool.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/versioned/components/core/needs-build-tool.sh
-
-# ---- core/needs-dnf5 ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/versioned/components/core/needs-dnf5.sh,target=/generated/versioned/components/core/needs-dnf5.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/versioned/components/core/needs-dnf5.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev
@@ -983,7 +958,7 @@ ARG BUILDC_VERSION=""
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" MEASURED="core/tools|package-manager/dnf5|dnf5|" \
+    FAMILY=fedora MEASURED="core/tools|package-manager/dnf5|dnf5" \
     bash /ctx/lib/measure-image.sh
 
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
@@ -1001,13 +976,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/versioned/components/core/needs.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/needs
-export COMPONENT_DIR
 ==== generated/versioned/components/core/tools.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1021,20 +989,6 @@ if [ ! -e '/usr/bin/dnf5' ]; then
     echo "component core/tools provides package-manager/dnf5, and its witness /usr/bin/dnf5 is missing" >&2
     exit 1
 fi
-==== generated/versioned/components/core/needs-build-tool.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/needs-build-tool
-export COMPONENT_DIR
-==== generated/versioned/components/core/needs-dnf5.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/needs-dnf5
-export COMPONENT_DIR
 ==== generated/versioned/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1184,6 +1138,7 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
@@ -1192,9 +1147,14 @@ graph LR
     m1["core/tools"]
     m2["core/needs-build-tool"]
     m3["core/needs-dnf5"]
+    m4["versioned"]
     base -->|"libostree"| m0
     m1 -->|"build-tool"| m2
     m1 -->|"package-manager/dnf5"| m3
+    m4 ==>|"lists"| m0
+    m4 ==>|"lists"| m2
+    m4 ==>|"lists"| m3
+    m4 ==>|"lists"| m1
 ```
 
 ## Capabilities
@@ -1204,6 +1164,15 @@ graph LR
 | `build-tool` | file, build only | `core/tools` | `core/needs-build-tool` |  |
 | `libostree` | capability | `base` | `core/needs` |  |
 | `package-manager/dnf5` | file | `core/tools` | `core/needs-dnf5` |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/needs` | `versioned` | lists |
+| `core/needs-build-tool` | `versioned` | lists |
+| `core/needs-dnf5` | `versioned` | lists |
+| `core/tools` | `versioned` | lists |
 ==== generated/versioned/graph.json
 {
   "image": "versioned",
@@ -1240,7 +1209,28 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/needs",
+      "by": "versioned",
+      "how": "lists"
+    },
+    {
+      "component": "core/needs-build-tool",
+      "by": "versioned",
+      "how": "lists"
+    },
+    {
+      "component": "core/needs-dnf5",
+      "by": "versioned",
+      "how": "lists"
+    },
+    {
+      "component": "core/tools",
+      "by": "versioned",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/measured/Containerfile
@@ -1258,7 +1248,7 @@ FROM ${BASE} AS rootfs
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" PROVIDES="libostree|libostree-1-1" FLOORS="" \
+    FAMILY=fedora PROVIDES="libostree|libostree-1-1" FLOORS="" \
     bash /ctx/lib/measure-base.sh
 
 ## Component layers
@@ -1314,7 +1304,7 @@ ARG BUILDC_VERSION=""
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" MEASURED="core/tools|package-manager/dnf5|dnf5|" \
+    FAMILY=fedora MEASURED="core/tools|package-manager/dnf5|dnf5" \
     bash /ctx/lib/measure-image.sh
 
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
@@ -1494,11 +1484,14 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"]
     m0["core/tools"]
+    m1["measured"]
+    m1 ==>|"lists"| m0
 ```
 
 ## Capabilities
@@ -1508,6 +1501,12 @@ graph LR
 | `build-tool` | file, build only | `core/tools` |  |  |
 | `libostree` | capability | `base` |  |  |
 | `package-manager/dnf5` | file | `core/tools` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/tools` | `measured` | lists |
 ==== generated/measured/graph.json
 {
   "image": "measured",
@@ -1538,7 +1537,13 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/tools",
+      "by": "measured",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/recordonly/Containerfile
@@ -1607,7 +1612,7 @@ ARG BUILDC_VERSION=""
 
 # ---- capability versions ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    FAMILY=fedora FLAVOUR="${FLAVOUR:-}" MEASURED="core/tools|package-manager/dnf5|dnf5|" RESET_VERSIONS=1 \
+    FAMILY=fedora MEASURED="core/tools|package-manager/dnf5|dnf5" RESET_VERSIONS=1 \
     bash /ctx/lib/measure-image.sh
 
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
@@ -1787,11 +1792,14 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["example.invalid/plain:1"]
     m0["core/tools"]
+    m1["recordonly"]
+    m1 ==>|"lists"| m0
 ```
 
 ## Capabilities
@@ -1800,6 +1808,12 @@ graph LR
 |---|---|---|---|---|
 | `build-tool` | file, build only | `core/tools` |  |  |
 | `package-manager/dnf5` | file | `core/tools` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/tools` | `recordonly` | lists |
 ==== generated/recordonly/graph.json
 {
   "image": "recordonly",
@@ -1822,12 +1836,18 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/tools",
+      "by": "recordonly",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "277c808939b2d60c17ee6f090a595f45085a311a839735c179e11166f2ca0c90",
-  "files": 41
+  "root": "6fe462203a531b3728d7fafe1cd5a5e49fcd12f8d85adcc9e73465cfc477d9ec",
+  "files": 38
 }

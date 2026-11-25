@@ -3,21 +3,126 @@ source: tests/golden/harness.rs
 ---
 {
   "schema_version": 1,
-  "default_image": null,
-  "pr_image": null,
-  "default_target": null,
-  "default_published": null,
-  "pr_target": null,
-  "pr_published": null,
-  "ungated_target": null,
-  "ungated_published": null,
-  "cache_image": null,
+  "default_image": "second",
+  "pr_image": "second",
+  "default_target": "second",
+  "default_published": "second",
+  "pr_target": "second",
+  "pr_published": "second",
+  "cache_image": "second-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
   "assets": [],
-  "images": []
+  "images": [
+    {
+      "id": "second",
+      "file": "./components/second.kdl",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "uki": false,
+      "allows": [],
+      "layout": null,
+      "base": null,
+      "targets": [
+        {
+          "name": "second",
+          "image": "second",
+          "published": "second",
+          "reference": null,
+          "conforms": "",
+          "allows": [],
+          "default": true,
+          "pr": true,
+          "components": [
+            {
+              "path": "palette",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "second",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/second/Containerfile",
+            "uki": false,
+            "backend": "buildah",
+            "family": "",
+            "base": null,
+            "args": [
+              "TARGET=second",
+              "COMPONENT_HASHES=",
+              "ASSET_RESOLUTIONS="
+            ],
+            "unresolved": [],
+            "validate": [
+              "BOOTC=false"
+            ]
+          }
+        }
+      ]
+    }
+  ]
 }

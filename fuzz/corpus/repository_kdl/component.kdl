@@ -1,0 +1,4 @@
+fschema-version 1
+description "Fuzz"
+targets "fedora"
+provides "fuzz" witness="/usr/bin/fuzz"

@@ -54,30 +54,30 @@ fn every_schema_has_a_page() {
 
 #[test]
 fn the_page_opens_on_the_file_and_its_scaffold() {
-    let out = page(Area::Image);
+    let out = page(Area::Component);
     assert!(
-        out.starts_with("<a id=\"image.kdl\"></a>\n\n# `image.kdl`\n"),
+        out.starts_with("<a id=\"manifest.kdl\"></a>\n\n# `manifest.kdl`\n"),
         "{out}"
     );
     let start = out.find("```kdl\n").expect("the page has an example");
     let end = start + 7 + out[start + 7..].find("```").expect("the example closes");
     let top = &out[start..end];
-    assert!(top.contains("image \"workstation\" {\n"), "{out}");
-    assert!(top.contains("    layout {\n        bootloader"), "{out}");
-    assert!(!top.contains("    name "), "{out}");
+    assert!(top.starts_with("```kdl\nschema-version 1\n"), "{out}");
+    assert!(top.contains("\ndescription "), "{out}");
+    assert!(!top.contains("oci-labels"), "{out}");
     assert!(
-        out[end..].contains("| [`image`](#image) (required,&nbsp;repeatable) |"),
+        out[end..].contains("| [`oci-labels`](#oci-labels) (optional) |"),
         "{out}"
     );
 }
 
 #[test]
 fn a_shared_node_is_scaffolded_only_where_its_block_names_it() {
-    let image = file(&SECTIONS[1], Show::Scaffold);
-    assert!(!image.contains("buildc"), "{image}");
+    let component = file(&SECTIONS[1], Show::Scaffold);
+    assert!(!component.contains("buildc"), "{component}");
     let repo = file(&SECTIONS[0], Show::Scaffold);
-    assert!(repo.contains("components \"buildc\" {"), "{repo}");
-    assert!(repo.contains("        url "), "{repo}");
+    assert!(repo.contains("    stable {"), "{repo}");
+    assert!(repo.contains("        source "), "{repo}");
 }
 
 #[test]
@@ -97,20 +97,20 @@ fn a_block_scaffolds_only_its_own_children() {
 
 #[test]
 fn a_table_lists_one_level_and_links_each_row() {
-    let out = page(Area::Image);
+    let out = page(Area::Component);
     let table = out
-        .find("| [`layout`](#image-layout) (optional) |")
-        .expect("the image table");
+        .find("| [`oci-labels`](#oci-labels) (optional) |")
+        .expect("the component table");
     let section = out
-        .find("### `layout` (optional)\n")
-        .expect("the layout section");
+        .find("## `oci-labels` (optional)\n")
+        .expect("the oci-labels section");
     assert!(table < section, "{out}");
-    assert!(!out[table..section].contains("`filesystem`"), "{out}");
+    assert!(!out[table..section].contains("`logo-url`"), "{out}");
     assert!(
-        out.contains("| [`filesystem`](#image-layout-filesystem) (optional) |"),
+        out.contains("| [`logo-url`](#oci-labels-logo-url) (optional) |"),
         "{out}"
     );
-    assert!(out.contains("#### `filesystem` (optional)"), "{out}");
+    assert!(out.contains("### `logo-url` (optional)"), "{out}");
 }
 
 #[test]
@@ -138,7 +138,7 @@ fn a_nested_section_shows_the_blocks_that_hold_it() {
 #[test]
 fn a_shared_block_is_documented_on_each_page_that_holds_it() {
     assert!(page(Area::Component).contains("<a id=\"asset-pin\"></a>"));
-    assert!(page(Area::Repo).contains("<a id=\"sources-components-url\"></a>"));
+    assert!(page(Area::Repo).contains("<a id=\"libraries-remote-name-source\"></a>"));
 }
 
 #[test]
@@ -183,13 +183,13 @@ fn only_an_undeclared_block_scaffolds_every_depth() {
     let marked = scaffold(Area::Repo);
     assert!(marked.iter().any(|p| p == "renovate/*/**"), "{marked:?}");
     assert!(
-        marked.iter().any(|p| p == "sources/components/url"),
+        marked.iter().any(|p| p == "libraries/remote/*/source"),
         "{marked:?}"
     );
     assert!(
         !marked
             .iter()
-            .any(|p| p.starts_with("sources/") && p.ends_with("/**")),
+            .any(|p| p.starts_with("libraries/") && p.ends_with("/**")),
         "{marked:?}"
     );
 }

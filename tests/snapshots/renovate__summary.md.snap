@@ -1,7 +1,7 @@
 ---
 source: tests/golden/harness.rs
 ---
-4 components, the ungated set.
+5 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
@@ -9,3 +9,4 @@ source: tests/golden/harness.rs
 | `apps/browser` | A browser whose image entry sets the version | `OPT_LANG_VERSION="2"` `OPT_VERSION="128.0"` |  |  |
 | `apps/editor` | An editor whose image entry leaves the version at its default | `OPT_VERSION="9.1"` |  |  |
 | `apps/image-viewer@1` | A viewer imported under a local name, whose entry sits on one line | `OPT_VERSION="3.1"` |  |  |
+| `renovate` |  |  |  |  |

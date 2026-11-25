@@ -1,19 +1,16 @@
 use crate::model::component::BaseComponent;
-use crate::model::remote::{Collection, Kind as SourceKind};
+use crate::model::remote::Collection;
 use std::path::Path;
 
 pub fn catalog(root: &Path, sources: &[Collection]) -> Vec<BaseComponent> {
     let mut bases: Vec<BaseComponent> = Vec::new();
     let components = crate::layout::components(root);
     let mut trees: Vec<(Option<String>, std::path::PathBuf)> = vec![(None, components)];
-    for collection in sources
-        .iter()
-        .filter(|collection| collection.kind == SourceKind::Components)
-    {
+    for collection in sources.iter() {
         if let Some(dir) = crate::collection::cached(root, collection) {
             trees.push((
                 Some(collection.name.clone()),
-                dir.join(collection.subtree().unwrap_or("")),
+                crate::layout::library_components(&dir),
             ));
         }
     }

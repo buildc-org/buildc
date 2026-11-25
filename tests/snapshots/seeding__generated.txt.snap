@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,15 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- fedora-family ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/example/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/example/components/fedora-family.sh,target=/generated/example/components/fedora-family.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/example/components/fedora-family.sh
-
 # ---- hello ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
     --mount=type=bind,from=ctx,source=/generated/example/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
@@ -935,19 +925,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
     --mount=type=tmpfs,target=/tmp \
     bash /generated/example/components/flatpak.sh
 
-# ---- flavour gate ----
-ARG FLAVOUR
-
-# ---- [nvidia] ----
-# ---- drivers ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/example/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/example/components/drivers@nvidia.sh,target=/generated/example/components/drivers@nvidia.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/example/components/drivers@nvidia.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -964,7 +941,7 @@ RUN --mount=type=bind,from=ctx,source=/generated/example/finalize.sh,target=/gen
     --mount=type=cache,target=/var/cache \
     --mount=type=cache,target=/var/log \
     --mount=type=tmpfs,target=/tmp \
-    FLAVOUR=${FLAVOUR} IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
+    IMAGE_VERSION="${IMAGE_VERSION}" FAMILY="${FAMILY}" IMAGE_ID="${IMAGE_ID}" IMAGE_REGISTRY="${IMAGE_REGISTRY}" bash /generated/example/finalize.sh
 
 # ---- END GENERATED ----
 
@@ -997,13 +974,6 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/example/components/fedora-family.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/fedora-family
-export COMPONENT_DIR
 ==== generated/example/components/hello.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1037,23 +1007,6 @@ if [ ! -e '/usr/bin/flatpak' ]; then
     echo "component flatpak provides flatpak, and its witness /usr/bin/flatpak is missing" >&2
     exit 1
 fi
-==== generated/example/components/drivers@nvidia.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/drivers
-export COMPONENT_DIR
-
-if [ "${FLAVOUR:-}" != "nvidia" ]; then
-    echo "skipping drivers: not built for '${FLAVOUR:-the ungated build}'"
-    exit 0
-fi
-
-source /ctx/lib/family.sh
-
-dnf install -y 'akmod-nvidia'
-stash_systemctl
 ==== generated/example/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1203,6 +1156,7 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
@@ -1210,7 +1164,10 @@ graph LR
     m0["fedora-family"]
     m1["hello"]
     m2["flatpak"]
-    m3["drivers [nvidia]"]
+    m3["example"]
+    m3 ==>|"lists"| m0
+    m3 ==>|"lists"| m1
+    m3 ==>|"lists"| m2
 ```
 
 ## Capabilities
@@ -1221,6 +1178,14 @@ graph LR
 | `build-environment` | capability | `fedora-family` |  |  |
 | `flatpak` | file | `flatpak` |  |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `fedora-family` | `example` | lists |
+| `hello` | `example` | lists |
+| `flatpak` | `example` | lists |
 ==== generated/example/graph.json
 {
   "image": "example",
@@ -1259,7 +1224,23 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "fedora-family",
+      "by": "example",
+      "how": "lists"
+    },
+    {
+      "component": "hello",
+      "by": "example",
+      "how": "lists"
+    },
+    {
+      "component": "flatpak",
+      "by": "example",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/seed.kdl
@@ -1270,22 +1251,22 @@ schema-version 1
 
 base "buildc-org/base-image/fedora-bootc-44"
 
-sources {
-    components "buildc-org" {
-        url "https://github.com/buildc-org/modules"
-        version "v1.0.0"
-        sha256 "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3"
+libraries {
+    remote {
+        buildc-org {
+            source "https://github.com/buildc-org/modules"
+            version "v1.0.0"
+        }
     }
 }
 
 component "buildc-org/fedora-family"
 component "buildc-org/hello"
 component "buildc-org/flatpak" variant="beta"
-component "buildc-org/drivers" flavour="nvidia"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "8d64f621b7e210609ad793ffe672615547db2ea174aad632dbbf0681da0e4c03",
-  "files": 30
+  "root": "19dfa20fc00281f1230183dc88333dc3cd90ca73b19289ac8f04e36d99e5a6b7",
+  "files": 28
 }
 ==== generated/example/components/fedora-family/lib/family.sh

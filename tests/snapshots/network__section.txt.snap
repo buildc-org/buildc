@@ -14,15 +14,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- fedora-family ----
-RUN --network=none --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/network/components/fedora-family.sh,target=/generated/network/components/fedora-family.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/network/components/fedora-family.sh
-
 # ---- core/tools ----
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
     --mount=type=bind,from=ctx,source=/generated/network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
@@ -52,28 +43,12 @@ RUN --mount=type=bind,from=ctx,source=/generated/network/components/core/fetcher
     bash /generated/network/components/core/fetcher.sh
 
 # ---- core/quiet ----
-RUN --network=none --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/network/components/core/quiet.sh,target=/generated/network/components/core/quiet.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/network/components/core/quiet.sh
-
 # ---- core/quiet overlays ----
 COPY --from=ctx /generated/network/components/core/quiet/files/ /
 
 # ---- core/spliced ----
 # verbatim from components/core/spliced/Containerfile.inc:
 RUN true
-
-RUN --network=none --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib,rw \
-    --mount=type=bind,from=ctx,source=/generated/network/components/fedora-family/lib/family.sh,target=/ctx/lib/family.sh \
-    --mount=type=bind,from=ctx,source=/generated/network/components/core/spliced.sh,target=/generated/network/components/core/spliced.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/network/components/core/spliced.sh
 
 # ---- image version ----
 ARG IMAGE_VERSION=dev

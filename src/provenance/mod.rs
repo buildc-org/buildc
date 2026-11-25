@@ -1,6 +1,7 @@
 pub mod build;
 pub mod evidence;
-pub mod lock;
+pub mod origins;
+pub mod repo_lock;
 
 use crate::diag::Span;
 use common::json::Json;
@@ -195,10 +196,10 @@ pub fn check_network(
     let reopen = match scripts_rule {
         crate::model::image::NetRule::Deny => {
             "set `scripts \"strict\"` in repo.kdl's `security-policy { network }` and declare \
-             `network \"scripts\"`, or leave this component out of the image"
+             `permissions { scripts { network #true } }`, or leave this component out of the image"
         }
         crate::model::image::NetRule::Allow | crate::model::image::NetRule::Strict => {
-            "declare `network \"scripts\"`, which a `strict` rule in repo.kdl opens the \
+            "declare `permissions { scripts { network #true } }`, which a `strict` rule in repo.kdl opens the \
              script step for"
         }
     };
@@ -273,7 +274,7 @@ pub fn check_network(
                         .help(reopen),
                     );
                 }
-                let dir = crate::layout::component(root, &entry.path);
+                let dir = entry.dir(root);
                 if let Some((script, verb)) = installer(&dir, base_family) {
                     issues.push(
                         Issue::new(

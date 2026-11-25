@@ -28,15 +28,7 @@ fn packaged<'a>(
 
 fn component_provides(image: &Image) -> BTreeSet<String> {
     packaged(image.components())
-        .map(|(component, name, package)| {
-            format!(
-                "{}|{}|{}|{}",
-                component.path,
-                name,
-                package,
-                component.flavour.as_deref().unwrap_or_default()
-            )
-        })
+        .map(|(component, name, package)| format!("{}|{name}|{package}", component.path))
         .collect()
 }
 
@@ -45,25 +37,19 @@ fn floors(image: &Image) -> BTreeSet<String> {
         return BTreeSet::new();
     };
     let mut out = BTreeSet::new();
-    let mut add = |requirement: &Requirement, flavour: Option<&str>, owner: &str| {
+    let mut add = |requirement: &Requirement, owner: &str| {
         let Some(min) = &requirement.min else {
             return;
         };
         if base.packages(&requirement.name).next().is_none() {
             return;
         }
-        out.insert(format!(
-            "{}|{}|{}|{}",
-            requirement.name,
-            min,
-            flavour.unwrap_or_default(),
-            owner
-        ));
+        out.insert(format!("{}|{min}|{owner}", requirement.name));
     };
     for (component, requirement) in base.image_requirements(image.components()) {
         match component {
-            None => add(requirement, None, &base.image),
-            Some(component) => add(requirement, component.flavour.as_deref(), &component.path),
+            None => add(requirement, &base.image),
+            Some(component) => add(requirement, &component.path),
         }
     }
     out
@@ -78,7 +64,7 @@ pub fn early(image: &Image) -> String {
     format!(
         "# ---- capability versions ----\n\
          RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
-         FAMILY={family} FLAVOUR=\"${{FLAVOUR:-}}\" PROVIDES=\"{provides}\" FLOORS=\"{floors}\" \\\n    \
+         FAMILY={family} PROVIDES=\"{provides}\" FLOORS=\"{floors}\" \\\n    \
          bash /ctx/lib/measure-base.sh\n\n",
         family = image.family(),
     )
@@ -96,7 +82,7 @@ pub fn record(image: &Image, reset: bool) -> String {
     format!(
         "# ---- capability versions ----\n\
          RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
-         FAMILY={family} FLAVOUR=\"${{FLAVOUR:-}}\" MEASURED=\"{measured}\" {reset}\\\n    \
+         FAMILY={family} MEASURED=\"{measured}\" {reset}\\\n    \
          bash /ctx/lib/measure-image.sh\n\n",
         family = image.family(),
     )

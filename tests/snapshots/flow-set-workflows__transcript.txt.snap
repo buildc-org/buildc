@@ -1,22 +1,14 @@
 ---
 source: tests/golden/harness.rs
 ---
-  1) [x] build  builds, scans, signs and publishes every image
-  2) [x] build-disk  builds a disk image with bootc-image-builder
-  3) [x] base-sig-probe  measures what each base signs and ships, and fixes it
+  1) [x] image-build  builds, scans, signs and publishes every image
+  2) [ ] build-disk  builds a disk image with bootc-image-builder
+  3) [ ] base-sig-probe  measures what each base signs and ships, and fixes it
   4) [x] cleanup-registry  prunes old versions of the images off the registry
   5) [ ] (unavailable) kernel-freshness  needs a component taking a KERNEL arg
   6) [x] smoke-test  installs the image to a disk and boots it under qemu
-  7) [x] update-components  refreshes tracked components and opens a pull request
+  7) [x] update-components  moves remote components and opens a pull request
 workflows [1-7, several, 0 for none]: 1 3
-
-Publish images only on scheduled builds? (Yes/No)
-No
-
-Run image scans only on scheduled builds? (Yes/No)
-Yes
-
-daily build time, UTC [12:30]: 05:45
 
 
 example/

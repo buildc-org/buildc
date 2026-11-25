@@ -1,16 +1,23 @@
 ---
 source: tests/golden/harness.rs
 ---
-  x nothing reads `notes.kdl`
-  help: an image file is `image.kdl` or `<name>.image.kdl`; rename it to
-        `notes.image.kdl`, or move it out of the repository root
+  x build `same` is declared twice
+   ,-[tests/repos/broken-root/repo.kdl:5:5]
+ 4 | builds {
+ 5 |     same
+   :     ^^|^
+   :       `-- first here
+ 6 |     same
+   :     ^^|^
+   :       `-- and again here
+ 7 | }
+   `----
+  help: one name is one target and one published image; rename one build
 
-  x `same` is declared twice
-    ,-[tests/repos/broken-root/image.kdl:14:1]
- 13 | 
- 14 | image "same" {
-    : ^^|^^
-    :   `-- also declared above
- 15 |     base-image {
-    `----
-  help: two images cannot publish under one id. Give one of them another id
+  x nothing reads `image.kdl`
+  help: a build reads a file at the repository root when `builds` names it, as
+        `image "./image"`
+
+  x nothing reads `notes.kdl`
+  help: a build reads a file at the repository root when `builds` names it, as
+        `notes "./notes"`

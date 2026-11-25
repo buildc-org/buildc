@@ -1,0 +1,15 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        ubuntu-26-04
+    }
+
+    debian-family
+    core {
+        menu
+    }
+    core {
+        shared
+    }
+}

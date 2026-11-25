@@ -3,7 +3,8 @@ source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
-buildc: `buildc` is unpinned, so a fetch from it takes whatever its ref holds then, unverified
+buildc: `example` reads `base-image/fedora` from `buildc` at 111111111111, which repo.lock.kdl does not record; `buildc generate` records it
+buildc: `example` reads `fedora-family` from `buildc` at 111111111111, which repo.lock.kdl does not record; `buildc generate` records it
 buildc: `example` conforms to `cusp_fedora`, which is none of the profiles the datastream carries: standard, ospp
-buildc: 1 images, 1 components, 0 flavours
+buildc: 1 images, 2 components
 ==== exit 0

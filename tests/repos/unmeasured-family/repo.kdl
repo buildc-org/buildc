@@ -1,2 +1,14 @@
 schema-version 1
 name "Unmeasured Family"
+
+builds {
+    arch {
+        install {
+            filesystem "btrfs"
+            composefs #true
+            generic-image #true
+            admin-group "wheel"
+            bootloader "systemd"
+        }
+    }
+}

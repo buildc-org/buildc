@@ -48,12 +48,11 @@ source: tests/golden/harness.rs
 
   x image `broken-graph` installs packages for `fedora`, but no enabled
   | component provides `build-environment` for that family
-   ,-[tests/repos/broken-graph/image.kdl:3:1]
+   ,-[tests/repos/broken-graph/components/broken-graph.kdl:1:1]
+ 1 | schema-version 1
+   : ^
+   : `-- missing family adapter
  2 | 
- 3 | image "broken-graph" {
-   : ^^|^^
-   :   `-- missing family adapter
- 4 |     base-image {
    `----
 
   x `core/three` does not support the `fedora` base family
@@ -72,7 +71,7 @@ source: tests/golden/harness.rs
 
   x `quay.io/fedora/fedora-bootc:44` requires `bootc-base`, which nothing
   | enabled provides
-    ,-[tests/repos/broken-graph/image.kdl:14:4]
+    ,-[tests/repos/broken-graph/components/broken-graph.kdl:14:11]
  13 |         }
  14 | ,->     core {
  15 | |->         three
@@ -81,7 +80,7 @@ source: tests/golden/harness.rs
     `----
   help: no component in the repository declares `provides "bootc-base"`, and
         neither does the base `base-image/fedora-bootc-44`. repo.kdl declares
-        no `sources`, so there is no collection to import one from
+        no `libraries`, so there is no library to add one from
 
   x `core/one` requires `package-manager`, which nothing enabled provides
     ,-[tests/repos/broken-graph/components/core/one/manifest.kdl:10:10]
@@ -93,7 +92,7 @@ source: tests/golden/harness.rs
     `----
   help: no component in the repository declares `provides "package-manager"`,
         and neither does the base `base-image/fedora-bootc-44`. repo.kdl
-        declares no `sources`, so there is no collection to import one from
+        declares no `libraries`, so there is no library to add one from
 
   x `core/one` requires `apparmor-policy`, which nothing enabled provides
     ,-[tests/repos/broken-graph/components/core/one/manifest.kdl:11:10]
@@ -105,7 +104,7 @@ source: tests/golden/harness.rs
     `----
   help: no component in the repository declares `provides "apparmor-policy"`,
         and neither does the base `base-image/fedora-bootc-44`. repo.kdl
-        declares no `sources`, so there is no collection to import one from
+        declares no `libraries`, so there is no library to add one from
 
   x `core/one` requires `nothing`, which nothing enabled provides
     ,-[tests/repos/broken-graph/components/core/one/manifest.kdl:12:10]
@@ -116,4 +115,4 @@ source: tests/golden/harness.rs
     `----
   help: no component in the repository declares `provides "nothing"`, and
         neither does the base `base-image/fedora-bootc-44`. repo.kdl declares
-        no `sources`, so there is no collection to import one from
+        no `libraries`, so there is no library to add one from

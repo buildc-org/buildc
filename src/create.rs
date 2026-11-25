@@ -1,9 +1,10 @@
 use crate::copy;
-use crate::declaration::append;
 use crate::error::Error;
 use crate::forge;
 use crate::layout;
 use crate::layout::{named_after_root, under};
+use crate::parse::declaration::{append, append_inside, placed, wrap};
+use crate::parse::local::{Listed, Place};
 use crate::report::report;
 use crate::setup::{Field, Libraries, Listing, Workflows};
 use common::prompt::Prompt;
@@ -52,6 +53,32 @@ impl std::fmt::Display for NonEmpty {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Setup {
+    Defaults,
+    Minimal,
+}
+
+impl Setup {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Defaults => copy::SETUP_DEFAULTS,
+            Self::Minimal => copy::SETUP_MINIMAL,
+        }
+    }
+}
+
+fn ask_setup(prompt: &Prompt) -> Result<Setup, Error> {
+    let options = [
+        Choice::new(copy::SETUP_DEFAULTS, copy::SETUP_DEFAULTS_ABOUT),
+        Choice::new(copy::SETUP_MINIMAL, copy::SETUP_MINIMAL_ABOUT),
+    ];
+    Ok(match prompt.choose(copy::REPO_SETUP, &options)? {
+        Some(1) => Setup::Minimal,
+        _ => Setup::Defaults,
+    })
+}
+
 pub struct Repo {
     name: NonEmpty,
     id: NonEmpty,
@@ -59,6 +86,7 @@ pub struct Repo {
     host: String,
     owner: Option<String>,
     assets: PathBuf,
+    setup: Setup,
     libraries: Libraries,
     image: Option<Image>,
     workflows: Option<Workflows>,
@@ -86,7 +114,7 @@ impl Repo {
             root: root_arg,
         };
         let mut repo = Self::ask(Field::Name, &given, None, prompt)?;
-        // The arguments answer the first pass alone, so a flag never overrides an answer changed in the review.
+        // A flag answers the first pass alone. A later pass keeps the review's answer and the flag never overrides it.
         given = Given {
             root: given.root.take(),
             ..Given::default()
@@ -146,23 +174,27 @@ impl Repo {
             println!("Creating {id}...\n");
         }
 
+        let setup = match prev {
+            Some(prev) if from > Field::Setup => prev.setup,
+            _ => ask_setup(prompt)?,
+        };
+
+        let configure = given.host.is_some()
+            || given.owner.is_some()
+            || from == Field::Provider
+            || (setup == Setup::Defaults && from <= Field::Provider);
         let (host, owner) = match prev {
             Some(prev) if from > Field::Provider => (prev.host.clone(), prev.owner.clone()),
             _ => {
-                let configure = given.host.is_some()
-                    || given.owner.is_some()
-                    || match prev {
-                        None => prompt.confirm(copy::SCHEDULED, copy::YES, copy::NO)?,
-                        Some(prev) => prompt.confirm_current(
-                            copy::SCHEDULED,
-                            copy::YES,
-                            copy::NO,
-                            prev.owner.is_some(),
-                        )?,
-                    };
-                let host = match (configure, given.host.clone()) {
-                    (true, None) => choose_host(prev.map(|prev| prev.host.as_str()), prompt)?,
-                    (_, given) => given.unwrap_or_else(|| forge::HOST.to_string()),
+                let host = match (given.host.clone(), from) {
+                    (Some(host), _) => host,
+                    (None, Field::Provider) => {
+                        choose_host(prev.map(|prev| prev.host.as_str()), prompt)?
+                    }
+                    (None, _) if prev.is_none() && configure => choose_host(None, prompt)?,
+                    (None, _) => prev
+                        .map(|prev| prev.host.clone())
+                        .unwrap_or_else(|| forge::HOST.to_string()),
                 };
                 let owner = match configure {
                     true => Some(prompt.line(
@@ -185,24 +217,16 @@ impl Repo {
                     remote = prev.remote;
                     install_gh = prev.install_gh;
                 }
-                _ => {
+                _ if from <= Field::Remote => {
                     let offering = host == forge::HOST && prompt.asks();
-                    if from <= Field::Provider {
-                        println!("Added {host}/{named}/{id} as the origin repo");
-                        if !offering {
-                            println!();
-                        }
-                    }
-                    let asked = match (offering, prev) {
-                        (false, _) => false,
-                        (true, None) => {
-                            prompt.confirm(copy::CREATE_REMOTE, copy::YES, copy::SKIP)?
-                        }
-                        (true, Some(prev)) => prompt.confirm_current(
+                    let current = prev.is_some_and(|prev| prev.remote);
+                    let asked = match offering {
+                        false => false,
+                        true => prompt.confirm_current(
                             copy::CREATE_REMOTE,
                             copy::YES,
                             copy::SKIP,
-                            prev.remote,
+                            current,
                         )?,
                     };
                     if asked {
@@ -220,12 +244,16 @@ impl Repo {
                         }
                     }
                 }
+                _ => {}
             }
         }
         let url = owner.as_deref().map(|_| BASE_URL_REFERENCE.to_string());
         let libraries = match prev {
             Some(prev) if from > Field::Libraries => prev.libraries.clone(),
-            _ => Libraries::collect(prev.map(|prev| &prev.libraries), prompt)?,
+            Some(prev) => Libraries::collect(&assets, Some(&prev.libraries), prompt)?,
+            None => Libraries {
+                chosen: Libraries::every(&assets),
+            },
         };
         let held = prev.and_then(|prev| prev.image.as_ref());
         let image = match prev {
@@ -234,7 +262,13 @@ impl Repo {
                 let wanted = given.image.is_some()
                     || from == Field::Base
                     || match prev {
-                        None => prompt.confirm(copy::IMAGES, copy::YES, copy::NO)?,
+                        None => match (setup, prompt.asks()) {
+                            (Setup::Minimal, _) => false,
+                            (Setup::Defaults, true) => {
+                                prompt.confirm(copy::IMAGES, copy::YES, copy::NO)?
+                            }
+                            (Setup::Defaults, false) => true,
+                        },
                         Some(prev) => prompt.confirm_current(
                             copy::IMAGES,
                             copy::YES,
@@ -248,9 +282,12 @@ impl Repo {
                             root: &root,
                             repo: name.as_str(),
                             url,
-                            sources_text: &crate::init::sources_block(&libraries.chosen),
+                            libraries_text: &crate::init::libraries_block(&libraries.chosen),
                         },
-                        given.image.clone(),
+                        given
+                            .image
+                            .clone()
+                            .or_else(|| prev.is_none().then(|| name.to_string())),
                         given.base.clone(),
                         "`--image`",
                         from,
@@ -261,36 +298,39 @@ impl Repo {
                 }
             }
         };
-        let workflows = match owner.is_some() {
-            false => None,
-            true => {
-                let family = image
-                    .as_ref()
-                    .and_then(|image| image.family.as_ref())
-                    .map_or("", NonEmpty::as_str);
-                let basis = crate::resolve::workflow::Basis::scaffolding(family);
-                let mut say = |text: &str| print!("{text}");
-                match prev.and_then(|prev| prev.workflows.as_ref()) {
-                    Some(held) => held.again(&basis, from, prompt, &mut say)?,
-                    None => Workflows::collect(
-                        &basis,
-                        &Workflows::every(&basis),
-                        crate::resolve::workflow::DEFAULT_AT,
-                        false,
-                        false,
-                        from,
-                        prompt,
-                        &mut say,
-                    )?,
+        let workflows = match owner.as_ref() {
+            None => None,
+            Some(_) => match prev {
+                Some(prev) if from > Field::Workflows => prev.workflows.clone(),
+                Some(prev) => {
+                    let family = prev
+                        .image
+                        .as_ref()
+                        .and_then(|image| image.family.as_ref())
+                        .map_or("", NonEmpty::as_str);
+                    let basis = crate::resolve::workflow::Basis::scaffolding(family);
+                    let mut say = |text: &str| print!("{text}");
+                    match prev.workflows.as_ref() {
+                        Some(held) => held.again(&basis, from, prompt, &mut say)?,
+                        None => Workflows::collect(&basis, &[], from, prompt, &mut say)?,
+                    }
+                    .map(Workflows::scaffolded)
                 }
-            }
+                None => match setup {
+                    Setup::Defaults => Some(Workflows::sensible()),
+                    Setup::Minimal => None,
+                },
+            },
         };
         let scripts = match prev {
             Some(prev) if from > Field::Scripts => prev.scripts.clone(),
-            _ => {
-                let held = prev.map_or(&[SKELETON_FILE][..], |prev| &prev.scripts.chosen[..]);
-                Scripts::collect(&root, &[], held, prompt)?
-            }
+            Some(prev) => Scripts::collect(&root, &[], &prev.scripts.chosen, prompt)?,
+            None => match setup {
+                Setup::Defaults => Scripts {
+                    chosen: vec![SKELETON_FILE],
+                },
+                Setup::Minimal => Scripts::default(),
+            },
         };
         Ok(Self {
             name,
@@ -299,6 +339,7 @@ impl Repo {
             host,
             owner,
             assets,
+            setup,
             libraries,
             image,
             workflows,
@@ -309,14 +350,20 @@ impl Repo {
     }
 
     fn rows(&self) -> Vec<(Field, &'static str, String)> {
+        let none = |command: &str| format!("{}; {command}", copy::NONE);
         let mut rows = vec![
             (Field::Name, copy::ROW_NAME, self.name.to_string()),
+            (
+                Field::Setup,
+                copy::ROW_SETUP,
+                self.setup.label().to_string(),
+            ),
             (
                 Field::Provider,
                 copy::ROW_PROVIDER,
                 match &self.owner {
                     Some(owner) => format!("{}/{owner}", self.host),
-                    None => copy::NONE.to_string(),
+                    None => none(copy::SET_PROVIDER),
                 },
             ),
         ];
@@ -337,19 +384,36 @@ impl Repo {
                 rows.push((Field::Image, copy::ROW_IMAGE, image.name.to_string()));
                 rows.push((Field::Base, copy::ROW_BASE, image.base.to_string()));
             }
-            None => rows.push((Field::Image, copy::ROW_IMAGE, copy::NONE.to_string())),
+            None => rows.push((Field::Image, copy::ROW_IMAGE, none(copy::SET_IMAGE))),
         }
         match (&self.workflows, self.owner.is_some()) {
             (Some(workflows), _) => rows.extend(workflows.rows()),
             (None, true) => rows.push((
                 Field::Workflows,
                 copy::ROW_WORKFLOWS,
-                copy::NONE.to_string(),
+                none(copy::SET_WORKFLOWS_COMMAND),
             )),
-            (None, false) => {}
+            (None, false) => rows.push((
+                Field::Workflows,
+                copy::ROW_WORKFLOWS,
+                none(copy::SET_WORKFLOWS_COMMAND),
+            )),
         }
-        rows.push(self.scripts.row());
+        match &self.scripts.chosen.is_empty() {
+            true => rows.push((
+                Field::Scripts,
+                copy::ROW_SCRIPTS,
+                none(copy::SET_SCRIPTS_COMMAND),
+            )),
+            false => rows.push(self.scripts.row()),
+        }
         rows
+    }
+
+    fn registry(&self) -> Option<String> {
+        let owner = self.owner.as_deref().filter(|_| self.host == forge::HOST)?;
+        // ghcr.io refuses capitals in an image path. A GitHub owner name may hold them.
+        Some(format!("ghcr.io/{}", owner.to_lowercase()))
     }
 
     pub fn apply(&self) -> Result<(), String> {
@@ -361,8 +425,9 @@ impl Repo {
             &self.root,
             self.name.as_str(),
             base_url.as_deref(),
+            self.registry().as_deref(),
             &self.assets,
-            &crate::init::sources_block(&self.libraries.chosen),
+            &crate::init::libraries_block(&self.libraries.chosen),
         )?
         .into_iter()
         .map(|path| (path, Change::Created))
@@ -373,7 +438,7 @@ impl Repo {
             wrote.extend(image.apply(&self.root)?);
         }
         if let Some(workflows) = &self.workflows {
-            workflows.apply(&self.root)?;
+            wrote.extend(workflows.apply(&self.root)?);
         }
         wrote.extend(self.scripts.apply(&self.root)?);
         if let (true, Some(owner)) = (self.remote, &self.owner) {
@@ -406,7 +471,6 @@ impl Repo {
         Ok(())
     }
 }
-
 const SKELETON_FILE: &str = "Containerfile.skeleton";
 
 fn offered() -> Vec<(&'static str, &'static str, &'static str)> {
@@ -558,6 +622,7 @@ fn ask_one(
 
 #[derive(Clone)]
 pub struct Image {
+    id: String,
     file: PathBuf,
     text: String,
     name: NonEmpty,
@@ -566,7 +631,6 @@ pub struct Image {
     takes_components: bool,
     bootloader: Option<String>,
     names_default: Option<String>,
-    vendored: Vec<crate::import::Found>,
     kept: Vec<String>,
     own: Option<(String, String)>,
 }
@@ -575,14 +639,10 @@ pub struct Home<'a> {
     pub root: &'a Path,
     pub repo: &'a str,
     pub url: Option<String>,
-    pub sources_text: &'a str,
+    pub libraries_text: &'a str,
 }
 
 impl Image {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "the image answers one question at a time before it writes its file"
-    )]
     pub fn collect(
         home: Home,
         name: Option<String>,
@@ -596,7 +656,7 @@ impl Image {
             root,
             repo,
             url,
-            sources_text,
+            libraries_text,
         } = home;
         let name = match prev {
             Some(prev) if from > Field::Image => prev.name.clone(),
@@ -619,26 +679,41 @@ impl Image {
             ));
         }
         let id = crate::init::id(name.as_str())?;
-        let file = root.join(format!("{id}{}", layout::IMAGE_SUFFIX));
-        if file.exists() {
+        let file = layout::sibling(&root.join(&id));
+        if let Some(held) = layout::manifests_at(&root.join(&id)).first() {
             return Err(Error::Operation(format!(
                 "{} is already there",
-                file.display()
+                held.display()
             )));
         }
         let (list, _) = crate::model::image::List::load(root);
-        let names_default = implicit_default(&list).filter(|was| *was != id);
+        if list.builds.iter().any(|build| build.name == id) {
+            return Err(Error::Operation(format!(
+                "`{id}` is already a build in {}",
+                layout::REPO_FILE
+            )));
+        }
+        let names_default = implicit_default(&list, &id);
 
-        // `create repo` collects the image before it writes `repo.kdl`.
-        // Until that file exists, the sources come from the block this run will write.
         let scaffolded;
-        let sources = match list.sources.is_empty() && !root.join(layout::REPO_FILE).is_file() {
-            true => {
-                scaffolded = crate::parse::repo::sources_in(sources_text);
-                scaffolded.as_slice()
-            }
-            false => list.sources.as_slice(),
-        };
+        // Until this run writes `repo.kdl`, the libraries come from the block it will put there.
+        let (sources, root_library, default_library) =
+            match list.libraries.is_empty() && !root.join(layout::REPO_FILE).is_file() {
+                true => {
+                    let (libraries, own) = crate::resolve::library::split_root(
+                        root,
+                        crate::parse::repo::libraries_in(libraries_text),
+                    );
+                    scaffolded = libraries;
+                    let default = crate::parse::repo::default_library_in(libraries_text);
+                    (scaffolded.as_slice(), own, default)
+                }
+                false => (
+                    list.libraries.as_slice(),
+                    list.root_library.clone(),
+                    list.default_library.as_ref().map(|(name, _)| name.clone()),
+                ),
+            };
         if let Err(why) = crate::collection::fetch(root, sources) {
             eprintln!("buildc: {why}; the bases offered are only what is already on this machine");
         }
@@ -690,12 +765,25 @@ impl Image {
             false => offer(&base, &wanted, prompt, takes_components)?,
         };
         let url = seeded_home_url(&list, url, &index);
-        let seed = match take_wanted {
-            true => seeded(&wanted, name.as_str(), url.as_deref()),
-            false => Vec::new(),
-        };
         let holds = |provider: &crate::provider::Provider| {
             layout::is_component(&layout::component(root, &provider.name))
+        };
+        let resolver = crate::resolve::library::Libraries::read(
+            root,
+            sources,
+            root_library.as_deref(),
+            default_library.as_deref(),
+        );
+        let path = |provider: &crate::provider::Provider| {
+            let owner = match holds(provider) {
+                true => None,
+                false => provider.owner.as_deref(),
+            };
+            listed(&resolver, root_library.as_deref(), &provider.name, owner)
+        };
+        let seed = match take_wanted {
+            true => seeded(&wanted, path, name.as_str(), url.as_deref()),
+            false => Vec::new(),
         };
         let kept: Vec<String> = match take_wanted {
             true => wanted
@@ -705,65 +793,18 @@ impl Image {
                 .collect(),
             false => Vec::new(),
         };
-        let vendored = match take_wanted {
-            true => wanted
-                .iter()
-                .filter_map(|provider| Some((provider, provider.owner.as_deref()?)))
-                .filter(|(provider, _)| !holds(provider))
-                .map(|(provider, owner)| {
-                    crate::import::cached_member(
-                        root,
-                        sources,
-                        list.audit_enforce,
-                        owner,
-                        &provider.name,
-                    )?
-                    .ok_or_else(|| {
-                        format!("`{}` is no longer in its library", provider.qualified())
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?,
-            false => Vec::new(),
-        };
-        let mut vendored = vendored;
         let (component, own, version, digest) = match known {
-            Some(known) => {
-                let held = layout::is_component(&layout::component(root, &known.name));
-                let from = match known.owner.as_deref().filter(|_| !held) {
-                    Some(owner) => crate::import::cached_member(
-                        root,
-                        sources,
-                        list.audit_enforce,
-                        owner,
-                        &known.name,
-                    )?
-                    .ok_or_else(|| {
-                        format!("`{owner}/{}` is no longer in its library", known.name)
-                    })?,
-                    None => crate::import::Found {
-                        owner: known.owner.clone().unwrap_or_default(),
-                        name: known.name.clone(),
-                        dir: layout::component(root, &known.name),
-                    },
-                };
-                let copying: Vec<String> = vendored
-                    .iter()
-                    .map(|found| found.name.clone())
-                    .chain(std::iter::once(known.name.clone()))
-                    .collect();
-                let imports = crate::import::imports_of(
-                    root,
-                    sources,
-                    list.audit_enforce,
-                    from.clone(),
-                    &copying,
-                )?;
-                if !held {
-                    vendored.push(from);
-                }
-                vendored.extend(imports);
-                (known.name.clone(), None, known.version.clone(), None)
-            }
+            Some(known) => (
+                listed(
+                    &resolver,
+                    root_library.as_deref(),
+                    &known.name,
+                    known.owner.as_deref(),
+                ),
+                None,
+                known.version.clone(),
+                None,
+            ),
             None => {
                 let OwnBase {
                     path,
@@ -779,16 +820,15 @@ impl Image {
             .and_then(|prev| prev.bootloader.as_deref());
         let bootloader = choose_bootloader(known, held, prompt)?;
         let text = image_kdl(
-            &id,
             &BaseLine {
                 path: &component,
                 version: version.as_deref(),
                 digest: digest.as_deref(),
             },
-            bootloader.as_deref(),
             &seed,
         );
         Ok(Self {
+            id: id.to_string(),
             text,
             file,
             name,
@@ -797,152 +837,85 @@ impl Image {
             takes_components: wanted.is_empty() || !seed.is_empty(),
             bootloader,
             names_default,
-            vendored,
             kept,
             own,
         })
     }
 
+    fn build_entry(&self) -> String {
+        let entry = format!("{0} \"./{0}\"", self.id);
+        match &self.bootloader {
+            Some(bootloader) => format!(
+                "{entry} {{\n    install {{\n        bootloader \"{bootloader}\"\n    }}\n}}"
+            ),
+            None => entry,
+        }
+    }
+
     pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
-        let (list, _) = crate::model::image::List::load(root);
-        let copies: Vec<(&crate::import::Found, &str)> = self
-            .vendored
+        let mut wrote: Vec<(PathBuf, Change)> = self
+            .kept
             .iter()
-            .map(|from| (from, from.name.as_str()))
+            .map(|name| {
+                (
+                    layout::under(root, &layout::component(root, name)),
+                    Change::Updated("already here, so the image lists it as it is".to_string()),
+                )
+            })
             .collect();
-        let mut wrote = crate::import::vendor_all(root, &list.sources, &copies, true)?;
-        wrote.extend(self.kept.iter().map(|name| {
-            (
-                PathBuf::from(layout::COMPONENTS).join(name),
-                Change::Updated("already here, so the image lists it as it is".to_string()),
-            )
-        }));
-        if let Some((path, text)) = &self.own {
-            let file = layout::manifest(root, path);
+        let own = self
+            .own
+            .as_ref()
+            .map(|(path, text)| (layout::manifest(root, path), text));
+        let repo = root.join(layout::REPO_FILE);
+        let files: Vec<PathBuf> = own
+            .iter()
+            .map(|(file, _)| file.clone())
+            .chain([self.file.clone(), repo.clone()])
+            .collect();
+        crate::init::undoable(root, &files, || {
+            self.write(root, own, &repo, &mut wrote)?;
+            Ok(wrote)
+        })
+    }
+
+    fn write(
+        &self,
+        root: &Path,
+        own: Option<(PathBuf, &String)>,
+        repo: &Path,
+        wrote: &mut Vec<(PathBuf, Change)>,
+    ) -> Result<(), String> {
+        if let Some((file, text)) = own {
             crate::init::put(&file, text)?;
             wrote.push((under(root, &file), Change::Created));
         }
         crate::init::put(&self.file, &self.text)?;
         wrote.push((under(root, &self.file), Change::Created));
+        crate::parse::declaration::append(repo, &["builds"], &self.build_entry())?;
+        // Without `default=`, a repository with one build has that build as the default. Writing that name keeps the build the default when another build joins.
         if let Some(was) = &self.names_default {
-            append_default_image(root, was)?;
+            crate::parse::declaration::property(repo, "builds", "default", was)?;
+        }
+        wrote.push((
+            under(root, Path::new(layout::REPO_FILE)),
+            Change::Updated(format!("`{}` added as a build", self.id)),
+        ));
+        if let Some(was) = &self.names_default {
             wrote.push((
                 under(root, Path::new(layout::REPO_FILE)),
-                Change::Updated(format!("{was} set as the default image")),
+                Change::Updated(format!("{was} set as the default build")),
             ));
         }
-        Ok(wrote)
+        Ok(())
     }
 }
 
-fn implicit_default(list: &crate::model::image::List) -> Option<String> {
-    match (&list.default_image_id, list.images.as_slice()) {
-        (None, [only]) => Some(only.id.clone()),
+fn implicit_default(list: &crate::model::image::List, id: &str) -> Option<String> {
+    match (&list.default_image_id, list.builds.as_slice()) {
+        (None, []) => Some(id.to_string()),
+        (None, [only]) => Some(only.name.clone()),
         _ => None,
-    }
-}
-
-fn append_default_image(root: &Path, id: &str) -> Result<(), String> {
-    let file = root.join(layout::REPO_FILE);
-    let mut text =
-        std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    text.push_str(&format!("\ndefault-image \"{id}\"\n"));
-    std::fs::write(&file, text).map_err(|err| format!("{}: {err}", file.display()))
-}
-
-pub struct Flavour {
-    name: String,
-    image: String,
-    file: PathBuf,
-}
-
-impl Flavour {
-    pub fn collect(
-        root: &Path,
-        name: Option<String>,
-        images: Vec<String>,
-        prompt: &Prompt,
-    ) -> Result<Self, Error> {
-        let name = prompt.text(name, copy::FLAVOUR_NAME, "a name argument", None)?;
-
-        if !crate::model::image::is_name(&name) {
-            return Err(Error::Operation(format!(
-                "`{name}` must be lowercase letters, digits and dashes, starting with a letter"
-            )));
-        }
-        if name == crate::model::image::NO_FLAVOUR {
-            return Err(Error::Operation(format!(
-                "`{}` is what the ungated build is called, so it is not a flavour name",
-                crate::model::image::NO_FLAVOUR
-            )));
-        }
-
-        let (list, _) = crate::model::image::List::load(root);
-        if list.images.is_empty() {
-            return Err(Error::Operation(
-                "no image to add a flavour to; `buildc create image <name>` writes one".to_string(),
-            ));
-        }
-
-        let at = match images.len() {
-            0 => {
-                let options: Vec<Choice> = list
-                    .images
-                    .iter()
-                    .map(|image| Choice::new(&image.id, ""))
-                    .collect();
-                match prompt.choose(copy::FLAVOUR_IMAGE, &options)? {
-                    Some(at) => at,
-                    None => return Err(Error::Operation(
-                        "give `--image`, since nothing can be asked here: which image publishes it"
-                            .to_string(),
-                    )),
-                }
-            }
-            1 => match list.images.iter().position(|image| image.id == images[0]) {
-                Some(at) => at,
-                None => {
-                    let ids: Vec<&str> =
-                        list.images.iter().map(|image| image.id.as_str()).collect();
-                    return Err(Error::Operation(format!(
-                        "`{}` is not a declared image; there is {}",
-                        images[0],
-                        ids.join(", ")
-                    )));
-                }
-            },
-            _ => {
-                return Err(Error::Operation(
-                    "`create flavour` writes into one image; name one with `--image`".to_string(),
-                ))
-            }
-        };
-
-        let image = &list.images[at];
-
-        if image.flavours.iter().any(|held| held.name == name) {
-            return Err(Error::Operation(format!(
-                "`{}` already declares a flavour `{name}`",
-                image.id
-            )));
-        }
-
-        Ok(Self {
-            name,
-            image: image.id.to_string(),
-            file: PathBuf::from(image.src.name()),
-        })
-    }
-
-    pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
-        append(&self.file, &self.image, &[("flavours", None)], &self.name)?;
-        Ok(vec![(
-            under(root, &self.file),
-            Change::Updated(format!("{} added to flavours", self.name)),
-        )])
     }
 }
 
@@ -962,7 +935,7 @@ fn own_base(root: &Path, image: &str) -> Result<OwnBase, String> {
         Some((before, digest)) => (before, Some(digest.to_string())),
         None => (image, None),
     };
-    // The registry port sits before the slash, so a tag never holds a slash.
+    // A tag holds no slash because a registry port's colon comes before the first slash.
     let (repository, version) = match undigested.rsplit_once(':') {
         Some((repository, tag)) if !tag.contains('/') => (repository, Some(tag.to_string())),
         _ => (undigested, None),
@@ -977,7 +950,7 @@ fn own_base(root: &Path, image: &str) -> Result<OwnBase, String> {
         })
         .collect();
     let stem = stem.trim_matches('-');
-    // A component name starts with a letter, so a last segment that starts with a digit takes the `base-` prefix.
+    // A component name starts with a letter. A last segment that starts with a digit takes the `base-` prefix.
     let stem = match stem.starts_with(|c: char| c.is_ascii_lowercase()) {
         true => stem.to_string(),
         false => format!("base-{stem}"),
@@ -1011,36 +984,53 @@ fn choose_base(
     current: Option<&str>,
     prompt: &Prompt,
 ) -> Result<String, Error> {
+    let order = base_order(bases);
     let mut options = base_options(bases);
-    let at = current.and_then(|held| bases.iter().position(|base| base.name == held));
+    let at = current.and_then(|held| order.iter().position(|&at| bases[at].name == held));
     if prompt.draws() && !options.is_empty() {
         options.push(Choice::new(copy::OTHER_BASE, copy::OTHER_BASE_ABOUT));
         return match ask_one(prompt, copy::IMAGE_BASE, &options, at)? {
-            Some(chosen) if chosen < bases.len() => Ok(bases[chosen].name.clone()),
+            Some(chosen) if chosen < order.len() => Ok(bases[order[chosen]].name.clone()),
             Some(_) => Ok(prompt.text(
                 None,
                 copy::BASE_IMAGE,
                 "`--base`",
-                bases.first().map(|base| base.image.as_str()),
+                order
+                    .first()
+                    .and_then(|at| bases.get(*at))
+                    .map(|base| base.image.as_str()),
             )?),
             None => unreachable!("a drawn picker either chooses or cancels"),
         };
     }
     match ask_one(prompt, copy::IMAGE_BASE, &options, at)? {
-        Some(chosen) => Ok(bases[chosen].name.clone()),
+        Some(chosen) => Ok(bases[order[chosen]].name.clone()),
         None => Ok(prompt.text(
             None,
             copy::BASE_IMAGE,
             "`--base`",
-            bases.first().map(|base| base.image.as_str()),
+            order
+                .first()
+                .and_then(|at| bases.get(*at))
+                .map(|base| base.image.as_str()),
         )?),
     }
 }
 
+fn base_order(bases: &[crate::model::component::BaseComponent]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..bases.len()).collect();
+    order.sort_by_key(|&at| {
+        let base = &bases[at];
+        let fedora = base.name.contains("fedora") || base.image.contains("fedora");
+        (u8::from(!fedora), u8::from(base.family != "fedora"))
+    });
+    order
+}
+
 fn base_options(bases: &[crate::model::component::BaseComponent]) -> Vec<Choice> {
-    bases
-        .iter()
-        .map(|base| Choice::new(base_label(base), &base.about))
+    base_order(bases)
+        .into_iter()
+        .map(|at| Choice::new(base_label(&bases[at]), &bases[at].about))
         .collect()
 }
 
@@ -1083,60 +1073,89 @@ fn bootloader_options(offered: &[String]) -> Vec<Choice> {
 pub struct Component {
     path: String,
     written: Written,
-    listing: Listing,
 }
 
 enum Written {
-    Directory { file: PathBuf, text: String },
-    Inline { block: String },
+    Directory {
+        file: PathBuf,
+        text: String,
+        listing: Listing,
+    },
+    InlineBuild {
+        block: String,
+        listing: Listing,
+    },
+    InlineComponent {
+        block: String,
+        place: Place,
+        parent: String,
+        name: String,
+    },
+}
+
+pub(crate) fn refuse_vocabulary(path: &str, inline: bool) -> Result<(), Error> {
+    let top = path.split_once('/').map_or(path, |(top, _)| top);
+    if crate::parse::image::is_manifest_node(top) {
+        return Err(Error::Operation(format!(
+            "`{top}` is a manifest node, so a component file reads a bare `{top}` as that \
+             node; give `{path}` another name"
+        )));
+    }
+    if inline {
+        if let Some(segment) = path
+            .split('/')
+            .find(|segment| crate::parse::image::is_manifest_node(segment))
+        {
+            return Err(Error::Operation(format!(
+                "an inline component cannot hold the segment `{segment}` because a component file \
+                 reads it as a manifest line; give `{path}` another name"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn inline_target(
     list: &crate::model::image::List,
-    path: &str,
-    images: &[String],
+    builds: &[String],
     prompt: &Prompt,
 ) -> Result<Listing, Error> {
-    let top = path.split_once('/').map_or(path, |(top, _)| top);
-    if crate::parse::image::is_keyword(top) {
-        return Err(Error::Operation(format!(
-            "`{top}` means itself inside `image`; an inline component cannot start with `{top}`"
-        )));
-    }
-    if let Some(segment) = path
-        .split('/')
-        .find(|segment| crate::parse::image::is_manifest_node(segment))
-    {
-        return Err(Error::Operation(format!(
-            "an inline component cannot hold the segment `{segment}` because an image file \
-             reads it as a manifest line; give `{path}` another name"
-        )));
-    }
-    let image = match images {
+    let build = match builds {
         [] => None,
         [one] => Some(one.as_str()),
         many => {
             return Err(Error::Operation(format!(
-                "an inline component belongs to one image and takes one `--image`; the command \
+                "an inline component belongs to one build and takes one `--build`; the command \
                  line names {}",
                 many.join(", ")
             )))
         }
     };
-    match Listing::target_from(list, image, prompt)? {
+    match Listing::target_from(list, build, copy::TARGET_BUILD, prompt)? {
         Listing::NoImage => Err(Error::Operation(
-            "there is no image to hold an inline component; `buildc create image <name>` writes one"
+            "there is no build to hold an inline component; `buildc create image <name>` writes one"
                 .to_string(),
         )),
         Listing::Declined { asked: true } => Err(Error::Operation(
-            "an inline component lives in an image file and needs one; choose an image or \
-             flavour"
+            "an inline component lives in a build's component file and needs one; choose a build"
                 .to_string(),
         )),
         Listing::Declined { asked: false } | Listing::Cancelled => Err(Error::Operation(
-            "an inline component lives in an image file; name the image with `--image`".to_string(),
+            "an inline component lives in a build's component file; name the build with `--build`"
+                .to_string(),
         )),
         listing @ Listing::In(_) => Ok(listing),
+    }
+}
+
+fn local_choice(root: &Path, listed: &Listed) -> Choice {
+    let about = layout::under(root, listed.place.file())
+        .display()
+        .to_string();
+    let choice = Choice::new(listed.path.as_str(), &about);
+    match listed.hidden {
+        true => choice.hidden(),
+        false => choice,
     }
 }
 
@@ -1145,54 +1164,122 @@ impl Component {
         root: &Path,
         name: Option<String>,
         with: Vec<(String, String)>,
-        images: Vec<String>,
+        builds: Vec<String>,
+        inside: Option<String>,
         inline: bool,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
+        if inside.is_some() && !builds.is_empty() {
+            return Err(Error::Operation(
+                "`--build` and `--in` name different holders for the new component; give one"
+                    .to_string(),
+            ));
+        }
+        if inside.is_some() && !inline {
+            return Err(Error::Operation(
+                "`--in` writes the component inside another component, so it takes `--inline`"
+                    .to_string(),
+            ));
+        }
         let name = prompt.text(name, copy::COMPONENT_NAME, "a name argument", None)?;
         let path = name
             .split('/')
             .map(crate::init::id)
             .collect::<Result<Vec<_>, _>>()?
             .join("/");
-        let file = layout::manifest(root, &path);
-        if file.exists() && !inline {
-            return Err(Error::Operation(format!(
-                "components/{path} is already there"
-            )));
-        }
+        refuse_vocabulary(&path, inline)?;
         if with.iter().any(|(verb, _)| verb == "packages") {
             return Err(Error::Operation(format!(
-                "`--with packages=...` writes no package list; leave it out and run `buildc add \
-                 package <names...> --component {path}` after"
+                "`--with packages=...` writes no package list; run `buildc add package \
+                 <names...> --component {path}` after"
             )));
         }
-        let defined = list.images.iter().find(|image| {
-            image
-                .entries
-                .iter()
-                .any(|entry| entry.path == path && entry.inline.is_some())
-        });
-        let inline_listing = match inline {
-            false => match defined {
-                Some(image) => {
-                    return Err(Error::Operation(format!(
-                        "{} defines `{path}` inline; components/{path} would define it a \
-                         second time",
-                        image.src.name()
-                    )))
-                }
-                None => None,
-            },
-            true if layout::is_component(&layout::component(root, &path)) => {
-                return Err(Error::Operation(format!(
-                    "components/{path} is already a component; an inline `{path}` would \
-                     define it a second time"
-                )))
+        let components = layout::components(root);
+        let home = list.resolver.home();
+        let children_read_home = list
+            .builds
+            .iter()
+            .all(|build| list.scope(&build.name).is_none());
+        if !inline && children_read_home {
+            home.clone().map_err(Error::Operation)?;
+        }
+        let local = crate::parse::local::all(root, &list);
+        let vacant = |at: &str, inline: bool| -> Result<(), Error> {
+            let Some(held) = local.iter().find(|listed| listed.path == at) else {
+                return Ok(());
+            };
+            let file = held.place.file().display().to_string();
+            let folder = match home.as_ref() {
+                Ok(home) if held.place.file().starts_with(home) => layout::under(root, home),
+                _ => layout::under(root, &components),
             }
-            true => Some(inline_target(&list, &path, &images, prompt)?),
+            .display()
+            .to_string();
+            Err(Error::Operation(match (&held.place, inline) {
+                (Place::Directory { .. }, true) => format!(
+                    "{folder}/{at} is already a component; an inline `{at}` would define it a \
+                     second time"
+                ),
+                (Place::Directory { .. }, false) => format!("{folder}/{at} is already there"),
+                (Place::Inline { .. }, true) => format!(
+                    "{file} defines `{at}` inline; an inline `{at}` would define it a second time"
+                ),
+                (Place::Inline { .. }, false) => format!(
+                    "{file} defines `{at}` inline; {folder}/{at} would define it a second time"
+                ),
+            }))
         };
+        let relative = |top: &str| match top {
+            "" => path.clone(),
+            top => crate::model::image::child(Some(top), &path),
+        };
+        let mut target: Option<(Place, String, String)> = None;
+        let early = match inside.as_deref() {
+            Some(inside) => {
+                let held = crate::parse::local::named(&local, inside)?.clone();
+                let full = relative(&held.context);
+                vacant(&full, true)?;
+                target = Some((held.place, inside.to_string(), full));
+                None
+            }
+            None if inline && !builds.is_empty() => Some(inline_target(&list, &builds, prompt)?),
+            None if inline => {
+                if !prompt.asks() {
+                    return Err(Error::Operation(
+                        "an inline component lives inside another component; name it with \
+                         `--in <component>` or a build with `--build`"
+                            .to_string(),
+                    ));
+                }
+                let options: Vec<Choice> = local
+                    .iter()
+                    .map(|listed| local_choice(root, listed))
+                    .collect();
+                let Some(at) = prompt.choose(copy::COMPONENT_INSIDE, &options)? else {
+                    return Err(Error::Operation(
+                        "an inline component lives inside another component; choose one"
+                            .to_string(),
+                    ));
+                };
+                let held = local[at].clone();
+                let full = relative(&held.context);
+                vacant(&full, true)?;
+                target = Some((held.place, held.path.clone(), full));
+                None
+            }
+            None if !builds.is_empty() => Some(Listing::collect_from(&list, builds, prompt)?),
+            None => None,
+        };
+        // A taken path is refused here when its folder is already known. The check runs before the description question.
+        match &early {
+            Some(listing) => vacant(&listing.child(&path)?, inline)?,
+            None if target.is_some() => {}
+            None if children_read_home => {
+                vacant(&path, false)?;
+            }
+            None => {}
+        }
 
         let description = match with.iter().any(|(verb, _)| verb == "description") {
             true => String::new(),
@@ -1218,66 +1305,114 @@ impl Component {
         };
 
         let sections = manifest_sections(&description, &targets, &with)?;
-        let (written, listing) = match inline_listing {
-            Some(_) if sections.is_empty() => {
-                return Err(Error::Operation(
-                    "an inline component needs a manifest line; give it a description, \
-                     supported base families or a `--with` line"
-                        .to_string(),
-                ))
+        if inline && sections.is_empty() {
+            return Err(Error::Operation(
+                "an inline component needs a manifest line; give it a description, \
+                 supported base families or a `--with` line"
+                    .to_string(),
+            ));
+        }
+        let block = {
+            let body: String = sections
+                .join("\n")
+                .lines()
+                .map(|line| format!("    {line}\n"))
+                .collect();
+            format!(" {{\n{body}}}")
+        };
+        let (path, written) = match (target, early) {
+            (Some((place, parent, full)), _) => (
+                full,
+                Written::InlineComponent {
+                    block,
+                    place,
+                    parent,
+                    name: path,
+                },
+            ),
+            (None, Some(listing)) if inline => {
+                let resolved = listing.child(&path)?;
+                vacant(&resolved, true)?;
+                listing.refuse_duplicate(&list, &resolved)?;
+                (path, Written::InlineBuild { block, listing })
             }
-            Some(listing) => {
-                let body: String = sections
-                    .join("\n")
-                    .lines()
-                    .map(|line| format!("    {line}\n"))
-                    .collect();
-                (
-                    Written::Inline {
-                        block: format!(" {{\n{body}}}"),
-                    },
-                    listing,
-                )
-            }
-            None => {
+            (None, early) => {
+                let listing = match early {
+                    Some(listing) => listing,
+                    None => Listing::pick_from(&list, prompt)?,
+                };
+                let resolved = listing.child(&path)?;
+                vacant(&resolved, false)?;
+                listing.refuse_duplicate(&list, &resolved)?;
                 let mut text = vec![format!(
                     "schema-version {}",
                     crate::model::image::SCHEMA_VERSION
                 )];
                 text.extend(sections);
+                // A new rooted path goes to the default library. A path below a build's component goes under that component.
+                let folder = match resolved == path {
+                    true => home.clone().map_err(Error::Operation)?,
+                    false => components.clone(),
+                };
                 (
+                    path,
                     Written::Directory {
-                        file,
+                        file: layout::manifest_at(&folder.join(&resolved)),
                         text: format!("{}\n", text.join("\n\n")),
+                        listing,
                     },
-                    Listing::collect_from(&list, images, prompt)?,
                 )
             }
         };
-        listing.refuse_duplicate(&list, &path)?;
-        Ok(Self {
-            path,
-            written,
-            listing,
-        })
+        Ok(Self { path, written })
     }
 
     pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
-        if self.listing.cancelled() {
-            return Ok(Vec::new());
-        }
-        self.listing.validate()?;
-        let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
         match &self.written {
-            Written::Directory { file, text } => {
+            Written::Directory {
+                file,
+                text,
+                listing,
+            } => {
+                if listing.cancelled() {
+                    return Ok(Vec::new());
+                }
+                listing.validate()?;
                 crate::init::put(file, text)?;
+                let list =
+                    crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
                 let mut wrote = vec![(under(root, file), Change::Created)];
-                wrote.extend(self.listing.apply(&list, &self.path)?);
+                wrote.extend(listing.apply_children(&list, &[(self.path.as_str(), "")])?);
                 Ok(wrote)
             }
-            Written::Inline { block } => self
-                .listing
-                .apply_declaration(&list, &[(self.path.as_str(), block.as_str())]),
+            Written::InlineBuild { block, listing } => {
+                if listing.cancelled() {
+                    return Ok(Vec::new());
+                }
+                listing.validate()?;
+                let list =
+                    crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
+                listing.apply_children(&list, &[(self.path.as_str(), block.as_str())])
+            }
+            Written::InlineComponent {
+                block,
+                place,
+                parent,
+                name,
+            } => {
+                let (chain, leaf) = placed(true, name, block);
+                let file = place.file().to_path_buf();
+                match place {
+                    Place::Directory { .. } => append(&file, &chain, &leaf)?,
+                    Place::Inline { node: at, .. } => {
+                        append_inside(&file, *at, &wrap(&chain, &leaf))?
+                    }
+                }
+                Ok(vec![(
+                    under(root, &file),
+                    Change::Updated(format!("`{}` added inside `{parent}`", self.path)),
+                )])
+            }
         }
     }
 }
@@ -1289,19 +1424,31 @@ fn manifest_sections(
 ) -> Result<Vec<String>, String> {
     let mut sections: Vec<String> = Vec::new();
     if !description.is_empty() {
-        sections.push(format!("description \"{}\"", quotable(description)?));
+        sections.push(format!(
+            "description \"{}\"",
+            crate::parse::declaration::quotable(description)?
+        ));
     }
     let mut declarations: Vec<String> = Vec::new();
     if !targets.is_empty() {
         let families = targets
             .iter()
-            .map(|family| Ok(format!("\"{}\"", quotable(family)?)))
+            .map(|family| {
+                Ok(format!(
+                    "\"{}\"",
+                    crate::parse::declaration::quotable(family)?
+                ))
+            })
             .collect::<Result<Vec<_>, String>>()?
             .join(" ");
         declarations.push(format!("targets {families}"));
     }
     for (verb, value) in with {
-        declarations.push(format!("{} \"{}\"", quotable(verb)?, quotable(value)?));
+        declarations.push(format!(
+            "{} \"{}\"",
+            crate::parse::declaration::quotable(verb)?,
+            crate::parse::declaration::quotable(value)?
+        ));
     }
     if !declarations.is_empty() {
         sections.push(declarations.join("\n"));
@@ -1309,18 +1456,9 @@ fn manifest_sections(
     Ok(sections)
 }
 
-fn quotable(value: &str) -> Result<&str, String> {
-    match value.contains(['"', '\\', '\n']) {
-        true => Err(format!(
-            "`{value}` is not writable into a manifest as it is"
-        )),
-        false => Ok(value),
-    }
-}
-
 #[cfg(feature = "fuzzing")]
 pub fn fuzz_rewrite(file: &Path) {
-    let _ = append(file, "fuzz", &[], "fuzz");
+    let _ = crate::parse::declaration::append(file, &[], "fuzz");
 }
 
 fn wanted<'a>(
@@ -1388,6 +1526,7 @@ fn yes_no_options() -> [Choice; 2] {
 
 fn seeded(
     wanted: &[&crate::provider::Provider],
+    path: impl Fn(&crate::provider::Provider) -> String,
     name: &str,
     url: Option<&str>,
 ) -> Vec<(String, Vec<String>)> {
@@ -1400,7 +1539,7 @@ fn seeded(
     wanted
         .iter()
         .map(|provider| {
-            // The image name and URLs belong to the os-release component. Another component's `name` option is not the image name.
+            // The image name and the URLs belong to the `os-release` component alone.
             let lines = match provider
                 .declares
                 .provides
@@ -1414,9 +1553,29 @@ fn seeded(
                     .collect(),
                 false => Vec::new(),
             };
-            (provider.name.clone(), lines)
+            (path(provider), lines)
         })
         .collect()
+}
+
+/// The image line names `library=` only when the bare path would read another library or fail to resolve.
+fn listed(
+    resolver: &crate::resolve::library::Libraries,
+    root_library: Option<&str>,
+    name: &str,
+    owner: Option<&str>,
+) -> String {
+    let reads = resolver
+        .resolve(name, None, true, None)
+        .ok()
+        .map(|held| held.map(|held| held.library));
+    match (
+        reads == Some(owner.map(str::to_string)),
+        owner.or(root_library),
+    ) {
+        (false, Some(library)) => format!("{name} library=\"{library}\""),
+        _ => name.to_string(),
+    }
 }
 
 fn tree(entries: &[(&str, Vec<String>)]) -> String {
@@ -1459,45 +1618,30 @@ struct BaseLine<'a> {
     digest: Option<&'a str>,
 }
 
-fn image_kdl(
-    id: &str,
-    base: &BaseLine,
-    bootloader: Option<&str>,
-    components: &[(String, Vec<String>)],
-) -> String {
-    let layout = match bootloader {
-        Some(bootloader) => format!(
-            "\x20   layout {{\n\
-             \x20       bootloader \"{bootloader}\"\n\
-             \x20   }}\n\
-             \n"
-        ),
+fn image_kdl(base: &BaseLine, components: &[(String, Vec<String>)]) -> String {
+    let pins: Vec<String> = base
+        .version
+        .map(|version| format!("version \"{version}\""))
+        .into_iter()
+        .collect();
+    let digest = match base.digest {
+        Some(digest) => format!(" digest=\"{digest}\""),
         None => String::new(),
     };
-    let pins: Vec<String> = [("version", base.version), ("digest", base.digest)]
-        .into_iter()
-        .filter_map(|(node, value)| Some(format!("{node} \"{}\"", value?)))
-        // The base signature probe rewrites this under-claim once it has checked the published signature.
-        .chain(std::iter::once("signed #false".to_string()))
-        .collect();
-    let entries: Vec<(&str, Vec<String>)> = std::iter::once((base.path, pins))
+    // The base is written as unsigned because its published signature is not checked yet.
+    let base_line = format!("{}{digest} signed=#false", base.path);
+    let entries: Vec<(&str, Vec<String>)> = std::iter::once((base_line.as_str(), pins))
         .chain(
             components
                 .iter()
                 .map(|(path, lines)| (path.as_str(), lines.clone())),
         )
         .collect();
-    let members: String = tree(&entries)
-        .lines()
-        .map(|line| format!("\x20   {line}\n"))
-        .collect();
+    let members = tree(&entries);
     format!(
         "schema-version {}\n\
          \n\
-         image \"{id}\" {{\n\
-         {layout}\
-         {members}\
-         }}\n",
+         {members}",
         crate::model::image::SCHEMA_VERSION
     )
 }
@@ -1523,9 +1667,9 @@ fn home_url(list: &crate::model::image::List, index: &crate::provider::Index) ->
                 .iter()
                 .any(|provider| provider.name == entry.path)
         })
-        .flat_map(|entry| &entry.options)
-        .find(|(option, _, _)| option == "home-url")
-        .and_then(|(_, values, _)| values.first()?.as_string().map(str::to_string))
+        .flat_map(|entry| entry.settings())
+        .find(|setting| setting.name == "home-url")
+        .and_then(|setting| setting.values.first()?.as_string().map(str::to_string))
 }
 
 fn refuse_nesting(root: &Path) -> Result<(), String> {
@@ -1577,7 +1721,7 @@ fn enclosing_git(from: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn git_init(root: &Path) -> Result<(), String> {
+pub(crate) fn git_init(root: &Path) -> Result<(), String> {
     match quietly(Command::new("git").args(["init", "-b", "main"]).arg(root)).status() {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(format!("`git init` failed: {status}")),
@@ -1620,7 +1764,7 @@ fn create_remote(owner: &str, id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::declaration::{placed, unlisting};
+    use crate::parse::declaration::{append, placed, unlisting};
 
     #[test]
     fn a_component_filling_two_roles_is_offered_once() {
@@ -1664,36 +1808,24 @@ mod tests {
     #[test]
     fn repeated_targets_write_once_and_one_file_names_every_addition() {
         let root = std::env::temp_dir().join(format!("buildc-listing-{}", std::process::id()));
-        crate::init::put(
-            &root.join("image.kdl"),
-            r#"schema-version 1
-
-image "example" {
-    example { base "example" { family "fedora"; }; }
-    flavours {
-        dev
-        server
-    }
-    flavour "dev" { one }
-}
-"#,
-        )
-        .unwrap();
+        crate::testing::images(
+            &root,
+            &[(
+                "example",
+                "example { base \"example\" { family \"fedora\"; }; }\n",
+            )],
+        );
         let listing = Listing::collect(
             &root,
-            vec![
-                "example/dev".into(),
-                "example/dev".into(),
-                "example/server".into(),
-            ],
+            vec!["example".into(), "example".into()],
             &Prompt::silent(),
         )
         .unwrap();
-        assert_eq!(listing.targets().len(), 2);
+        assert_eq!(listing.images().len(), 1);
 
         let (list, _) = crate::model::image::List::load(&root);
         let wrote = listing
-            .apply_declaration(&list, &[("one", ""), ("two", "")])
+            .apply_children(&list, &[("one", ""), ("two", "")])
             .unwrap();
         assert_eq!(wrote.len(), 1);
         let Change::Updated(description) = &wrote[0].1 else {
@@ -1704,13 +1836,9 @@ image "example" {
             "{description}"
         );
 
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        let image = crate::testing::image_text(&root, "example");
         for name in ["one", "two"] {
-            assert_eq!(
-                crate::parse::image::listings(&image, name),
-                [Some("dev".to_string()), Some("server".to_string())],
-                "{image}"
-            );
+            assert_eq!(crate::parse::image::listed(&image, name), 1, "{image}");
         }
         let _ = std::fs::remove_dir_all(root);
     }
@@ -1734,6 +1862,56 @@ image "example" {
             scap_content: String::new(),
             bootloaders: bootloaders.iter().map(|b| b.to_string()).collect(),
         }
+    }
+
+    #[test]
+    fn a_path_that_two_libraries_hold_names_its_library() {
+        let root = std::env::temp_dir().join(format!("buildc-listed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for path in [
+            "one/tool",
+            "two/tool",
+            "one/only",
+            "one/own",
+            "components/own",
+        ] {
+            crate::init::put(&root.join(path).join("manifest.kdl"), "schema-version 1\n").unwrap();
+        }
+        let sources: Vec<crate::model::remote::Collection> = ["one", "two"]
+            .into_iter()
+            .map(|name| crate::model::remote::Collection {
+                name: name.to_string(),
+                at: crate::model::remote::At::Dir(name.to_string()),
+                span: Default::default(),
+            })
+            .collect();
+        let own = Some(layout::ROOT_LIBRARY);
+        let written = |default: Option<&str>, name: &str, owner: Option<&str>| {
+            let resolver = crate::resolve::library::Libraries::read(&root, &sources, own, default);
+            listed(&resolver, own, name, owner)
+        };
+        let lines = [
+            written(None, "tool", Some("two")),
+            written(None, "only", Some("one")),
+            written(None, "own", Some("one")),
+            written(None, "own", None),
+            written(Some("one"), "own", Some("one")),
+            written(Some("one"), "own", None),
+            written(own, "own", None),
+        ];
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            lines,
+            [
+                "tool library=\"two\"",
+                "only",
+                "own library=\"one\"",
+                "own library=\"local-library\"",
+                "own",
+                "own library=\"local-library\"",
+                "own",
+            ]
+        );
     }
 
     #[test]
@@ -1773,11 +1951,13 @@ image "example" {
     fn a_new_image_without_a_repository_url_uses_the_flag_or_another_image() {
         let root = std::env::temp_dir().join(format!("buildc-home-url-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        crate::init::put(
-            &root.join("image.kdl"),
-            "schema-version 1\n\nimage \"first\" {\n    os-release {\n        name \"First\"\n        home-url \"https://example.org/first\"\n    }\n}\n",
-        )
-        .unwrap();
+        crate::testing::images(
+            &root,
+            &[(
+                "first",
+                "os-release {\n    name \"First\"\n    home-url \"https://example.org/first\"\n}\n",
+            )],
+        );
         crate::init::put(
             &root.join("components/os-release/manifest.kdl"),
             "schema-version 1\n\nprovides \"os-release\"\n\noption \"name\" type=\"string\" {\n    default \"\"\n}\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
@@ -1803,11 +1983,13 @@ image "example" {
         let root =
             std::env::temp_dir().join(format!("buildc-home-url-filter-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        crate::init::put(
-            &root.join("image.kdl"),
-            "schema-version 1\n\nimage \"first\" {\n    browser {\n        home-url \"https://browser.example\"\n    }\n    os-release {\n        home-url \"https://example.org/first\"\n    }\n}\n",
-        )
-        .unwrap();
+        crate::testing::images(
+            &root,
+            &[(
+                "first",
+                "browser {\n    home-url \"https://browser.example\"\n}\nos-release {\n    home-url \"https://example.org/first\"\n}\n",
+            )],
+        );
         crate::init::put(
             &root.join("components/browser/manifest.kdl"),
             "schema-version 1\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
@@ -1872,7 +2054,7 @@ image "example" {
                 root: &root,
                 repo: "example",
                 url: Some("https://example.org/named".to_string()),
-                sources_text: "",
+                libraries_text: "",
             },
             Some("Second".into()),
             Some("base-image/own".into()),
@@ -1898,27 +2080,17 @@ image "example" {
     #[test]
     fn an_image_names_its_base_component_and_sets_its_version() {
         let known = image_kdl(
-            "bazzite",
             &BaseLine {
                 path: "base-image/bazzite",
                 version: Some("stable"),
                 digest: None,
             },
-            Some("grub2"),
             &[],
         );
         assert!(
-            known.starts_with("schema-version 1\n\nimage \"bazzite\" {\n"),
-            "{known}"
-        );
-        assert!(
             known.contains(
-                "    base-image {\n        bazzite {\n            version \"stable\"\n            signed #false\n        }\n    }\n"
+                "\nbase-image {\n    bazzite signed=#false {\n        version \"stable\"\n    }\n}\n"
             ),
-            "{known}"
-        );
-        assert!(
-            known.contains("    layout {\n        bootloader \"grub2\"\n    }\n"),
             "{known}"
         );
 
@@ -1933,28 +2105,26 @@ image "example" {
             },
         };
         let shared = image_kdl(
-            "server",
             &BaseLine {
                 path: "base-image/own",
                 version: None,
                 digest: None,
             },
-            None,
             &seeded(
                 &[&os_release],
+                |provider| provider.name.clone(),
                 "Server",
                 Some("https://github.com/someone/example"),
             ),
         );
         assert!(
             shared.contains(
-                "    os-release {\n        name \"Server\"\n        home-url \"https://github.com/someone/example\"\n    }\n"
+                "\nos-release {\n    name \"Server\"\n    home-url \"https://github.com/someone/example\"\n}\n"
             ),
             "{shared}"
         );
         assert!(!shared.contains("bug-report-url"), "{shared}");
-        assert!(!shared.contains("        version"), "{shared}");
-        assert!(!shared.contains("layout"), "{shared}");
+        assert!(!shared.contains("    version"), "{shared}");
 
         assert!(manifest_sections("", &[], &[]).unwrap().is_empty());
 
@@ -2050,7 +2220,7 @@ image "example" {
                 root: &root,
                 repo: "example",
                 url: None,
-                sources_text: "",
+                libraries_text: "",
             },
             Some("Example".into()),
             Some("  ".into()),
@@ -2063,7 +2233,43 @@ image "example" {
             Err(said) => said,
         };
         assert!(said.message().contains("`--base` is empty"), "{said}");
-        assert!(!root.join("example.image.kdl").exists());
+        assert!(!root.join("example.kdl").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_name_that_builds_declares_elsewhere_is_refused_before_a_file_is_written() {
+        let root = std::env::temp_dir().join(format!("buildc-held-build-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let repo = "schema-version 1\nbuilds {\n    example \"./images/example\"\n}\n";
+        std::fs::write(root.join(layout::REPO_FILE), repo).unwrap();
+        let said = match Image::collect(
+            Home {
+                root: &root,
+                repo: "example",
+                url: None,
+                libraries_text: "",
+            },
+            Some("Example".into()),
+            Some("quay.io/fedora/fedora-bootc:44".into()),
+            "`--image`",
+            Field::Base,
+            None,
+            &Prompt::silent(),
+        ) {
+            Ok(_) => panic!("a second build of one name was accepted"),
+            Err(said) => said,
+        };
+        assert!(
+            said.message().contains("`example` is already a build"),
+            "{said}"
+        );
+        assert!(!root.join("example.kdl").exists());
+        assert_eq!(
+            std::fs::read_to_string(root.join(layout::REPO_FILE)).unwrap(),
+            repo
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -2074,7 +2280,6 @@ image "example" {
         let sources: Vec<crate::model::remote::Collection> = ["upstream", "ublue"]
             .into_iter()
             .map(|name| crate::model::remote::Collection {
-                kind: crate::model::remote::Kind::Components,
                 name: name.to_string(),
                 at: crate::model::remote::At::Dir(dir.join(name).display().to_string()),
                 span: crate::diag::Span::default(),
@@ -2091,52 +2296,37 @@ image "example" {
     }
 
     #[test]
-    fn a_missing_flavour_block_is_written_around_the_declaration() {
+    fn a_missing_parent_block_is_written_around_the_declaration() {
         let root = std::env::temp_dir().join(format!("buildc-nested-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let file = root.join("example.image.kdl");
+        let file = root.join("example.kdl");
         std::fs::write(
             &file,
             image_kdl(
-                "example",
                 &BaseLine {
                     path: "base-image/fedora",
                     version: None,
                     digest: None,
                 },
-                None,
                 &[],
             ),
         )
         .unwrap();
 
-        let (chain, line) = placed(Some("dx"), "tools/dev-tools", "");
-        append(&file, "example", &chain, &line).unwrap();
+        let (chain, line) = placed(true, "tools/dev-tools", "");
+        append(&file, &chain, &line).unwrap();
         let written = std::fs::read_to_string(&file).unwrap();
-        let nested = [
-            "    flavour \"dx\" {",
-            "        tools {",
-            "            dev-tools",
-            "        }",
-            "    }",
-        ]
-        .join("\n");
-        assert!(written.contains(&nested), "{written}");
-
-        let (chain, line) = placed(Some("dx"), "tools/editor", " { theme \"dark\"; }");
-        append(&file, "example", &chain, &line).unwrap();
-        let written = std::fs::read_to_string(&file).unwrap();
-        assert_eq!(written.matches("flavour \"dx\"").count(), 1);
-        assert_eq!(written.matches("tools {").count(), 1);
         assert!(
-            written.contains("dev-tools\n            editor { theme \"dark\"; }\n"),
+            written.ends_with("}\n\ntools {\n    dev-tools\n}\n"),
             "{written}"
         );
 
-        append(&file, "example", &[("flavours", None)], "dx").unwrap();
+        let (chain, line) = placed(true, "tools/editor", " { theme \"dark\"; }");
+        append(&file, &chain, &line).unwrap();
         let written = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(written.matches("tools {").count(), 1);
         assert!(
-            written.contains("    flavours {\n        dx\n    }\n"),
+            written.contains("dev-tools\n    editor { theme \"dark\"; }\n"),
             "{written}"
         );
         let _ = std::fs::remove_dir_all(root);
@@ -2145,139 +2335,95 @@ image "example" {
     #[test]
     fn unlisting_removes_only_the_named_entry() {
         let root = std::env::temp_dir().join(format!("buildc-unlist-{}", std::process::id()));
-        let file = root.join("image.kdl");
+        let file = root.join("components/one.kdl");
         crate::init::put(
             &file,
-            "image \"one\" {\n    kept; trailing\n    apps {\n        gone\n    }\n    flavour \"dev\" { inline; also }\n}\n",
+            "component \"/\" {\n    kept; trailing\n    apps {\n        gone\n    }\n}\n",
         )
         .unwrap();
 
-        let text = unlisting(
-            &file,
-            &std::fs::read_to_string(&file).unwrap(),
-            "one",
-            None,
-            "apps/gone",
-        )
-        .unwrap();
-        crate::init::put(&file, &text).unwrap();
-        let text = unlisting(
-            &file,
-            &std::fs::read_to_string(&file).unwrap(),
-            "one",
-            Some("dev"),
-            "inline",
-        )
-        .unwrap();
-        crate::init::put(&file, &text).unwrap();
-        let text = unlisting(
-            &file,
-            &std::fs::read_to_string(&file).unwrap(),
-            "one",
-            None,
-            "trailing",
-        )
-        .unwrap();
-        crate::init::put(&file, &text).unwrap();
+        for name in ["apps/gone", "trailing"] {
+            let text = std::fs::read_to_string(&file).unwrap();
+            let text = unlisting(&root, &file, &text, name, false).unwrap();
+            crate::init::put(&file, &text).unwrap();
+        }
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
-            "image \"one\" {\n    kept;\n    flavour \"dev\" { also }\n}\n"
+            "component \"/\" {\n    kept;\n}\n"
         );
-        assert!(unlisting(
-            &file,
-            &std::fs::read_to_string(&file).unwrap(),
-            "one",
-            None,
-            "absent"
-        )
-        .is_err());
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(unlisting(&root, &file, &text, "absent", false).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    fn unlisted(
-        case: &str,
-        text: &str,
-        flavour: Option<&str>,
-        name: &str,
-    ) -> Result<String, String> {
+    fn unlisted(case: &str, text: &str, name: &str) -> Result<String, String> {
         let root =
             std::env::temp_dir().join(format!("buildc-unlist-{case}-{}", std::process::id()));
-        let file = root.join("image.kdl");
-        crate::init::put(&file, text).unwrap();
+        let file = root.join("components/one.kdl");
+        let text = format!("component \"/\" {{\n{text}}}\n");
+        crate::init::put(&file, &text).unwrap();
         crate::init::put(&root.join("components/hardware/nvidia/manifest.kdl"), "").unwrap();
-        let out = unlisting(&file, text, "one", flavour, name);
+        let out = unlisting(&root, &file, &text, name, false);
         std::fs::remove_dir_all(root).unwrap();
-        out
+        out.map(|out| {
+            out.strip_prefix("component \"/\" {\n")
+                .and_then(|out| out.strip_suffix("}\n"))
+                .map_or(out.clone(), str::to_string)
+        })
     }
 
     #[test]
     fn unlisting_keeps_a_parent_that_holds_another_segment() {
-        let image = "image \"one\" {\n    apps {\n        gone\n        kept\n    }\n}\n";
+        let image = "    apps {\n        gone\n        kept\n    }\n";
         assert_eq!(
-            unlisted("kept", image, None, "apps/gone").unwrap(),
-            "image \"one\" {\n    apps {\n        kept\n    }\n}\n"
+            unlisted("kept", image, "apps/gone").unwrap(),
+            "    apps {\n        kept\n    }\n"
         );
     }
 
     #[test]
     fn unlisting_removes_every_parent_it_empties() {
-        let image =
-            "image \"one\" {\n    a {\n        b {\n            c\n        }\n    }\n    kept\n}\n";
-        assert_eq!(
-            unlisted("deep", image, None, "a/b/c").unwrap(),
-            "image \"one\" {\n    kept\n}\n"
-        );
-    }
-
-    #[test]
-    fn unlisting_a_flavour_s_last_entry_keeps_the_flavour_block() {
-        let image = "image \"one\" {\n    flavour \"dev\" {\n        tools {\n            gone\n        }\n    }\n}\n";
-        assert_eq!(
-            unlisted("flavour", image, Some("dev"), "tools/gone").unwrap(),
-            "image \"one\" {\n    flavour \"dev\" {\n    }\n}\n"
-        );
+        let image = "    a {\n        b {\n            c\n        }\n    }\n    kept\n";
+        assert_eq!(unlisted("deep", image, "a/b/c").unwrap(), "    kept\n");
     }
 
     #[test]
     fn unlisting_finds_a_path_through_a_repeated_parent() {
-        let image = "image \"one\" {\n    hardware { audio-a }\n    hardware { audio-b }\n}\n";
+        let image = "    hardware { audio-a }\n    hardware { audio-b }\n";
         assert_eq!(
-            unlisted("repeated", image, None, "hardware/audio-b").unwrap(),
-            "image \"one\" {\n    hardware { audio-a }\n}\n"
+            unlisted("repeated", image, "hardware/audio-b").unwrap(),
+            "    hardware { audio-a }\n"
         );
     }
 
     #[test]
     fn unlisting_keeps_a_parent_that_is_a_component() {
-        let image = "image \"one\" {\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
+        let image = "    hardware {\n        nvidia {\n            cuda\n        }\n    }\n";
         assert_eq!(
-            unlisted("component", image, None, "hardware/nvidia/cuda").unwrap(),
-            "image \"one\" {\n    hardware {\n        nvidia\n    }\n}\n"
+            unlisted("component", image, "hardware/nvidia/cuda").unwrap(),
+            "    hardware {\n        nvidia\n    }\n"
         );
     }
 
     #[test]
     fn unlisting_keeps_the_properties_of_a_component_parent() {
-        let image = "image \"one\" {\n    hardware {\n        nvidia variant=\"lean\" {\n            cuda\n        }\n    }\n}\n";
+        let image = "    hardware {\n        nvidia variant=\"lean\" {\n            cuda\n        }\n    }\n";
         assert_eq!(
-            unlisted("variant", image, None, "hardware/nvidia/cuda").unwrap(),
-            "image \"one\" {\n    hardware {\n        nvidia variant=\"lean\"\n    }\n}\n"
+            unlisted("variant", image, "hardware/nvidia/cuda").unwrap(),
+            "    hardware {\n        nvidia variant=\"lean\"\n    }\n"
         );
     }
 
     #[test]
     fn unlisting_an_inline_definition_removes_it() {
-        let image = "image \"one\" {\n    tools {\n        fragment position=\"after\"\n    }\n    kept\n}\n";
-        assert_eq!(
-            unlisted("inline", image, None, "tools").unwrap(),
-            "image \"one\" {\n    kept\n}\n"
-        );
+        let image = "    tools {\n        fragment position=\"after\"\n    }\n    kept\n";
+        assert_eq!(unlisted("inline", image, "tools").unwrap(), "    kept\n");
     }
 
     #[test]
     fn unlisting_a_segment_that_holds_segments_is_refused() {
-        let image = "image \"one\" {\n    hardware {\n        nvidia {\n            cuda\n        }\n    }\n}\n";
-        let refused = unlisted("holds", image, None, "hardware/nvidia").unwrap_err();
+        let image = "    hardware {\n        nvidia {\n            cuda\n        }\n    }\n";
+        let refused = unlisted("holds", image, "hardware/nvidia").unwrap_err();
         assert!(refused.contains("with cuda below it"), "{refused}");
     }
 
@@ -2291,8 +2437,8 @@ image "example" {
             written: Written::Directory {
                 file: file.clone(),
                 text: "description \"hello\"\n".into(),
+                listing: Listing::Cancelled,
             },
-            listing: Listing::Cancelled,
         };
         assert!(component.apply(&root).unwrap().is_empty());
         assert!(!file.exists());
@@ -2302,12 +2448,18 @@ image "example" {
     fn inline_repo(case: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("buildc-inline-{case}-{}", std::process::id()));
-        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
         crate::init::put(
-            &root.join("image.kdl"),
-            "schema-version 1\n\nimage \"one\" {\n    kept\n}\n\nimage \"two\" { kept }\n",
+            &root.join("repo.kdl"),
+            "schema-version 1\nbuilds {\n    one\n    two\n}\n",
         )
         .unwrap();
+        for image in ["one", "two"] {
+            crate::init::put(
+                &root.join(format!("components/{image}.kdl")),
+                "schema-version 1\n\ncomponent \"/\" {\n    kept\n}\n",
+            )
+            .unwrap();
+        }
         root
     }
 
@@ -2325,6 +2477,7 @@ image "example" {
                 .map(|(verb, value)| ((*verb).to_string(), (*value).to_string()))
                 .collect(),
             images.iter().map(|image| (*image).to_string()).collect(),
+            None,
             true,
             prompt,
         )?
@@ -2333,58 +2486,38 @@ image "example" {
     }
 
     #[test]
-    fn the_inline_flag_lands_in_the_chosen_image() {
+    fn the_inline_flag_lands_bare_in_the_chosen_build() {
         let root = inline_repo("asked");
-        // The script answers the image, the description and the families in that order.
+        // The script answers the components picker with row one, then the description question and the families question. Row zero declines the picker.
         let prompt = Prompt::scripted(["1", "Apps", ""].map(str::to_string).to_vec());
         let wrote = Component::collect(
             &root,
             Some("apps".into()),
             Vec::new(),
             Vec::new(),
+            None,
             true,
             &prompt,
         )
         .unwrap()
         .apply(&root)
         .unwrap();
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        let image = std::fs::read_to_string(root.join("components/one.kdl")).unwrap();
         let directory = root.join("components/apps").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(wrote.len(), 1);
         assert_eq!(
             image,
-            "schema-version 1\n\nimage \"one\" {\n    kept\n    apps {\n        description \"Apps\"\n    }\n}\n\nimage \"two\" { kept }\n"
+            "schema-version 1\n\ncomponent \"/\" {\n    kept\n}\napps {\n    description \"Apps\"\n}\n"
         );
         assert!(!directory);
-    }
-
-    #[test]
-    fn an_inline_block_in_a_one_line_image_parts_its_children_with_semicolons() {
-        let root = inline_repo("one-line");
-        inline(
-            &root,
-            "tools",
-            &[("description", "Tools"), ("provides", "tools")],
-            &["two"],
-            &Prompt::silent(),
-        )
-        .unwrap();
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
-        std::fs::remove_dir_all(&root).unwrap();
-        assert!(
-            image.ends_with(
-                "image \"two\" { kept; tools { description \"Tools\"; provides \"tools\" } }\n"
-            ),
-            "{image}"
-        );
     }
 
     #[test]
     fn an_inline_component_that_meets_a_directory_component_is_refused_naming_both() {
         let root = inline_repo("clash");
         crate::init::put(
-            &root.join("components/apps/manifest.kdl"),
+            &root.join("components/one/apps/manifest.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -2397,12 +2530,15 @@ image "example" {
         );
         std::fs::remove_dir_all(&root).unwrap();
         let refused = refused.unwrap_err();
-        assert!(refused.message().contains("inline `apps`"), "{refused}");
-        assert!(refused.message().contains("components/apps"), "{refused}");
+        assert!(refused.message().contains("inline `one/apps`"), "{refused}");
+        assert!(
+            refused.message().contains("components/one/apps"),
+            "{refused}"
+        );
     }
 
     #[test]
-    fn an_inline_component_listed_in_two_images_is_refused() {
+    fn an_inline_component_listed_in_two_builds_is_refused() {
         let root = inline_repo("two-images");
         let refused = inline(
             &root,
@@ -2411,9 +2547,10 @@ image "example" {
             &["one", "two"],
             &Prompt::silent(),
         );
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        let image =
+            crate::testing::image_text(&root, "one") + &crate::testing::image_text(&root, "two");
         std::fs::remove_dir_all(&root).unwrap();
-        assert!(refused.unwrap_err().message().contains("one `--image`"));
+        assert!(refused.unwrap_err().message().contains("one `--build`"));
         assert!(!image.contains("apps"), "{image}");
     }
 
@@ -2427,7 +2564,7 @@ image "example" {
             &["one"],
             &Prompt::silent(),
         );
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        let image = crate::testing::image_text(&root, "one");
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused
             .unwrap_err()
@@ -2437,26 +2574,512 @@ image "example" {
     }
 
     #[test]
-    fn an_inline_component_named_after_an_image_keyword_is_refused() {
+    fn a_second_build_writes_the_first_as_the_default() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-create-implicit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(&root.join(layout::REPO_FILE), "schema-version 1\n").unwrap();
+        crate::testing::images(&root, &[("alpha", "")]);
+        let list = crate::model::image::List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(implicit_default(&list, "beta").as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn a_new_component_lands_in_the_local_default_library() {
+        let root = std::env::temp_dir().join(format!("buildc-create-shelf-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\n\nlibraries default=\"shelf\" {\n    local {\n        local-library { source \".\" }\n        shelf { source \"shelf\" }\n    }\n}\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("shelf")).unwrap();
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            vec![("description".into(), "Tools".into())],
+            Vec::new(),
+            None,
+            false,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let written = root.join("shelf/tools/manifest.kdl").is_file();
+        let stray = root.join("components/tools").exists();
+        let list = crate::model::image::List::editable(&root)
+            .map_err(|issues| issues.plain())
+            .unwrap();
+        let listed = crate::parse::local::all(&root, &list)
+            .iter()
+            .any(|listed| listed.path == "tools");
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(written);
+        assert!(!stray);
+        assert!(listed, "the other commands find the new component");
+    }
+
+    #[test]
+    fn a_remote_default_library_is_refused_before_any_question() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-create-remote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\n\nlibraries default=\"upstream\" {\n    remote {\n        upstream { source \"https://example.invalid/library\" }\n    }\n}\n",
+        )
+        .unwrap();
+        let refused = Component::collect(
+            &root,
+            Some("tools".into()),
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+            &Prompt::scripted(Vec::new()),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused
+            .err()
+            .is_some_and(|err| err.message().contains("names a remote library")));
+    }
+
+    #[test]
+    fn an_inline_component_goes_into_the_default_library_copy_of_a_path_both_folders_hold() {
+        let root = std::env::temp_dir().join(format!("buildc-create-both-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\n\nlibraries default=\"shelf\" {\n    local {\n        local-library { source \".\" }\n        shelf { source \"shelf\" }\n    }\n}\n",
+        )
+        .unwrap();
+        crate::init::put(&root.join("shelf/tools/manifest.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(
+            &root.join("components/tools/manifest.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
+        Component::collect(
+            &root,
+            Some("editors".into()),
+            vec![("description".into(), "Editors".into())],
+            Vec::new(),
+            Some("tools".into()),
+            true,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let shelf = std::fs::read_to_string(root.join("shelf/tools/manifest.kdl")).unwrap();
+        let own = std::fs::read_to_string(root.join("components/tools/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(shelf.contains("editors {"), "{shelf}");
+        assert_eq!(own, "schema-version 1\n");
+    }
+
+    #[test]
+    fn a_child_below_a_build_component_stays_in_the_root_library() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-create-scoped-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\n\nlibraries default=\"shelf\" {\n    local {\n        local-library { source \".\" }\n        shelf { source \"shelf\" }\n    }\n}\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("shelf")).unwrap();
+        crate::testing::images(&root, &[("one", "")]);
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            vec![("description".into(), "Tools".into())],
+            vec!["one".into()],
+            None,
+            false,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let written = root.join("components/one/tools/manifest.kdl").is_file();
+        let stray = root.join("shelf/tools").exists() || root.join("shelf/one").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(written);
+        assert!(!stray);
+    }
+
+    #[test]
+    fn an_inline_path_inside_a_component_holding_a_manifest_node_name_is_refused() {
+        let root = inline_repo("in-manifest-segment");
+        crate::init::put(
+            &root.join("components/desktop/manifest.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
+        let refused = Component::collect(
+            &root,
+            Some("tools/packages".into()),
+            vec![("description".into(), "Tools".into())],
+            Vec::new(),
+            Some("desktop".into()),
+            true,
+            &Prompt::silent(),
+        );
+        let manifest =
+            std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(refused
+            .err()
+            .expect("the manifest segment is refused")
+            .message()
+            .contains("the segment `packages`"));
+        assert_eq!(manifest, "schema-version 1\n");
+    }
+
+    #[test]
+    fn an_inline_component_named_after_a_manifest_node_is_refused() {
         let root = inline_repo("keyword-name");
         let refused = inline(
             &root,
-            "layout",
-            &[("description", "Layout")],
+            "conforms",
+            &[("description", "Conforms")],
             &["one"],
             &Prompt::silent(),
         );
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
+        let image = crate::testing::image_text(&root, "one");
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused
             .unwrap_err()
             .message()
-            .contains("`layout` means itself"));
-        assert!(!image.contains("layout"), "{image}");
+            .contains("`conforms` is a manifest node"));
+        assert!(!image.contains("conforms"), "{image}");
     }
 
     #[test]
-    fn a_directory_component_that_an_image_defines_inline_is_refused_naming_both() {
+    fn the_in_flag_writes_inside_the_named_component() {
+        let root = inline_repo("in-directory");
+        crate::init::put(
+            &root.join("components/desktop/manifest.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            vec![("description".into(), "Tools".into())],
+            Vec::new(),
+            Some("desktop".into()),
+            true,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let directory = root.join("components/desktop/tools").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            text.ends_with("tools {\n    description \"Tools\"\n}\n"),
+            "{text}"
+        );
+        assert!(!directory);
+    }
+
+    #[test]
+    fn the_in_flag_writes_inside_an_inline_definition() {
+        let root = inline_repo("in-inline");
+        crate::init::put(
+            &root.join("components/desktop/manifest.kdl"),
+            "schema-version 1\n\napps {\n    description \"Apps\"\n}\n",
+        )
+        .unwrap();
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            vec![("description".into(), "Tools".into())],
+            Vec::new(),
+            Some("desktop/apps".into()),
+            true,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            text.ends_with(
+                "apps {\n    description \"Apps\"\n    tools {\n        description \"Tools\"\n    }\n}\n"
+            ),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn the_in_flag_keeps_a_top_level_namesake_of_the_new_path() {
+        let root =
+            std::env::temp_dir().join(format!("buildc-inline-namesake-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
+        for component in ["desktop", "tools"] {
+            crate::init::put(
+                &root.join(format!("components/{component}/manifest.kdl")),
+                "schema-version 1\n",
+            )
+            .unwrap();
+        }
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            vec![("description".into(), "Tools".into())],
+            Vec::new(),
+            Some("desktop".into()),
+            true,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let desktop =
+            std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let top = std::fs::read_to_string(root.join("components/tools/manifest.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            desktop.ends_with("tools {\n    description \"Tools\"\n}\n"),
+            "{desktop}"
+        );
+        assert_eq!(top, "schema-version 1\n");
+    }
+
+    #[test]
+    fn the_in_flag_refuses_a_component_this_repository_does_not_hold() {
+        let root = inline_repo("in-missing");
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            Vec::new(),
+            Vec::new(),
+            Some("elsewhere/desktop".into()),
+            true,
+            &Prompt::silent(),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the missing holder is refused");
+        assert!(
+            refused
+                .message()
+                .contains("is not a component this repository holds"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn the_in_flag_and_a_build_are_refused_together() {
+        let root = inline_repo("in-and-build");
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            Vec::new(),
+            vec!["one".into()],
+            Some("two".into()),
+            true,
+            &Prompt::silent(),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("two holders are refused");
+        assert!(refused.message().contains("give one"), "{refused}");
+    }
+
+    #[test]
+    fn the_in_flag_needs_the_inline_flag() {
+        let root = inline_repo("in-without-inline");
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            Vec::new(),
+            Vec::new(),
+            Some("one".into()),
+            false,
+            &Prompt::silent(),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the missing inline flag is refused");
+        assert!(refused.message().contains("takes `--inline`"), "{refused}");
+    }
+
+    #[test]
+    fn the_in_flag_refuses_a_path_that_is_already_defined() {
+        let root = inline_repo("in-taken");
+        crate::init::put(
+            &root.join("components/desktop/manifest.kdl"),
+            "schema-version 1\n\napps {\n    description \"Apps\"\n}\n",
+        )
+        .unwrap();
+        let refused = Component::collect(
+            &root,
+            Some("apps".into()),
+            Vec::new(),
+            Vec::new(),
+            Some("desktop".into()),
+            true,
+            &Prompt::silent(),
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the taken path is refused");
+        assert!(
+            refused.message().contains("would define it a second time"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn the_inline_picker_offers_the_builds_components_first() {
+        let root = inline_repo("in-picker");
+        let prompt = Prompt::scripted(["1", "Apps", ""].map(str::to_string).to_vec());
+        Component::collect(
+            &root,
+            Some("apps".into()),
+            Vec::new(),
+            Vec::new(),
+            None,
+            true,
+            &prompt,
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let image = crate::testing::image_text(&root, "one");
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            image
+                .ends_with("component \"/\" {\n    kept\n}\napps {\n    description \"Apps\"\n}\n"),
+            "{image}"
+        );
+    }
+
+    #[test]
+    fn a_directory_component_lands_where_the_build_reads_its_bare_child() {
+        let root = inline_repo("scoped");
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            Vec::new(),
+            vec!["one".into()],
+            None,
+            false,
+            &Prompt::silent(),
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let written = root.join("components/one/tools/manifest.kdl").exists();
+        let image = crate::testing::image_text(&root, "one");
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(written);
+        assert_eq!(
+            image,
+            "schema-version 1\n\ncomponent \"/\" {\n    kept\n}\ntools\n"
+        );
+    }
+
+    #[test]
+    fn a_library_root_namesake_does_not_refuse_a_component_for_an_in_library_build() {
+        let root = inline_repo("namesake");
+        crate::init::put(
+            &root.join("components/tools/manifest.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
+        // The script answers the description, the families and the builds in that order.
+        let prompt = Prompt::scripted(["", "", "1"].map(str::to_string).to_vec());
+        Component::collect(
+            &root,
+            Some("tools".into()),
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+            &prompt,
+        )
+        .unwrap()
+        .apply(&root)
+        .unwrap();
+        let written = root.join("components/one/tools/manifest.kdl").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(written);
+    }
+
+    #[test]
+    fn choosing_no_build_declines_the_listing() {
+        let root = inline_repo("none-chosen");
+        let list = crate::model::image::List::editable(&root)
+            .unwrap_or_else(|issues| panic!("{}", issues.plain()));
+        let listing = Listing::pick_from(&list, &Prompt::scripted(vec!["0".to_string()]));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(matches!(listing, Ok(Listing::Declined { asked: true })));
+    }
+
+    #[test]
+    fn builds_that_read_a_bare_child_from_two_folders_are_refused() {
+        let root = inline_repo("two-folders");
+        crate::init::put(
+            &root.join("repo.kdl"),
+            "schema-version 1\nbuilds {\n    one\n    two \"./two\"\n}\n",
+        )
+        .unwrap();
+        crate::init::put(&root.join("two.kdl"), "schema-version 1\n").unwrap();
+        let refused = Component::collect(
+            &root,
+            Some("tools".into()),
+            Vec::new(),
+            vec!["one".into(), "two".into()],
+            None,
+            false,
+            &Prompt::silent(),
+        );
+        let written =
+            root.join("components/tools").exists() || root.join("components/one/tools").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("two folders are refused");
+        assert!(
+            refused.message().contains("`one/tools` in `one`")
+                && refused.message().contains("`tools` in `two`"),
+            "{refused}"
+        );
+        assert!(!written);
+    }
+
+    #[test]
+    fn a_directory_component_whose_top_segment_is_a_manifest_node_is_refused() {
+        let root = inline_repo("vocabulary");
+        let refused = Component::collect(
+            &root,
+            Some("permissions/tools".into()),
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+            &Prompt::silent(),
+        );
+        let directory = root.join("components/permissions").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        let refused = refused.err().expect("the manifest node name is refused");
+        assert!(
+            refused
+                .message()
+                .contains("`permissions` is a manifest node"),
+            "{refused}"
+        );
+        assert!(!directory);
+    }
+
+    #[test]
+    fn a_directory_component_that_a_build_defines_inline_is_refused_naming_both() {
         let root = inline_repo("defined-inline");
         inline(
             &root,
@@ -2468,22 +3091,26 @@ image "example" {
         .unwrap();
         let refused = Component::collect(
             &root,
-            Some("apps".into()),
+            Some("one/apps".into()),
             Vec::new(),
             Vec::new(),
+            None,
             false,
             &Prompt::silent(),
         );
-        let directory = root.join("components/apps").exists();
+        let directory = root.join("components/one/apps").exists();
         std::fs::remove_dir_all(&root).unwrap();
         let refused = refused.err().expect("the directory component is refused");
         assert!(
             refused
                 .message()
-                .contains("image.kdl defines `apps` inline"),
+                .contains("one.kdl defines `one/apps` inline"),
             "{refused}"
         );
-        assert!(refused.message().contains("components/apps"), "{refused}");
+        assert!(
+            refused.message().contains("components/one/apps"),
+            "{refused}"
+        );
         assert!(!directory);
     }
 
@@ -2503,6 +3130,7 @@ image "example" {
             Some("apps".into()),
             Vec::new(),
             Vec::new(),
+            None,
             false,
             &Prompt::silent(),
         )
@@ -2515,48 +3143,21 @@ image "example" {
     }
 
     #[test]
-    fn an_inline_component_lands_in_the_named_flavour() {
-        let root =
-            std::env::temp_dir().join(format!("buildc-inline-flavour-{}", std::process::id()));
-        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
-        crate::init::put(
-            &root.join("image.kdl"),
-            "schema-version 1\n\nimage \"one\" {\n    kept\n    flavours { dev; }\n}\n",
-        )
-        .unwrap();
-        inline(
-            &root,
-            "tools",
-            &[("description", "Tools")],
-            &["one/dev"],
-            &Prompt::silent(),
-        )
-        .unwrap();
-        let image = std::fs::read_to_string(root.join("image.kdl")).unwrap();
-        std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(
-            crate::parse::image::listings(&image, "tools"),
-            [Some("dev".to_string())],
-            "{image}"
-        );
-    }
-
-    #[test]
-    fn declining_the_image_of_an_inline_component_is_refused() {
+    fn declining_the_holder_of_an_inline_component_is_refused() {
         let root = inline_repo("declined");
-        // The script picks the row after both images, which declines.
         let refused = Component::collect(
             &root,
             Some("apps".into()),
             Vec::new(),
             Vec::new(),
+            None,
             true,
-            &Prompt::scripted(["3"].map(str::to_string).to_vec()),
+            &Prompt::scripted(["0"].map(str::to_string).to_vec()),
         );
         std::fs::remove_dir_all(&root).unwrap();
-        let refused = refused.err().expect("the declined image is refused");
+        let refused = refused.err().expect("the declined holder is refused");
         assert!(
-            refused.message().contains("an image file and needs one"),
+            refused.message().contains("lives inside another component"),
             "{refused}"
         );
     }
@@ -2569,6 +3170,7 @@ image "example" {
             Some("apps".into()),
             vec![("packages".into(), "firefox".into())],
             vec!["one".into()],
+            None,
             false,
             &Prompt::silent(),
         );
@@ -2633,15 +3235,11 @@ image "example" {
             "create-image-name",
             screen().line(copy::IMAGE_NAME, "", "Workstation", Some("Example")),
         );
-        let libraries: Vec<Choice> = Libraries::every()
-            .iter()
-            .map(|library| {
-                Choice::new(
-                    format!("{} \"{}\"", library.kind.as_str(), library.alias),
-                    library.about,
-                )
-            })
-            .collect();
+        let libraries: Vec<Choice> =
+            Libraries::every(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets")))
+                .iter()
+                .map(|library| Choice::new(library.name.clone(), library.about.clone()))
+                .collect();
         assert_screen(
             "create-repo-libraries",
             screen().picker(
@@ -2709,8 +3307,9 @@ image "example" {
             host: forge::HOST.to_string(),
             owner: Some("someone".to_string()),
             assets: PathBuf::from("assets"),
+            setup: Setup::Defaults,
             libraries: Libraries {
-                chosen: Libraries::every(),
+                chosen: Libraries::every(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets"))),
             },
             image: None,
             workflows: None,
@@ -2733,10 +3332,48 @@ image "example" {
         assert_style_at(
             &rendered,
             0,
-            8,
+            9,
             "fg: Rgb(238, 111, 248), bg: Reset, underline: Reset, modifier: BOLD",
             "the selected Create action",
         );
+    }
+
+    #[test]
+    fn a_minimal_repository_names_the_command_that_sets_each_empty_row() {
+        let repo = Repo {
+            name: NonEmpty("Example".to_string()),
+            id: NonEmpty("example".to_string()),
+            root: PathBuf::from("example"),
+            host: forge::HOST.to_string(),
+            owner: None,
+            assets: PathBuf::from("assets"),
+            setup: Setup::Minimal,
+            libraries: Libraries {
+                chosen: Libraries::every(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets"))),
+            },
+            image: None,
+            workflows: None,
+            scripts: Scripts::default(),
+            remote: false,
+            install_gh: false,
+        };
+        let rows = repo.rows();
+        let value = |field: Field| {
+            rows.iter()
+                .find(|(at, ..)| *at == field)
+                .map(|(_, _, value)| value.as_str())
+        };
+        assert_eq!(value(Field::Setup), Some(copy::SETUP_MINIMAL));
+        assert!(value(Field::Provider)
+            .unwrap()
+            .contains("buildc create image"));
+        assert!(value(Field::Image).unwrap().contains("buildc create image"));
+        assert!(value(Field::Workflows)
+            .unwrap()
+            .contains("buildc set workflows"));
+        assert!(value(Field::Scripts)
+            .unwrap()
+            .contains("buildc create scripts"));
     }
 
     #[test]

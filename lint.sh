@@ -2,8 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# `components/` here is a fetched collection cache, which is linted where it is
-# authored.
+# components/ is a fetched collection cache. It is linted where it is authored.
 mapfile -t scripts < <(find . \( -path ./target -o -path ./fuzz/target -o -path ./components \) -prune -o \
     -name '*.sh' -type f -print)
 shfmt=(shfmt -i 4 -ci -bn -sr)
@@ -38,8 +37,6 @@ if grep -nE 'kdl::|Kdl[A-Z]' src/provenance/mod.rs; then
     exit 1
 fi
 
-# Every member's sources, so a crate added to the workspace later is covered
-# without editing this. ratatui belongs to `common` and to nothing here.
 mapfile -t member_src < <(find . \( -path ./target -o -path ./fuzz/target -o -path ./components \) -prune \
     -o -path '*/src/*' -name '*.rs' -type f -print)
 
@@ -48,37 +45,18 @@ if grep -n 'ratatui' "${member_src[@]}"; then
     exit 1
 fi
 
-# Three alternatives, because one pattern does not see every form. `common::ui`
-# catches a path and a renaming import, the braced form catches `ui` imported
-# beside another component of the shared crate, and `ui::` catches a call site
-# whose import sits in another file.
+# The alternatives catch a path or a renaming import, a braced import beside another item, and a call site whose import sits in another file.
 if grep -rnE 'common::ui|common::\{[^}]*\bui\b|\bui::' src/resolve src/emit; then
     echo "lint: the resolver or an emitter reading the ui module, and that dependency runs one way" >&2
     exit 1
 fi
 
-# The rule above is textual and scoped to two directories, so a re-export of the
-# module under another name anywhere else walks around it: `pub use common::ui
-# as shim` in `copy.rs`, then `shim::form` in an emitter, and neither tree holds
-# the string `ui`. Re-exporting the module is never needed. Re-exporting one
-# item out of it is, so `pub use common::ui::tree::Change` must still pass.
+# A re-export under another name walks around the rule above. Re-exporting one item must still pass.
 if grep -rnE '^[[:space:]]*pub(\(crate\))? use common::ui( as [A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*;' src; then
     echo "lint: the ui module re-exported under another name, which walks around the rule above" >&2
     exit 1
 fi
 
-# The command modules keep one direction.
-# `setup` holds the shared questions. `report` renders the written tree.
-# `conformance` holds the profile declaration. `forge` is the host leaf.
-# `bases` holds the base-component query above the parser.
-# `declaration` writes the text edits below them. `collection` holds a declared
-# collection's tree and cache. `provider` reads the collection.
-# The command error is its own leaf.
-# Each guard names the move that cut the edge it protects.
-# A renaming import is refused too, because `use crate::import as source`
-# restores the edge without the `crate::import::` path.
-# A module that becomes a directory stops the guard.
-# The guard then names the file to update.
 forbidden() {
     local file=$1
     local pattern=$2
@@ -94,12 +72,12 @@ forbidden() {
 }
 
 forbidden src/provider.rs \
-    'crate::import::|use crate::import( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "provider reads import, and the provider index sits below the import flow"
+    'crate::add_component::|use crate::add_component( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "provider reads add_component and the provider index sits below the add component flow"
 
-forbidden src/import.rs \
+forbidden src/add_component.rs \
     'crate::(set|create)::|use crate::(set|create)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "import reads a setup command, and the shared setup lives in setup"
+    "add_component reads a setup command and the shared setup lives in setup"
 
 forbidden src/create.rs \
     'crate::set::|use crate::set( as [A-Za-z_][A-Za-z0-9_]*)?;' \
@@ -110,10 +88,10 @@ forbidden src/set.rs \
     "set reads create, and the shared setup lives in setup"
 
 forbidden src/copy.rs \
-    'crate::(create|import|set|dispatch|setup|conformance|report)::|use crate::(create|import|set|dispatch|setup|conformance|report)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(create|add_component|set|dispatch|setup|conformance|report)::|use crate::(create|add_component|set|dispatch|setup|conformance|report)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "copy holds prompt text and reads the host from forge, so every flow sits above it"
 
-forbidden src/import.rs \
+forbidden src/add_component.rs \
     'crate::dispatch::|use crate::dispatch( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "a command reads dispatch, and the command error is error.rs"
 
@@ -121,28 +99,28 @@ forbidden src/set.rs \
     'crate::dispatch::|use crate::dispatch( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "a command reads dispatch, and the command error is error.rs"
 
-forbidden src/declaration.rs \
-    'crate::(create|import|set|dispatch|setup|conformance|report|forge|provider)::|use crate::(create|import|set|dispatch|setup|conformance|report|forge|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
-    "declaration writes text and sits below every command and flow"
+forbidden src/parse/declaration.rs \
+    'crate::(create|add_component|set|dispatch|setup|conformance|report|forge|provider)::|use crate::(create|add_component|set|dispatch|setup|conformance|report|forge|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    "declaration edits the KDL files and sits below every command and flow"
 
 forbidden src/setup.rs \
-    'crate::(create|import|set|dispatch|provider)::|use crate::(create|import|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(create|add_component|set|dispatch|provider)::|use crate::(create|add_component|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "setup holds the shared questions and sits below every command"
 
 forbidden src/conformance.rs \
-    'crate::(create|import|set|dispatch|provider)::|use crate::(create|import|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(create|add_component|set|dispatch|provider)::|use crate::(create|add_component|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "conformance holds the profile declaration and sits below every command"
 
 forbidden src/report.rs \
-    'crate::(create|import|set|dispatch|provider|setup|conformance)::|use crate::(create|import|set|dispatch|provider|setup|conformance)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(create|add_component|set|dispatch|provider|setup|conformance)::|use crate::(create|add_component|set|dispatch|provider|setup|conformance)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "report renders the written tree and sits below every flow"
 
 forbidden src/forge.rs \
-    'crate::(copy|create|import|set|dispatch|setup|conformance|report)::|use crate::(copy|create|import|set|dispatch|setup|conformance|report)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(copy|create|add_component|set|dispatch|setup|conformance|report)::|use crate::(copy|create|add_component|set|dispatch|setup|conformance|report)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "forge is the host leaf, and every reader sits above it"
 
 forbidden src/bases.rs \
-    'crate::(create|import|set|dispatch|provider)::|use crate::(create|import|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
+    'crate::(create|add_component|set|dispatch|provider)::|use crate::(create|add_component|set|dispatch|provider)( as [A-Za-z_][A-Za-z0-9_]*)?;' \
     "bases holds the base-component query and sits below every command"
 
 mapfile -t parse_files < <(find src/parse -name '*.rs' -type f)
@@ -152,14 +130,11 @@ for file in "${parse_files[@]}"; do
         "parse reads the base catalog, and the catalog sits above the parser"
 done
 
-# `install.sh` is what a stranger pipes into `sh`, so it is checked as the
-# shell it declares. Every other script here is bash.
 mapfile -t posix < <(grep -lx '#!/bin/sh' "${scripts[@]}")
 mapfile -t in_bash < <(grep -Lx '#!/bin/sh' "${scripts[@]}" | grep -v '/repo\.sh$')
 mapfile -t repos < <(printf '%s\n' "${scripts[@]}" | grep '/repo\.sh$')
 shellcheck -s bash "${in_bash[@]}"
-# A fixture's `repo.sh` sets `REPO_ID` for the generated script.
-# The linter cannot see that reader, so SC2034 is off for these files.
+# A fixture's repo.sh sets REPO_ID for the generated script. The linter cannot see that assignment.
 [ "${#repos[@]}" -eq 0 ] || shellcheck -s bash -e SC2034 "${repos[@]}"
 [ "${#posix[@]}" -eq 0 ] || shellcheck -s sh "${posix[@]}"
 "${shfmt[@]}" -d "${scripts[@]}" || unformatted
@@ -167,17 +142,12 @@ cargo fmt --check || unformatted
 echo "lint: ${#scripts[@]} scripts and the source are clean"
 
 cargo deny --locked check bans licenses sources
-# The fuzz crate resolves its own lockfile.
 cargo deny --manifest-path fuzz/Cargo.toml --locked check bans licenses sources
 echo "lint: the dependency policy accepts the locked graph"
 
-# Only the scheduled fuzz job builds the fuzz targets, so this check keeps
-# their entry points compiling on every push.
 cargo check --locked --features fuzzing
 echo "lint: the fuzz entry points compile"
 
-# Only the scheduled fuzz job runs fuzz/run.sh.
-# The script stops on a fuzz target that has no corpus.
 mapfile -t fuzz_targets < <(grep -A1 '^\[\[bin\]\]' fuzz/Cargo.toml | sed -n 's/^name = "\(.*\)"$/\1/p')
 for target in "${fuzz_targets[@]}"; do
     if [ ! -d "fuzz/corpus/$target" ]; then

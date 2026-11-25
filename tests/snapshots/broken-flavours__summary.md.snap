@@ -1,8 +1,0 @@
----
-source: tests/golden.rs
----
-1 component, the ungated set.
-
-| Component | Description | Options | Satisfies | Refuses |
-| --- | --- | --- | --- | --- |
-| `core/hello` | A component in a repository whose flavours are wrong |  |  |  |

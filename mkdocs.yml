@@ -29,11 +29,11 @@ nav:
       - Repository:
           - Layout: schema/repository.md
           - repo.kdl: schema/repo.md
-          - image.kdl: schema/image.md
+          - repo.lock.kdl: schema/repo-lock.md
       - Components:
           - Layout: schema/components.md
           - manifest.kdl: schema/component.md
-          - components.lock.kdl: schema/lock.md
+          - origins.kdl: schema/origins.md
   - Project:
       - Contributing: contributing.md
       - Threat model: threat-model.md

@@ -1,3 +1,10 @@
 schema-version 1
 name "Media recipe"
-default-image "deb"
+builds default="deb" {
+    deb {
+        install {
+            bootloader "grub2"
+        }
+    }
+}
+

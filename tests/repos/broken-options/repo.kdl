@@ -1,2 +1,6 @@
 schema-version 1
 name "Broken Options"
+
+builds {
+    broken-options
+}

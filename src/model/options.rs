@@ -73,6 +73,47 @@ pub struct Variant {
     pub span: Span,
 }
 
+#[derive(Clone, PartialEq)]
+pub struct Setting {
+    pub name: String,
+    pub values: Vec<Value>,
+    pub removes: Vec<Value>,
+    pub span: Span,
+}
+
+impl Setting {
+    pub(crate) fn same_values(&self, other: &Self) -> bool {
+        self.name == other.name && self.values == other.values && self.removes == other.removes
+    }
+}
+
+#[derive(Clone)]
+pub struct Change {
+    pub option: String,
+    pub by: String,
+    pub verb: Verb,
+    pub values: Vec<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Verb {
+    Sets,
+    Replaces,
+    Appends,
+    Removes,
+}
+
+impl Verb {
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            Self::Sets => "sets",
+            Self::Replaces => "replaces",
+            Self::Appends => "appends",
+            Self::Removes => "removes",
+        }
+    }
+}
+
 pub fn env_name(option: &str) -> String {
     format!("OPT_{}", option.to_uppercase().replace('-', "_"))
 }

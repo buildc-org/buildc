@@ -28,7 +28,7 @@ pub fn hooks<'a>(image: &'a Image, root: &Path) -> Vec<(&'a Entry, Vec<String>)>
 }
 
 fn hook_scripts(root: &Path, entry: &Entry, family: &str) -> Vec<String> {
-    let dir = layout::components(root).join(&entry.path);
+    let dir = entry.dir(root);
     layout::layered(&dir, family, layout::FINALIZE_SCRIPT)
 }
 
@@ -36,17 +36,7 @@ pub fn runs_hook(root: &Path, entry: &Entry, family: &str) -> bool {
     !hook_scripts(root, entry, family).is_empty()
 }
 
-fn gated(entry: &Entry, body: String) -> String {
-    match &entry.flavour {
-        Some(flavour) => {
-            let indented: String = body.lines().map(|line| format!("    {line}\n")).collect();
-            format!("if [ \"${{FLAVOUR:-}}\" = \"{flavour}\" ]; then\n{indented}fi\n")
-        }
-        None => body,
-    }
-}
-
-// A hook's options are unset before the next hook runs because every hook is sourced into one script.
+// Every hook is sourced into one script. Each hook's options are unset before the next hook runs.
 fn scoped_options(entry: &Entry) -> (String, String) {
     let Some(component) = entry.component.as_ref() else {
         return (String::new(), String::new());
@@ -92,26 +82,18 @@ rm -rf {dest}.d
             .map(|script| format!("source {dir}/{script}\n"))
             .collect();
         let (options, unset) = scoped_options(entry);
-        let body = gated(
-            entry,
-            format!("COMPONENT_DIR={dir}\nexport COMPONENT_DIR\n{options}{sourced}{unset}"),
-        );
+        let body = format!("COMPONENT_DIR={dir}\nexport COMPONENT_DIR\n{options}{sourced}{unset}");
         let _ = write!(out, "\n# ---- {} ----\n{body}", entry.path);
     }
 
-    // Every hook runs before every witness check, because a hook can create the file a witness checks.
+    // Every hook runs before every witness check because a hook can create the file a witness checks.
     for (entry, _) in &hooks {
         let Some(component) = entry.component.as_ref() else {
             continue;
         };
         let checks = super::component_build::witnesses(component);
         if !checks.is_empty() {
-            let _ = write!(
-                out,
-                "\n# ---- {} witnesses ----\n{}",
-                entry.path,
-                gated(entry, checks)
-            );
+            let _ = write!(out, "\n# ---- {} witnesses ----\n{}", entry.path, checks);
         }
     }
 

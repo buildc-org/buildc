@@ -5,7 +5,7 @@ Buffer {
     area: Rect { x: 0, y: 0, width: 80, height: 32 },
     content: [
         "libraries                                                                       ",
-        "> [x] components "buildc"  Feature components and base images for many use cases",
+        "> [x] buildc  Feature components and base images for many use cases             ",
         "                                                                                ",
         "                                                                                ",
         "                                                                                ",
@@ -41,7 +41,8 @@ Buffer {
         x: 0, y: 0, fg: Rgb(90, 86, 224), bg: Reset, underline: Reset, modifier: BOLD,
         x: 9, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 1, fg: Rgb(238, 111, 248), bg: Reset, underline: Reset, modifier: BOLD,
-        x: 27, y: 1, fg: Rgb(238, 111, 248), bg: Reset, underline: Reset, modifier: BOLD | DIM,
+        x: 14, y: 1, fg: Rgb(238, 111, 248), bg: Reset, underline: Reset, modifier: BOLD | DIM,
+        x: 67, y: 1, fg: Rgb(238, 111, 248), bg: Reset, underline: Reset, modifier: BOLD,
         x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 31, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 13, y: 31, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,

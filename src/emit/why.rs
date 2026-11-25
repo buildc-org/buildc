@@ -59,8 +59,7 @@ pub struct Why {
     pub coprs: Vec<(String, String)>,
     pub satisfies: Vec<(String, Vec<String>)>,
     pub content: Option<String>,
-    pub imported: Option<(String, Fetch)>,
-    pub tracked: bool,
+    pub imported: Option<crate::provenance::origins::Origin>,
     pub modified: bool,
     pub built: Option<String>,
     pub fetches: Vec<Fetch>,
@@ -69,6 +68,13 @@ pub struct Why {
     pub suppressed: Vec<String>,
     pub scope: Scope,
     pub source: Option<(String, String)>,
+    pub library: Option<String>,
+    pub settings: Vec<Set>,
+}
+
+pub struct Set {
+    pub image: String,
+    pub change: crate::model::options::Change,
 }
 
 #[derive(Debug, PartialEq)]
@@ -110,7 +116,7 @@ pub fn display(paths: &[String]) -> Vec<String> {
         .collect()
 }
 
-pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
+pub fn of(list: &List, path: &str) -> Option<Why> {
     let entry = list
         .images
         .iter()
@@ -121,18 +127,16 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
     let mut why = Why {
         path: component.path.clone(),
         description: component.description.clone(),
+        library: entry.library().map(str::to_string),
         content: component.content.clone(),
         modified: matches!((&component.imported, &component.content),
-            (Some(record), Some(content)) if record.content != *content),
-        repo: component.repo.then(|| repo_urls(root, &component.dir)),
+            (Some(copy), Some(content)) if copy.hash != *content),
+        imported: component.imported.clone(),
+        repo: component.repo.then(|| repo_urls(&component.home)),
         repo_read: true,
         ..Why::default()
     };
 
-    if let Some(record) = &component.imported {
-        why.imported = Some((record.library.clone(), Fetch::of("collection", &record.pin)));
-        why.tracked = record.tracked;
-    }
     for asset in &component.assets {
         why.fetches.push(Fetch::of(&asset.name, &asset.pin));
     }
@@ -149,10 +153,17 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
                 continue;
             }
             listed = true;
-            let built = match &entry.flavour {
-                None => image.id.clone(),
-                Some(flavour) => format!("{}-{flavour}", image.id),
-            };
+            let built = image.id.clone();
+            for change in entry
+                .component
+                .iter()
+                .flat_map(|component| &component.changes)
+            {
+                why.settings.push(Set {
+                    image: built.clone(),
+                    change: change.clone(),
+                });
+            }
             if let Some(by) = &entry.imported_by {
                 why.imported_by.push(Imported {
                     image: built.clone(),
@@ -225,8 +236,7 @@ pub fn of(list: &List, path: &str, root: &std::path::Path) -> Option<Why> {
     Some(why)
 }
 
-fn repo_urls(root: &std::path::Path, dir: &str) -> Vec<String> {
-    let at = layout::component(root, dir);
+fn repo_urls(at: &std::path::Path) -> Vec<String> {
     let text: String = layout::FAMILY_DIRS
         .iter()
         .map(|(gated, _)| at.join(gated).join(crate::layout::REPO_SCRIPT))
@@ -257,24 +267,6 @@ pub fn known(list: &List) -> Vec<String> {
     out.sort();
     out.dedup();
     out
-}
-
-pub fn hidden(list: &List, known: &[String]) -> Vec<bool> {
-    known
-        .iter()
-        .map(|path| {
-            list.images
-                .iter()
-                .flat_map(|image| image.entries.iter().chain(&image.suppressed))
-                .any(|entry| {
-                    entry.path == *path
-                        && entry
-                            .component
-                            .as_ref()
-                            .is_some_and(|component| component.hidden)
-                })
-        })
-        .collect()
 }
 
 fn listed(names: &[String]) -> String {
@@ -313,6 +305,29 @@ impl Why {
                 .iter()
                 .map(|imported| Part::Text(imported.sentence())),
         );
+        if !self.settings.is_empty() {
+            out.push(Part::Heading("How its options are set".into()));
+            out.push(Part::Table(Table {
+                title: String::new(),
+                header: &["Build", "Option", "Set by", "Value"],
+                rows: self
+                    .settings
+                    .iter()
+                    .map(|set| {
+                        let change = &set.change;
+                        (
+                            vec![
+                                format!("`{}`", set.image),
+                                format!("`{}`", change.option),
+                                format!("`{}`", change.by),
+                                format!("{} {}", change.verb.word(), change.values.join(", ")),
+                            ],
+                            false,
+                        )
+                    })
+                    .collect(),
+            }));
+        }
         if let Some((url, commit)) = &self.source {
             let short: String = commit.chars().take(7).collect();
             out.push(Part::Text(format!("Built from {url} at `{short}`.")));
@@ -451,18 +466,30 @@ impl Why {
                 }
             }
         }
-        match &self.imported {
-            None => out.push(Part::Text(
-                "It was written in this repository rather than imported, so nothing upstream to compare it against."
+        match (&self.library, &self.imported) {
+            (Some(name), None) => out.push(Part::Text(format!(
+                "It is read from library `{name}`. The repository that builds it holds no copy."
+            ))),
+            (None, None) => out.push(Part::Text(
+                "It was written in this repository, so no library holds a version to compare it against."
                     .into(),
             )),
-            Some((collection, pin)) => {
-                out.extend(evidence(COLLECTION, &[(collection.as_str(), pin)], terminal));
-                out.push(Part::Text(match (self.tracked, self.modified) {
-                    (true, false) => "It tracks its library, and its content still matches what was imported. An edit to it stops `buildc check`, `buildc generate` and `buildc build`.".into(),
-                    (true, true) => "**It has been edited since it was imported**, and it tracks its library, so `buildc check`, `buildc generate` and `buildc build` refuse it.".into(),
-                    (false, false) => "It is the repository's own copy, and its content still matches what was imported.".into(),
-                    (false, true) => "**It has been edited since it was imported.** It is the repository's own copy, and the lock entry records where it came from.".into(),
+            (library, Some(copy)) => {
+                let at = match &copy.pin {
+                    Some(pin) => format!("at `{pin}`"),
+                    None => "with no recorded commit".to_string(),
+                };
+                let held = match library {
+                    Some(name) => format!("the copy in library `{name}`"),
+                    None => "the repository's own copy".to_string(),
+                };
+                out.push(Part::Text(format!(
+                    "It is {held} of `{}` from `{}` {at}.",
+                    copy.path, copy.origin
+                )));
+                out.push(Part::Text(match self.modified {
+                    false => "Its content still matches what was copied.".into(),
+                    true => "**It has been edited since it was copied.**".into(),
                 }));
             }
         }
@@ -597,14 +624,27 @@ impl Why {
             ),
             ("content", Json::optional(self.content.clone())),
             ("built", Json::optional(self.built.clone())),
+            ("library", Json::optional(self.library.clone())),
+            (
+                "settings",
+                Json::array(self.settings.iter().map(|set| {
+                    Json::object([
+                        ("image", Json::string(&set.image)),
+                        ("option", Json::string(&set.change.option)),
+                        ("by", Json::string(&set.change.by)),
+                        ("verb", Json::string(set.change.verb.word())),
+                        ("values", Json::strings(set.change.values.clone())),
+                    ])
+                })),
+            ),
             (
                 "imported",
                 match &self.imported {
                     None => Json::Null,
-                    Some((collection, pin)) => Json::object([
-                        ("collection", Json::string(collection)),
-                        ("pin", pin.json()),
-                        ("tracked", Json::Bool(self.tracked)),
+                    Some(copy) => Json::object([
+                        ("origin", Json::string(&copy.origin)),
+                        ("path", Json::string(&copy.path)),
+                        ("pin", Json::optional(copy.pin.clone())),
                     ]),
                 },
             ),
@@ -621,7 +661,6 @@ impl Why {
     }
 }
 
-const COLLECTION: &[&str] = &["Collection", "Locator", "Selector", "Verifier", "Tracker"];
 const ASSET: &[&str] = &["Asset", "Locator", "Selector", "Verifier", "Tracker"];
 
 fn evidence(header: &'static [&'static str], pins: &[(&str, &Fetch)], terminal: bool) -> Vec<Part> {
@@ -823,12 +862,20 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
         if let Some(provenance) = field(component, "provenance") {
             why.content = text(provenance, "content");
             if let Some(imported) = field(provenance, "imported") {
-                if let (Some(collection), Some(pin)) =
-                    (text(imported, "library"), field(imported, "pin"))
-                {
-                    why.modified = text(imported, "content") != why.content;
-                    why.tracked = matches!(field(imported, "tracked"), Some(Json::Bool(true)));
-                    why.imported = Some((collection, pin_of(pin, "collection")));
+                if let (Some(origin), Some(path), Some(hash)) = (
+                    text(imported, "origin"),
+                    text(imported, "path"),
+                    text(imported, "content"),
+                ) {
+                    why.modified = Some(&hash) != why.content.as_ref();
+                    why.imported = Some(crate::provenance::origins::Origin {
+                        // The copy's path stands in for its name because plan.json records none.
+                        name: path.clone(),
+                        origin,
+                        path,
+                        pin: text(imported, "pin"),
+                        hash,
+                    });
                 }
             }
             if matches!(field(provenance, "repo"), Some(Json::Bool(true))) {
@@ -1068,21 +1115,18 @@ mod tests {
     }
 
     #[test]
-    fn a_hidden_inline_component_is_marked_in_the_read_picker() {
+    fn a_hidden_component_is_marked_in_the_read_picker() {
         let root = std::env::temp_dir().join(format!("buildc-read-hidden-{}", std::process::id()));
-        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
         crate::init::put(
-            &root.join("image.kdl"),
-            "schema-version 1\n\nimage \"one\" {\n    apps {\n        hidden #true\n    }\n    tools {\n        description \"Tools\"\n    }\n}\n",
+            &crate::layout::manifest(&root, "apps"),
+            "schema-version 1\nhidden #true\n",
         )
         .unwrap();
-        let loaded = crate::load(&root);
+        let known = vec!["apps".to_string()];
+        let shown = display(&known);
+        let options = crate::dispatch::picker_options(&root, &known, &shown);
         std::fs::remove_dir_all(&root).unwrap();
-        let known = known(&loaded.list);
-        let options =
-            crate::dispatch::picker_options(&display(&known), &super::hidden(&loaded.list, &known));
-        assert_eq!(known, ["apps", "tools"]);
-        assert!(options[0].hidden && !options[1].hidden);
+        assert!(options[0].hidden);
     }
 
     #[test]
@@ -1092,10 +1136,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/repos/enforced");
         let (list, _) = crate::model::image::List::load(&root);
         let components = known(&list);
-        let options = crate::dispatch::picker_options(
-            &display(&components),
-            &super::hidden(&list, &components),
-        );
+        let options = crate::dispatch::picker_options(&root, &components, &display(&components));
         assert_screen(
             "why-component-picker",
             screen().picker(

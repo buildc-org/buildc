@@ -1,0 +1,16 @@
+schema-version 1
+
+conforms "standard"
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    one {
+        hello
+    }
+    one {
+        broken
+    }
+}

@@ -2,9 +2,8 @@ use crate::diag::{Issue, Issues};
 use crate::layout;
 use crate::model::component::Component;
 use crate::model::image::Image;
-use crate::parse::disk::Disk;
+use crate::resolve::library::Collector;
 use std::collections::BTreeMap;
-use std::path::Path;
 
 pub struct Collected {
     pub file: String,
@@ -21,8 +20,7 @@ pub struct Collection {
 
 pub fn resolve_collects(
     image: &Image,
-    root: &Path,
-    disk: &Disk,
+    collectors: &BTreeMap<String, Collector>,
     issues: &mut Issues,
 ) -> Collection {
     let mut by_file: BTreeMap<&str, &Component> = BTreeMap::new();
@@ -55,9 +53,9 @@ pub fn resolve_collects(
 
     let family = image.family();
     for component in image.components() {
-        let dir = layout::component(root, &component.dir);
-        for (file, collector) in &disk.collectors {
-            let Some(shipped) = layout::shipped(&dir, family, file) else {
+        let dir = &component.home;
+        for (file, collector) in collectors {
+            let Some(shipped) = layout::shipped(dir, family, file) else {
                 continue;
             };
             match by_file.get(file.as_str()) {
@@ -95,7 +93,9 @@ pub fn resolve_collects(
                             into,
                         });
                 }
-                None if image.components().any(|enabled| enabled.dir == *collector) => {}
+                None if image
+                    .components()
+                    .any(|enabled| enabled.home == collector.home) => {}
                 None => issues.push(
                     Issue::new(
                         format!(
@@ -105,7 +105,8 @@ pub fn resolve_collects(
                         &component.src,
                     )
                     .help(format!(
-                        "`{collector}` collects it; add it to this image, or drop the {file}"
+                        "`{}` collects it; add it to this image, or drop the {file}",
+                        collector.path
                     )),
                 ),
             }

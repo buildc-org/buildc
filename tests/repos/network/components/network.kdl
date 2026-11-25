@@ -1,0 +1,21 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    fedora-family
+    core {
+        tools
+    }
+    core {
+        fetcher
+    }
+    core {
+        quiet
+    }
+    core {
+        spliced
+    }
+}

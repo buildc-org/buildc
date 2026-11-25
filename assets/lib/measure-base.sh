@@ -22,10 +22,7 @@ for entry in ${PROVIDES:-}; do
 done
 
 for entry in ${FLOORS:-}; do
-    IFS='|' read -r name min flavour owner <<< "$entry"
-    if [ -n "$flavour" ] && [ "${FLAVOUR:-}" != "$flavour" ]; then
-        continue
-    fi
+    IFS='|' read -r name min owner <<< "$entry"
     version="$(measured_version "$out" "$name")"
     if [ -z "$version" ]; then
         echo "buildc: \`$owner\` requires \`$name\` $min or later. The base names no package to measure it from." >&2

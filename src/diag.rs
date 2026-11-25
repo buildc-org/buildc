@@ -125,6 +125,10 @@ impl Issues {
         self.0.is_empty()
     }
 
+    pub(crate) fn extend(&mut self, other: Issues) {
+        self.0.extend(other.0);
+    }
+
     pub(crate) fn blocking_edits(self) -> Self {
         Self(
             self.0
@@ -143,6 +147,14 @@ impl Issues {
             out.push('\n');
         }
         out
+    }
+
+    #[cfg(test)]
+    pub fn helps(&self) -> Vec<String> {
+        self.0
+            .iter()
+            .filter_map(|issue| issue.help.clone())
+            .collect()
     }
 
     #[cfg(test)]

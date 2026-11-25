@@ -45,9 +45,8 @@ fn managers(list: &List) -> Vec<Json> {
         if let Some((held, tracker)) = based
             .filter(|(held, _)| {
                 held.entry
-                    .options
-                    .iter()
-                    .any(|(name, ..)| name == "version")
+                    .settings()
+                    .any(|setting| setting.name == "version")
             })
             .and_then(|(held, base)| Some((held, base.tracker.as_ref()?)))
         {
@@ -56,7 +55,7 @@ fn managers(list: &List) -> Vec<Json> {
                 &file,
                 vec![
                     entry_match(&held.entry.path, "version", "currentValue", "[^\"]+"),
-                    entry_match(
+                    property_match(
                         &held.entry.path,
                         "digest",
                         "currentDigest",
@@ -67,7 +66,7 @@ fn managers(list: &List) -> Vec<Json> {
             ));
         }
         for entry in &image.entries {
-            if !entry.options.iter().any(|(name, ..)| name == "version") {
+            if !entry.settings().any(|setting| setting.name == "version") {
                 continue;
             }
             let Some(tracker) = entry
@@ -119,25 +118,39 @@ fn manager(description: &str, file: &str, patterns: Vec<String>, tracker: &Versi
     Json::object(fields)
 }
 
-fn entry_match(path: &str, field: &str, group: &str, value: &str) -> String {
-    let segment = |part: &str| {
-        let part = escaped(part);
-        format!("(?:^|[\\s{{;])(?:\"{part}\"|{part})(?:[ \\t][^{{\\n;]*)?\\{{")
-    };
+fn segment(part: &str) -> String {
+    let part = escaped(part);
+    format!("(?:^|[\\s{{;])(?:\"{part}\"|{part})")
+}
+
+fn enclosing(path: &str) -> (String, &str) {
     let parts: Vec<&str> = path.split('/').collect();
     let (last, parents) = parts.split_last().expect("a component path has a segment");
-    let mut pattern: String = parents
+    let pattern = parents
         .iter()
-        .map(|part| format!("{}{SIBLINGS}", segment(part)))
+        .map(|part| format!("{}(?:[ \\t][^{{\\n;]*)?\\{{{SIBLINGS}", segment(part)))
         .collect();
+    (pattern, last)
+}
+
+fn entry_match(path: &str, field: &str, group: &str, value: &str) -> String {
+    let (mut pattern, last) = enclosing(path);
     pattern.push_str(&segment(last));
     pattern.push_str(&format!(
-        "(?:{SIBLINGS}[;\\n])?\\s*{field}\\s+\"(?<{group}>{value})\""
+        "(?:[ \\t][^{{\\n;]*)?\\{{(?:{SIBLINGS}[;\\n])?\\s*{field}\\s+\"(?<{group}>{value})\""
     ));
     pattern
 }
 
-// Renovate runs RE2, which has no lookaround, so the nested braces are matched by explicit repetition.
+fn property_match(path: &str, field: &str, group: &str, value: &str) -> String {
+    let (mut pattern, last) = enclosing(path);
+    pattern.push_str(&segment(last));
+    pattern.push_str(&format!("[ \\t][^{{\\n;]*?{field}=\"(?<{group}>{value})\""));
+    pattern
+}
+
+/// Renovate matches with RE2 and RE2 has no lookaround.
+/// The pattern spells out each level of nested braces instead.
 const SIBLINGS: &str = r"(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*?";
 
 fn escaped(text: &str) -> String {

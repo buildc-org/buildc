@@ -27,10 +27,7 @@ pub fn packages_path(image: &Image, entry: &Entry) -> PathBuf {
 }
 
 fn file_name(entry: &Entry) -> String {
-    match &entry.flavour {
-        Some(flavour) => format!("{}@{flavour}.sh", entry.path),
-        None => format!("{}.sh", entry.path),
-    }
+    format!("{}.sh", entry.path)
 }
 
 pub fn installs_packages(image: &Image, entry: &Entry, component: &Component, root: &Path) -> bool {
@@ -46,14 +43,14 @@ fn split_packages(
     root: &Path,
 ) -> String {
     let mut out = package_step(entry, component, base_family, root);
-    let on_disk = layout::component(root, &entry.path);
+    let on_disk = entry.dir(root);
     if image.answers(layout::SELINUX.capability) && !layout::SELINUX.files(&on_disk).is_empty() {
         out.push_str("\nsource /ctx/lib/selinux-helpers.sh\nensure_checkpolicy\n");
     }
     out
 }
 
-// A RUN layer inherits no shell from the previous one, so the script layer sources the family helper and repeats the COPR exports its own scripts read.
+// A RUN layer starts a new shell. The script layer sources the family helper and repeats the COPR exports its own scripts read.
 fn carried(component: &Component, base_family: &str) -> String {
     let mut out =
         String::from("\nif [ -f /ctx/lib/family.sh ]; then\n    source /ctx/lib/family.sh\nfi\n");
@@ -80,7 +77,7 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
         let Some(component) = entry.component.as_ref() else {
             continue;
         };
-        let prelude = prelude(entry, component, &image.boot);
+        let prelude = prelude(entry, component);
         if witness_step(root, entry, base_family, component) {
             let body = witnesses(component);
             out.push((witness_path(image, entry), format!("{prelude}{body}")));
@@ -98,13 +95,13 @@ pub fn scripts(image: &Image, collection: &Collection, root: &Path) -> Vec<(Path
             }
             false => {
                 let packages = package_step(entry, component, base_family, root);
-                out.push((path(image, entry), format!("{prelude}{packages}{rest}")));
+                if !packages.is_empty() || !rest.is_empty() {
+                    out.push((path(image, entry), format!("{prelude}{packages}{rest}")));
+                }
             }
         }
-        if entry.flavour.is_none() {
-            if let Some(tail) = tail(entry, component, collection, base_family, root) {
-                out.push((tail_path(image, entry), format!("{prelude}{tail}")));
-            }
+        if let Some(tail) = tail(entry, component, collection, base_family, root) {
+            out.push((tail_path(image, entry), format!("{prelude}{tail}")));
         }
     }
     out
@@ -121,9 +118,6 @@ pub fn tail(
     base_family: &str,
     root: &Path,
 ) -> Option<String> {
-    if entry.flavour.is_some() {
-        return None;
-    }
     if overlay_prefixes(root, entry, base_family).is_empty() {
         return None;
     }
@@ -172,7 +166,7 @@ fn witnesses_in_layer(root: &Path, entry: &Entry, family: &str, component: &Comp
 }
 
 pub fn overlay_prefixes(root: &Path, entry: &Entry, family: &str) -> Vec<String> {
-    let on_disk = layout::component(root, &entry.path);
+    let on_disk = entry.dir(root);
     let mut out = Vec::new();
     if on_disk.join(layout::OVERLAY).is_dir() {
         out.push(String::new());
@@ -186,7 +180,7 @@ pub fn overlay_prefixes(root: &Path, entry: &Entry, family: &str) -> Vec<String>
 }
 
 pub fn package_reads_dir(root: &Path, entry: &Entry, family: &str) -> bool {
-    let on_disk = layout::component(root, &entry.path);
+    let on_disk = entry.dir(root);
     layout::shipped(&on_disk, family, layout::REPO_SCRIPT).is_some()
         || !layout::layered(&on_disk, family, layout::PACKAGES_SCRIPT).is_empty()
 }
@@ -199,47 +193,29 @@ pub fn script_reads_dir(
     family: &str,
     collection: &Collection,
 ) -> bool {
-    let on_disk = layout::component(root, &entry.path);
+    let on_disk = entry.dir(root);
     let packages_here =
         !splits(image, entry, component, root) && package_reads_dir(root, entry, family);
     let has_overlay = !overlay_prefixes(root, entry, family).is_empty();
-    let collected_here = collection.by_component.contains_key(&entry.path)
-        && (entry.flavour.is_some() || !has_overlay);
+    let collected_here = collection.by_component.contains_key(&entry.path) && !has_overlay;
     !layout::layered(&on_disk, family, layout::SCRIPT).is_empty()
         || (image.answers(layout::SELINUX.capability)
             && !layout::SELINUX.files(&on_disk).is_empty())
         || (image.answers(layout::APPARMOR.capability)
             && !layout::APPARMOR.files(&on_disk).is_empty())
-        || (entry.flavour.is_some() && has_overlay)
         || collected_here
         || packages_here
 }
 
 pub fn tail_reads_dir(root: &Path, entry: &Entry, family: &str, collection: &Collection) -> bool {
-    entry.flavour.is_none()
-        && !overlay_prefixes(root, entry, family).is_empty()
+    !overlay_prefixes(root, entry, family).is_empty()
         && collection.by_component.contains_key(&entry.path)
 }
 
-fn prelude(entry: &Entry, component: &Component, boot: &str) -> String {
+fn prelude(entry: &Entry, component: &Component) -> String {
     let dir = format!("/ctx/components/{}", entry.path);
     let mut out = String::from(HEADER);
     let _ = write!(out, "\nCOMPONENT_DIR={dir}\nexport COMPONENT_DIR\n");
-    if !boot.is_empty() {
-        let _ = writeln!(out, "BOOT_CHAIN={}", shell(boot));
-        out.push_str("export BOOT_CHAIN\n");
-    }
-
-    if let Some(flavour) = &entry.flavour {
-        let _ = write!(
-            out,
-            "\nif [ \"${{FLAVOUR:-}}\" != \"{flavour}\" ]; then\n\
-             \x20   echo \"skipping {}: not built for '${{FLAVOUR:-the ungated build}}'\"\n\
-             \x20   exit 0\n\
-             fi\n",
-            entry.path
-        );
-    }
 
     if !component.resolved.is_empty() || !component.assets.is_empty() {
         out.push('\n');
@@ -293,11 +269,23 @@ fn installs(component: &Component, base_family: &str) -> bool {
         .any(|group| group.family == base_family)
 }
 
+pub fn runs(
+    entry: &Entry,
+    component: &Component,
+    collection: &Collection,
+    base_family: &str,
+    image: &Image,
+    root: &Path,
+) -> bool {
+    !package_step(entry, component, base_family, root).is_empty()
+        || !rest(entry, component, collection, base_family, image, root).is_empty()
+}
+
 fn package_step(entry: &Entry, component: &Component, base_family: &str, root: &Path) -> String {
     let dir = format!("/ctx/components/{}", entry.path);
     let mut out = String::new();
 
-    let on_disk = layout::component(root, &entry.path);
+    let on_disk = entry.dir(root);
     if let Some(at) = layout::shipped(&on_disk, base_family, layout::REPO_SCRIPT) {
         match repo_id(&on_disk.join(&at)).filter(|_| crate::parse::component::rpm(base_family)) {
             Some(id) => {
@@ -388,7 +376,7 @@ fn rest(
     root: &Path,
 ) -> String {
     let dir = format!("/ctx/components/{}", entry.path);
-    let on_disk = layout::component(root, &entry.path);
+    let on_disk = entry.dir(root);
     let mut out = String::new();
 
     for key in &component.keys {
@@ -427,28 +415,9 @@ fn rest(
         }
     }
 
-    match entry.flavour {
-        Some(_) => {
-            for gated in overlay_prefixes(root, entry, base_family) {
-                let at = match gated.is_empty() {
-                    true => dir.clone(),
-                    false => format!("{dir}/{gated}"),
-                };
-                let _ = write!(out, "\ncp -rT {at}/files /\n");
-            }
-            out.push_str(&after_overlays(
-                entry,
-                component,
-                collection,
-                base_family,
-                root,
-            ));
-        }
-        None if overlay_prefixes(root, entry, base_family).is_empty() => {
-            out.push_str(&collected(entry, collection, &dir));
-            out.push_str(&witnesses_in_layer(root, entry, base_family, component));
-        }
-        None => {}
+    if overlay_prefixes(root, entry, base_family).is_empty() {
+        out.push_str(&collected(entry, collection, &dir));
+        out.push_str(&witnesses_in_layer(root, entry, base_family, component));
     }
 
     out

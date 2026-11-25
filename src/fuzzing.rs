@@ -27,8 +27,9 @@ fn write(path: &Path, text: &str) {
         .unwrap_or_else(|error| panic!("cannot write fuzz input {}: {error}", path.display()));
 }
 
+const REPO: &str = "schema-version 1\nname \"Fuzz\"\nbuilds { fuzz \"./image\"; }\n";
 const IMAGE: &str =
-    "schema-version 1\nimage \"fuzz\" {\n    base-image {\n        fuzz\n    }\n    fuzz\n}\n";
+    "schema-version 1\ncomponent \"/\" {\n    base-image {\n        fuzz\n    }\n    fuzz\n}\n";
 const BASE: &str = "components/base-image/fuzz/manifest.kdl";
 const BASE_MANIFEST: &str =
     "schema-version 1\nbase \"example.invalid/fuzz:1\" { family \"fedora\"; }\n";
@@ -41,28 +42,19 @@ pub fn repository_kdl(kind: u8, text: &str) {
             let _ = List::load(root.path());
         }
         1 => {
-            write(
-                &root.path().join("repo.kdl"),
-                "schema-version 1\nname \"Fuzz\"\n",
-            );
+            write(&root.path().join("repo.kdl"), REPO);
             write(&root.path().join("image.kdl"), text);
             let _ = List::load(root.path());
         }
         2 => {
-            write(
-                &root.path().join("repo.kdl"),
-                "schema-version 1\nname \"Fuzz\"\n",
-            );
+            write(&root.path().join("repo.kdl"), REPO);
             write(&root.path().join("image.kdl"), IMAGE);
             write(&root.path().join(BASE), BASE_MANIFEST);
             write(&root.path().join("components/fuzz/manifest.kdl"), text);
             let _ = crate::load(root.path());
         }
         _ => {
-            write(
-                &root.path().join("repo.kdl"),
-                "schema-version 1\nname \"Fuzz\"\n",
-            );
+            write(&root.path().join("repo.kdl"), REPO);
             write(&root.path().join("image.kdl"), IMAGE);
             write(&root.path().join(BASE), text);
             let _ = crate::bases::catalog(root.path(), &[]);
@@ -81,27 +73,32 @@ pub fn kdl_rewrites(text: &str) {
 
 fn fuzz_rewrites(text: &str) {
     let spans = [
-        crate::parse::repo::workflows_span(text),
-        crate::parse::image::conforms_span(text, "fuzz"),
+        crate::parse::repo::github_span(text),
         crate::parse::component::satisfies_span(text),
     ];
     for span in spans {
-        let _ = crate::declaration::splice(text, span, "fuzz \"value\"");
-        let _ = crate::declaration::splice(text, span, "");
+        let _ = crate::parse::declaration::splice(text, span, "fuzz \"value\"");
+        let _ = crate::parse::declaration::splice(text, span, "");
     }
+    let _ = crate::parse::declaration::argument(
+        text,
+        "conforms",
+        "fuzz",
+        crate::parse::image::is_header,
+    );
 }
 
 pub fn provenance_record(text: &str) {
     let root = root("record");
-    write(&crate::layout::lock(root.path()), text);
-    let _ = crate::provenance::lock::read(root.path());
-    crate::provenance::lock::check(root.path(), &mut Issues::default());
+    write(&crate::layout::origins(root.path()), text);
+    let _ = crate::provenance::origins::read(root.path());
+    crate::provenance::origins::check(root.path(), &[], &mut Issues::default());
 }
 
 pub fn component_scripts(text: &str) {
     let root = root("scripts");
     let component = "schema-version 1\ndescription \"Fuzz\"\ntargets \"fedora\"\n";
-    let repo = "schema-version 1\nname \"Fuzz\"\nsecurity-policy {\n    network {\n        scripts \"deny\"\n    }\n}\n";
+    let repo = "schema-version 1\nname \"Fuzz\"\nbuilds { fuzz \"./image\"; }\nsecurity-policy {\n    network {\n        scripts \"deny\"\n    }\n}\n";
     write(&root.path().join("repo.kdl"), repo);
     write(&root.path().join("image.kdl"), IMAGE);
     write(&root.path().join(BASE), BASE_MANIFEST);

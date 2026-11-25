@@ -1,0 +1,27 @@
+---
+source: tests/golden/harness.rs
+---
+A `conforms` turns the scan on: every build measures `example` against the profile and publishes the score.
+
+  1) standard  Standard System Security Profile for Fedora
+  2) ospp  Protection Profile for General Purpose Operating Systems
+SCAP profile [1-2, 0 for none]: 1
+
+  1) Add a reference
+  2) Copy into the repository
+components that claim rules in this profile [1-2, 0 for none]: 2
+
+Components to be copied:
+claims/sshd > ./components/sshd
+
+Copy the components? (Confirm/Cancel)
+Confirm
+
+
+example/
+├── components/
+│   ├── sshd/
+│   │   └── + manifest.kdl
+│   └── + origins.kdl
+└── ~ example.kdl  measured against `standard`, and sshd listed
+==== exit 0

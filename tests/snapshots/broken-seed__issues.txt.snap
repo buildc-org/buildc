@@ -1,17 +1,17 @@
 ---
 source: tests/golden/harness.rs
 ---
-  x `buildc-org` is not a collection this repository declares
+  x `buildc-org` is not a library this repository declares
   help: a repository is seedable only if it publishes its own components/ as a
-        collection, and declares it in `sources` under the owner they are
-        imported as: that is what a seeded repository fetches them through
+        library, and declares it in `libraries` under the name a seeded
+        repository reads it by
 
   x `core/hello` is in no collection the seed can name
-    ,-[tests/repos/broken-seed/example.image.kdl:9:9]
+    ,-[tests/repos/broken-seed/components/example.kdl:9:9]
   8 |     core {
   9 |         hello
     :         ^^|^^
-    :           `-- `buildc-org` is not declared in `sources`
+    :           `-- `buildc-org` is not declared in `libraries`
  10 |     }
     `----
   help: a seed lists a component by name and nothing else, so one nothing can

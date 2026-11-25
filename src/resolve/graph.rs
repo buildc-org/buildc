@@ -1,5 +1,5 @@
 use crate::diag::{Issue, Issues};
-use crate::model::component::{Capability, Component, Position};
+use crate::model::component::{Capability, Component};
 use crate::model::image::{Entry, Image};
 use crate::model::version::Version;
 use crate::provider::Index;
@@ -58,8 +58,8 @@ fn same_key(capability: &str, providers: &[&Component]) -> bool {
 
 fn nowhere(index: &Index, capability: &str, image: &Image) -> String {
     let next = match index.sourced() {
-        true => "`buildc import component` lists what the declared libraries provide",
-        false => "repo.kdl declares no `sources`, so there is no collection to import one from",
+        true => "`buildc add component` lists what the declared libraries provide",
+        false => "repo.kdl declares no `libraries`, so there is no library to add one from",
     };
     let base = match &image.base {
         Some(base) => format!("the base `{}`", base.path),
@@ -105,11 +105,9 @@ fn check_removes(image: &Image, issues: &mut Issues) {
     for component in image.components() {
         for decl in &component.removes {
             let supplied = image.base_answers(&decl.name)
-                || image.components().any(|other| {
-                    !std::ptr::eq(other, component)
-                        && super::meet(other.flavour.as_deref(), component.flavour.as_deref())
-                        && other.answers(&decl.name)
-                });
+                || image
+                    .components()
+                    .any(|other| !std::ptr::eq(other, component) && other.answers(&decl.name));
             if supplied {
                 continue;
             }
@@ -136,26 +134,6 @@ fn importer<'a>(image: &'a Image, path: &str) -> Option<&'a str> {
         .and_then(|entry| entry.imported_by.as_deref())
 }
 
-fn elsewhere(component: &Component, providers: &[&Component]) -> Option<String> {
-    let reaches = |provider: &&Component| {
-        provider.flavour.is_none() || provider.flavour.as_ref() == component.flavour.as_ref()
-    };
-    if providers.is_empty() || providers.iter().any(reaches) {
-        return None;
-    }
-    let named: Vec<String> = providers
-        .iter()
-        .map(|provider| {
-            format!(
-                "`{}` on the `{}` flavour",
-                provider.path,
-                provider.flavour.as_deref().unwrap_or_default()
-            )
-        })
-        .collect();
-    Some(crate::said(&named))
-}
-
 fn answering<'m>(image: &'m Image, required: &str) -> Vec<&'m Component> {
     image
         .components()
@@ -167,31 +145,21 @@ fn clashing<'m>(
     providers: &[&'m Component],
     declares: &impl Fn(&&Component) -> bool,
 ) -> Vec<&'m Component> {
-    let side = |component: &'m Component| (component.flavour.as_deref(), declares(&component));
-    providers
-        .iter()
-        .enumerate()
-        .filter(|&(at, &one)| {
-            providers
-                .iter()
-                .enumerate()
-                .any(|(other_at, &other)| at != other_at && super::conflict(side(one), side(other)))
-        })
-        .map(|(_, &component)| component)
-        .collect()
+    match providers.len() > 1 && providers.iter().any(declares) {
+        true => providers.to_vec(),
+        false => Vec::new(),
+    }
 }
 
-/// The user reads the issues in the order these checks run.
+/// The user reads the issues in the order that these checks run.
 pub fn check_graph(image: &Image, index: &Index, issues: &mut Issues) {
     check_helpers(image, issues);
     check_base_overlap(image, issues);
     check_family(image, issues);
     check_exclusive(image, issues);
     check_base_requires(image, index, issues);
-    check_boot_chain(image, index, issues);
     check_removes(image, issues);
     check_requires(image, index, issues);
-    check_after(image, issues);
     check_versions(image, issues);
 }
 
@@ -392,45 +360,10 @@ fn check_base_requires(image: &Image, index: &Index, issues: &mut Issues) {
     }
 }
 
-fn check_boot_chain(image: &Image, index: &Index, issues: &mut Issues) {
-    if image.boot.is_empty() && !answering(image, "boot-chain-uki").is_empty() {
-        issues.push(
-            Issue::new(
-                format!(
-                    "`{}` enables a UKI chain but declares no `boot-chain`",
-                    image.id
-                ),
-                &image.src,
-            )
-            .at(image.span, "no UKI trust route")
-            .help("declare `boot-chain \"uki-shim\"` or `boot-chain \"uki-db\"`"),
-        );
-    }
-    for capability in ["boot-chain-uki", "secureboot-enrolment"] {
-        let present = answering(image, capability)
-            .iter()
-            .any(|component| component.flavour.is_none());
-        if !image.boot.is_empty() && !present {
-            issues.push(
-                Issue::new(
-                    format!(
-                        "`{}` declares `boot-chain \"{}\"` but no ungated component provides `{capability}`",
-                        image.id, image.boot
-                    ),
-                    &image.src,
-                )
-                .at(image.span, "incomplete UKI chain")
-                .help(satisfied_by(index, image, capability)),
-            );
-        }
-    }
-}
-
 fn check_requires(image: &Image, index: &Index, issues: &mut Issues) {
     for component in image.components() {
-        let flavour = component.flavour.as_deref();
         for decl in &component.requires {
-            if let Some(remover) = image.remover(&decl.name, flavour) {
+            if let Some(remover) = image.remover(&decl.name) {
                 issues.push(
                     Issue::new(
                         format!(
@@ -447,12 +380,12 @@ fn check_requires(image: &Image, index: &Index, issues: &mut Issues) {
                 );
                 continue;
             }
-            if image.base_meets(&decl.name, flavour) {
+            if image.base_meets(&decl.name) {
                 continue;
             }
             let providers: Vec<&Component> = answering(image, &decl.name)
                 .into_iter()
-                .filter(|provider| image.component_meets(provider, &decl.name, flavour))
+                .filter(|provider| image.component_meets(provider, &decl.name))
                 .collect();
             if providers.is_empty()
                 && image
@@ -476,43 +409,6 @@ fn check_requires(image: &Image, index: &Index, issues: &mut Issues) {
                 );
                 continue;
             }
-
-            if let Some(gated) = elsewhere(component, &providers) {
-                issues.push(
-                    Issue::new(
-                        format!(
-                            "`{}` requires `{}`, which only {gated} provides",
-                            component.path, decl.name
-                        ),
-                        &component.src,
-                    )
-                    .at(decl.span, "unsatisfied on every other target")
-                    .help("either gate this component to the same flavour, or move the provider out of the flavour block"),
-                );
-            }
-        }
-    }
-}
-
-fn check_after(image: &Image, issues: &mut Issues) {
-    for component in image.components() {
-        for decl in &component.after {
-            if image.base_answers(&decl.name) {
-                continue;
-            }
-            if let Some(gated) = elsewhere(component, &answering(image, &decl.name)) {
-                issues.push(
-                    Issue::new(
-                        format!(
-                            "`{}` builds after `{}`, which only {gated} provides",
-                            component.path, decl.name
-                        ),
-                        &component.src,
-                    )
-                    .at(decl.span, "ineffective on every other target")
-                    .help("either gate this component to the same flavour, or move the provider out of the flavour block"),
-                );
-            }
         }
     }
 }
@@ -521,7 +417,7 @@ fn check_versions(image: &Image, issues: &mut Issues) {
     let Some(base) = &image.base else {
         return;
     };
-    // A base pinned by digest is checked against the versions its probe recorded.
+    // A base pinned by digest is checked against the versions that its probe recorded.
     // An unpinned base is measured during the image build instead.
     let pinned = base.image.contains('@');
     for (component, requirement) in base.image_requirements(image.components()) {
@@ -636,63 +532,6 @@ fn check_versions(image: &Image, issues: &mut Issues) {
                      build-only provider cannot be measured.",
                 ),
             );
-        }
-    }
-}
-
-pub fn check_fragments(image: &Image, issues: &mut Issues) {
-    let mut gated = false;
-    for entry in &image.entries {
-        let Some(component) = &entry.component else {
-            continue;
-        };
-        gated |= entry.flavour.is_some();
-        let Some(body) = &component.fragment else {
-            continue;
-        };
-        let path = &entry.path;
-
-        let above_gate = !gated && component.fragment_position != Position::Tail;
-        if above_gate && (body.contains("${FLAVOUR}") || body.contains("$FLAVOUR")) {
-            issues.push(
-                Issue::new(
-                    format!("`{path}` expands FLAVOUR above the flavour gate"),
-                    &image.src,
-                )
-                .at(entry.span, "listed above the first flavour-gated component")
-                .help("ARG FLAVOUR is declared directly above the first gated entry, so a fragment before it would expand to an empty string"),
-            );
-        }
-
-        let runs = body.lines().any(|l| l.trim_start().starts_with("RUN "));
-        let Some(flavour) = entry.flavour.as_ref().filter(|_| runs) else {
-            continue;
-        };
-        let declared = body
-            .split("FLAVOUR_GATE=")
-            .nth(1)
-            .map(|rest| rest.split_whitespace().next().unwrap_or_default());
-        match declared {
-            Some(d) if d == flavour => {}
-            Some(d) => issues.push(
-                Issue::new(
-                    format!("`{path}` is listed under `{flavour}` but its fragment gates on `{d}`"),
-                    &image.src,
-                )
-                .at(entry.span, "listed here"),
-            ),
-            None => issues.push(
-                Issue::new(
-                    format!(
-                        "`{path}` is listed under `{flavour}` but its fragment sets no FLAVOUR_GATE"
-                    ),
-                    &image.src,
-                )
-                .at(entry.span, "the flavour gate would be silently ignored")
-                .help(
-                    "a fragment is emitted unconditionally, so anything it runs has to carry the gate itself",
-                ),
-            ),
         }
     }
 }

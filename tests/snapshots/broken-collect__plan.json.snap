@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-collect",
   "pr_target": "broken-collect",
   "pr_published": "broken-collect",
-  "ungated_target": "broken-collect",
-  "ungated_published": "broken-collect",
   "cache_image": "broken-collect-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-collect",
-      "file": "./image.kdl",
+      "file": "./components/broken-collect.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-collect",
           "image": "broken-collect",
-          "flavour": null,
           "published": "broken-collect",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/menu",
-              "flavour": null,
               "variant": null,
               "description": "Collects a file, but declares no destination for it",
               "options": {},
@@ -90,7 +84,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/absent",
-              "flavour": null,
               "variant": null,
               "description": "Contributes a file it does not ship, twice, out of range",
               "options": {},
@@ -118,7 +111,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/unclaimed",
-              "flavour": null,
               "variant": null,
               "description": "Ships a collected filename nothing in this image collects",
               "options": {},
@@ -146,7 +138,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/shipper",
-              "flavour": null,
               "variant": null,
               "description": "Ships a file whose collector is enabled but refused",
               "options": {},
@@ -171,6 +162,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "broken-collect",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -186,6 +204,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-collect/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

@@ -6,3 +6,11 @@ security-policy {
         scripts "deny"
     }
 }
+
+builds {
+    broken-network {
+        install {
+            bootloader "grub2"
+        }
+    }
+}

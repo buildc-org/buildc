@@ -2,7 +2,7 @@
 source: tests/golden/harness.rs
 ---
   x the component graph has a cycle
-    ,-[tests/repos/broken-cycle/image.kdl:9:9]
+    ,-[tests/repos/broken-cycle/components/broken-cycle.kdl:9:9]
   8 |     core {
   9 |         a
     :         |

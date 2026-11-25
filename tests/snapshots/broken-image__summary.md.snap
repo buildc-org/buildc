@@ -1,7 +1,8 @@
 ---
 source: tests/golden/harness.rs
 ---
-0 components, the ungated set.
+1 component.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
+| `broken-image` |  |  |  |  |

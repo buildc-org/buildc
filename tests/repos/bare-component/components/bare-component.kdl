@@ -1,0 +1,14 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    hello
+    menu
+    apps
+    apps {
+        editor
+    }
+}

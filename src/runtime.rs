@@ -37,6 +37,7 @@ fn man_page_missing(line: &str) -> bool {
     !page.contains('\'') && digits(code)
 }
 
+// A unit instance carries its template's faults. A line naming the template belongs to this unit.
 fn about_another_unit(line: &str, unit: &str) -> bool {
     const TYPES: [&str; 11] = [
         ".service",
@@ -56,7 +57,6 @@ fn about_another_unit(line: &str, unit: &str) -> bool {
         return false;
     };
     let name = path.rsplit('/').next().unwrap_or_default();
-    // A unit instance carries its template's faults, so a line naming the template is this unit's own.
     let template = match (unit.split_once('@'), unit.rfind('.')) {
         (Some((prefix, _)), Some(dot)) => format!("{prefix}@{}", &unit[dot..]),
         _ => unit.to_string(),
@@ -69,6 +69,7 @@ fn about_another_unit(line: &str, unit: &str) -> bool {
         && name != template
 }
 
+// A failed verify cannot read as a pass. The unfiltered text stands when no line names this unit.
 fn unexpected<'a>(text: &'a str, unit: &str, allowed: &[&str]) -> Vec<&'a str> {
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     let own: Vec<&str> = lines
@@ -76,7 +77,6 @@ fn unexpected<'a>(text: &'a str, unit: &str, allowed: &[&str]) -> Vec<&'a str> {
         .copied()
         .filter(|line| !about_another_unit(line, unit))
         .collect();
-    // A failed verify cannot read as a pass, so the unfiltered text stands when no line names this unit.
     if own.is_empty() { lines } else { own }
         .into_iter()
         .filter(|line| !allowed.iter().any(|class| classify(line) == Some(*class)))
@@ -293,7 +293,7 @@ pub(crate) fn verified(
     let Some(sha256) = sha256 else {
         return Ok(());
     };
-    // A payload that does not match its hash is removed, so no later step can mistake it for verified content.
+    // A payload that does not match its hash is removed. No later step can mistake it for verified content.
     match_sha256(dest, sha256, url).inspect_err(|_| crate::init::tidy(dest))
 }
 
@@ -370,6 +370,10 @@ fn install(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 pub fn sha256_tree(dir: &Path, files: &[String]) -> Result<String, String> {
+    sha256_stdin(&sha256_listing(dir, files)?)
+}
+
+pub fn sha256_listing(dir: &Path, files: &[String]) -> Result<Vec<u8>, String> {
     let out = Command::new("sha256sum")
         .args(files)
         .current_dir(dir)
@@ -383,7 +387,7 @@ pub fn sha256_tree(dir: &Path, files: &[String]) -> Result<String, String> {
             String::from_utf8_lossy(&out.stderr)
         ));
     }
-    sha256_stdin(&out.stdout)
+    Ok(out.stdout)
 }
 
 pub(crate) fn sha256_stdin(bytes: &[u8]) -> Result<String, String> {
@@ -485,9 +489,9 @@ fn opens_luks(listing: &str) -> bool {
         "usr/bin/cryptsetup",
         "usr/sbin/cryptsetup",
     ];
-    // A symlink can dangle, so only a regular archive entry proves the binary is present.
     listing
         .lines()
+        // A symlink can dangle. Only a regular archive entry proves the binary is present.
         .filter(|line| !line.contains(" -> "))
         .any(|line| BINARIES.iter().any(|path| line.ends_with(path)))
 }
@@ -657,8 +661,8 @@ fn package_version(family: &str, package: &str) -> Option<String> {
     (!version.is_empty()).then_some(version)
 }
 
+// A Debian package version carries an epoch and a revision that the upstream version does not. Both are dropped before the comparison.
 fn upstream_version(family: &str, text: &str) -> String {
-    // A Debian package version carries an epoch and a revision that the upstream version does not. The comparison drops both.
     let version = text.trim();
     match family {
         "debian" | "ubuntu" => {
@@ -746,6 +750,7 @@ fn check_floor(
     }
 }
 
+// A leading ! withdraws the witness and | joins the paths that answer one name.
 fn check_contracts(contracts: &str, relocated: &[Link], report: &mut Report) {
     if contracts.trim().is_empty() {
         println!("    (none declared)");
@@ -777,36 +782,46 @@ fn check_contracts(contracts: &str, relocated: &[Link], report: &mut Report) {
 )]
 pub fn validate_image() -> Result<(), String> {
     let mut report = Report { failures: 0 };
-
-    println!("==> bootc install print-configuration");
-    match output("bootc", &["install", "print-configuration"]) {
-        Ok((true, _)) => println!("    ok"),
-        _ => report.fail("bootc install print-configuration failed to parse"),
+    // Only a non-bootc image passes BOOTC=false. An absent fact therefore means this image is a bootc image.
+    let bootc = env("BOOTC").as_deref() != Some("false");
+    if !bootc && Path::new("/usr/bin/bootc").exists() {
+        println!("==> the image carries /usr/bin/bootc and declares no `bootc` capability");
+        println!("    the bootc image checks do not run; declare `provides \"bootc\" witness=\"/usr/bin/bootc\"`");
     }
 
-    println!("==> initramfs");
-    let initramfs = initramfs();
-    if Path::new("/usr/share/buildc/composefs-sealer-version").is_file() {
-        println!("    embedded in the UKI; checked below");
-    } else {
-        match &initramfs {
-            Some(path) => println!("    {} present", path.display()),
-            None => report.fail("cannot find the kernel's initramfs"),
+    if bootc {
+        println!("==> bootc install print-configuration");
+        match output("bootc", &["install", "print-configuration"]) {
+            Ok((true, _)) => println!("    ok"),
+            _ => report.fail("bootc install print-configuration failed to parse"),
         }
-    }
-    if env("LUKS_INITRAMFS").as_deref() == Some("true") {
-        match initramfs.as_ref() {
-            Some(path) => match output("lsinitrd", &[&path.display().to_string()]) {
-                Ok((true, listing)) if opens_luks(&listing) => {
-                    println!("    {} can open LUKS", path.display())
+
+        println!("==> initramfs");
+        let initramfs = initramfs();
+        if Path::new("/usr/share/buildc/composefs-sealer-version").is_file() {
+            println!("    embedded in the UKI; checked below");
+        } else {
+            match &initramfs {
+                Some(path) => println!("    {} present", path.display()),
+                None => report.fail("cannot find the kernel's initramfs"),
+            }
+        }
+        if env("LUKS_INITRAMFS").as_deref() == Some("true") {
+            match initramfs.as_ref() {
+                Some(path) => match output("lsinitrd", &[&path.display().to_string()]) {
+                    Ok((true, listing)) if opens_luks(&listing) => {
+                        println!("    {} can open LUKS", path.display())
+                    }
+                    Ok((_, _)) => report.fail(format!(
+                        "{}: the image declares luks-initramfs, but the archive carries no cryptsetup binary",
+                        path.display()
+                    )),
+                    Err(message) => report.fail(message),
+                },
+                None => {
+                    report.fail("luks-initramfs is declared, but there is no initramfs to inspect")
                 }
-                Ok((_, _)) => report.fail(format!(
-                    "{}: the image declares luks-initramfs, but the archive carries no cryptsetup binary",
-                    path.display()
-                )),
-                Err(message) => report.fail(message),
-            },
-            None => report.fail("luks-initramfs is declared, but there is no initramfs to inspect"),
+            }
         }
     }
 
@@ -1099,7 +1114,7 @@ fn enablement_links(root: &Path, unit: &str) -> Vec<String> {
             let Ok(target) = fs::read_link(&path) else {
                 continue;
             };
-            // A symlink to /dev/null masks the unit, so it does not count as enabled.
+            // A link to /dev/null masks the unit. It does not count as enabled.
             if target == Path::new("/dev/null") {
                 continue;
             }

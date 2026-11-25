@@ -125,7 +125,12 @@ pub(super) fn media(call: Call) -> Result<ExitCode, Error> {
 
 pub(super) fn registry_namespace(call: Call) -> Result<ExitCode, Error> {
     let Call { here, .. } = call;
-    println!("{}", crate::registry::namespace(&repo_root(here)?)?);
+    let root = repo_root(here)?;
+    let (list, issues, context) = crate::declarations(&root);
+    if issues.report(&context) {
+        return Ok(ExitCode::from(REPO_ERROR));
+    }
+    println!("{}", crate::registry::namespace(&list)?);
     Ok(ExitCode::SUCCESS)
 }
 
@@ -139,12 +144,7 @@ pub(super) fn registry_ref(call: Call) -> Result<ExitCode, Error> {
     }
     println!(
         "{}",
-        crate::registry::reference(
-            &list,
-            &root,
-            target.as_deref(),
-            tags.last().map(String::as_str)
-        )?
+        crate::registry::reference(&list, target.as_deref(), tags.last().map(String::as_str))?
     );
     Ok(ExitCode::SUCCESS)
 }
@@ -166,16 +166,12 @@ pub(super) fn recipe(call: Call) -> Result<ExitCode, Error> {
     let selected = match target.as_deref() {
         Some(name) => list.find_target(name)?,
         None => list
-            .ungated_target()
+            .default_target()
             .ok_or_else(|| "no default image to take a target from".to_string())?,
     }
     .to_string();
-    let imgref = crate::registry::reference(
-        &list,
-        &root,
-        Some(&selected),
-        tags.last().map(String::as_str),
-    )?;
+    let imgref =
+        crate::registry::reference(&list, Some(&selected), tags.last().map(String::as_str))?;
     let image = images.last().map_or(imgref.as_str(), String::as_str);
     let recipe = crate::emit::recipe::build(&list, &selected, image, &imgref, &[])
         .ok_or_else(|| Error::Invocation(crate::emit::recipe::refusal(&list, &selected)))?;

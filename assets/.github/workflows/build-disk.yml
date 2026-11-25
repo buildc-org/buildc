@@ -13,7 +13,6 @@ on:
 permissions: {}
 
 env:
-  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
   PROBE_IMAGE: "quay.io/podman/hello:latest"
   DEFAULT_TAG: "latest"
   BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest"
@@ -23,12 +22,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  family:
+  select:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
-      family: ${{ steps.set.outputs.family }}
+      builds: ${{ steps.set.outputs.builds }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -38,21 +37,39 @@ jobs:
       - id: set
         run: |
           set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) trigger="pr" ;;
+            schedule) trigger="schedule" ;;
+            push)
+              case "$GITHUB_REF" in
+                refs/tags/*) trigger="tag" ;;
+                *) trigger="push" ;;
+              esac
+              ;;
+            *) trigger="dispatch" ;;
+          esac
           plan="$(./scripts/buildc.sh plan --json)"
-          family="$(jq -r --arg t "$(jq -r .ungated_target <<< "$plan")" \
-            '.images[] | select([.targets[].name] | index($t)) | .base.family' \
+          selected="$(jq -c --arg t "$trigger" '.workflows["build-disk"].builds[$t] // []' <<< "$plan")"
+          for build in $(jq -r '.[]' <<< "$selected"); do
+            family="$(jq -r --arg b "$build" \
+              '.images[] | select([.targets[].name] | index($b)) | .base.family' <<< "$plan")"
+            [ "$family" = fedora ] || [ "$family" = rhel ] || echo "::warning::${build} builds no disk here. Its ${family} family carries no SELinux policy and the disk builder relabels its buildroot with SELinux."
+          done
+          builds="$(jq -c --argjson s "$selected" \
+            '[.images[] | select(.base.family == "fedora" or .base.family == "rhel") | .targets[].name | select(. as $n | $s | index($n))]' \
             <<< "$plan")"
-          echo "family=${family}" >> "$GITHUB_OUTPUT"
-          [ "$family" = fedora ] || [ "$family" = rhel ] || echo "::warning::the builder relabels its buildroot with SELinux, and the ${family} family carries no policy, so it builds no disk here"
+          echo "builds=${builds}" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build disk images
-    needs: family
-    if: needs.family.outputs.family == 'fedora' || needs.family.outputs.family == 'rhel'
+    name: Build disk images (${{ matrix.build }})
+    needs: select
+    # A trigger can select no build and GitHub refuses an empty matrix.
+    if: needs.select.outputs.builds != '[]'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
+        build: ${{ fromJson(needs.select.outputs.builds) }}
         disk-type: ["qcow2"]
     permissions:
       contents: read
@@ -65,11 +82,13 @@ jobs:
           persist-credentials: false
 
       - name: Prepare environment
+        env:
+          BUILD: ${{ matrix.build }}
         run: |
           USER_UID=$(id -u)
           USER_GID=$(id -g)
           DISK_TYPE=$(echo "${{ matrix.disk-type }}" | tr ' ' '-')
-          IMAGE_REF="$(./scripts/buildc.sh registry ref)"
+          IMAGE_REF="$(./scripts/buildc.sh registry ref --target "$BUILD")"
           {
             echo "IMAGE_REF=${IMAGE_REF}"
             echo "DISK_TYPE=${DISK_TYPE}"
@@ -149,6 +168,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
+          name: disk-${{ matrix.build }}-${{ env.DISK_TYPE }}
           path: ${{ steps.build.outputs.output-directory }}
           if-no-files-found: error
           retention-days: 0

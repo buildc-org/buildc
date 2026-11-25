@@ -8,5 +8,5 @@ example/
 ├── components/
 │   └── local-tool/
 │       └── + manifest.kdl
-└── ~ example.image.kdl  local-tool added to components
+└── ~ example.kdl  local-tool added to components
 ==== exit 0

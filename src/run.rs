@@ -36,7 +36,7 @@ impl Report {
 pub struct Problems {
     pub issues: Issues,
     pub context: String,
-    pub unpinned: Vec<String>,
+    pub unlocked: Vec<String>,
     pub ungoverned: Vec<String>,
 }
 
@@ -50,7 +50,6 @@ pub struct Counts {
     pub images: usize,
     pub components: usize,
     pub suppressed: usize,
-    pub flavours: usize,
 }
 
 pub struct Reading {
@@ -90,15 +89,10 @@ pub(crate) fn run_loaded(
         copies = derive_content(&list, &mut resolved, root, &mut issues);
     }
 
-    let mut unpinned = Vec::new();
+    let mut unlocked = Vec::new();
     if command == Command::Check {
         scap::check_content(&list, &mut issues);
-        unpinned = list
-            .sources
-            .iter()
-            .filter(|c| c.unpinned())
-            .map(|c| c.name.clone())
-            .collect();
+        unlocked = crate::provenance::repo_lock::unlocked(root, &list.images);
     }
 
     check_names(command, &list, image_arg, target_arg, &mut issues);
@@ -136,7 +130,9 @@ pub(crate) fn run_loaded(
     }
 
     let report = match command {
-        Command::Plan => Report::text(emit::plan::build(&list, &resolved, &workflows).render()),
+        Command::Plan => {
+            Report::text(emit::plan::build(root, &list, &resolved, &workflows).render())
+        }
         Command::Summary => Report::text(
             target
                 .and_then(|name| emit::summary::render(&list, &name))
@@ -171,9 +167,7 @@ pub(crate) fn run_loaded(
                 )
                 .collect(),
         ),
-        Command::Why | Command::WhyJson => {
-            why_report(command, &list, component_arg, root, &mut issues)
-        }
+        Command::Why | Command::WhyJson => why_report(command, &list, component_arg, &mut issues),
         Command::Check | Command::Verify | Command::Coverage | Command::CoverageJson => {
             Report::default()
         }
@@ -183,7 +177,6 @@ pub(crate) fn run_loaded(
         images: list.images.len(),
         components: list.images.iter().map(|i| i.components().count()).sum(),
         suppressed: list.images.iter().map(|i| i.suppressed.len()).sum(),
-        flavours: list.images.iter().map(|i| i.flavours.len()).sum(),
     };
     Run {
         report,
@@ -192,7 +185,7 @@ pub(crate) fn run_loaded(
         problems: Problems {
             issues,
             context,
-            unpinned,
+            unlocked,
             ungoverned,
         },
         counts,
@@ -213,7 +206,7 @@ fn derive_content(
     let mut copies: Vec<emit::resolved::CopyFile> = Vec::new();
     let mut unrecorded: Vec<String> = Vec::new();
     for (image, held) in list.images.iter().zip(resolved.iter_mut()) {
-        let content = emit::resolved::of(image, &held.collected, root);
+        let content = emit::resolved::of(image, &held.collected);
         held.hashes = content.hashes;
         copies.extend(content.copies);
         held.clones = crate::provenance::build::clones(&image.components().collect::<Vec<_>>());
@@ -328,7 +321,6 @@ fn generated_files(
     files.extend(
         emit::SCRIPTS
             .iter()
-            // A script that the user keeps in the repository's scripts directory takes the place of the generated copy.
             .filter(|script| !root.join(layout::SCRIPTS).join(script.name).is_file())
             .map(|script| {
                 (
@@ -348,6 +340,7 @@ fn generated_files(
                 emit::containerfile::file(skeleton, image, &regions),
             ));
         }
+        // A script the repository keeps in its scripts directory takes the place of the generated copy.
         files.extend(emit::component_build::scripts(
             image,
             &resolved.collected,
@@ -360,14 +353,19 @@ fn generated_files(
     files.extend(emit::renovate::file(list).map(|text| (emit::renovate::path(), text)));
     files.push((
         PathBuf::from(layout::GENERATED).join("plan.json"),
-        emit::plan::build(list, resolved, workflows).render(),
+        emit::plan::build(root, list, resolved, workflows).render(),
     ));
     files.extend(workflows.iter().map(|declared| {
         (
             PathBuf::from(layout::WORKFLOW_DIR).join(&declared.file),
             emit::located(
                 root,
-                &emit::workflows::render(declared.body, declared.schedule.as_deref(), facts),
+                &emit::workflows::render(
+                    declared.body,
+                    declared.triggers.as_deref(),
+                    declared.cron.as_deref(),
+                    facts,
+                ),
             ),
         )
     }));
@@ -396,13 +394,7 @@ fn graph_report(command: Command, image: &Image) -> Report {
     }
 }
 
-fn why_report(
-    command: Command,
-    list: &List,
-    given: Option<&str>,
-    root: &Path,
-    issues: &mut Issues,
-) -> Report {
+fn why_report(command: Command, list: &List, given: Option<&str>, issues: &mut Issues) -> Report {
     let Some(given) = given else {
         issues.push(
             Issue::new("`why` needs a component", &list.repo_src)
@@ -439,7 +431,7 @@ fn why_report(
             return Report::default();
         }
     };
-    let Some(why) = emit::why::of(list, path, root) else {
+    let Some(why) = emit::why::of(list, path) else {
         issues.push(
             Issue::new(
                 format!("`{path}` is listed but was not read"),

@@ -10,16 +10,36 @@ The file holds at most one of each repository setting, and `buildc` reports an u
 schema-version 1
 name "Workstation"
 base-url "https://github.com/owner/workstation"
-workflows at="12:30" {
-    build
+registry "ghcr.io/owner"
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            bootloader "grub2"
+        }
+    }
+}
+github {
+    workflows {
+        image-build {
+            push
+            pr
+            schedule frequency="daily" time="12:30"
+        }
+    }
 }
 renovate rebaseWhen="never" {
     schedule "* 0-5 * * *"
 }
-sources {
-    components "buildc" {
-        url "https://github.com/buildc-org/library"
-        path "components"
+libraries default="stable" {
+    local {
+        mine {
+            source "."
+        }
+    }
+    remote {
+        stable {
+            source "https://github.com/buildc-org/library"
+        }
     }
 }
 ```
@@ -30,13 +50,14 @@ sources {
 | [`buildc-version`](#buildc-version) (optional) | *string* | The `buildc` release that builds this repository. |
 | [`name`](#name) (optional) | *string* | An optional human-readable label for the repository. |
 | [`base-url`](#base-url) (optional) | *string* | The HTTPS URL of the repository, which an image option value reads as `{base-url}`. |
-| [`default-image`](#default-image) (optional) | *string* | The image that a command with no image, or a build with no target, uses. |
-| [`pr-image`](#pr-image) (optional) | *string* | The image a pull request builds. |
-| [`backend`](#backend) (optional) | `buildah` or `buildx` | The container build tool that `buildc build` runs and that the generated `build.yml` sets up. |
+| [`registry`](#registry) (optional) | *string* | The namespace that every build publishes under. |
+| [`builds`](#builds) (optional) | {&nbsp;[fields](#builds-fields)&nbsp;} | The build targets of the repository. |
+| [`backend`](#backend) (optional) | `buildah` or `buildx` | The container build tool that `buildc build` runs and that the generated `image-build.yml` sets up. |
 | [`seed`](#seed) (optional) | *string* | The image that this repository publishes as a starting point for a new repository. |
-| [`workflows`](#workflows) (optional) | {&nbsp;[fields](#workflows-fields)&nbsp;} | The CI workflows that `buildc generate` writes into `.github/workflows/`. |
+| [`github`](#github) (optional) | optionally {&nbsp;[fields](#github-fields)&nbsp;} | Everything that runs on GitHub. |
 | [`renovate`](#renovate) (optional) | optionally {&nbsp;[fields](#renovate-fields)&nbsp;} | The Renovate policy that `buildc generate` writes into `.github/renovate.json5`. |
-| [`sources`](#sources) (optional) | {&nbsp;[fields](#sources-fields)&nbsp;} | The component libraries this repository reads. |
+| [`libraries`](#libraries) (optional) | {&nbsp;[fields](#libraries-fields)&nbsp;} | The libraries this repository reads components from. |
+| [`library`](#library) (optional) | {&nbsp;[fields](#library-fields)&nbsp;} | Where this repository keeps the components it offers as a library. |
 | [`manifest`](#manifest) (optional) | {&nbsp;[fields](#manifest-fields)&nbsp;} | Whether a build stamps the generated manifest onto the image as an OCI label. |
 | [`audit`](#audit) (optional) | {&nbsp;[fields](#audit-fields)&nbsp;} | How the repository treats a provenance check that fails. |
 | [`security-policy`](#security-policy) (optional) | optionally {&nbsp;[fields](#security-policy-fields)&nbsp;} | The security rules that the repository sets for every image it defines. |
@@ -114,35 +135,202 @@ base-url "https://github.com/owner/workstation"
 
 Accepts: *string*
 
-<a id="default-image"></a>
+<a id="registry"></a>
 
-## `default-image` (optional)
+## `registry` (optional)
 
-The id must name an image declared in the repository, and `buildc` refuses an id that no image declares. A repository with more than one image and no `default-image` has no target for a command that names no image.
+A build publishes to `<registry>/<name>`. A repository with no `registry` builds and does not push, unless a build's `publish` holds a full reference. `IMAGE_REGISTRY` in the environment overrides the value.
 
 ```kdl
-default-image "workstation"
+registry "ghcr.io/owner"
 ```
 
 Accepts: *string*
 
-<a id="pr-image"></a>
+<a id="builds"></a>
 
-## `pr-image` (optional)
+## `builds` (optional)
 
-The image a pull request builds.
+Each child is one build. `buildc` refuses two builds with one name.
 
 ```kdl
-pr-image "workstation"
+builds default="workstation" {
+    workstation "./workstation"
+}
+```
+
+Accepts: {&nbsp;[fields](#builds-fields)&nbsp;}
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `default=` (optional) | *string* | The build that a command uses when it names none. The name must name a declared build. If the repository declares one build, then that build is the default. |
+
+<a id="builds-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`<name>`](#builds-name) (optional,&nbsp;repeatable) | optionally a *string*, then optionally {&nbsp;[fields](#builds-name-fields)&nbsp;} | One build target, which builds one component and names what it publishes. |
+
+<a id="builds-name"></a>
+
+### `<name>` (optional, repeatable)
+
+The node name is the target, cache and published name, and an option value reads it as `{image-id}`. The argument names the component that the build builds. A path that starts with `./` reads `<path>.kdl` or `<path>/manifest.kdl` from the repository root, and any other path names a component in the components folder. With no argument, the build uses the component of its own name in the components folder.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation"
+}
+```
+
+Accepts: optionally a *string*, then optionally {&nbsp;[fields](#builds-name-fields)&nbsp;}
+
+<a id="builds-name-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`publish`](#builds-name-publish) (optional) | *string* | The name the build publishes under, in place of its own name. |
+| [`install`](#builds-name-install) (optional) | {&nbsp;[fields](#builds-name-install-fields)&nbsp;} | What the installer lays down if the answer of the base family is not the one that the build wants. |
+
+<a id="builds-name-publish"></a>
+
+#### `publish` (optional)
+
+A bare name renames the artifact under `registry`. A value that holds `/` is a full reference. Neither holds a tag or a digest, because the build sets the tags.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        publish "workstation-nightly"
+    }
+}
 ```
 
 Accepts: *string*
+
+<a id="builds-name-install"></a>
+
+#### `install` (optional)
+
+The block answers the install questions that the base family leaves open. If neither the family nor a UKI seal settles an answer, then the build has no install media unless the block gives it.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            filesystem "btrfs"
+        }
+    }
+}
+```
+
+Accepts: {&nbsp;[fields](#builds-name-install-fields)&nbsp;}
+
+<a id="builds-name-install-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`filesystem`](#builds-name-install-filesystem) (optional) | `xfs` or `ext4` or `btrfs` | The root filesystem that the installer formats in place of the one that the base family settles. |
+| [`composefs`](#builds-name-install-composefs) (optional) | *boolean* | Whether the install seals the deployment, which replaces the answer of the base family. |
+| [`generic-image`](#builds-name-install-generic-image) (optional) | *boolean* | Whether the install skips the bootupd check, which replaces the answer of the base family. |
+| [`admin-group`](#builds-name-install-admin-group) (optional) | *string* | The group that the installer creates an administrator in, which replaces the group of the base family. |
+| [`bootloader`](#builds-name-install-bootloader) (optional) | `grub2` or `systemd` | The bootloader that the installer installs. The catalog entry of the base lists the bootloaders that the base carries. |
+
+<a id="builds-name-install-filesystem"></a>
+
+##### `filesystem` (optional)
+
+The root filesystem that the installer formats in place of the one that the base family settles.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            filesystem "btrfs"
+        }
+    }
+}
+```
+
+Accepts: `xfs` or `ext4` or `btrfs`
+
+<a id="builds-name-install-composefs"></a>
+
+##### `composefs` (optional)
+
+Whether the install seals the deployment, which replaces the answer of the base family.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            composefs #true
+        }
+    }
+}
+```
+
+Accepts: *boolean*
+
+<a id="builds-name-install-generic-image"></a>
+
+##### `generic-image` (optional)
+
+Whether the install skips the bootupd check, which replaces the answer of the base family.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            generic-image #false
+        }
+    }
+}
+```
+
+Accepts: *boolean*
+
+<a id="builds-name-install-admin-group"></a>
+
+##### `admin-group` (optional)
+
+The group that the installer creates an administrator in, which replaces the group of the base family.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            admin-group "wheel"
+        }
+    }
+}
+```
+
+Accepts: *string*
+
+<a id="builds-name-install-bootloader"></a>
+
+##### `bootloader` (optional)
+
+No family answers this row, so the block declares a bootloader unless a UKI seal settles it as `systemd`.
+
+```kdl
+builds default="workstation" {
+    workstation "./workstation" {
+        install {
+            bootloader "grub2"
+        }
+    }
+}
+```
+
+Accepts: `grub2` or `systemd`
 
 <a id="backend"></a>
 
 ## `backend` (optional)
 
-The value selects the one tool that `buildc build` drives, and `buildah` applies when the node is absent. `buildx` needs a `default-image` to name the layer cache, and it cannot build an image whose `boot-chain` seals a UKI.
+The value selects the one tool that `buildc build` drives, and `buildah` applies when the node is absent. `buildx` needs a default build to name the layer cache, and it cannot build a build that seals a UKI.
 
 ```kdl
 backend "buildx"
@@ -152,19 +340,19 @@ Accepts: `buildah` or `buildx`
 
 | Value | Effect |
 | --- | --- |
-| `buildah` | `buildc build` runs `podman build`. An image whose `boot-chain` builds a UKI needs it. |
-| `buildx` | `buildc build` runs `docker buildx build`. The generated `build.yml` loads its OCI archive into the podman store that the later steps read, and it can use a registry layer cache. |
+| `buildah` | `buildc build` runs `podman build`. A build that seals a UKI needs it. |
+| `buildx` | `buildc build` runs `docker buildx build`. The generated `image-build.yml` loads its OCI archive into the podman store that the later steps read, and it can use a registry layer cache. |
 
 > [!NOTE]
 > `--backend` or `$BUILD_BACKEND` overrides it for one build. The flag wins over the variable, and the variable wins over this node.
 >
-> `buildc check` refuses `buildx` for an image whose `boot-chain` builds a UKI. A sealed UKI carries the composefs digest, and `buildc build` reads that digest from the local buildah store.
+> `buildc check` refuses `buildx` for a build that seals a UKI. A sealed UKI carries the composefs digest, and `buildc build` reads that digest from the local buildah store.
 
 <a id="seed"></a>
 
 ## `seed` (optional)
 
-The image must be declared in the repository, and `collection=` must name a `components` source that `sources` declares. Every component in the seed is fetched through that collection, so an inline definition leaves the seed unbuildable.
+The image must be declared in the repository, and `collection=` must name a library that `libraries` declares. Every component in the seed is fetched through that collection, so an inline definition leaves the seed unbuildable.
 
 ```kdl
 seed "workstation" collection="owner"
@@ -185,58 +373,229 @@ Accepts: *string*
 > [!NOTE]
 > The seed carries no name, URL or owner of this repository.
 >
-> The seed names each component through the collection it is fetched from, so `collection=` names a collection in `sources`. A repository is seedable only if it publishes its own `components/` as a collection.
+> The seed names each component through the collection it is fetched from, so `collection=` names a library in `libraries`. A repository is seedable only if it publishes its own `components/` as a collection.
 >
 > If the seed image lists a component that no collection can import, then `buildc` reports it, because a new repository could not build that seed.
 
-<a id="workflows"></a>
+<a id="github"></a>
 
-## `workflows` (optional)
+## `github` (optional)
 
-The block selects the workflows that `buildc generate` writes, and a workflow named twice is refused. A child's `schedule=` needs a five-field cron line, and `at` needs an hour and minute in UTC.
+`buildc generate` writes the workflows this block lists into `.github/workflows/`.
 
 ```kdl
-workflows at="12:30" {
-    build
-}
+github
 ```
 
-Accepts: {&nbsp;[fields](#workflows-fields)&nbsp;}
+Accepts: optionally {&nbsp;[fields](#github-fields)&nbsp;}
 
-| Property | Accepts | Description |
-| --- | --- | --- |
-| `at=` (optional) | *string* | The hour and minute in UTC that the daily build runs at. Every other scheduled workflow runs at its own offset from it. |
-| `publish=` (optional) | `scheduled` | If `scheduled`, then images publish from the daily build alone, and image scans move off pushes too, because a scan reads a published image. If absent, then images also publish on pushes. |
-| `scan=` (optional) | `scheduled` | If `scheduled`, then image scans run on the daily build alone. If absent, then scans run on pushes and on scheduled builds. |
-
-<a id="workflows-fields"></a>
+<a id="github-fields"></a>
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`<name>`](#workflows-name) (optional,&nbsp;repeatable) |  | One workflow, which the stem of its file names. |
+| [`workflows`](#github-workflows) (optional) | {&nbsp;[fields](#github-workflows-fields)&nbsp;} | The CI workflows that `buildc generate` writes into `.github/workflows/`. |
 
 > [!NOTE]
+> `image-build`, `smoke-test` and `build-disk` run once for each build they select. `cleanup-registry`, `update-components`, `kernel-freshness` and `base-sig-probe` run once for the repository, and `buildc check` refuses `builds` on them.
+>
+> The shipped schedules run at whole hours in UTC, in the order the work depends on: `update-components` at 02:00, `base-sig-probe` and `kernel-freshness` at 03:00, `image-build` at 04:00, `smoke-test` at 06:00 and `cleanup-registry` at 08:00.
+>
 > `buildc generate` writes only the workflows named here. After a tool upgrade, it rewrites each named workflow.
 >
 > `buildc set workflows` edits this block.
->
-> The `conforms` of each image decides whether SCAP content exists to scan.
 
-<a id="workflows-name"></a>
+<a id="github-workflows"></a>
 
-### `<name>` (optional, repeatable)
+### `workflows` (optional)
 
-One workflow, which the stem of its file names.
+A workflow that is not listed does not run. A workflow with no trigger runs on its shipped triggers, and a listed trigger replaces them. Every workflow also runs by hand.
 
 ```kdl
-workflows at="12:30" {
-    build
+github {
+    workflows {
+        image-build
+    }
 }
 ```
 
+Accepts: {&nbsp;[fields](#github-workflows-fields)&nbsp;}
+
+<a id="github-workflows-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`<name>`](#github-workflows-name) (optional,&nbsp;repeatable) | optionally any of `push` or `pr` or `schedule`, then optionally {&nbsp;[fields](#github-workflows-name-fields)&nbsp;} | One workflow, named by the stem of its file. |
+
+<a id="github-workflows-name"></a>
+
+#### `<name>` (optional, repeatable)
+
+One workflow, named by the stem of its file.
+
+```kdl
+github {
+    workflows {
+        image-build
+    }
+}
+```
+
+Accepts: optionally any of `push` or `pr` or `schedule`, then optionally {&nbsp;[fields](#github-workflows-name-fields)&nbsp;}
+
+<a id="github-workflows-name-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`push`](#github-workflows-name-push) (optional) | optionally {&nbsp;[fields](#github-workflows-name-push-fields)&nbsp;} | Runs the workflow on a push to `main`. |
+| [`pr`](#github-workflows-name-pr) (optional) | optionally {&nbsp;[fields](#github-workflows-name-pr-fields)&nbsp;} | Runs the workflow on a pull request to `main`. A pull request build never publishes. |
+| [`schedule`](#github-workflows-name-schedule) (optional) | optionally {&nbsp;[fields](#github-workflows-name-schedule-fields)&nbsp;} | Runs the workflow on a schedule. |
+| [`tag`](#github-workflows-name-tag) (optional) | *string*, then optionally {&nbsp;[fields](#github-workflows-name-tag-fields)&nbsp;} | Runs the workflow on a pushed Git tag that matches the pattern. A tag build publishes under the tag. |
+| [`builds`](#github-workflows-name-builds) (optional) | optionally a *list of strings*, then optionally {&nbsp;[fields](#github-workflows-name-builds-fields)&nbsp;} | The builds a workflow or a trigger runs for. |
+
+<a id="github-workflows-name-push"></a>
+
+##### `push` (optional)
+
+Runs the workflow on a push to `main`.
+
+```kdl
+github {
+    workflows {
+        image-build {
+            push
+        }
+    }
+}
+```
+
+Accepts: optionally {&nbsp;[fields](#github-workflows-name-push-fields)&nbsp;}
+
+<a id="github-workflows-name-push-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`builds`](#github-workflows-name-builds) (optional) | optionally a *list of strings*, then optionally {&nbsp;[fields](#github-workflows-name-builds-fields)&nbsp;} | The builds a workflow or a trigger runs for. |
+
+<a id="github-workflows-name-pr"></a>
+
+##### `pr` (optional)
+
+A bare `pr` builds the default build, and `builds` names others.
+
+```kdl
+github {
+    workflows {
+        image-build {
+            pr
+        }
+    }
+}
+```
+
+Accepts: optionally {&nbsp;[fields](#github-workflows-name-pr-fields)&nbsp;}
+
+<a id="github-workflows-name-pr-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`builds`](#github-workflows-name-builds) (optional) | optionally a *list of strings*, then optionally {&nbsp;[fields](#github-workflows-name-builds-fields)&nbsp;} | The builds a workflow or a trigger runs for. |
+
+<a id="github-workflows-name-schedule"></a>
+
+##### `schedule` (optional)
+
+A schedule without `frequency` or `time` takes the workflow's shipped one.
+
+```kdl
+github {
+    workflows {
+        image-build {
+            schedule frequency="daily" time="12:30"
+        }
+    }
+}
+```
+
+Accepts: optionally {&nbsp;[fields](#github-workflows-name-schedule-fields)&nbsp;}
+
 | Property | Accepts | Description |
 | --- | --- | --- |
-| `schedule=` (optional) | *string* | The cron line that this workflow runs on, in UTC. It replaces the schedule that `at` places. |
+| `frequency=` (optional) | `daily` or `weekly` | How often the schedule runs. `weekly` runs on Monday. |
+| `time=` (optional) | *string* | The hour and minute in UTC that the schedule runs at. |
+
+<a id="github-workflows-name-schedule-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`builds`](#github-workflows-name-builds) (optional) | optionally a *list of strings*, then optionally {&nbsp;[fields](#github-workflows-name-builds-fields)&nbsp;} | The builds a workflow or a trigger runs for. |
+
+<a id="github-workflows-name-tag"></a>
+
+##### `tag` (optional)
+
+Runs the workflow on a pushed Git tag that matches the pattern. A tag build publishes under the tag.
+
+```kdl
+github {
+    workflows {
+        image-build {
+            tag "v*"
+        }
+    }
+}
+```
+
+Accepts: *string*, then optionally {&nbsp;[fields](#github-workflows-name-tag-fields)&nbsp;}
+
+<a id="github-workflows-name-tag-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`builds`](#github-workflows-name-builds) (optional) | optionally a *list of strings*, then optionally {&nbsp;[fields](#github-workflows-name-builds-fields)&nbsp;} | The builds a workflow or a trigger runs for. |
+
+<a id="github-workflows-name-builds"></a>
+
+##### `builds` (optional)
+
+If `builds` is absent, then a workflow runs for every build. Named builds replace the builds that the enclosing workflow runs for, and `remove` drops a build from them.
+
+```kdl
+github {
+    workflows {
+        image-build {
+            builds "workstation"
+        }
+    }
+}
+```
+
+Accepts: optionally a *list of strings*, then optionally {&nbsp;[fields](#github-workflows-name-builds-fields)&nbsp;}
+
+<a id="github-workflows-name-builds-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`remove`](#github-workflows-name-builds-remove) (optional,&nbsp;repeatable) | *list of strings* | Builds that leave the selection. |
+
+<a id="github-workflows-name-builds-remove"></a>
+
+###### `remove` (optional, repeatable)
+
+Builds that leave the selection.
+
+```kdl
+github {
+    workflows {
+        image-build {
+            builds "workstation" {
+                remove "workstation-dev"
+            }
+        }
+    }
+}
+```
+
+Accepts: *list of strings*
 
 <a id="renovate"></a>
 
@@ -277,145 +636,204 @@ renovate rebaseWhen="never" {
 }
 ```
 
-<a id="sources"></a>
+<a id="libraries"></a>
 
-## `sources` (optional)
+## `libraries` (optional)
 
-Each child declares a `components` library under the alias that references and the local cache use. The alias takes lowercase letters, digits and dashes, and one kind and alias identify one source.
+`local` holds the libraries that the user edits in place, and `remote` holds the libraries that buildc reads at a commit. Each child of a block is one library, named by its node. Declaring a library makes its components available, and a build uses one only when the repository names it. If no `local` block is declared, then the repository root is the local library. If a `local` block is declared, then buildc reads the repository's own components only through a local library whose source is `.`.
 
 ```kdl
-sources {
-    components "buildc"
+libraries default="stable" {
+    local
 }
 ```
 
-Accepts: {&nbsp;[fields](#sources-fields)&nbsp;}
+Accepts: {&nbsp;[fields](#libraries-fields)&nbsp;}
 
-<a id="sources-fields"></a>
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `default=` (optional) | *string* | The library that a path from a library root reads when several libraries hold it. The name must name a declared library. If `default=` is absent, then the only local library is the default. |
+
+<a id="libraries-fields"></a>
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`components`](#sources-components) (optional,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#sources-components-fields)&nbsp;} | A component library that imports and `buildc create image` read components and bases from. |
+| [`local`](#libraries-local) (optional) | optionally {&nbsp;[fields](#libraries-local-fields)&nbsp;} | The libraries that the user edits in place. |
+| [`remote`](#libraries-remote) (optional) | optionally {&nbsp;[fields](#libraries-remote-fields)&nbsp;} | The libraries that buildc reads at a commit. |
 
 > [!NOTE]
-> `buildc import component` copies a component from a `components` source to `components/<name>`, and `components/components.lock.kdl` records the source.
+> `buildc` never reads the `libraries` block of a library, so the repository declares every library its builds use.
 
-<a id="sources-components"></a>
+<a id="libraries-local"></a>
 
-### `components` (optional, repeatable)
+### `local` (optional)
 
-A component library that imports and `buildc create image` read components and bases from.
+`buildc` reads a local library from its folder as it stands, so a local library takes no pin and no lock.
 
 ```kdl
-sources {
-    components "buildc"
+libraries default="stable" {
+    local
 }
 ```
 
-Accepts: *string*, then optionally {&nbsp;[fields](#sources-components-fields)&nbsp;}
+Accepts: optionally {&nbsp;[fields](#libraries-local-fields)&nbsp;}
 
-<a id="sources-components-fields"></a>
+<a id="libraries-local-fields"></a>
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`dir`](#sources-components-dir) (optional) | *string* | The local directory that holds this source. |
-| [`url`](#sources-components-url) (optional) | *string* | The HTTPS Git repository that holds this source. |
-| [`path`](#sources-components-path) (optional) | *string* | The directory inside the Git repository that holds this component library. |
-| [`version`](#sources-components-version) (optional) | *string* | The branch, tag or commit that selects the repository tree. |
-| [`sha256`](#sources-components-sha256) (optional) | *string* | The hash of the canonical tar archive for the selected commit. |
-| [`unpinned`](#sources-components-unpinned) (optional) | *string* | Why this source follows a ref without a verified archive hash. |
+| [`<name>`](#libraries-local-name) (optional,&nbsp;repeatable) | optionally {&nbsp;[fields](#libraries-local-name-fields)&nbsp;} | One local library, named by its node. |
 
-<a id="sources-components-dir"></a>
+<a id="libraries-local-name"></a>
 
-#### `dir` (optional)
+#### `<name>` (optional, repeatable)
 
-The local directory that holds this source.
+The node name is the library's local name, and `library=` on a tree node names the library by its value. A source with a `repo.kdl` keeps its components where its `library` node says, else in `components/`. A source without a `repo.kdl` is a folder of components.
 
 ```kdl
-sources {
-    components "buildc" {
-        dir "../library/components"
+libraries default="stable" {
+    local {
+        mine
+    }
+}
+```
+
+Accepts: optionally {&nbsp;[fields](#libraries-local-name-fields)&nbsp;}
+
+<a id="libraries-local-name-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`source`](#libraries-local-name-source) (optional) | *string* | Where the library lives, as a path from the repository root. |
+
+<a id="libraries-local-name-source"></a>
+
+##### `source` (optional)
+
+The user edits a local library in place. If `source` is absent, then the library is the folder `./<name>`. A source of `.` is this repository itself.
+
+```kdl
+libraries default="stable" {
+    local {
+        mine {
+            source "."
+        }
     }
 }
 ```
 
 Accepts: *string*
 
-<a id="sources-components-url"></a>
+<a id="libraries-remote"></a>
 
-#### `url` (optional)
+### `remote` (optional)
 
-The HTTPS Git repository that holds this source.
+`buildc` reads a remote library from its cache at a commit. `repo.lock.kdl` records the commit and the content hash of each component that a build reads.
 
 ```kdl
-sources {
-    components "buildc" {
-        url "https://github.com/buildc-org/library"
+libraries default="stable" {
+    remote
+}
+```
+
+Accepts: optionally {&nbsp;[fields](#libraries-remote-fields)&nbsp;}
+
+<a id="libraries-remote-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`<name>`](#libraries-remote-name) (optional,&nbsp;repeatable) | {&nbsp;[fields](#libraries-remote-name-fields)&nbsp;} | One remote library, named by its node. |
+
+<a id="libraries-remote-name"></a>
+
+#### `<name>` (optional, repeatable)
+
+The node name is the library's local name, and `library=` on a tree node names the library by its value. A source with a `repo.kdl` keeps its components where its `library` node says, else in `components/`. A source without a `repo.kdl` is a folder of components.
+
+```kdl
+libraries default="stable" {
+    remote {
+        stable {
+            source "https://github.com/buildc-org/library"
+        }
+    }
+}
+```
+
+Accepts: {&nbsp;[fields](#libraries-remote-name-fields)&nbsp;}
+
+<a id="libraries-remote-name-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`source`](#libraries-remote-name-source) (required) | *string* | Where the library lives, as an HTTPS Git URL or a path to a Git checkout. |
+| [`version`](#libraries-remote-name-version) (optional) | *string* | The branch, tag or commit that a remote library is read at. |
+
+<a id="libraries-remote-name-source"></a>
+
+##### `source` (required)
+
+`buildc` reads a remote library at a commit from its cache. A path names a Git checkout on this machine, and `buildc` reads its commits as it reads a URL.
+
+```kdl
+libraries default="stable" {
+    remote {
+        stable {
+            source "https://github.com/buildc-org/library"
+        }
     }
 }
 ```
 
 Accepts: *string*
 
-<a id="sources-components-path"></a>
+<a id="libraries-remote-name-version"></a>
 
-#### `path` (optional)
+##### `version` (optional)
 
-The directory inside the Git repository that holds this component library.
+If `version` is absent, then the library follows the default branch of the remote.
 
 ```kdl
-sources {
-    components "buildc" {
-        path "components"
+libraries default="stable" {
+    remote {
+        stable {
+            version "v1"
+        }
     }
 }
 ```
 
 Accepts: *string*
 
-<a id="sources-components-version"></a>
+<a id="library"></a>
 
-#### `version` (optional)
+## `library` (optional)
 
-The branch, tag or commit that selects the repository tree.
+A repository that another repository declares as a library offers the components in this folder. The repository's own builds read them from there too.
 
 ```kdl
-sources {
-    components "buildc" {
-        version "v1"
-    }
+library {
+    components "src/components"
 }
 ```
 
-Accepts: *string*
+Accepts: {&nbsp;[fields](#library-fields)&nbsp;}
 
-<a id="sources-components-sha256"></a>
+<a id="library-fields"></a>
 
-#### `sha256` (optional)
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`components`](#library-components) (optional) | *string* | The folder that holds the components, relative to the repository root. |
 
-The hash of the canonical tar archive for the selected commit.
+<a id="library-components"></a>
 
-```kdl
-sources {
-    components "buildc" {
-        sha256 "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3"
-    }
-}
-```
+### `components` (optional)
 
-Accepts: *string*
-
-<a id="sources-components-unpinned"></a>
-
-#### `unpinned` (optional)
-
-Why this source follows a ref without a verified archive hash.
+If `components` is absent, then the components live in `components/`.
 
 ```kdl
-sources {
-    components "buildc" {
-        unpinned "This repository follows the library's default ref"
-    }
+library {
+    components "src/components"
 }
 ```
 
@@ -498,7 +916,6 @@ Accepts: *boolean*
 
 Each check runs in the command named before it:
 
-- `buildc import component`, `buildc create image` and `buildc set conforms`: the library a component is copied from is pinned to a tag and its hash.
 - `buildc build`: the base tag resolves to a manifest digest.
 - `buildc build`: the repository is at a commit.
 - `buildc build`: each cloned asset resolves to a commit.
@@ -512,7 +929,7 @@ Each check runs in the command named before it:
 > [!NOTE]
 > `buildc` also reports a `component.sh` or `finalize.sh` that reaches the network with no `asset` that declares the download. This report does not depend on `enforce`.
 >
-> `buildc` refuses a component that tracks its library and no longer matches its entry in the component lock. This refusal does not depend on `enforce`.
+> `buildc` refuses a remote component whose cached content no longer matches its entry in `repo.lock.kdl`. This refusal does not depend on `enforce`.
 
 <a id="security-policy"></a>
 
@@ -608,7 +1025,7 @@ Accepts: `allow` or `strict` or `deny`
 | Value | Effect |
 | --- | --- |
 | `allow` | Every script step reaches the network. |
-| `strict` | A script step reaches the network only if its component declares `network "scripts"`. |
+| `strict` | A script step reaches the network only if its component declares `permissions { scripts { network #true } }`. |
 | `deny` | Every script step runs under `--network=none`. |
 
 > [!NOTE]

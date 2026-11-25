@@ -1,4 +1,5 @@
 pub mod add;
+pub mod add_component;
 pub mod attribute;
 pub mod bases;
 pub mod build;
@@ -6,17 +7,15 @@ pub mod collection;
 pub mod command;
 pub mod conformance;
 pub mod copy;
+pub mod copy_component;
 pub mod create;
-pub mod declaration;
 pub mod diag;
 pub mod dispatch;
 pub mod emit;
 pub mod error;
-pub mod fetch;
 pub mod forge;
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
-pub mod import;
 pub mod init;
 pub mod key;
 pub mod layout;
@@ -40,6 +39,8 @@ pub mod vm;
 
 #[cfg(test)]
 mod screen_tests;
+#[cfg(test)]
+mod testing;
 
 pub use command::{Arg, Command};
 use common::json::Json;
@@ -212,50 +213,66 @@ fn stale_generated_steps(text: &str) -> Vec<(usize, usize)> {
 }
 
 pub(crate) struct Loaded {
-    list: List,
-    resolved: Vec<Resolved>,
-    workflows: Vec<resolve::workflow::Declared>,
-    facts: Vec<&'static str>,
-    index: provider::Index,
-    issues: Issues,
-    context: String,
-    ungoverned: Vec<String>,
+    pub(crate) list: List,
+    pub(crate) resolved: Vec<Resolved>,
+    pub(crate) workflows: Vec<resolve::workflow::Declared>,
+    pub(crate) facts: Vec<&'static str>,
+    pub(crate) index: provider::Index,
+    pub(crate) issues: Issues,
+    pub(crate) context: String,
+    pub(crate) ungoverned: Vec<String>,
 }
 
 pub(crate) fn load(root: &Path) -> Loaded {
-    let (mut list, mut issues) = List::load(root);
+    load_with(root, false)
+}
+
+/// An unpinned remote component reads at its library version and passes over its locked commit.
+pub(crate) fn load_following(root: &Path) -> Loaded {
+    load_with(root, true)
+}
+
+fn load_with(root: &Path, follow: bool) -> Loaded {
+    let (mut list, mut issues) = List::load_following(root, follow);
     let mut ungoverned: Vec<String> = Vec::new();
     let context = context(&list, root);
 
-    let disk = parse::disk::Disk::scan(root);
-    let index = provider::Index::local(root, &list.sources, &disk);
-    provenance::lock::check(root, &mut issues);
+    let libraries = &list.resolver;
+    let disk = parse::disk::Disk::scan_at(
+        &crate::layout::components(root),
+        &libraries.collector_names(),
+    );
+    let index = provider::Index::local(root, &list.libraries, &disk);
+    provenance::origins::check(root, &list.libraries, &mut issues);
+    provenance::repo_lock::check(root, &mut issues);
 
     let network = list.network;
     let schema_version = list.schema_version;
     let repo_src = list.repo_src.clone();
     let mut resolved: Vec<Resolved> = Vec::new();
     for image in &mut list.images {
-        let mut load = |entry: &Entry, image: &Image| {
-            let mut component = Component::load(
-                entry,
-                image,
-                root,
-                &disk,
-                schema_version,
-                &repo_src,
-                &mut issues,
-            )?;
+        let load = |entry: &Entry, image: &Image, issues: &mut Issues| {
+            let mut component =
+                Component::load(entry, image, root, &disk, schema_version, &repo_src, issues)?;
             component.access = network.access(&component);
             Some(component)
         };
-        let mut entries = std::mem::take(&mut image.entries);
-        for entry in &mut entries {
-            entry.component = load(entry, image);
-        }
-        image.entries = entries;
-        for issue in resolve::imports::expand(image, root, &disk, load) {
-            issues.push(issue);
+        issues.extend(resolve::imports::expand(image, libraries, load));
+
+        if list.backend == model::image::Backend::Buildx && image.seals_uki() {
+            issues.push(
+                diag::Issue::new(
+                    format!(
+                        "`backend \"buildx\"` cannot build `{}`, which seals a UKI",
+                        image.id
+                    ),
+                    &image.src,
+                )
+                .help(
+                    "a sealed UKI carries the composefs digest, which `buildc build` reads \
+                 from the local buildah store: declare `backend \"buildah\"`",
+                ),
+            );
         }
 
         resolve::graph::suppress(image);
@@ -263,12 +280,13 @@ pub(crate) fn load(root: &Path) -> Loaded {
         resolve::order::apply(image, &order);
         resolve::graph::check_graph(image, &index, &mut issues);
         image.check_bootc(&mut issues);
-        resolve::graph::check_fragments(image, &mut issues);
+        image.check_layout(&mut issues);
         provenance::check_network(image, network.scripts, root, &mut issues);
         ungoverned.extend(provenance::ungoverned(image, network.scripts));
-        let shipped = resolve::overlay::index(image, &disk);
+        let shipped = resolve::overlay::index(image);
         resolve::overlay::check(image, &shipped, &mut issues);
-        let collected = resolve::collect::resolve_collects(image, root, &disk, &mut issues);
+        let collected =
+            resolve::collect::resolve_collects(image, &libraries.collectors, &mut issues);
 
         resolved.push(Resolved {
             shipped,
@@ -286,12 +304,7 @@ pub(crate) fn load(root: &Path) -> Loaded {
 
     let basis = resolve::workflow::Basis::of(&list);
     let workflows = resolve::workflow::resolve(&list, &basis, &mut issues);
-    let facts = resolve::workflow::facts(
-        &basis,
-        list.scans_scheduled,
-        list.publishes_scheduled,
-        list.backend,
-    );
+    let facts = resolve::workflow::facts(&basis, list.backend);
 
     Loaded {
         list,

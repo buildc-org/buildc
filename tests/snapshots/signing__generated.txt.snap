@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -922,15 +921,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     --mount=type=secret,id=mok_privkey,target=/run/secrets/mok_privkey,required=false \
     KERNEL=${KERNEL} bash /generated/signing/components/kernel/signed-kernel.sh
 
-# ---- drivers/kvmfr ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/signing/components/drivers/kvmfr.sh,target=/generated/signing/components/drivers/kvmfr.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=secret,id=mok_privkey,target=/run/secrets/mok_privkey,required=false \
-    bash /generated/signing/components/drivers/kvmfr.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -999,13 +989,6 @@ if [ ! -e '/usr/share/secureboot/sb_cert.der' ]; then
     echo "component kernel/signed-kernel provides secureboot-key, and its witness /usr/share/secureboot/sb_cert.der is missing" >&2
     exit 1
 fi
-==== generated/signing/components/drivers/kvmfr.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/drivers/kvmfr
-export COMPONENT_DIR
 ==== generated/signing/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1155,14 +1138,18 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["kernel/signed-kernel"]
     m1["drivers/kvmfr"]
+    m2["signing"]
     base -->|"initramfs-generation"| m0
     m0 -->|"kernel-devel, kernel-devel-helpers"| m1
+    m2 ==>|"lists"| m0
+    m2 ==>|"lists"| m1
 ```
 
 ## Capabilities
@@ -1175,6 +1162,13 @@ graph LR
 | `kernel-devel-helpers` | file, build only | `kernel/signed-kernel` | `drivers/kvmfr` |  |
 | `rechunking` | capability | `base` |  |  |
 | `secureboot-key` | file | `kernel/signed-kernel` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `kernel/signed-kernel` | `signing` | lists |
+| `drivers/kvmfr` | `signing` | lists |
 ==== generated/signing/graph.json
 {
   "image": "signing",
@@ -1235,12 +1229,23 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "kernel/signed-kernel",
+      "by": "signing",
+      "how": "lists"
+    },
+    {
+      "component": "drivers/kvmfr",
+      "by": "signing",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "9fe70b3e52d2937706021e0d23ab2c8eef2207abd1d76200b0b399706bf5d19b",
-  "files": 26
+  "root": "3020dcf4c2f6c02c7df567efc37c605e709bf22001b97478e574f31014bf0fcf",
+  "files": 25
 }

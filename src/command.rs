@@ -12,18 +12,17 @@ pub enum Verb {
     CreateRepo,
     CreateGit,
     CreateImage,
-    CreateFlavour,
     CreateModule,
     CreateKey,
     CreateScripts,
     AddPackage,
-    ImportModule,
+    AddComponent,
+    CopyComponent,
     SetWorkflows,
     SetLibrary,
     SetConforms,
     SetClaims,
     SetKey,
-    DetachModule,
     Check,
     Generate,
     Build,
@@ -40,7 +39,6 @@ pub enum Verb {
     Verify,
     Summary,
     Sbom,
-    FetchModules,
     Scap,
     ScapContent,
     ScapRules,
@@ -59,13 +57,10 @@ impl Verb {
     pub fn schema(self) -> Option<(&'static str, Area, &'static str)> {
         match self {
             Self::CreateRepo => Some(("repository&nbsp;layout", Area::Repository, "")),
-            Self::CreateImage => Some(("`image.kdl`", Area::Image, "")),
-            Self::CreateFlavour => Some((
-                "`image.kdl`&nbsp;›&nbsp;`flavours`",
-                Area::Image,
-                "image-flavours",
-            )),
-            Self::CreateModule => Some(("`manifest.kdl`", Area::Component, "")),
+            Self::CreateImage => Some(("`<name>.kdl`", Area::Component, "")),
+            Self::CreateModule | Self::AddComponent => {
+                Some(("`manifest.kdl`", Area::Component, ""))
+            }
             Self::AddPackage => Some((
                 "`manifest.kdl`&nbsp;›&nbsp;`packages`",
                 Area::Component,
@@ -75,19 +70,17 @@ impl Verb {
                 Some(("`manifest.kdl`&nbsp;›&nbsp;`key`", Area::Component, "key"))
             }
             Self::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
-            Self::ImportModule | Self::FetchModules | Self::DetachModule => {
-                Some(("`components.lock.kdl`", Area::Lock, ""))
-            }
-            Self::SetWorkflows => Some((
-                "`repo.kdl`&nbsp;›&nbsp;`workflows`",
+            Self::CopyComponent => Some(("`origins.kdl`", Area::Origins, "")),
+            Self::SetWorkflows => Some(("`repo.kdl`&nbsp;›&nbsp;`github`", Area::Repo, "github")),
+            Self::SetLibrary => Some((
+                "`repo.kdl`&nbsp;›&nbsp;`libraries`",
                 Area::Repo,
-                "workflows",
+                "libraries",
             )),
-            Self::SetLibrary => Some(("`repo.kdl`&nbsp;›&nbsp;`sources`", Area::Repo, "sources")),
             Self::SetConforms | Self::Coverage => Some((
-                "`image.kdl`&nbsp;›&nbsp;`conforms`",
-                Area::Image,
-                "image-conforms",
+                "`<name>.kdl`&nbsp;›&nbsp;`conforms`",
+                Area::Component,
+                "conforms",
             )),
             Self::SetClaims => Some((
                 "`manifest.kdl`&nbsp;›&nbsp;`satisfies`",
@@ -140,18 +133,17 @@ pub const ALL: &[Verb] = &[
     Verb::CreateRepo,
     Verb::CreateGit,
     Verb::CreateImage,
-    Verb::CreateFlavour,
     Verb::CreateModule,
     Verb::CreateKey,
     Verb::CreateScripts,
     Verb::AddPackage,
-    Verb::ImportModule,
+    Verb::AddComponent,
+    Verb::CopyComponent,
     Verb::SetWorkflows,
     Verb::SetLibrary,
     Verb::SetConforms,
     Verb::SetClaims,
     Verb::SetKey,
-    Verb::DetachModule,
     Verb::Check,
     Verb::Generate,
     Verb::Build,
@@ -168,7 +160,6 @@ pub const ALL: &[Verb] = &[
     Verb::Verify,
     Verb::Summary,
     Verb::Sbom,
-    Verb::FetchModules,
     Verb::Scap,
     Verb::ScapContent,
     Verb::ScapRules,
@@ -276,13 +267,6 @@ const SURFACE: &[Place] = &[
         topic: Topic::Image,
     },
     Place {
-        words: "create flavour",
-        verb: Verb::CreateFlavour,
-        runs: Runs::Repo,
-        listed: true,
-        topic: Topic::Image,
-    },
-    Place {
         words: "create component",
         verb: Verb::CreateModule,
         runs: Runs::Repo,
@@ -311,8 +295,15 @@ const SURFACE: &[Place] = &[
         topic: Topic::Components,
     },
     Place {
-        words: "import component",
-        verb: Verb::ImportModule,
+        words: "add component",
+        verb: Verb::AddComponent,
+        runs: Runs::Repo,
+        listed: true,
+        topic: Topic::Components,
+    },
+    Place {
+        words: "copy component",
+        verb: Verb::CopyComponent,
         runs: Runs::Repo,
         listed: true,
         topic: Topic::Components,
@@ -351,13 +342,6 @@ const SURFACE: &[Place] = &[
         runs: Runs::Repo,
         listed: true,
         topic: Topic::Keys,
-    },
-    Place {
-        words: "detach component",
-        verb: Verb::DetachModule,
-        runs: Runs::Repo,
-        listed: true,
-        topic: Topic::Components,
     },
     Place {
         words: "check",
@@ -472,13 +456,6 @@ const SURFACE: &[Place] = &[
         topic: Topic::Inspect,
     },
     Place {
-        words: "fetch components",
-        verb: Verb::FetchModules,
-        runs: Runs::Repo,
-        listed: true,
-        topic: Topic::Components,
-    },
-    Place {
         words: "scap content",
         verb: Verb::ScapContent,
         runs: Runs::RepoOrImage,
@@ -588,9 +565,7 @@ pub struct Cli {
     pub verb: Option<Surface>,
 }
 
-// The derive only shapes the command tree and no code reads the fields of this tree.
-// Each field name is the argument id that `flag` and `flag_all` look up.
-// A renamed field makes that lookup return nothing without an error.
+// No code reads a field of the subcommand enums below. Each field name is the argument id that `flag` and `flag_all` look up. A renamed field makes the lookup return nothing without an error.
 #[derive(Subcommand)]
 pub enum Surface {
     /// replace this buildc and its assets with the latest release
@@ -607,19 +582,14 @@ pub enum Surface {
         what: Option<AddWhat>,
     },
     /// copy a component from a declared library into the repository
-    Import {
+    Copy {
         #[command(subcommand)]
-        what: Option<ImportWhat>,
+        what: Option<CopyWhat>,
     },
     /// change a repository setting or record an existing key
     Set {
         #[command(subcommand)]
         what: Option<SetWhat>,
-    },
-    /// detach a component from its library
-    Detach {
-        #[command(subcommand)]
-        what: Option<DetachWhat>,
     },
     /// check every manifest and report each problem at its line
     #[command(long_about = help::CHECK, after_long_help = help::CHECK_NOTES)]
@@ -777,10 +747,8 @@ pub enum Surface {
         base_scan: Option<PathBuf>,
     },
     /// download one payload, verify it and place it
-    #[command(long_about = help::FETCH, subcommand_negates_reqs = true)]
+    #[command(long_about = help::FETCH)]
     Fetch {
-        #[command(subcommand)]
-        sub: Option<FetchWhat>,
         /// the payload kind: `file`, `tree`, `bin`, `rpm` or `deb`
         #[arg(value_name = "what", required = true)]
         what: Option<String>,
@@ -860,29 +828,22 @@ pub enum CreateWhat {
         #[arg(long, value_name = "ref")]
         base: Option<String>,
     },
-    /// add a second build of an image with more components
-    #[command(long_about = help::CREATE_FLAVOUR, after_long_help = help::CREATE_FLAVOUR_NOTES)]
-    Flavour {
-        /// the flavour name
-        #[arg(value_name = "name")]
-        name: Option<String>,
-        /// the image that publishes the flavour
-        #[arg(long, value_name = "name")]
-        image: Vec<String>,
-    },
-    /// write a new component in components/ or inline in an image
+    /// write a new component in components/ or inline in a component's body
     #[command(long_about = help::CREATE_COMPONENT, after_long_help = help::CREATE_COMPONENT_NOTES)]
     Component {
         /// the component name or path
         #[arg(value_name = "name")]
         name: Option<String>,
-        /// an image that lists the component
+        /// a build whose component lists the component; repeatable
         #[arg(long, value_name = "name")]
-        image: Vec<String>,
+        build: Vec<String>,
+        /// a local component whose body holds an inline definition
+        #[arg(long = "in", value_name = "component")]
+        inside: Option<String>,
         /// one more manifest line, such as `provides=browser`; repeatable
         #[arg(long, value_name = "verb=value")]
         with: Vec<String>,
-        /// write the component as a block in one image file
+        /// write the component as a block inside another component's body
         #[arg(long)]
         inline: bool,
     },
@@ -910,7 +871,7 @@ pub enum CreateWhat {
 
 #[derive(Subcommand)]
 pub enum AddWhat {
-    /// add packages to a package group
+    /// add package names to a component, or write a new package group
     #[command(
         long_about = help::ADD_PACKAGE,
         after_long_help = help::ADD_PACKAGE_NOTES
@@ -919,32 +880,51 @@ pub enum AddWhat {
         /// the package names to add; asked for when none is given
         #[arg(value_name = "name")]
         names: Vec<String>,
-        /// the path of the package group that receives the packages
+        /// the group path that receives the names; a new path writes a group
         #[arg(long, value_name = "path")]
         component: Option<String>,
-        /// the image or `<image>/<flavour>` that holds the group (repeatable)
+        /// a build whose component gets an inline copy; repeatable
         #[arg(long, value_name = "name")]
-        image: Vec<String>,
+        build: Vec<String>,
+    },
+    /// add a reference to a library component to local components
+    #[command(
+        long_about = help::ADD_COMPONENT,
+        after_long_help = help::ADD_COMPONENT_NOTES
+    )]
+    Component {
+        /// the component path; repeatable
+        #[arg(value_name = "path")]
+        paths: Vec<String>,
+        /// a local component that lists the reference; repeatable
+        #[arg(long = "in", value_name = "component")]
+        inside: Vec<String>,
+        /// the library to read the component from
+        #[arg(long, value_name = "name")]
+        library: Option<String>,
+        /// a tag or commit that fixes the component; one path only
+        #[arg(long, value_name = "pin")]
+        pin: Option<String>,
+        /// add the providers that the components require, preferring the named one; repeatable
+        #[arg(long, value_name = "provider", num_args = 0..=1, default_missing_value = "")]
+        dependencies: Vec<String>,
     },
 }
 
 #[derive(Subcommand)]
-pub enum ImportWhat {
-    /// copy a component from a declared library into this repository
-    #[command(long_about = help::IMPORT_COMPONENT, after_long_help = help::IMPORT_COMPONENT_NOTES)]
+pub enum CopyWhat {
+    /// copy library components into a local library and point the references at the copies
+    #[command(long_about = help::COPY_COMPONENT, after_long_help = help::COPY_COMPONENT_NOTES)]
     Component {
-        /// the component to copy or `<owner>/<name>` to choose a library
-        #[arg(value_name = "name")]
-        name: Option<String>,
-        /// the image or flavour that lists the component
+        /// the component as `<library>/<path>`, or its path with `--from`; repeatable
+        #[arg(value_name = "path")]
+        paths: Vec<String>,
+        /// the library to copy from
+        #[arg(long, value_name = "library")]
+        from: Option<String>,
+        /// the build whose commit each copy reads; with no path, every remote component the build reads
         #[arg(long, value_name = "name")]
-        image: Option<String>,
-        /// SCAP content for the profile offer; the family's installed copy by default, and no content means no offer
-        #[arg(long, value_name = "file")]
-        datastream: Option<PathBuf>,
-        /// add provider components for the requirements of the selected components
-        #[arg(long)]
-        dependencies: bool,
+        build: Option<String>,
     },
 }
 
@@ -952,10 +932,27 @@ pub enum ImportWhat {
 pub enum SetWhat {
     /// choose the CI workflows the repository generates
     #[command(long_about = help::SET_WORKFLOWS, after_long_help = help::SET_WORKFLOWS_NOTES)]
-    Workflows,
+    Workflows {
+        /// the workflow whose triggers or builds are set; a picker over every workflow if absent
+        #[arg(value_name = "workflow")]
+        workflow: Option<String>,
+        /// a trigger that replaces the workflow's triggers: `push`, `pr`, `schedule` or `tag=<pattern>`; repeatable
+        #[arg(long, value_name = "trigger", requires = "workflow")]
+        on: Vec<String>,
+        /// a build the workflow runs for, in place of its builds; repeatable
+        #[arg(long, value_name = "name", requires = "workflow")]
+        builds: Vec<String>,
+    },
     /// add a component library to the repository
-    #[command(long_about = help::SET_LIBRARY)]
-    Library,
+    #[command(long_about = help::SET_LIBRARY, after_long_help = help::SET_LIBRARY_NOTES)]
+    Library {
+        /// a default library to add, or the name of the library at `--source`
+        #[arg(value_name = "name")]
+        name: Option<String>,
+        /// a library's HTTPS Git URL or path
+        #[arg(long, value_name = "url or path")]
+        source: Option<String>,
+    },
     /// choose the benchmark profile an image is measured against
     #[command(long_about = help::SET_CONFORMS, after_long_help = help::SET_CONFORMS_NOTES)]
     Conforms {
@@ -988,20 +985,6 @@ pub enum SetWhat {
         /// the file that holds the public half
         #[arg(long, value_name = "path")]
         from: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum DetachWhat {
-    /// make an imported component the repository's own
-    #[command(long_about = help::DETACH_COMPONENT, after_long_help = help::DETACH_COMPONENT_NOTES)]
-    Component {
-        /// the component's path under components/
-        #[arg(value_name = "path")]
-        path: Option<String>,
-        /// detach without asking
-        #[arg(short = 'y', long)]
-        yes: bool,
     },
 }
 
@@ -1088,17 +1071,6 @@ pub enum ScapWhat {
         /// a benchmark rule number
         #[arg(num_args(0..), value_name = "number")]
         number: Vec<String>,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum FetchWhat {
-    /// refresh each tracked component from its library
-    #[command(long_about = help::FETCH_COMPONENTS, after_long_help = help::FETCH_COMPONENTS_NOTES)]
-    Components {
-        /// the components to refresh; every tracked component if absent
-        #[arg(value_name = "path")]
-        paths: Vec<String>,
     },
 }
 
@@ -1604,25 +1576,23 @@ impl Verb {
             | Self::CreateRepo
             | Self::CreateGit
             | Self::CreateImage
-            | Self::CreateFlavour
             | Self::CreateModule
             | Self::CreateKey
             | Self::CreateScripts
             | Self::AddPackage
-            | Self::ImportModule
+            | Self::AddComponent
+            | Self::CopyComponent
             | Self::SetWorkflows
             | Self::SetLibrary
             | Self::SetConforms
             | Self::SetClaims
             | Self::SetKey
-            | Self::DetachModule
             | Self::Build
             | Self::VmBuild
             | Self::VmRun
             | Self::VmSpawn
             | Self::MediaBuild
             | Self::MediaRun
-            | Self::FetchModules
             | Self::Scap
             | Self::ScapContent
             | Self::ScapRules
@@ -1670,7 +1640,7 @@ mod tests {
 
     #[test]
     fn a_word_whose_forms_all_take_a_noun_has_no_verb_of_its_own() {
-        for word in ["create", "import", "registry", "set", "vm", "media"] {
+        for word in ["create", "copy", "registry", "set", "vm", "media"] {
             assert!(verb(word).is_none(), "{word}");
         }
         for word in ["scap", "fetch", "check", "build"] {
@@ -1722,29 +1692,52 @@ mod tests {
     }
 
     #[test]
-    fn import_takes_the_dependencies_switch() {
+    fn add_component_reads_a_dependencies_value_on_either_side_of_the_path() {
+        let parse = |words: &[&str]| {
+            let matches = Cli::command()
+                .try_get_matches_from(["buildc", "add", "component"].iter().chain(words))
+                .expect("add component parses");
+            let paths: Vec<String> = flag_all(&matches, "paths");
+            let providers: Vec<String> = flag_all(&matches, "dependencies");
+            (paths, providers)
+        };
+        let after = parse(&["desktop/kde", "--dependencies", "containers/podman"]);
+        let before = parse(&["--dependencies", "containers/podman", "desktop/kde"]);
+        let bare = parse(&["desktop/kde", "--dependencies"]);
+        assert_eq!(
+            after,
+            (vec!["desktop/kde".into()], vec!["containers/podman".into()])
+        );
+        assert_eq!(before, after);
+        assert_eq!(bare, (vec!["desktop/kde".into()], vec![String::new()]));
+    }
+
+    #[test]
+    fn copy_component_takes_several_paths_a_library_and_a_build() {
         let matches = Cli::command()
-            .try_get_matches_from(["buildc", "import", "component", "browser", "--dependencies"])
-            .expect("import component takes --dependencies");
-        assert_eq!(flag::<bool>(&matches, "dependencies"), Some(true));
+            .try_get_matches_from([
+                "buildc",
+                "copy",
+                "component",
+                "browser",
+                "editor",
+                "--from",
+                "stable",
+                "--build",
+                "ws",
+            ])
+            .expect("copy component parses");
+        let paths: Vec<String> = flag_all(&matches, "paths");
+        assert_eq!(paths, ["browser", "editor"]);
+        assert_eq!(flag::<String>(&matches, "from").as_deref(), Some("stable"));
+        assert_eq!(flag::<String>(&matches, "build").as_deref(), Some("ws"));
     }
 
     #[test]
-    fn copy_is_not_a_command() {
-        let error = Cli::command()
-            .try_get_matches_from(["buildc", "copy", "component", "browser"])
-            .expect_err("copy is gone");
-        assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
-    }
-
-    #[test]
-    fn fetch_takes_its_three_positionals_unless_a_noun_does() {
-        Cli::command()
-            .try_get_matches_from(["buildc", "fetch", "components"])
-            .expect("the noun negates the required positionals");
+    fn fetch_takes_its_three_positionals() {
         let matches = Cli::command()
             .try_get_matches_from(["buildc", "fetch", "file", "https://host/f", "abc", "/usr/f"])
-            .expect("the in-build form parses beside the noun");
+            .expect("the in-build form parses");
         let fetch = matches
             .subcommand_matches("fetch")
             .expect("fetch is the word");
@@ -1819,7 +1812,7 @@ mod tests {
     #[test]
     fn a_refusal_lists_the_tails_a_word_wanted() {
         assert_eq!(takes("registry"), "`namespace` or `ref`");
-        assert_eq!(takes("import"), "`component [name]`");
+        assert_eq!(takes("copy"), "`component [path]...`");
         assert!(takes("create").starts_with("`repo [name]`"));
     }
 

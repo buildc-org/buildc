@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "deb",
   "pr_target": "deb",
   "pr_published": "deb",
-  "ungated_target": "deb",
-  "ungated_published": "deb",
   "cache_image": "deb-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "deb",
-      "file": "./deb.image.kdl",
+      "file": "./components/deb.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "",
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "deb",
           "image": "deb",
-          "flavour": null,
           "published": "deb",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/luks",
-              "flavour": null,
               "variant": null,
               "description": "The LUKS initramfs witness, carried by a component and not by the base",
               "options": {},
@@ -89,6 +83,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "deb",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -104,6 +125,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/deb/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "debian",
             "base": "docker.io/library/debian:forky",
             "args": [
@@ -114,7 +136,8 @@ source: tests/golden/harness.rs
             ],
             "unresolved": [],
             "validate": [
-              "LUKS_INITRAMFS=true"
+              "LUKS_INITRAMFS=true",
+              "BOOTC=false"
             ]
           }
         }

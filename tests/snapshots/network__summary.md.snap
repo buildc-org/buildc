@@ -1,7 +1,7 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-5 components, the ungated set.
+6 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
@@ -10,3 +10,4 @@ source: tests/golden.rs
 | `core/fetcher` | Fetches a pinned release in its own script |  |  |  |
 | `core/quiet` | Ships files and nothing else |  |  |  |
 | `core/spliced` | Ships a fragment beside its standard layer |  |  |  |
+| `network` |  |  |  |  |

@@ -1,60 +1,52 @@
 use crate::copy;
-use crate::declaration::{append, placed, splice, wrap};
 use crate::error::Error;
 use crate::layout;
 use crate::parse;
-use crate::resolve::workflow::{Basis, Shipped, DEFAULT_AT, SHIPPED};
+use crate::parse::declaration::{append, placed, wrap};
+use crate::resolve::workflow::{Basis, Scope, Shipped, SHIPPED};
 use common::prompt::Prompt;
 use common::ui::tree::Change;
 use common::ui::{Answer, Choice};
 use std::path::{Path, PathBuf};
 
-/// The variant order is the order the setup asks, so re-entry keeps every answer before the field the user resumes at.
+/// The variant order is the order that setup asks its fields. Re-entry keeps every answer before the field that the user resumes at.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Field {
     Name,
+    Setup,
     Provider,
     Remote,
     Libraries,
     Image,
     Base,
     Workflows,
-    Publish,
-    Scans,
-    Daily,
     Scripts,
 }
 
 #[derive(Clone, Default)]
 pub struct Libraries {
-    pub(crate) chosen: Vec<&'static crate::collection::DefaultLibrary>,
+    pub(crate) chosen: Vec<crate::model::remote::DefaultLibrary>,
 }
 
 impl Libraries {
-    pub fn every() -> Vec<&'static crate::collection::DefaultLibrary> {
-        crate::collection::DEFAULT_LIBRARIES.iter().collect()
+    pub fn every(assets: &Path) -> Vec<crate::model::remote::DefaultLibrary> {
+        crate::collection::defaults(assets)
     }
 
-    pub fn collect(held: Option<&Self>, prompt: &Prompt) -> Result<Self, Error> {
-        let every = Self::every();
+    pub fn collect(assets: &Path, held: Option<&Self>, prompt: &Prompt) -> Result<Self, Error> {
+        let every = Self::every(assets);
+        if every.is_empty() {
+            return Ok(Self::default());
+        }
         let options: Vec<Choice> = every
             .iter()
-            .map(|library| {
-                Choice::new(
-                    format!("{} \"{}\"", library.kind.as_str(), library.alias),
-                    library.about,
-                )
-            })
+            .map(|library| Choice::new(library.name.clone(), library.about.clone()))
             .collect();
         let on: Vec<usize> = match held {
             Some(held) => every
                 .iter()
                 .enumerate()
-                .filter(|(_, library)| {
-                    held.chosen
-                        .iter()
-                        .any(|held| held.alias == library.alias && held.kind == library.kind)
-                })
+                .filter(|(_, library)| held.chosen.iter().any(|held| held.name == library.name))
                 .map(|(at, _)| at)
                 .collect(),
             None => (0..every.len()).collect(),
@@ -63,15 +55,15 @@ impl Libraries {
             unreachable!("choose_many answers with a choice or fails")
         };
         Ok(Self {
-            chosen: chosen.into_iter().map(|at| every[at]).collect(),
+            chosen: chosen.into_iter().map(|at| every[at].clone()).collect(),
         })
     }
 
     pub(crate) fn row(&self) -> (Field, &'static str, String) {
         let mut aliases: Vec<&str> = Vec::new();
         for library in &self.chosen {
-            if !aliases.contains(&library.alias) {
-                aliases.push(library.alias);
+            if !aliases.contains(&library.name.as_str()) {
+                aliases.push(&library.name);
             }
         }
         (
@@ -95,7 +87,7 @@ pub enum Listing {
 pub struct Listed {
     file: PathBuf,
     image: String,
-    flavour: Option<String>,
+    scope: Option<String>,
 }
 
 impl Listed {
@@ -108,10 +100,7 @@ impl Listed {
         Self {
             file: PathBuf::from(image.src.name()),
             image: image.id.clone(),
-            flavour: match target.flavour == crate::model::image::NO_FLAVOUR {
-                true => None,
-                false => Some(target.flavour.clone()),
-            },
+            scope: list.scope(&image.id).map(str::to_string),
         }
     }
 }
@@ -124,38 +113,25 @@ impl Listing {
 
     pub fn target(root: &Path, given: Option<String>, prompt: &Prompt) -> Result<Self, Error> {
         let list = crate::model::image::List::editable(root).map_err(|issues| issues.plain())?;
-        Self::target_from(&list, given.as_deref(), prompt)
+        Self::target_from(&list, given.as_deref(), copy::TARGET_IMAGE, prompt)
     }
 
     pub(crate) fn selected(
         list: &crate::model::image::List,
         targets: &[crate::model::image::Target],
-    ) -> Result<Self, String> {
-        let ungated = |target: &crate::model::image::Target| {
-            targets.iter().any(|other| {
-                other.image == target.image && other.flavour == crate::model::image::NO_FLAVOUR
-            })
-        };
-        if let Some(gated) = targets
-            .iter()
-            .find(|target| target.flavour != crate::model::image::NO_FLAVOUR && ungated(target))
-        {
-            return Err(format!(
-                "`{gated}` is inside `{}` and already inherits its entries; list only one of them",
-                gated.image
-            ));
-        }
-        Ok(Self::In(
+    ) -> Self {
+        Self::In(
             targets
                 .iter()
                 .map(|target| Listed::of(list, target))
                 .collect(),
-        ))
+        )
     }
 
     pub(crate) fn target_from(
         list: &crate::model::image::List,
         given: Option<&str>,
+        title: &str,
         prompt: &Prompt,
     ) -> Result<Self, Error> {
         if list.images.is_empty() {
@@ -169,14 +145,14 @@ impl Listing {
                 .ok_or_else(|| {
                     let named: Vec<String> = targets.iter().map(ToString::to_string).collect();
                     format!(
-                        "`{name}` is not a declared image; there is {}",
+                        "`{name}` is not a declared build; there is {}",
                         named.join(", ")
                     )
                 })?,
             None => {
                 let mut rows = target_rows(&targets);
                 rows.push(Choice::new(copy::TARGET_NONE, ""));
-                match prompt.choose(copy::TARGET_IMAGE, &rows)? {
+                match prompt.choose(title, &rows)? {
                     None => return Ok(Self::Declined { asked: false }),
                     Some(at) if at == targets.len() => return Ok(Self::Declined { asked: true }),
                     Some(at) => at,
@@ -207,7 +183,7 @@ impl Listing {
                 .map(|name| {
                     named.iter().position(|known| known == name).ok_or_else(|| {
                         format!(
-                            "`{name}` is not a declared image; there is {}",
+                            "`{name}` is not a declared build; there is {}",
                             named.join(", ")
                         )
                     })
@@ -227,7 +203,29 @@ impl Listing {
         }
         let chosen: Vec<crate::model::image::Target> =
             unique.iter().map(|at| targets[*at].clone()).collect();
-        Ok(Self::selected(list, &chosen)?)
+        Ok(Self::selected(list, &chosen))
+    }
+
+    pub(crate) fn pick_from(
+        list: &crate::model::image::List,
+        prompt: &Prompt,
+    ) -> Result<Self, Error> {
+        if list.images.is_empty() {
+            return Ok(Self::NoImage);
+        }
+        if !prompt.asks() {
+            return Ok(Self::Declined { asked: false });
+        }
+        let targets = list.targets();
+        match prompt.choose_many(copy::LIST_IN_BUILDS, &target_rows(&targets), &[])? {
+            Answer::Cancelled => Ok(Self::Cancelled),
+            Answer::Chosen(at) if at.is_empty() => Ok(Self::Declined { asked: true }),
+            Answer::Chosen(at) => {
+                let chosen: Vec<crate::model::image::Target> =
+                    at.iter().map(|at| targets[*at].clone()).collect();
+                Ok(Self::selected(list, &chosen))
+            }
+        }
     }
 
     pub fn refuse_duplicate(
@@ -238,33 +236,31 @@ impl Listing {
         let Self::In(listed) = self else {
             return Ok(());
         };
-        let target = |image: &crate::model::image::Image, flavour: &Option<String>| {
-            crate::model::image::Target {
-                image: image.id.clone(),
-                flavour: flavour
-                    .clone()
-                    .unwrap_or_else(|| crate::model::image::NO_FLAVOUR.to_string()),
-            }
-        };
-        for into in listed {
-            let Some((image, held)) = holds(list, into, name) else {
-                continue;
-            };
-            let (at, into) = (target(image, &held.flavour), target(image, &into.flavour));
-            return Err(match at.to_string() == into.to_string() {
-                true => format!("`{at}` already lists `{name}`"),
-                false => format!("`{at}` already lists `{name}`, so `{into}` lists it twice"),
-            });
+        match listed.iter().find(|into| holds(list, into, name).is_some()) {
+            Some(into) => Err(format!("`{}` already lists `{name}`", into.image)),
+            None => Ok(()),
         }
-        Ok(())
     }
 
-    pub fn apply(
-        &self,
-        list: &crate::model::image::List,
-        path: &str,
-    ) -> Result<Vec<(PathBuf, Change)>, String> {
-        self.apply_declaration(list, &[(path, "")])
+    pub(crate) fn child(&self, name: &str) -> Result<String, String> {
+        let Self::In(listed) = self else {
+            return Ok(name.to_string());
+        };
+        let mut paths: Vec<(String, &str)> = Vec::new();
+        for target in listed {
+            let path = crate::model::image::child(target.scope.as_deref(), name);
+            if !paths.iter().any(|(held, _)| *held == path) {
+                paths.push((path, &target.image));
+            }
+        }
+        match paths.as_slice() {
+            [] => Ok(name.to_string()),
+            [(path, _)] => Ok(path.clone()),
+            [(one, first), (two, second), ..] => Err(format!(
+                "a bare `{name}` reads `{one}` in `{first}` and `{two}` in `{second}`; name the \
+                 builds that read it from one folder"
+            )),
+        }
     }
 
     pub fn cancelled(&self) -> bool {
@@ -278,9 +274,9 @@ impl Listing {
         for target in listed {
             let text = std::fs::read_to_string(&target.file)
                 .map_err(|err| format!("{}: {err}", target.file.display()))?;
-            if crate::parse::image::block_close(&text, &target.image, &[]).is_none() {
+            if crate::parse::image::block_close(&text, &[]).is_none() {
                 return Err(format!(
-                    "{} declares no image `{}`",
+                    "{} is not valid KDL, so `{}` cannot be edited",
                     target.file.display(),
                     target.image
                 ));
@@ -302,17 +298,7 @@ impl Listing {
         out
     }
 
-    pub(crate) fn targets(&self) -> Vec<(&str, Option<&str>)> {
-        let Self::In(listed) = self else {
-            return Vec::new();
-        };
-        listed
-            .iter()
-            .map(|target| (target.image.as_str(), target.flavour.as_deref()))
-            .collect()
-    }
-
-    pub(crate) fn apply_declaration(
+    pub(crate) fn apply_children(
         &self,
         list: &crate::model::image::List,
         declarations: &[(&str, &str)],
@@ -325,7 +311,7 @@ impl Listing {
             }
             Self::Declined { .. } => {
                 for (name, block) in declarations {
-                    let (chain, line) = placed(None, name, block);
+                    let (chain, line) = placed(true, name, block);
                     let shown = wrap(&chain, &line);
                     println!(
                         "next, to build it, list it in an image:\n {}",
@@ -339,11 +325,12 @@ impl Listing {
                 for target in listed {
                     let mut taken: Vec<String> = Vec::new();
                     for (name, block) in declarations {
-                        if holds(list, target, name).is_some() {
+                        let path = crate::model::image::child(target.scope.as_deref(), name);
+                        if holds(list, target, &path).is_some() {
                             continue;
                         }
-                        let (chain, line) = placed(target.flavour.as_deref(), name, block);
-                        append(&target.file, &target.image, &chain, &line)?;
+                        let (chain, line) = placed(true, name, block);
+                        append(&target.file, &chain, &line)?;
                         taken.push((*name).to_string());
                     }
                     if taken.is_empty() {
@@ -378,16 +365,9 @@ fn holds<'a>(
     list: &'a crate::model::image::List,
     into: &Listed,
     name: &str,
-) -> Option<(
-    &'a crate::model::image::Image,
-    &'a crate::model::image::Entry,
-)> {
+) -> Option<&'a crate::model::image::Entry> {
     let image = list.images.iter().find(|image| image.id == into.image)?;
-    let entry = image.entries.iter().find(|entry| {
-        entry.path == name
-            && crate::resolve::meet(into.flavour.as_deref(), entry.flavour.as_deref())
-    })?;
-    Some((image, entry))
+    image.entries.iter().find(|entry| entry.path == name)
 }
 
 fn ask(
@@ -401,38 +381,52 @@ fn ask(
             false => Vec::new(),
         }));
     }
-    Ok(prompt.choose_many(copy::LIST_IN_IMAGES, &target_rows(targets), &[])?)
+    Ok(prompt.choose_many(copy::LIST_IN_BUILDS, &target_rows(targets), &[])?)
 }
 
 fn target_rows(targets: &[crate::model::image::Target]) -> Vec<Choice> {
-    let mut ungated_row = 0;
-    let mut rows: Vec<Choice> = Vec::new();
-    for (at, target) in targets.iter().enumerate() {
-        let label = target.to_string();
-        if target.flavour != crate::model::image::NO_FLAVOUR {
-            rows.push(Choice::new(label, "").under(ungated_row));
-            continue;
-        }
-        ungated_row = at;
-        rows.push(Choice::new(label, ""));
-    }
-    rows
+    targets
+        .iter()
+        .map(|target| Choice::new(target.to_string(), ""))
+        .collect()
 }
 
+// The image build runs after the Renovate window.
+const SCAFFOLD: [(&str, &str); 4] = [
+    (
+        "image-build",
+        "image-build {\n    pr\n    push\n    schedule frequency=\"daily\" time=\"12:30\"\n}",
+    ),
+    ("smoke-test", "smoke-test { schedule frequency=\"weekly\" }"),
+    (
+        "update-components",
+        "update-components { schedule frequency=\"weekly\" time=\"05:30\" }",
+    ),
+    ("cleanup-registry", "cleanup-registry"),
+];
+
+#[derive(Clone)]
 pub struct Workflows {
     chosen: Vec<&'static str>,
-    at: (u32, u32),
-    publishes_scheduled: bool,
-    scans_scheduled: bool,
+    entries: Vec<(&'static str, String)>,
 }
 
 impl Workflows {
-    pub fn every(basis: &Basis) -> Vec<&'static str> {
-        SHIPPED
+    pub fn sensible() -> Self {
+        Self {
+            chosen: SCAFFOLD.iter().map(|(stem, _)| *stem).collect(),
+            entries: Vec::new(),
+        }
+        .scaffolded()
+    }
+
+    pub fn scaffolded(mut self) -> Self {
+        self.entries = SCAFFOLD
             .iter()
-            .filter(|shipped| shipped.met(basis))
-            .map(|shipped| shipped.stem)
-            .collect()
+            .filter(|(stem, _)| self.chosen.contains(stem))
+            .map(|(stem, entry)| (*stem, entry.to_string()))
+            .collect();
+        self
     }
 
     pub fn adding(list: &crate::model::image::List, more: &[&'static str]) -> Self {
@@ -445,22 +439,143 @@ impl Workflows {
                 })
                 .map(|shipped| shipped.stem)
                 .collect(),
-            at: list.workflows_at,
-            publishes_scheduled: list.publishes_scheduled,
-            scans_scheduled: list.scans_scheduled,
+            entries: Vec::new(),
         }
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "each argument is one answer or one current value the picker reads"
-    )]
+    pub fn named(
+        text: &str,
+        list: &crate::model::image::List,
+        stem: &str,
+        on: &[String],
+        builds: &[String],
+    ) -> Result<Self, Error> {
+        let shipped = SHIPPED
+            .iter()
+            .find(|shipped| shipped.stem == stem)
+            .ok_or_else(|| {
+                let have: Vec<&str> = SHIPPED.iter().map(|shipped| shipped.stem).collect();
+                Error::Invocation(format!(
+                    "`{stem}` is not a workflow buildc ships (have: {})",
+                    have.join(" ")
+                ))
+            })?;
+        if !shipped.met(&Basis::of(list)) {
+            return Err(Error::Operation(format!(
+                "`{stem}` {}",
+                shipped.needs.unmet()
+            )));
+        }
+        let mut triggers: Vec<String> = Vec::new();
+        for given in on {
+            let trigger = match given.split_once('=') {
+                Some(("tag", pattern)) if !pattern.is_empty() => format!(
+                    "tag {:?}",
+                    parse::declaration::quotable(pattern).map_err(Error::Invocation)?
+                ),
+                None if ["push", "pr", "schedule"].contains(&given.as_str()) => given.clone(),
+                _ => {
+                    return Err(Error::Invocation(format!(
+                        "`--on {given}` is not a trigger; `--on` takes `push`, `pr`, `schedule` \
+                         or `tag=<pattern>`"
+                    )))
+                }
+            };
+            let kind = trigger.split(' ').next().unwrap_or_default();
+            if triggers
+                .iter()
+                .any(|held| held.split(' ').next() == Some(kind))
+            {
+                return Err(Error::Invocation(format!(
+                    "`--on {kind}` is given twice; a workflow runs once on each trigger"
+                )));
+            }
+            triggers.push(trigger);
+        }
+        if !builds.is_empty() && shipped.scope == Scope::Repository {
+            return Err(Error::Invocation(format!(
+                "`{stem}` runs once for the repository, so it takes no `--builds`"
+            )));
+        }
+        let declared: Vec<&str> = list
+            .builds
+            .iter()
+            .map(|build| build.name.as_str())
+            .collect();
+        if let Some(unknown) = builds
+            .iter()
+            .find(|build| !declared.contains(&build.as_str()))
+        {
+            return Err(Error::Invocation(format!(
+                "`{unknown}` is not a build (have: {})",
+                declared.join(" ")
+            )));
+        }
+        let entry = parse::repo::workflow_entry(text, shipped.stem, &triggers, builds);
+        let listed: Vec<&str> = list.workflows.iter().map(|w| w.name.as_str()).collect();
+        Ok(Self {
+            chosen: SHIPPED
+                .iter()
+                .filter(|held| held.stem == stem || listed.contains(&held.stem))
+                .map(|held| held.stem)
+                .collect(),
+            entries: entry
+                .into_iter()
+                .map(|entry| (shipped.stem, entry))
+                .collect(),
+        })
+    }
+
+    pub fn ask_builds(
+        &mut self,
+        listed: &[&str],
+        builds: &[String],
+        prompt: &Prompt,
+    ) -> Result<bool, Error> {
+        if builds.len() < 2 {
+            return Ok(true);
+        }
+        let fresh: Vec<&'static str> = self
+            .chosen
+            .iter()
+            .copied()
+            .filter(|stem| !listed.contains(stem))
+            .filter(|stem| {
+                SHIPPED
+                    .iter()
+                    .any(|shipped| shipped.stem == *stem && shipped.scope == Scope::Build)
+            })
+            .collect();
+        let rows: Vec<Choice> = builds.iter().map(|build| Choice::new(build, "")).collect();
+        let every: Vec<usize> = (0..builds.len()).collect();
+        for stem in fresh {
+            let Answer::Chosen(picked) =
+                prompt.choose_many(&copy::workflow_builds(stem), &rows, &every)?
+            else {
+                return Ok(false);
+            };
+            if picked.is_empty() {
+                return Err(Error::Operation(format!(
+                    "`{stem}` runs for at least one build; keep every build ticked to run it for each"
+                )));
+            }
+            if picked.len() < builds.len() {
+                let named: Vec<String> = picked
+                    .iter()
+                    .map(|at| format!("{:?}", builds[*at]))
+                    .collect();
+                self.entries.push((
+                    stem,
+                    format!("{stem} {{\n    builds {}\n}}", named.join(" ")),
+                ));
+            }
+        }
+        Ok(true)
+    }
+
     pub fn collect(
         basis: &Basis,
         on: &[&str],
-        at: (u32, u32),
-        publishes_current: bool,
-        scans_current: bool,
         from: Field,
         prompt: &Prompt,
         say: crate::report::Say<'_>,
@@ -503,51 +618,9 @@ impl Workflows {
                 short.needs.unmet()
             )));
         }
-
-        let builds = chosen.iter().any(|shipped| shipped.stem == "build");
-        let publishes_scheduled = builds
-            && match from > Field::Publish {
-                true => publishes_current,
-                false => prompt.confirm_current(
-                    copy::PUBLISH_SCHEDULED,
-                    copy::YES,
-                    copy::NO,
-                    publishes_current,
-                )?,
-            };
-        // A scheduled publish already limits the scan, so the scan question has no separate cadence to ask.
-        let scans_scheduled = match (builds, publishes_scheduled) {
-            (false, _) => false,
-            (true, true) => scans_current,
-            (true, false) => match from > Field::Scans {
-                true => scans_current,
-                false => prompt.confirm_current(
-                    copy::SCAN_SCHEDULED,
-                    copy::YES,
-                    copy::NO,
-                    scans_current,
-                )?,
-            },
-        };
-
-        let at = match chosen.iter().any(|shipped| shipped.at.is_some()) {
-            false => at,
-            true => {
-                let asked = prompt.text(
-                    None,
-                    copy::DAILY_AT,
-                    BY_HAND,
-                    Some(&parse::repo::at_text(at)),
-                )?;
-                parse::repo::time(&asked)
-                    .ok_or_else(|| format!("`{asked}` is not a time of day: `HH:MM`"))?
-            }
-        };
         Ok(Some(Self {
             chosen: chosen.iter().map(|shipped| shipped.stem).collect(),
-            at,
-            publishes_scheduled,
-            scans_scheduled,
+            entries: Vec::new(),
         }))
     }
 
@@ -558,101 +631,36 @@ impl Workflows {
         prompt: &Prompt,
         say: crate::report::Say<'_>,
     ) -> Result<Option<Self>, Error> {
-        Self::collect(
-            basis,
-            &self.chosen,
-            self.at,
-            self.publishes_scheduled,
-            self.scans_scheduled,
-            from,
-            prompt,
-            say,
-        )
+        Self::collect(basis, &self.chosen, from, prompt, say)
     }
 
     pub fn rows(&self) -> Vec<(Field, &'static str, String)> {
-        let mut rows = vec![(
+        vec![(
             Field::Workflows,
             copy::ROW_WORKFLOWS,
             match self.chosen.is_empty() {
                 true => copy::NONE.to_string(),
                 false => self.chosen.join(", "),
             },
-        )];
-        if !self.chosen.contains(&"build") {
-            return rows;
-        }
-        rows.push((
-            Field::Publish,
-            copy::ROW_PUBLISH,
-            match self.publishes_scheduled {
-                true => copy::ON_SCHEDULED,
-                false => copy::ON_EVERY_PUSH,
-            }
-            .to_string(),
-        ));
-        if !self.publishes_scheduled {
-            rows.push((
-                Field::Scans,
-                copy::ROW_SCANS,
-                match self.scans_scheduled {
-                    true => copy::ON_SCHEDULED,
-                    false => copy::ON_EVERY_BUILD,
-                }
-                .to_string(),
-            ));
-        }
-        if self
-            .chosen
-            .iter()
-            .any(|stem| SHIPPED.iter().any(|s| s.stem == *stem && s.at.is_some()))
-        {
-            rows.push((Field::Daily, copy::ROW_DAILY, parse::repo::at_text(self.at)));
-        }
-        rows
+        )]
     }
 
     pub fn apply(&self, root: &Path) -> Result<Vec<(PathBuf, Change)>, String> {
         let file = root.join(layout::REPO_FILE);
         let text =
             std::fs::read_to_string(&file).map_err(|err| format!("{}: {err}", file.display()))?;
-        std::fs::write(&file, self.spliced(&text))
-            .map_err(|err| format!("{}: {err}", file.display()))?;
+        let out = self
+            .spliced(&text)
+            .map_err(|err| format!("{} {err}", file.display()))?;
+        std::fs::write(&file, out).map_err(|err| format!("{}: {err}", file.display()))?;
         Ok(vec![(
             PathBuf::from(layout::REPO_FILE),
             Change::Updated("the workflows it generates".to_string()),
         )])
     }
 
-    pub(crate) fn spliced(&self, text: &str) -> String {
-        let block = match self.chosen.is_empty() {
-            true => String::new(),
-            false => {
-                let held = parse::repo::workflow_schedules(text);
-                let named: String = self
-                    .chosen
-                    .iter()
-                    .map(|stem| match held.iter().find(|(name, _)| name == stem) {
-                        Some((_, line)) => format!("    {stem} schedule=\"{line}\"\n"),
-                        None => format!("    {stem}\n"),
-                    })
-                    .collect();
-                let at = match self.at == DEFAULT_AT {
-                    true => String::new(),
-                    false => format!(" at=\"{}\"", parse::repo::at_text(self.at)),
-                };
-                let publish = match self.publishes_scheduled {
-                    true => " publish=\"scheduled\"",
-                    false => "",
-                };
-                let scan = match self.scans_scheduled {
-                    true => " scan=\"scheduled\"",
-                    false => "",
-                };
-                format!("workflows{at}{publish}{scan} {{\n{named}}}")
-            }
-        };
-        splice(text, parse::repo::workflows_span(text), &block)
+    pub(crate) fn spliced(&self, text: &str) -> Result<String, String> {
+        parse::declaration::workflows(text, &self.chosen, &self.entries)
     }
 }
 
@@ -666,80 +674,145 @@ pub(crate) fn workflow_options(basis: &Basis) -> Vec<Choice> {
         .collect()
 }
 
-pub const BY_HAND: &str = "nothing can be asked here; edit the `workflows` block in repo.kdl, \
+pub const BY_HAND: &str = "nothing can be asked here; edit the `github` block in repo.kdl, \
                            then run `buildc generate`";
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn set(chosen: &[&'static str], at: (u32, u32)) -> Workflows {
+    fn set(chosen: &[&'static str]) -> Workflows {
         Workflows {
             chosen: chosen.to_vec(),
-            at,
-            publishes_scheduled: false,
-            scans_scheduled: false,
+            entries: Vec::new(),
         }
     }
 
+    fn named(text: &str, stem: &str, on: &[&str], builds: &[&str]) -> Result<String, Error> {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "buildc-named-workflow-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(layout::REPO_FILE), text).unwrap();
+        let (list, _, _) = crate::declarations(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        let owned = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        };
+        let set = Workflows::named(text, &list, stem, &owned(on), &owned(builds))?;
+        Ok(set.spliced(text).unwrap())
+    }
+
+    const TWO: &str = "schema-version 1\nbuilds default=\"one\" {\n    one\n    two\n}\n";
+
     #[test]
-    fn the_block_replaces_the_one_that_was_there_and_leaves_the_rest() {
-        let text = "name \"Example\"\n\nworkflows {\n    build\n}\n\nsources {\n}\n";
-        let out = set(&["build", "smoke-test"], DEFAULT_AT).spliced(text);
-        assert_eq!(
-            out,
-            "name \"Example\"\n\nworkflows {\n    build\n    smoke-test\n}\n\nsources {\n}\n"
+    fn a_named_workflow_is_written_with_its_triggers_and_builds() {
+        let out = named(TWO, "image-build", &["push", "tag=v*"], &["one"]).unwrap();
+        assert!(
+            out.ends_with("github {\n    workflows {\n        image-build {\n            push\n            tag \"v*\"\n            builds \"one\"\n        }\n    }\n}\n"),
+            "{out}"
         );
     }
 
     #[test]
-    fn a_rewritten_block_keeps_each_declared_schedule() {
-        let text = "workflows {\n    build\n    update-components schedule=\"0 3 * * 0\"\n}\n";
+    fn each_flag_replaces_only_its_own_part_of_the_entry() {
+        let text = format!(
+            "{TWO}github {{\n    workflows {{\n        cleanup-registry\n        image-build pr schedule {{\n            tag \"v*\"\n            builds \"one\"\n        }}\n    }}\n}}\n"
+        );
+        let rebuilt = named(&text, "image-build", &[], &["two"]).unwrap();
+        assert!(
+            rebuilt.contains("        image-build pr schedule {\n            tag \"v*\"\n            builds \"two\"\n        }\n"),
+            "{rebuilt}"
+        );
+        let retriggered = named(&text, "image-build", &["push"], &[]).unwrap();
+        assert!(
+            retriggered.contains(
+                "        image-build {\n            push\n            builds \"one\"\n        }\n"
+            ),
+            "{retriggered}"
+        );
+        assert!(
+            retriggered.contains("        cleanup-registry\n"),
+            "{retriggered}"
+        );
+    }
+
+    #[test]
+    fn a_named_workflow_with_no_flags_keeps_its_entry() {
+        let text =
+            format!("{TWO}github {{\n    workflows {{\n        image-build pr\n    }}\n}}\n");
+        assert_eq!(named(&text, "image-build", &[], &[]).unwrap(), text);
+    }
+
+    #[test]
+    fn the_named_form_refuses_what_check_would_refuse() {
+        let refused = |on: &[&str], builds: &[&str], stem: &str| match named(TWO, stem, on, builds)
+        {
+            Err(err) => err.to_string(),
+            Ok(out) => panic!("{out}"),
+        };
+        assert!(refused(&[], &["one"], "cleanup-registry").contains("runs once for the repository"));
+        assert!(refused(&[], &["three"], "image-build").contains("`three` is not a build"));
+        assert!(refused(&["nightly"], &[], "image-build").contains("is not a trigger"));
+        assert!(refused(&["tag="], &[], "image-build").contains("is not a trigger"));
+        assert!(refused(&["push", "push"], &[], "image-build").contains("given twice"));
+        assert!(refused(&["tag=a", "tag=b"], &[], "image-build").contains("given twice"));
+        assert!(refused(&[], &[], "deploy").contains("not a workflow buildc ships"));
+    }
+
+    #[test]
+    fn a_partial_build_selection_writes_builds_and_a_full_one_does_not() {
+        let builds = ["one".to_string(), "two".to_string()];
+        let mut chosen = set(&["image-build", "smoke-test", "cleanup-registry"]);
+        let prompt = Prompt::scripted(["1", ""].map(str::to_string).to_vec());
+        assert!(chosen.ask_builds(&[], &builds, &prompt).unwrap());
+        let out = chosen.spliced("schema-version 1\n").unwrap();
+        assert!(
+            out.contains("        image-build {\n            builds \"one\"\n        }\n        smoke-test\n        cleanup-registry\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn the_block_replaces_the_one_that_was_there_and_leaves_the_rest() {
+        let text = "name \"Example\"\n\ngithub {\n    workflows {\n        image-build\n    }\n}\n\nlibraries {\n}\n";
+        let out = set(&["image-build", "smoke-test"]).spliced(text).unwrap();
         assert_eq!(
-            set(&["build", "update-components"], DEFAULT_AT).spliced(text),
+            out,
+            "name \"Example\"\n\ngithub {\n    workflows {\n        image-build\n        smoke-test\n    }\n}\n\nlibraries {\n}\n"
+        );
+    }
+
+    #[test]
+    fn a_rewritten_block_keeps_each_written_trigger() {
+        let text = "github {\n    workflows {\n        image-build\n        update-components {\n            schedule frequency=\"daily\"\n        }\n    }\n}\n";
+        assert_eq!(
+            set(&["image-build", "update-components"])
+                .spliced(text)
+                .unwrap(),
             text
         );
     }
 
     #[test]
     fn a_repository_with_no_block_gets_one_at_the_end() {
-        let out = set(&["build"], (6, 0)).spliced("name \"Example\"\n");
+        let out = set(&["image-build"]).spliced("name \"Example\"\n").unwrap();
         assert_eq!(
             out,
-            "name \"Example\"\n\nworkflows at=\"06:00\" {\n    build\n}\n"
+            "name \"Example\"\n\ngithub {\n    workflows {\n        image-build\n    }\n}\n"
         );
-    }
-
-    #[test]
-    fn cadence_properties_follow_declaration_order() {
-        let mut workflows = set(&["build"], (6, 0));
-        workflows.publishes_scheduled = true;
-        workflows.scans_scheduled = true;
-        assert_eq!(
-            workflows.spliced("name \"Example\"\n"),
-            "name \"Example\"\n\nworkflows at=\"06:00\" publish=\"scheduled\" scan=\"scheduled\" {\n    build\n}\n"
-        );
-    }
-
-    #[test]
-    fn re_entering_at_a_field_asks_it_and_nothing_above_it() {
-        let mut held = set(&["build"], DEFAULT_AT);
-        held.scans_scheduled = true;
-        let prompt = Prompt::scripted(["07:30"].map(str::to_string).to_vec());
-        let again = held
-            .again(&Basis::scaffolding(""), Field::Daily, &prompt, &mut |_| {})
-            .unwrap()
-            .unwrap();
-        assert_eq!(again.chosen, ["build"]);
-        assert!(!again.publishes_scheduled);
-        assert!(again.scans_scheduled);
-        assert_eq!(again.at, (7, 30));
     }
 
     #[test]
     fn a_workflow_the_basis_cannot_run_opens_cleared_rather_than_refused() {
-        let held = set(&["build", "build-disk"], DEFAULT_AT);
-        let prompt = Prompt::scripted(["", "No", "No", "06:00"].map(str::to_string).to_vec());
+        let held = set(&["image-build", "build-disk"]);
+        let prompt = Prompt::scripted([""].map(str::to_string).to_vec());
         let mut said = String::new();
         let again = held
             .again(
@@ -750,104 +823,52 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        assert_eq!(again.chosen, ["build"]);
+        assert_eq!(again.chosen, ["image-build"]);
         assert!(said.contains("build-disk"), "{said}");
     }
 
     #[test]
-    fn a_cadence_is_a_row_only_where_its_question_was_asked() {
-        let labels = |workflows: &Workflows| -> Vec<&str> {
-            workflows
-                .rows()
-                .iter()
-                .map(|(_, label, _)| *label)
-                .collect()
-        };
-        let mut workflows = set(&["build"], DEFAULT_AT);
+    fn the_review_row_names_the_chosen_workflows() {
+        let rows = set(&["image-build", "smoke-test"]).rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].2, "image-build, smoke-test");
+        assert_eq!(set(&[]).rows()[0].2, copy::NONE);
+    }
+
+    #[test]
+    fn an_edit_keeps_the_comments_and_the_untouched_entries_of_the_block() {
+        let text = "github {\n    // nightly only\n    workflows {\n        // kept as written\n        image-build pr {\n            tag \"v*\" {\n                builds \"one\"\n            }\n        }\n        smoke-test\n    }\n}\n";
+        let out = set(&["image-build", "cleanup-registry"])
+            .spliced(text)
+            .unwrap();
         assert_eq!(
-            labels(&workflows),
-            [
-                copy::ROW_WORKFLOWS,
-                copy::ROW_PUBLISH,
-                copy::ROW_SCANS,
-                copy::ROW_DAILY
-            ]
+            out,
+            "github {\n    // nightly only\n    workflows {\n        // kept as written\n        image-build pr {\n            tag \"v*\" {\n                builds \"one\"\n            }\n        }\n        cleanup-registry\n    }\n}\n"
         );
-        workflows.publishes_scheduled = true;
-        assert!(!labels(&workflows).contains(&copy::ROW_SCANS));
-        assert_eq!(labels(&set(&[], DEFAULT_AT)), [copy::ROW_WORKFLOWS]);
-        assert_eq!(
-            labels(&set(&["build-disk"], DEFAULT_AT)),
-            [copy::ROW_WORKFLOWS]
+        let rebuilt = named(&format!("{TWO}{text}"), "image-build", &[], &["two"]).unwrap();
+        assert!(
+            rebuilt.contains("        // kept as written\n        image-build pr {\n            tag \"v*\" {\n                builds \"one\"\n            }\n            builds \"two\"\n        }\n"),
+            "{rebuilt}"
         );
     }
 
     #[test]
-    fn scheduled_publishing_makes_the_scan_question_redundant() {
-        let prompt = Prompt::scripted(["1", "Yes", "06:00"].map(str::to_string).to_vec());
-        let workflows = Workflows::collect(
-            &Basis::scaffolding(""),
-            &[],
-            DEFAULT_AT,
-            false,
-            false,
-            Field::Workflows,
-            &prompt,
-            &mut |_| {},
-        )
-        .unwrap()
-        .unwrap();
-        assert!(workflows.publishes_scheduled);
-        assert!(!workflows.scans_scheduled);
-        assert_eq!(workflows.at, (6, 0));
-    }
-
-    #[test]
-    fn existing_scheduled_cadences_survive_accepting_scheduled_publishing() {
-        let prompt = Prompt::scripted(["", "Yes", "06:00"].map(str::to_string).to_vec());
-        let workflows = Workflows::collect(
-            &Basis::scaffolding(""),
-            &["build"],
-            DEFAULT_AT,
-            true,
-            true,
-            Field::Workflows,
-            &prompt,
-            &mut |_| {},
-        )
-        .unwrap()
-        .unwrap();
-        assert!(workflows.publishes_scheduled);
-        assert!(workflows.scans_scheduled);
-    }
-
-    #[test]
-    fn declining_scheduled_publishing_preserves_the_current_scan_cadence() {
-        let prompt = Prompt::scripted(["", "No", "", "06:00"].map(str::to_string).to_vec());
-        let workflows = Workflows::collect(
-            &Basis::scaffolding(""),
-            &["build"],
-            DEFAULT_AT,
-            true,
-            true,
-            Field::Workflows,
-            &prompt,
-            &mut |_| {},
-        )
-        .unwrap()
-        .unwrap();
-        assert!(!workflows.publishes_scheduled);
-        assert!(workflows.scans_scheduled);
+    fn create_repo_scaffolds_the_triggers_of_its_workflows() {
+        let out = Workflows::sensible().spliced("schema-version 1\n").unwrap();
+        assert_eq!(
+            out,
+            "schema-version 1\n\ngithub {\n    workflows {\n        image-build {\n            pr\n            push\n            schedule frequency=\"daily\" time=\"12:30\"\n        }\n        smoke-test { schedule frequency=\"weekly\" }\n        update-components { schedule frequency=\"weekly\" time=\"05:30\" }\n        cleanup-registry\n    }\n}\n"
+        );
     }
 
     #[test]
     fn choosing_nothing_takes_the_block_away() {
-        let text = "name \"Example\"\n\nworkflows {\n    build\n}\n";
-        assert_eq!(set(&[], DEFAULT_AT).spliced(text), "name \"Example\"\n");
+        let text = "name \"Example\"\n\ngithub {\n    workflows {\n        image-build\n    }\n}\n";
+        assert_eq!(set(&[]).spliced(text).unwrap(), "name \"Example\"\n");
     }
 
     #[test]
-    fn workflow_and_cadence_screens_snapshot_production_rows() {
+    fn workflow_screens_snapshot_production_rows() {
         use crate::screen_tests::{assert_screen, assert_style_at, screen};
 
         let basis = Basis::scaffolding("");
@@ -869,37 +890,6 @@ mod tests {
             2,
             "modifier: DIM",
             "the unavailable build-disk workflow",
-        );
-        let yes_no = [Choice::new(copy::YES, ""), Choice::new(copy::NO, "")];
-        assert_screen(
-            "workflow-publish-cadence",
-            screen().picker(copy::PUBLISH_SCHEDULED, &yes_no, None, "enter confirms", 1),
-        );
-        assert_screen(
-            "workflow-scan-cadence",
-            screen().picker(copy::SCAN_SCHEDULED, &yes_no, None, "enter confirms", 1),
-        );
-        assert_screen(
-            "workflow-daily-at",
-            screen().line(
-                copy::DAILY_AT,
-                "",
-                "",
-                Some(&parse::repo::at_text(DEFAULT_AT)),
-            ),
-        );
-
-        let mut workflows = set(&["build", "base-sig-probe"], DEFAULT_AT);
-        workflows.scans_scheduled = true;
-        let mut rows: Vec<Choice> = workflows
-            .rows()
-            .into_iter()
-            .map(|(_, label, value)| Choice::new(format!("{label}  {value}"), ""))
-            .collect();
-        rows.push(Choice::new(copy::CREATE, ""));
-        assert_screen(
-            "workflow-cadences",
-            screen().picker(copy::REVIEW, &rows, None, copy::REVIEW_KEYS, rows.len() - 1),
         );
     }
 }

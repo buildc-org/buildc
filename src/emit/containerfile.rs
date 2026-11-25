@@ -35,7 +35,7 @@ pub fn file(skeleton: &str, image: &Image, regions: &Regions) -> String {
     if lines.peek().is_some_and(|l| l.starts_with("# syntax=")) {
         let _ = writeln!(out, "{}", lines.next().unwrap_or_default());
     }
-    out.push_str(&preamble(&image.id, &image.boot));
+    out.push_str(&preamble(&image.id, image.seals_uki()));
 
     let mut generated = false;
     for line in lines {
@@ -60,20 +60,16 @@ pub fn file(skeleton: &str, image: &Image, regions: &Regions) -> String {
     out
 }
 
-fn preamble(id: &str, boot: &str) -> String {
+fn preamble(id: &str, uki: bool) -> String {
     let mut out = format!(
         "# GENERATED FILE, do not edit. Produced by `buildc generate` from\n\
          # {SKELETON} and the {id} image definition.\n\n"
     );
-    if !boot.is_empty() {
+    if uki {
         out.push_str("ARG SPLIT_BASE=kernel-split\n\n");
     }
     out
 }
-
-const FLAVOUR_ARG: &str = "\
-# ---- flavour gate ----
-ARG FLAVOUR";
 
 fn family_arg(image: &Image) -> String {
     let family = image.family();
@@ -118,7 +114,6 @@ pub fn sections(
 ) -> Regions {
     let mut out = String::new();
     let mut tails: Vec<String> = Vec::new();
-    let mut flavour_arg_emitted = false;
     let family = image.family();
 
     if image
@@ -137,13 +132,9 @@ pub fn sections(
         let _ = write!(out, "### Base Image\nFROM ${{BASE}} AS {LINEAGE}\n\n");
     }
 
-    // The base measurement runs before the first component layer because a component can change the packages the base ships.
+    // The base measurement runs before the first component layer. A component can change the packages that the base ships.
     let early = super::measure::early(image);
     if !early.is_empty() {
-        if !image.flavours.is_empty() {
-            let _ = write!(out, "{FLAVOUR_ARG}\n\n");
-            flavour_arg_emitted = true;
-        }
         out.push_str(&early);
     }
 
@@ -176,11 +167,6 @@ pub fn sections(
             continue;
         };
 
-        if entry.flavour.is_some() && !flavour_arg_emitted {
-            let _ = write!(out, "{FLAVOUR_ARG}\n\n");
-            flavour_arg_emitted = true;
-        }
-
         let at = |want| {
             component
                 .fragment
@@ -193,6 +179,7 @@ pub fn sections(
             blocks.push(fragment(image, entry, body));
         }
         if component.standard_layer {
+            // The Containerfile is read by people and leaves out a layer whose script holds only its prelude.
             if component_build::splits(image, entry, component, root) {
                 let packages = component_build::packages_path(image, entry);
                 blocks.push(standard(
@@ -204,31 +191,33 @@ pub fn sections(
                     component_build::package_reads_dir(root, entry, family),
                 ));
             }
-            let script = component_build::path(image, entry);
-            blocks.push(standard(
-                entry,
-                component,
-                image,
-                &script,
-                component.access.scripts,
-                component_build::script_reads_dir(
-                    root, entry, component, image, family, collection,
-                ),
-            ));
-            if entry.flavour.is_none() {
-                let overlays = copies(image, entry, family, root);
-                if !overlays.is_empty() {
-                    blocks.push(overlays);
-                }
-                if component_build::tail(entry, component, collection, family, root).is_some() {
-                    let tail = component_build::tail_path(image, entry);
-                    blocks.push(tail_layer(
-                        entry,
-                        image,
-                        &tail,
-                        component_build::tail_reads_dir(root, entry, family, collection),
-                    ));
-                }
+            if component_build::splits(image, entry, component, root)
+                || component_build::runs(entry, component, collection, family, image, root)
+            {
+                let script = component_build::path(image, entry);
+                blocks.push(standard(
+                    entry,
+                    component,
+                    image,
+                    &script,
+                    component.access.scripts,
+                    component_build::script_reads_dir(
+                        root, entry, component, image, family, collection,
+                    ),
+                ));
+            }
+            let overlays = copies(image, entry, family, root);
+            if !overlays.is_empty() {
+                blocks.push(overlays);
+            }
+            if component_build::tail(entry, component, collection, family, root).is_some() {
+                let tail = component_build::tail_path(image, entry);
+                blocks.push(tail_layer(
+                    entry,
+                    image,
+                    &tail,
+                    component_build::tail_reads_dir(root, entry, family, collection),
+                ));
             }
         }
         if let Some(body) = at(Position::After) {
@@ -242,19 +231,14 @@ pub fn sections(
             tails.push(fragment(image, entry, body));
         }
 
-        if let Some(flavour) = &entry.flavour {
-            let _ = writeln!(out, "# ---- [{flavour}] ----");
+        if blocks.is_empty() {
+            continue;
         }
         let _ = writeln!(out, "# ---- {} ----", entry.path);
         let _ = write!(out, "{}\n\n", blocks.join("\n\n"));
     }
 
-    let flavours = !image.flavours.is_empty();
-    if flavours && !flavour_arg_emitted {
-        let _ = write!(out, "{FLAVOUR_ARG}\n\n");
-    }
-
-    let conforms = image.declares_conforms();
+    let conforms = !image.conforms.is_empty();
     let (claimed, refused) = crate::scap::exclusions(image);
     let rules = !claimed.is_empty() || !refused.is_empty();
 
@@ -273,10 +257,10 @@ pub fn sections(
     let _ = write!(
         out,
         "{}\n\n",
-        finalize_layer(image, &identity_env, root, flavours, conforms, rules)
+        finalize_layer(image, &identity_env, root, conforms, rules)
     );
 
-    // A base image can carry a versions file from an earlier build. The record measurement resets the file unless the early measurement already wrote it.
+    // A base image can carry a versions file from an earlier build. The record measurement resets that file unless the early measurement already wrote it.
     let early_measured = !early.is_empty();
     let record = record_layer(
         audit_enforce,
@@ -362,7 +346,6 @@ fn finalize_layer(
     image: &Image,
     identity_env: &str,
     root: &Path,
-    flavours: bool,
     conforms: bool,
     rules: bool,
 ) -> String {
@@ -410,9 +393,6 @@ fn finalize_layer(
          --mount=type=tmpfs,target=/tmp \\\n    ",
     );
     let mut env = String::new();
-    if flavours {
-        env.push_str("FLAVOUR=${FLAVOUR} ");
-    }
     env.push_str("IMAGE_VERSION=\"${IMAGE_VERSION}\" ");
     if conforms {
         env.push_str("CONFORMS=\"${CONFORMS}\" SCAP_CONTENT=\"${SCAP_CONTENT}\" ");
@@ -568,7 +548,7 @@ mod tests {
 
     #[test]
     fn only_a_uki_target_declares_the_split_base() {
-        assert!(preamble("db", "uki-db").contains("ARG SPLIT_BASE=kernel-split"));
-        assert!(!preamble("db", "").contains("SPLIT_BASE"));
+        assert!(preamble("db", true).contains("ARG SPLIT_BASE=kernel-split"));
+        assert!(!preamble("db", false).contains("SPLIT_BASE"));
     }
 }

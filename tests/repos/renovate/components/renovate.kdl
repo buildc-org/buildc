@@ -1,0 +1,21 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    fedora-family
+    apps {
+        browser {
+            lang-version "2"
+            version "128.0"
+        }
+    }
+    apps {
+        editor
+    }
+    apps {
+        image-viewer@1 { version "3.1"; }
+    }
+}

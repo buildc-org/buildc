@@ -1,0 +1,223 @@
+---
+source: tests/golden/harness.rs
+---
+{
+  "schema_version": 1,
+  "default_image": "edited-copy",
+  "pr_image": "edited-copy",
+  "default_target": "edited-copy",
+  "default_published": "edited-copy",
+  "pr_target": "edited-copy",
+  "pr_published": "edited-copy",
+  "cache_image": "edited-copy-cache",
+  "backend": "buildah",
+  "manifest_label": false,
+  "workflows": {},
+  "audit": {
+    "enforce": false
+  },
+  "assets": [],
+  "images": [
+    {
+      "id": "edited-copy",
+      "file": "./components/edited-copy.kdl",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "uki": false,
+      "allows": [],
+      "layout": null,
+      "base": {
+        "path": "base-image/fedora-bootc-44",
+        "defined": null,
+        "image": "quay.io/fedora/fedora-bootc:44",
+        "family": "fedora",
+        "scap_content": "",
+        "scap_pin": null,
+        "signed": false,
+        "provides": [],
+        "witnesses": {},
+        "requires": [],
+        "satisfies": []
+      },
+      "targets": [
+        {
+          "name": "edited-copy",
+          "image": "edited-copy",
+          "published": "edited-copy",
+          "reference": null,
+          "conforms": "",
+          "allows": [],
+          "default": true,
+          "pr": true,
+          "components": [
+            {
+              "path": "fedora-family",
+              "variant": null,
+              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
+              "options": {},
+              "provides": [
+                "build-environment"
+              ],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "resolved": "abebbac6f8b1b6cc827459790cc376bfbae27e6990e901149b9ca8314b2f74be",
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/edited",
+              "variant": null,
+              "description": "A copy that origins.kdl records",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [
+                {
+                  "family": "fedora",
+                  "names": [
+                    "fastfetch"
+                  ],
+                  "enablerepo": null
+                }
+              ],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+                "resolved": null,
+                "repo": false,
+                "imported": {
+                  "origin": "https://github.com/owner/upstream",
+                  "path": "edited",
+                  "content": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "pin": "0123456789abcdef0123456789abcdef01234567"
+                }
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "core/owned",
+              "variant": null,
+              "description": "A copy that origins.kdl records",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [
+                {
+                  "family": "fedora",
+                  "names": [
+                    "fastfetch"
+                  ],
+                  "enablerepo": null
+                }
+              ],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+                "resolved": null,
+                "repo": false,
+                "imported": {
+                  "origin": "https://github.com/owner/upstream",
+                  "path": "owned",
+                  "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+                  "pin": "0123456789abcdef0123456789abcdef01234567"
+                }
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "edited-copy",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": null,
+          "build": {
+            "containerfile": "generated/edited-copy/Containerfile",
+            "uki": false,
+            "backend": "buildah",
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=edited-copy",
+              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb core/edited|af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1 core/owned|af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+              "ASSET_RESOLUTIONS=",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": [
+              "BOOTC=false"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 )]
 
 use buildc::diag::Span;
-use buildc::model::remote::{At, Collection, Kind as SourceKind};
+use buildc::model::remote::{At, Collection};
 use std::path::PathBuf;
 
 struct Library {
@@ -30,7 +30,6 @@ impl Library {
 
     fn source(&self) -> Collection {
         Collection {
-            kind: SourceKind::Components,
             name: "core".to_string(),
             at: At::Dir("library".to_string()),
             span: Span::default(),

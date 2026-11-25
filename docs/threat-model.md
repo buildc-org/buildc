@@ -12,9 +12,8 @@ Report a vulnerability as the [security policy](https://github.com/buildc-org/bu
 ## What an adopter trusts
 
 The image repository is trusted. Its components run as root inside the build
-containers, and so does every component that `buildc import component`, `buildc create
-repo`, `buildc create image` or `buildc set conforms` copied into it from a
-collection.
+containers. So does every component that a build reads from a library, and
+every copy that `buildc copy component` made from one.
 `buildc` controls where a component comes from and records what it was. `buildc` does
 not sandbox what a component does. The review of the repository and its pins is
 the control for that code.
@@ -28,13 +27,13 @@ the control for that code.
   lists each check and its command. `src/provenance/mod.rs` `enforce_build`
   refuses a build whose base did not resolve to a digest, and a build from a
   tree with no commit.
-- Every command that reads the resolved images refuses an imported component
-  that tracks its library and no longer matches its entry in
-  `components/components.lock.kdl` (`src/provenance/lock.rs` `check`, run by
-  `src/lib.rs` `load`). The refusal does not depend on `audit`, and `buildc
-  build` runs it through `buildc verify`. `buildc import`, `buildc create` and
-  `buildc set` do not refuse, so the user can still repair the repository.
-  An untracked component belongs to the repository and is not refused.
+- Every command that reads the resolved images refuses a remote component
+  whose cached content no longer matches its entry in `repo.lock.kdl`
+  (`src/resolve/library.rs` `Libraries::revise`). The refusal does not depend
+  on `audit`.
+- A copy that `buildc copy component` makes belongs to the repository.
+  `components/origins.kdl` records its origin, its commit and its content hash,
+  and `buildc why` reads out a later edit. No command refuses an edited copy.
 - The `security-policy { network }` rule decides which generated component steps
   reach the network. `src/emit/containerfile.rs` runs a closed step with
   `--network=none`. If the repository declares no rule, then every step
@@ -47,40 +46,69 @@ the control for that code.
 - Component secrets enter a step as BuildKit `--mount=type=secret`
   (`src/emit/containerfile.rs`), so no secret is copied into a layer.
 
-### Fetched collections
+### Libraries
 
-A collection is a Git repository of components or base-image catalogs that
-`repo.kdl` names under `sources`.
+A library is a tree of components and base components that `repo.kdl`
+declares under `libraries`. A `local` library is a folder of the repository,
+and `buildc` edits it in place. A `remote` library is a Git repository that
+`buildc` fetches and never writes.
 
-- `src/parse/remote.rs` refuses a source URL that is not `https://`, and a
-  `sha256` with no `version`. A `dir` source names a local directory and is
-  never fetched.
-- A `sha256` pins the canonical `git archive` of the selected version.
-  `src/collection.rs` `fetch_git` refuses an archive whose hash differs.
-- Pinning is optional. A source with no `sha256` is unpinned, and every fetch
-  of it takes whatever its ref holds at that time. `buildc check` warns about
-  each unpinned source (`src/dispatch/read.rs` `reading`).
-- An image lists only the components under `components/`, and `check`, `generate`
-  and `build` read no collection. The image grammar in `src/parse/image.rs`
-  refuses a `source` block, and `parse_entry` refuses a `pin`. A collection
-  reaches the image only through a copy into `components/`.
-- Under enforcement, `buildc` refuses a copy from an unpinned component collection
-  (`src/import.rs` `verified`), whichever command makes it. `buildc create
-  image` vendors a base component through the same check
-  (`import::cached_member`).
-- A collection is never signature-verified. The hash pin and the review of
-  `repo.kdl` are the controls. See *Accepted risks*.
-- A component copy refuses a symbolic link (`src/init.rs` `copy_below`), so a
-  collection cannot copy a file from outside itself into `components/`. `buildc
-  fetch components` stages the copy first, so a refused copy leaves the component
-  as it was.
-- A component copy refuses a source directory whose canonical path leaves its
-  collection (`src/import.rs` `contained`). The check covers a member that is
-  itself a symbolic link. It also covers a lock entry whose `path` climbs out
-  of the collection.
-- The `update-components` workflow runs `buildc fetch components` with a token that
-  can push a branch and open a pull request. What it copies reaches `main`
-  only through the review of that pull request.
+- `src/parse/repo.rs` `check_local_paths` refuses a `local` source that
+  resolves outside the repository, through a symlink or a `..` segment, and
+  the refusal blocks every edit.
+- `src/parse/remote.rs` `parse_library` refuses a remote URL that is not
+  `https://`, and a URL that holds a template. Any other source is a path to a
+  Git checkout on this machine.
+- Every git call on a library removes the variables that point git at a
+  repository, such as `GIT_DIR` and `GIT_INDEX_FILE` (`src/collection.rs`
+  `git`). A hook that runs `buildc` exports them, and git would otherwise fetch
+  into the user's own repository.
+- A fetch from a path source runs `git-upload-pack` in that checkout, and
+  upload-pack reads the checkout's own git config. Git takes
+  `uploadpack.packObjectsHook` only from the global, system and command-line
+  config, so the checkout's config runs no command during the fetch.
+- The fetch writes a commit's files into `.cache/sources/` through `git
+  archive` with the host's global and system git config switched off
+  (`src/collection.rs` `fetch_git`). A library's `.gitattributes` therefore
+  cannot select a filter driver that the host config defines. The cache
+  repository's own attributes file unsets `export-subst`, `export-ignore`,
+  `text`, `eol`, `ident` and `working-tree-encoding` for every path. It
+  overrides the fetched tree's attributes and the user's, so the cached files
+  hold the bytes of their commit.
+- `buildc generate` is the one command that moves a remote component. It
+  fetches each library's `version`, or its default branch when it names none.
+  It records the commit and the content hash of each remote component a build
+  reads in `repo.lock.kdl` (`src/provenance/repo_lock.rs`). It also reads each
+  tag that a `pin=` names again. Every other command reads a remote component
+  at its locked commit from `.cache/sources/` and fetches nothing to resolve
+  it. An entry applies only while the tree sets the `pin=` that the entry
+  records.
+- `buildc check` reports each remote component that `repo.lock.kdl` does not
+  record, or whose content cannot be hashed (`repo_lock::unlocked`). With
+  network, it asks each remote where a library `version` and a pinned tag point
+  now, and it reports each one that moved away from the lock
+  (`repo_lock::moved`).
+- A library is never signature-verified. The content hash in `repo.lock.kdl`
+  and the review of the change that moves it are the controls. See *Accepted
+  risks*.
+- Resolution refuses a component whose path resolves through a link outside
+  its library, or onto the path of another component (`src/parse/component.rs`
+  `Component::load`).
+- `buildc copy component` refuses a component that resolves outside its
+  library root, also through a linked components folder (`src/layout.rs`
+  `contained`). Its pickers skip such a library.
+- The copy refuses a link that leaves the component, and it keeps a link
+  inside an overlay as a link, because that link is part of the image
+  (`src/init.rs` `copy_below`).
+- A copy from a local library records the checkout's commit only when the
+  checkout is clean. It records no commit if the checkout's own config defines
+  a filter driver or the checkout holds a submodule, because `git status`
+  would run those drivers on the host (`src/provenance/origins.rs`
+  `clean_head`). The user's global config stays, so the user's own filters
+  such as git-lfs run as they do for any `git status`.
+- The `update-components` workflow runs `buildc generate` with a token that can
+  push a branch and open a pull request. The commits it moves `repo.lock.kdl`
+  to reach `main` only through the review of that pull request.
 
 ### Assets a component downloads
 
@@ -223,8 +251,8 @@ reopen it.
 
 | Risk | Why it is accepted | What reopens it |
 | --- | --- | --- |
-| A collection is pinned by hash and never signature-verified. | The hash binds the exact tree the reviewer read, and the review of `repo.kdl` approves the pin. | A collection publisher that signs its releases, or an adopter that needs to trust a publisher instead of a tree. |
-| A source with no `sha256` follows its ref. | Pinning is optional, so a simple repository can follow its library. `buildc check` warns about each one. | An adopter that needs a `repo.kdl` rule that requires every source to be pinned. |
+| A library is locked by commit and content hash and never signature-verified. | The hash binds the exact tree the reviewer read, and the review of `repo.lock.kdl` approves each move. | A library publisher that signs its releases, or an adopter that needs to trust a publisher instead of a tree. |
+| A remote library with no `version` follows its default branch. | A simple repository can follow its library, and only `buildc generate` moves it. `buildc check` reports each remote component that the lock does not record. | An adopter that needs a `repo.kdl` rule that requires every library to name a version. |
 | `buildc upgrade` trusts a `.sha256` from the same release as the tarball. | No pin exists before the tool does. The GitHub attestation can be checked with `gh attestation verify`. | A signed release manifest. |
 | The composefs digest runs the image under build with `--privileged`. | The image's own `bootc` computes the digest from the container storage. The image is already trusted as the repository's own code. | An unprivileged digest command upstream. |
 | The install runs the image's own `bootc` privileged on the target machine. | The image is what the user chose to install, so its `bootc` is trusted with the machine. | None. |
@@ -247,15 +275,16 @@ Each gap is current behaviour that a control does not yet cover.
 
 These parts work with no network:
 
-- a `dir` source, which reads a local collection;
-- the sources cache, which holds each pinned collection by its pin;
-- `buildc check` and `buildc generate`, which read the repository's own components;
+- a `local` library, and a remote library whose source is a path;
+- the library cache in `.cache/sources/`, which holds each remote library by commit;
+- `buildc check` and `buildc build`, which read each remote component at the commit `repo.lock.kdl` records;
+- `buildc generate`, which keeps the commit the cache holds for a library `version` or a tag when a remote does not answer;
 - installer media that carries the image in its own storage.
 
 These parts need the network:
 
-- `buildc import component` from a Git source, and each new fetch of an unpinned
-  one;
+- `buildc generate` to move a remote library to a new commit;
+- `buildc add component` and `buildc create image` from a remote library that is not on this machine;
 - a run of `buildc.sh` in a repository with no `buildc-version`;
 - a registry pull of the base image, and the digest lookup of a base named by
   tag (`src/provenance/build.rs` `base`);

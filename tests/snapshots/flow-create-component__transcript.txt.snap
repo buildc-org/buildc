@@ -9,13 +9,13 @@ description (optional) []: A graphical editor
 
 supported base families, separated by spaces (optional) []: fedora
 
-List it in example? (Yes/No)
-Yes
+  1) example
+builds that list it [1, 0 for none]: 1
 
 
 example/
 ├── components/
 │   └── my-editor/
 │       └── + manifest.kdl
-└── ~ example.image.kdl  my-editor added to components
+└── ~ example.kdl  my-editor added to components
 ==== exit 0

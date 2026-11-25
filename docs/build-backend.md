@@ -6,11 +6,11 @@ UKI image can be built.
 
 ## Which backend to use
 
-`buildah` is the default. Use it for a UKI image, for a local VM build, or when
+`buildah` is the default. Use it for a UKI build, for a local VM build, or when
 you do not need a shared layer cache.
 
 `buildx` caches layers in a registry. Use it when you want that cache shared
-between runs and flavours. `buildx` cannot build a UKI image.
+between runs. `buildx` cannot build a UKI image.
 
 ## Choose a backend
 
@@ -19,8 +19,8 @@ Set `backend "buildx"` in `repo.kdl` to choose `buildx` for the repository.
 overrides it while the variable is set. The flag wins over the variable. Either
 wins over `repo.kdl`.
 
-Run `buildc generate` after you change the backend. The generated `build.yml`
-follows the declared backend.
+Run `buildc generate` after you change the backend. The generated
+`image-build.yml` follows the declared backend.
 
 ## What changes
 
@@ -35,23 +35,21 @@ follows the declared backend.
 
 ## Registry cache
 
-`buildx` reads and writes a layer cache in `<namespace>/<default-image>-cache`.
-The namespace is `$IMAGE_REGISTRY`, or the GitHub origin when that variable is
-unset. The default image is the only image, or the image named by
-`default-image`.
+`buildx` reads and writes a layer cache in `<namespace>/<default-build>-cache`.
+The namespace is the `registry` that `repo.kdl` declares. The default build is
+the only build, or the build that `builds default=` names.
 
-By default, `buildx` reads the cache for the target and the other flavours of
-the same image. `--no-cache-from` skips that read. `--cache-to` writes the
-cache.
+By default, `buildx` reads the cache for the target. `--no-cache-from` skips
+that read. `--cache-to` writes the cache.
 
-A repository with more than one image must declare `default-image`. Without a
+A repository with more than one build must declare `builds default=`. Without a
 name for the cache, `buildx` skips it. `--cache-to` then fails.
 
 ## UKI images
 
-An image with `boot-chain "uki-shim"` or `boot-chain "uki-db"` builds a UKI.
-Only `buildah` can build it. `buildc check` refuses `backend "buildx"` for such a
-repository. `buildc build --backend buildx` refuses that target.
+A build seals a UKI when a component's fragment reads `${SPLIT_BASE}`. Only
+`buildah` can build it. `buildc check` refuses `backend "buildx"` for such a
+build. `buildc build --backend buildx` refuses that target.
 
 A UKI build runs in two passes. The first builds the image. The second seals it
 with a digest read from the local podman store. `buildx` does not use that
@@ -60,12 +58,12 @@ failed check publishes nothing.
 
 ## In CI
 
-The generated `build.yml` runs the declared backend.
+The generated `image-build.yml` runs the declared backend.
 
 - `buildah`: the image lands in the root podman store. The SBOM, rechunk, push
   and signing steps read that store.
-- `buildx`: `buildc build` writes an OCI archive. The workflow copies it into the
-  root podman store. The later steps do not change. A publishing run also
+- `buildx`: `buildc build` writes an OCI archive. The workflow copies it into
+  the root podman store. The later steps do not change. A publishing run also
   writes the layer cache.
 
 ## In a local VM

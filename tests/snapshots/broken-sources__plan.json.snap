@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-sources",
   "pr_target": "broken-sources",
   "pr_published": "broken-sources",
-  "ungated_target": "broken-sources",
-  "ungated_published": "broken-sources",
   "cache_image": "broken-sources-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-sources",
-      "file": "./image.kdl",
+      "file": "./components/broken-sources.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,20 +44,45 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-sources",
           "image": "broken-sources",
-          "flavour": null,
           "published": "broken-sources",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
-          "components": [],
+          "components": [
+            {
+              "path": "broken-sources",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
           "suppressed": [],
           "secrets": [],
           "contract_files": [],
@@ -73,6 +96,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-sources/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

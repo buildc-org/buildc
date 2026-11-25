@@ -4,7 +4,11 @@ description "Fetches a pinned release in its own script"
 
 targets "fedora"
 
-network "scripts"
+permissions {
+    scripts {
+        network #true
+    }
+}
 
 asset "tool" {
     pin {

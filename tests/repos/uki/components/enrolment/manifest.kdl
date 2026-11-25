@@ -1,5 +1,0 @@
-schema-version 1
-
-description "Secure Boot enrollment provider fixture"
-targets "fedora"
-provides "secureboot-enrolment"

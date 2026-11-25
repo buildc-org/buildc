@@ -165,8 +165,12 @@ fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
         "buildc: {} generated files match the snapshot",
         plan.generated
     );
-    let backend = chosen_backend(opts.backend.clone(), env("BUILD_BACKEND"), plan.backend()?)?;
     let target = plan.target(opts.target.as_deref())?;
+    let backend = chosen_backend(
+        opts.backend.clone(),
+        env("BUILD_BACKEND"),
+        target.backend()?,
+    )?;
     let published = target.published();
 
     let version = match env("IMAGE_VERSION") {
@@ -202,9 +206,14 @@ fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
         }
     }
 
-    let namespace = crate::registry::namespace(root);
-    if let Err(err) = &namespace {
-        eprintln!("buildc: {err}; the image carries no IMAGE_REGISTRY");
+    let namespace = target
+        .reference()
+        .map(|reference| crate::registry::namespace_of(&reference).to_string());
+    if namespace.is_none() {
+        eprintln!(
+            "buildc: `{}` publishes nowhere, so the image carries no IMAGE_REGISTRY",
+            target.name
+        );
     }
 
     let mut build_args = vec![
@@ -242,7 +251,7 @@ fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
         labels.push(format!("org.buildc.manifest={}", record::MANIFEST));
     }
 
-    let (import, export) = cache(&plan, &target, opts, namespace.ok())?;
+    let (import, export) = cache(&plan, &target, opts, namespace.clone())?;
 
     Ok(Some(Prepared {
         backend,
@@ -652,7 +661,9 @@ fn lower_hex(byte: u8) -> bool {
 }
 
 fn remove_image(program: &str, tag: &str) {
-    match Command::new(program).args(["rmi", "--force", tag]).output() {
+    let mut command = Command::new(program);
+    command.args(["rmi", "--force", tag]);
+    match command.output() {
         Ok(out) if out.status.success() || !image_exists(program, tag) => {}
         Ok(out) => eprintln!(
             "buildc: `{program} rmi --force {tag}` failed: {}",
@@ -747,7 +758,7 @@ fn cache(
     let (Some(namespace), Some(image)) = (namespace, plan.cache_image()) else {
         if opts.cache_to {
             return Err(
-                "`--cache-to` needs a registry namespace and a `default-image` in repo.kdl".into(),
+                "`--cache-to` needs a registry namespace and a default build in repo.kdl".into(),
             );
         }
         eprintln!("buildc: skipping the registry layer cache");
@@ -759,9 +770,6 @@ fn cache(
     let mut import = Vec::new();
     if !opts.no_cache_from {
         import.push(format!("{repo}:{published}"));
-        for sibling in target.siblings() {
-            import.push(format!("{repo}:{sibling}"));
-        }
     }
     let export = opts
         .cache_to
@@ -905,7 +913,6 @@ mod tests {
             prepared.import[0],
             "ghcr.io/example/workstation-cache:workstation"
         );
-        assert!(prepared.import.len() > 1, "{:?}", prepared.import);
         assert!(prepared.export.is_none());
         assert!(!prepared.uki);
         for arg in [
@@ -934,14 +941,14 @@ mod tests {
             "{before:?}"
         );
 
-        fs::rename(root.join("components"), root.join("moved")).expect("the sources move");
-        fs::create_dir(root.join("components")).expect("an empty components directory is made");
-        fs::write(root.join("components/components.lock.kdl"), "not a lock")
-            .expect("a broken lock is written");
-        let image = root.join("workstation.image.kdl");
+        let image = root.join("components/workstation.kdl");
         let text = fs::read_to_string(&image).expect("the image file reads");
         fs::write(&image, text.replace("conforms \"standard\"", ""))
             .expect("the image file writes");
+        fs::rename(root.join("components"), root.join("moved")).expect("the sources move");
+        fs::create_dir(root.join("components")).expect("an empty components directory is made");
+        fs::write(root.join("components/origins.kdl"), "not an origins file")
+            .expect("a broken origins file is written");
         let repo = root.join("repo.kdl");
         let text = fs::read_to_string(&repo).expect("repo.kdl reads");
         fs::write(&repo, format!("{text}backend \"buildx\"\n")).expect("repo.kdl writes");
@@ -949,7 +956,7 @@ mod tests {
         let after = read_by_a_build(&root, "workstation");
         assert_eq!(before, after);
 
-        fs::remove_dir_all(root.join("components")).expect("the broken lock goes");
+        fs::remove_dir_all(root.join("components")).expect("the broken origins file goes");
         fs::rename(root.join("moved"), root.join("components")).expect("the sources return");
         let run = crate::run::run(crate::Command::Generate, None, &root);
         assert_eq!(run.problems.issues.plain(), "");
@@ -962,7 +969,7 @@ mod tests {
             "{regenerated:?}"
         );
         assert!(
-            regenerated.iter().any(|arg| arg == "CONFORMS="),
+            !regenerated.iter().any(|arg| arg.starts_with("CONFORMS=")),
             "{regenerated:?}"
         );
     }
@@ -984,12 +991,36 @@ mod tests {
         build_prefix(
             Backend::Buildah,
             Path::new("generated/next44/Containerfile"),
-            &["FLAVOUR=".to_string(), "BASE=example:1".to_string()],
+            &["BASE=example:1".to_string()],
             &[Secret {
                 id: "mok_privkey".to_string(),
                 path: "/keys/mok.key".to_string(),
             }],
         )
+    }
+
+    #[test]
+    fn the_prefix_names_the_backend_file_arguments_and_secrets() {
+        let args = prefix();
+        assert_eq!(
+            &args[..5],
+            [
+                "build",
+                "--file",
+                "generated/next44/Containerfile",
+                "--build-arg",
+                "BASE=example:1",
+            ]
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--secret", "id=mok_privkey,src=/keys/mok.key"]),
+            "{args:?}"
+        );
+        assert_eq!(
+            build_prefix(Backend::Buildx, Path::new("Containerfile"), &[], &[],),
+            ["buildx", "build", "--file", "Containerfile"]
+        );
     }
 
     #[test]

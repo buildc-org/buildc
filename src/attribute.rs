@@ -79,10 +79,7 @@ pub(crate) fn document(
 
 fn module_of<'a>(created: &str, entries: &'a [Built]) -> Option<&'a str> {
     for entry in entries {
-        let name = match &entry.flavour {
-            Some(flavour) => format!("{}@{flavour}", entry.path),
-            None => entry.path.clone(),
-        };
+        let name = &entry.path;
         for kind in ["components", "packages"] {
             for suffix in [".sh", ".sh.tail.sh", ".sh.witness.sh"] {
                 let needle = format!("/{kind}/{name}{suffix}");
@@ -116,32 +113,31 @@ fn paths(component: &str, owners: &BTreeMap<String, String>, entries: &[Built]) 
 mod tests {
     use super::*;
 
-    fn entry(path: &str, flavour: Option<&str>) -> Built {
+    fn entry(path: &str) -> Built {
         Built {
             path: path.to_string(),
-            flavour: flavour.map(str::to_string),
             witnessed: Vec::new(),
         }
     }
 
     #[test]
     fn a_component_is_responsible_for_the_overlays_it_wins_and_its_witnesses() {
-        let mut plain = entry("core/plain", None);
+        let mut plain = entry("core/plain");
         plain.witnessed.push("/usr/bin/plain".to_string());
-        let entries = vec![plain, entry("core/gated", Some("dev"))];
+        let entries = vec![plain, entry("core/other")];
         let mut owners = BTreeMap::new();
-        owners.insert("/etc/shared".to_string(), "core/gated".to_string());
+        owners.insert("/etc/shared".to_string(), "core/other".to_string());
         assert_eq!(
             paths("core/plain", &owners, &entries),
             vec!["/usr/bin/plain"]
         );
-        assert_eq!(paths("core/gated", &owners, &entries), vec!["/etc/shared"]);
+        assert_eq!(paths("core/other", &owners, &entries), vec!["/etc/shared"]);
     }
 
     #[test]
     fn a_base_layer_has_no_component_and_an_overlay_names_its_winner() {
-        let one = entry("core/one", None);
-        let two = entry("core/two", None);
+        let one = entry("core/one");
+        let two = entry("core/two");
         let entries = vec![one, two];
         let mut owners = BTreeMap::new();
         owners.insert("/etc/shared".to_string(), "core/two".to_string());
@@ -163,22 +159,22 @@ mod tests {
 
     #[test]
     fn a_created_by_line_names_the_component_that_ran() {
-        let plain = entry("core/hello", None);
-        let gated = entry("core/browser", Some("dev"));
-        let entries = vec![plain, gated];
+        let plain = entry("core/hello");
+        let packaged = entry("core/browser");
+        let entries = vec![plain, packaged];
         let line = "/bin/sh -c |1 COMPONENT_DIR=/ctx/components/core/hello bash /generated/x/components/core/hello.sh";
         assert_eq!(module_of(line, &entries), Some("core/hello"));
-        let gated_line = "bash /generated/x/packages/core/browser@dev.sh";
-        assert_eq!(module_of(gated_line, &entries), Some("core/browser"));
+        let packages = "bash /generated/x/packages/core/browser.sh";
+        assert_eq!(module_of(packages, &entries), Some("core/browser"));
         let tail = "bash /generated/x/components/core/hello.sh.tail.sh";
         assert_eq!(module_of(tail, &entries), Some("core/hello"));
         assert_eq!(module_of("FROM base", &entries), None);
-        let entries = vec![entry("core/run.sh", None), entry("core/hello", None)];
+        let entries = vec![entry("core/run.sh"), entry("core/hello")];
         assert_eq!(
             module_of("bash /generated/x/components/core/run.sh.sh", &entries),
             Some("core/run.sh")
         );
-        let entries = vec![entry("core/run", None), entry("core/run.sh", None)];
+        let entries = vec![entry("core/run"), entry("core/run.sh")];
         assert_eq!(
             module_of("bash /generated/x/components/core/run.sh.sh", &entries),
             Some("core/run.sh")

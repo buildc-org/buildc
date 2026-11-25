@@ -5,7 +5,7 @@ source: tests/golden/harness.rs
   help: declared variants: lean
 
   x list value "Fira Code" on option `fonts` contains whitespace
-    ,-[tests/repos/broken-options/image.kdl:10:13]
+    ,-[tests/repos/broken-options/components/broken-options.kdl:10:13]
   9 |         configurable variant="nonexistent" {
  10 |             fonts "Fira Code"
     :             ^^|^^
@@ -16,7 +16,7 @@ source: tests/golden/harness.rs
         space would arrive as two
 
   x option `starship` is a bool, so it takes one #true or #false
-    ,-[tests/repos/broken-options/image.kdl:11:13]
+    ,-[tests/repos/broken-options/components/broken-options.kdl:11:13]
  10 |             fonts "Fira Code"
  11 |             starship "yes"
     :             ^^^^|^^^
@@ -26,7 +26,7 @@ source: tests/golden/harness.rs
   help: bools reach the build as 1 or 0
 
   x `core/configurable` has no option `colour`
-    ,-[tests/repos/broken-options/image.kdl:12:13]
+    ,-[tests/repos/broken-options/components/broken-options.kdl:12:13]
  11 |             starship "yes"
  12 |             colour "blue"
     :             ^^^|^^
@@ -36,11 +36,11 @@ source: tests/golden/harness.rs
   help: declared options: fonts, starship
 
   x `starship` is set twice on `core/configurable`
-    ,-[tests/repos/broken-options/image.kdl:13:13]
+    ,-[tests/repos/broken-options/components/broken-options.kdl:13:13]
  12 |             colour "blue"
  13 |             starship #true
     :             ^^^^|^^^
     :                 `-- set again here
  14 |         }
     `----
-  help: resolution is a single pass, so a second value is an error
+  help: one segment sets each option once; keep one of the two values

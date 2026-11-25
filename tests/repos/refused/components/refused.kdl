@@ -1,0 +1,19 @@
+schema-version 1
+
+conforms "standard" {
+    allow-remediation "sshd_disable_root_login" because="this image is reached over ssh as root"
+    allow-remediation "no_component_here_refuses_this" because="and so it lifts nothing"
+}
+
+component "/" {
+    base-image {
+        fedora-bootc-44
+    }
+
+    one {
+        contradicts
+    }
+    one {
+        typo
+    }
+}

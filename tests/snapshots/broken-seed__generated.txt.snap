@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,14 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- core/hello ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/example/components/core/hello.sh,target=/generated/example/components/core/hello.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/example/components/core/hello.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -963,13 +954,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/example/components/core/hello.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/hello
-export COMPONENT_DIR
 ==== generated/example/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1119,18 +1103,33 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["core/hello"]
+    m1["example"]
+    m1 ==>|"lists"| m0
 ```
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/hello` | `example` | lists |
 ==== generated/example/graph.json
 {
   "image": "example",
   "capabilities": [],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/hello",
+      "by": "example",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/seed.kdl
@@ -1145,6 +1144,6 @@ component "buildc-org/core/hello"
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "d1f66d61df5fbadf09ef944a88c9c3fbde9dc6ac30a90c01d1a1ec96fe82ba03",
-  "files": 26
+  "root": "3dda0ffac2ab26b539126b1637e976322bdba3a8dfd072efb266f8cad5c8683f",
+  "files": 25
 }

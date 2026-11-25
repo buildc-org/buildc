@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-cycle",
   "pr_target": "broken-cycle",
   "pr_published": "broken-cycle",
-  "ungated_target": "broken-cycle",
-  "ungated_published": "broken-cycle",
   "cache_image": "broken-cycle-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-cycle",
-      "file": "./image.kdl",
+      "file": "./components/broken-cycle.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,46 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-cycle",
           "image": "broken-cycle",
-          "flavour": null,
           "published": "broken-cycle",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
+              "path": "broken-cycle",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
               "path": "core/a",
-              "flavour": null,
               "variant": null,
               "description": "Requires what requires it back",
               "options": {},
@@ -99,7 +120,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/b",
-              "flavour": null,
               "variant": null,
               "description": "The other half of the cycle",
               "options": {},
@@ -148,6 +168,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-cycle/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

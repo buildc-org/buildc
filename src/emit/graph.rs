@@ -163,10 +163,7 @@ impl<'a> Graph<'a> {
                 self.nodes.len() - usize::from(self.image.base.is_some())
             ),
             name: component.path.clone(),
-            label: match &component.flavour {
-                Some(flavour) => format!("{} [{flavour}]", component.path),
-                None => component.path.clone(),
-            },
+            label: component.path.clone(),
         });
         self.nodes.len() - 1
     }
@@ -224,6 +221,7 @@ impl<'a> Graph<'a> {
                     Json::object([
                         ("component", Json::string(*component)),
                         ("by", Json::string(*by)),
+                        ("how", Json::string(self.how(by))),
                     ])
                 })),
             ),
@@ -272,12 +270,19 @@ impl<'a> Graph<'a> {
         if !self.imports.is_empty() {
             tables.push(Part::Table(Table {
                 title: "Imports".to_string(),
-                header: &["Component", "Imported by"],
+                header: &["Component", "By", "How"],
                 rows: self
                     .imports
                     .iter()
                     .map(|(component, by)| {
-                        (vec![(*component).to_string(), (*by).to_string()], false)
+                        (
+                            vec![
+                                (*component).to_string(),
+                                (*by).to_string(),
+                                self.how(by).to_string(),
+                            ],
+                            false,
+                        )
                     })
                     .collect(),
             }));
@@ -314,7 +319,7 @@ impl<'a> Graph<'a> {
     pub fn markdown(&self) -> String {
         let imports = match self.imports.is_empty() {
             true => "",
-            false => "A thick arrow points from a component to what it imports.\n",
+            false => "A thick arrow points from a component to what it lists or imports.\n",
         };
         let mut out = format!(
             "# `{}` capability graph\n\n\
@@ -344,8 +349,10 @@ impl<'a> Graph<'a> {
             };
             let _ = writeln!(
                 out,
-                "    {} ==>|\"imports\"| {}",
-                self.nodes[from].id, self.nodes[to].id
+                "    {} ==>|\"{}\"| {}",
+                self.nodes[from].id,
+                self.how(by),
+                self.nodes[to].id
             );
         }
         out.push_str("```\n");
@@ -384,9 +391,15 @@ impl<'a> Graph<'a> {
         }
 
         if !self.imports.is_empty() {
-            out.push_str("\n## Imports\n\n| Component | Imported by |\n|---|---|\n");
+            out.push_str("\n## Imports\n\n| Component | By | How |\n|---|---|---|\n");
             for (component, by) in &self.imports {
-                let _ = writeln!(out, "| {} | {} |", code(component), code(by));
+                let _ = writeln!(
+                    out,
+                    "| {} | {} | {} |",
+                    code(component),
+                    code(by),
+                    self.how(by)
+                );
             }
         }
 
@@ -398,6 +411,14 @@ impl<'a> Graph<'a> {
         }
 
         out
+    }
+
+    // The build's own component lists the components the build holds. Every other component imports what it reads.
+    fn how(&self, by: &str) -> &'static str {
+        match by == self.image.component {
+            true => "lists",
+            false => "imports",
+        }
     }
 
     fn at(&self, path: &str) -> Option<usize> {

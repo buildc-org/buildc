@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -908,22 +907,6 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     mkdir -p /usr/local/bin /usr/local/etc /usr/local/games /usr/local/include \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
-# ---- core/nameless ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-component/components/core/nameless.sh,target=/generated/broken-component/components/core/nameless.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/broken-component/components/core/nameless.sh
-
-# ---- core/importer ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-component/components/core/importer.sh,target=/generated/broken-component/components/core/importer.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/broken-component/components/core/importer.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -977,20 +960,6 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/broken-component/components/core/nameless.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/nameless
-export COMPONENT_DIR
-==== generated/broken-component/components/core/importer.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/importer
-export COMPONENT_DIR
 ==== generated/broken-component/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1140,12 +1109,14 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["core/nameless"]
-    m1["core/importer"]
+    m1["broken-component"]
+    m1 ==>|"lists"| m0
 ```
 
 ## Capabilities
@@ -1155,6 +1126,14 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
 | `shell-tools` | capability | `core/nameless` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/nameless` | `broken-component` | lists |
+| `core/missing` | `broken-component` | lists |
+| `core/latin` | `broken-component` | lists |
 ==== generated/broken-component/graph.json
 {
   "image": "broken-component",
@@ -1185,12 +1164,28 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/nameless",
+      "by": "broken-component",
+      "how": "lists"
+    },
+    {
+      "component": "core/missing",
+      "by": "broken-component",
+      "how": "lists"
+    },
+    {
+      "component": "core/latin",
+      "by": "broken-component",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "78630f38be29e492dba7bbfab131e26cf6ec104fbe85175762eda8d6c0fbcad2",
-  "files": 26
+  "root": "d86d2b990e1ddb1433fb5ac42378d590043d91a541f4dfc2930c9d59a4c476c8",
+  "files": 24
 }

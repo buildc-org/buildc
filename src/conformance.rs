@@ -31,7 +31,6 @@ pub(crate) fn cost(measured: &str, enforce: bool) -> String {
 
 pub struct Conforms {
     file: PathBuf,
-    image: String,
     profile: String,
     brought: Vec<String>,
 }
@@ -44,7 +43,6 @@ impl Conforms {
     ) -> Self {
         Self {
             file: PathBuf::from(image.src.name()),
-            image: image.id.clone(),
             profile: profile.to_string(),
             brought,
         }
@@ -61,7 +59,7 @@ impl Conforms {
             Change::Updated(match self.brought.is_empty() {
                 true => format!("measured against `{}`", self.profile),
                 false => format!(
-                    "measured against `{}`, and {} added to components",
+                    "measured against `{}`, and {} listed",
                     self.profile,
                     crate::said(&self.brought)
                 ),
@@ -70,18 +68,8 @@ impl Conforms {
     }
 
     pub(crate) fn spliced(&self, text: &str) -> Result<String, String> {
-        let was = parse::image::conforms_span(text, &self.image)
-            .ok_or_else(|| format!("{} declares no image `{}`", self.file.display(), self.image))?;
-        let indent = &text[text[..was.offset].rfind('\n').map_or(0, |at| at + 1)..was.offset];
-        let mut out = text.to_string();
-        out.replace_range(
-            was.offset..was.offset + was.len,
-            &match was.len {
-                0 => format!("conforms \"{}\"\n\n{indent}", self.profile),
-                _ => format!("conforms \"{}\"", self.profile),
-            },
-        );
-        Ok(out)
+        parse::declaration::argument(text, "conforms", &self.profile, parse::image::is_header)
+            .map_err(|err| format!("{} {err}", self.file.display()))
     }
 }
 
@@ -91,8 +79,7 @@ mod tests {
 
     fn conforms(profile: &str) -> Conforms {
         Conforms {
-            file: PathBuf::from("example.image.kdl"),
-            image: "example".to_string(),
+            file: PathBuf::from("components/example.kdl"),
             profile: profile.to_string(),
             brought: Vec::new(),
         }
@@ -100,7 +87,16 @@ mod tests {
 
     #[test]
     fn the_profile_replaces_the_one_that_was_there() {
-        let text = "image \"example\" {\n    conforms \"standard\"\n\n    x {\n    }\n}\n";
+        let text = "schema-version 1\n\nconforms \"standard\"\n\nx {\n}\n";
+        assert_eq!(
+            conforms("ospp").spliced(text).unwrap(),
+            text.replace("\"standard\"", "\"ospp\"")
+        );
+    }
+
+    #[test]
+    fn a_new_profile_keeps_the_allowances_under_the_old_one() {
+        let text = "schema-version 1\nconforms \"standard\" {\n    allow-remediation \"r\" because=\"b\"\n}\nx\n";
         assert_eq!(
             conforms("ospp").spliced(text).unwrap(),
             text.replace("\"standard\"", "\"ospp\"")
@@ -110,10 +106,18 @@ mod tests {
     #[test]
     fn an_image_with_nothing_to_stand_in_front_of_still_takes_one() {
         assert_eq!(
+            conforms("standard").spliced("schema-version 1\n").unwrap(),
+            "schema-version 1\nconforms \"standard\"\n"
+        );
+    }
+
+    #[test]
+    fn a_new_profile_stands_in_front_of_the_first_component() {
+        assert_eq!(
             conforms("standard")
-                .spliced("image \"example\" {\n}\n")
+                .spliced("schema-version 1\n\nx {\n}\n")
                 .unwrap(),
-            "image \"example\" {\nconforms \"standard\"\n\n}\n"
+            "schema-version 1\n\nconforms \"standard\"\n\nx {\n}\n"
         );
     }
 }

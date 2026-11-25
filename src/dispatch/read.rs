@@ -7,7 +7,7 @@ use crate::Command;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// The run must already hold an issue for an unknown image or a missing default image.
+/// The run holds an issue when the image is unknown or there is no default image. This read returns nothing.
 fn coverage(
     run: &mut crate::Run,
     json: bool,
@@ -132,11 +132,10 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
     let mut chosen = None;
     let mut run = if picks {
         let loaded = crate::load(&root);
-        let (question, known, shown, hidden) = match command {
+        let (question, known, shown) = match command {
             Command::Coverage | Command::CoverageJson => {
                 let known: Vec<String> = loaded.list.images.iter().map(|i| i.id.clone()).collect();
-                let hidden = vec![false; known.len()];
-                (copy::WHICH_IMAGE, known.clone(), known, hidden)
+                (copy::WHICH_IMAGE, known.clone(), known)
             }
             Command::Plan
             | Command::Check
@@ -151,20 +150,25 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
             | Command::WhyJson => {
                 let known = crate::emit::why::known(&loaded.list);
                 let shown = crate::emit::why::display(&known);
-                let hidden = crate::emit::why::hidden(&loaded.list, &known);
-                (copy::WHICH_COMPONENT, known, shown, hidden)
+                (copy::WHICH_COMPONENT, known, shown)
             }
         };
         if known.is_empty() {
             crate::run_loaded(command, None, &root, loaded)
         } else {
-            let options = picker_options(&shown, &hidden);
+            let options = picker_options(&root, &known, &shown);
             let Some(at) = prompt.choose(question, &options)? else {
                 return Ok(ExitCode::SUCCESS);
             };
             chosen = Some(known[at].clone());
             crate::run_loaded(command, chosen.as_deref(), &root, loaded)
         }
+    } else if command == Command::Generate {
+        let (list, _, _) = crate::declarations(&root);
+        for note in crate::collection::refresh(&root, &list.libraries) {
+            eprintln!("buildc: {note}");
+        }
+        crate::run_loaded(command, arg, &root, crate::load_following(&root))
     } else {
         crate::run(command, arg, &root)
     };
@@ -173,7 +177,7 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
     if matches!(command, Command::Coverage | Command::CoverageJson) {
         let disk = crate::parse::disk::Disk::scan(&root);
         run.reading.index =
-            crate::provider::Index::scan(&root, &run.reading.list.sources, &disk, false);
+            crate::provider::Index::scan(&root, &run.reading.list.libraries, &disk, false);
         coverage(
             &mut run,
             command == Command::CoverageJson,
@@ -185,38 +189,13 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
     }
     let problems = run.problems.report();
     if command == Command::Check {
-        for name in &run.problems.unpinned {
-            eprintln!(
-                "buildc: `{name}` is unpinned, so a fetch from it takes whatever its ref holds \
-                 then, unverified"
-            );
-        }
-        if let Some(version) = crate::parse::repo::pinned_unverified(&root) {
-            eprintln!(
-                "buildc: `buildc-version` names {version} with no sha256, so the binary it fetches \
-                 is whatever the release holds, unverified"
-            );
-        }
-        for name in &run.problems.ungoverned {
-            eprintln!(
-                "buildc: `{name}` ships a Containerfile fragment, and the script rule does not \
-                 reach a fragment's own RUN lines"
-            );
-        }
-        for line in crate::init::drifted(&root) {
-            eprintln!("buildc: {line}");
-        }
-        for line in
-            crate::scap::conformance(&run.reading.list, &run.reading.index, datastream.as_deref())?
-        {
-            eprintln!("buildc: {line}");
-        }
+        check_notes(&root, &run, datastream.as_deref())?;
     }
     if problems {
         return Ok(ExitCode::from(REPO_ERROR));
     }
     if command == Command::Generate {
-        let wrote: Vec<(PathBuf, crate::create::Change)> = run
+        let mut wrote: Vec<(PathBuf, crate::create::Change)> = run
             .files
             .iter()
             .map(|(path, _)| path)
@@ -230,6 +209,15 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
             })
             .collect();
         crate::write_generated(&root, &run.files, &run.copies)?;
+        for line in crate::provenance::repo_lock::unhashable(&run.reading.list.images) {
+            eprintln!("buildc: {line}");
+        }
+        if let Some(change) = crate::provenance::repo_lock::record(&root, &run.reading.list.images)?
+        {
+            let path = PathBuf::from(crate::provenance::repo_lock::FILE);
+            run.report.stdout.push_str(&format!("{}\n", path.display()));
+            wrote.push((path, change));
+        }
         if prompt.draws() {
             crate::report::report(&root, &wrote);
             run.report.stdout.clear();
@@ -249,10 +237,9 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
         match run.counts.images {
             0 => eprintln!("buildc: no image yet; `buildc create image <name>` writes one"),
             _ => eprintln!(
-                "buildc: {} images, {} components, {} flavours{}",
+                "buildc: {} images, {} components{}",
                 run.counts.images,
                 run.counts.components,
-                run.counts.flavours,
                 match run.counts.suppressed {
                     0 => String::new(),
                     n => format!(", {n} the base already provides"),
@@ -289,13 +276,17 @@ pub(super) fn reading(verb: Verb, call: Call) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-pub(crate) fn picker_options(shown: &[String], hidden: &[bool]) -> Vec<common::ui::Choice> {
+pub(crate) fn picker_options(
+    root: &Path,
+    known: &[String],
+    shown: &[String],
+) -> Vec<common::ui::Choice> {
     shown
         .iter()
-        .zip(hidden)
-        .map(|(label, hidden)| {
+        .zip(known.iter())
+        .map(|(label, path)| {
             let choice = common::ui::Choice::new(label, "");
-            match hidden {
+            match crate::parse::component::hidden(&crate::layout::manifest(root, path)) {
                 true => choice.hidden(),
                 false => choice,
             }
@@ -326,4 +317,38 @@ pub(super) fn rendered(parts: &[Part]) -> String {
         .collect::<Vec<_>>()
         .join("\n\n")
         + "\n"
+}
+
+fn check_notes(root: &Path, run: &crate::run::Run, datastream: Option<&Path>) -> Result<(), Error> {
+    for line in &run.problems.unlocked {
+        eprintln!("buildc: {line}");
+    }
+    for line in crate::provenance::repo_lock::moved(root, &run.reading.list) {
+        eprintln!("buildc: {line}");
+    }
+    let list = &run.reading.list;
+    if let Some(line) =
+        crate::resolve::library::unread_folders(root, &list.libraries, list.root_library.as_deref())
+    {
+        eprintln!("buildc: {line}");
+    }
+    if let Some(version) = crate::parse::repo::pinned_unverified(root) {
+        eprintln!(
+            "buildc: `buildc-version` names {version} with no sha256, so the binary it fetches \
+             is whatever the release holds, unverified"
+        );
+    }
+    for name in &run.problems.ungoverned {
+        eprintln!(
+            "buildc: `{name}` ships a Containerfile fragment, and the script rule does not \
+             reach a fragment's own RUN lines"
+        );
+    }
+    for line in crate::init::drifted(root) {
+        eprintln!("buildc: {line}");
+    }
+    for line in crate::scap::conformance(&run.reading.list, &run.reading.index, datastream)? {
+        eprintln!("buildc: {line}");
+    }
+    Ok(())
 }

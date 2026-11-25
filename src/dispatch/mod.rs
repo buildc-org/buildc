@@ -1,7 +1,7 @@
 mod build;
+mod copy;
 mod create;
 mod host;
-mod import;
 mod read;
 mod scap;
 mod set;
@@ -44,9 +44,14 @@ pub struct Flags {
     pub owner: Option<String>,
     pub host: Option<String>,
     pub images: Vec<String>,
+    pub builds: Vec<String>,
     pub component: Option<String>,
+    pub inside: Vec<String>,
+    pub library: Option<String>,
+    pub pin: Option<String>,
     pub cn: Option<String>,
     pub from: Option<String>,
+    pub source: Option<String>,
     pub base: Option<String>,
     pub format: Option<String>,
     pub target: Option<String>,
@@ -64,8 +69,10 @@ pub struct Flags {
     pub no_cache_from: bool,
     pub rebuild: bool,
     pub dependencies: bool,
-    pub yes: bool,
+    pub providers: Vec<String>,
     pub inline: bool,
+    pub on: Vec<String>,
+    pub workflow_builds: Vec<String>,
 }
 
 fn one_name(rest: &[&str], name: &str) -> Result<Option<String>, Error> {
@@ -130,8 +137,7 @@ fn note_pin(root: &Path) {
     }
 }
 
-/// Returns `None` if the repository fails the compatibility check.
-/// The check has then already reported its reasons to the user.
+/// The compatibility report prints its reasons. A refused repository reads as `None` here.
 fn open(here: &Context) -> Result<Option<PathBuf>, Error> {
     let root = repo_root(here)?;
     let refused =
@@ -184,15 +190,13 @@ pub fn dispatch(
         Verb::CreateRepo => create::repo(call),
         Verb::CreateGit => create::git(call),
         Verb::CreateImage => create::image(call),
-        Verb::CreateFlavour => create::flavour(call),
         Verb::CreateModule => create::component(call),
         Verb::AddPackage => create::add_package(call),
+        Verb::AddComponent => create::add_component(call),
         Verb::CreateKey => create::key(call),
         Verb::CreateScripts => create::scripts(call),
         Verb::SetKey => set::key(call),
-        Verb::ImportModule => import::component(call),
-        Verb::FetchModules => import::components(call),
-        Verb::DetachModule => import::detach(call),
+        Verb::CopyComponent => copy::copy_component(call),
         Verb::SetWorkflows => set::workflows(call),
         Verb::SetLibrary => set::library(call),
         Verb::SetConforms => set::conforms(call),
@@ -227,156 +231,6 @@ pub fn dispatch(
 
 #[cfg(test)]
 mod tests {
-    use super::{dispatch, Context, Error, Flags, Verb};
-    use common::prompt::Prompt;
-
-    fn detaches(
-        name: &str,
-        path: Option<&str>,
-        yes: bool,
-        prompt: &Prompt,
-    ) -> (bool, Result<(), String>) {
-        detaches_from(name, true, path, yes, prompt)
-    }
-
-    fn detaches_from(
-        name: &str,
-        tracked: bool,
-        path: Option<&str>,
-        yes: bool,
-        prompt: &Prompt,
-    ) -> (bool, Result<(), String>) {
-        let root = std::env::temp_dir().join(format!(
-            "buildc-detach-component-{name}-{}",
-            std::process::id()
-        ));
-        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
-        let track = if tracked { "    track\n" } else { "" };
-        // The untracked entry comes first. A picker that offers it then fails the picker test.
-        crate::init::put(
-            &crate::layout::lock(&root),
-            &format!("component \"editor\" {{\n    library \"one\"\n    path \"editor\"\n    content \"0\"\n}}\ncomponent \"browser\" {{\n    library \"one\"\n    path \"browser\"\n    content \"0\"\n{track}}}\n"),
-        )
-        .unwrap();
-        let rest: Vec<&str> = path.into_iter().collect();
-        let ran = dispatch(
-            Verb::DetachModule,
-            "detach component",
-            &rest,
-            Flags {
-                yes,
-                ..Flags::default()
-            },
-            prompt,
-            &Context::Repo(root.clone()),
-        )
-        .map(drop)
-        .map_err(|err| match err {
-            Error::Invocation(said) | Error::Operation(said) => said,
-            Error::Cancelled => "cancelled".to_string(),
-        });
-        let tracked = crate::provenance::lock::entry(&root, "browser")
-            .expect("the entry stays")
-            .tracked;
-        std::fs::remove_dir_all(root).unwrap();
-        (tracked, ran)
-    }
-
-    const BROWSER: Option<&str> = Some("components/browser");
-
-    #[test]
-    fn detach_component_detaches_with_the_flag() {
-        assert_eq!(
-            detaches("flag", BROWSER, true, &Prompt::silent()),
-            (false, Ok(()))
-        );
-    }
-
-    #[test]
-    fn detach_component_detaches_on_a_yes() {
-        assert_eq!(
-            detaches("yes", BROWSER, false, &Prompt::scripted(vec!["y".into()])),
-            (false, Ok(()))
-        );
-    }
-
-    #[test]
-    fn detach_component_keeps_tracking_on_a_no() {
-        assert_eq!(
-            detaches("no", BROWSER, false, &Prompt::scripted(vec!["n".into()])),
-            (true, Ok(()))
-        );
-    }
-
-    #[test]
-    fn detach_component_needs_the_flag_with_nobody_to_ask() {
-        let (tracked, refused) = detaches("silent", BROWSER, false, &Prompt::silent());
-        assert!(tracked);
-        assert!(refused.unwrap_err().contains("--yes"));
-    }
-
-    #[test]
-    fn detach_component_picks_a_tracked_component_when_no_path_is_given() {
-        assert_eq!(
-            detaches("picked", None, true, &Prompt::scripted(vec!["1".into()])),
-            (false, Ok(()))
-        );
-    }
-
-    #[test]
-    fn detach_component_needs_the_path_with_nobody_to_ask() {
-        let (tracked, refused) = detaches("unnamed", None, true, &Prompt::silent());
-        assert!(tracked);
-        assert!(refused.unwrap_err().contains("`<path>`"));
-    }
-
-    #[test]
-    fn detach_component_asks_nothing_when_nothing_is_tracked() {
-        assert_eq!(
-            detaches_from("none", false, None, true, &Prompt::scripted(Vec::new())),
-            (false, Ok(()))
-        );
-    }
-
-    #[test]
-    fn detach_component_passes_over_an_untracked_component() {
-        assert_eq!(
-            detaches("untracked", Some("editor"), true, &Prompt::silent()),
-            (true, Ok(()))
-        );
-    }
-
-    #[test]
-    fn detach_component_refuses_a_lock_that_does_not_parse() {
-        let root = std::env::temp_dir().join(format!(
-            "buildc-detach-component-broken-{}",
-            std::process::id()
-        ));
-        crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
-        crate::init::put(&crate::layout::lock(&root), "component \"browser\" {\n").unwrap();
-        let refused = dispatch(
-            Verb::DetachModule,
-            "detach component",
-            &["browser"],
-            Flags {
-                yes: true,
-                ..Flags::default()
-            },
-            &Prompt::silent(),
-            &Context::Repo(root.clone()),
-        )
-        .map(drop);
-        std::fs::remove_dir_all(root).unwrap();
-        assert!(matches!(refused, Err(Error::Operation(said)) if said.contains("does not parse")));
-    }
-
-    #[test]
-    fn detach_component_refuses_a_path_with_no_lock_entry() {
-        let (tracked, refused) = detaches("unknown", Some("nowhere"), true, &Prompt::silent());
-        assert!(tracked);
-        assert!(refused.unwrap_err().contains("is not tracking any library"));
-    }
-
     #[test]
     fn the_host_sentence_names_each_command_and_agrees_in_number() {
         let labels = crate::command::host_labels();

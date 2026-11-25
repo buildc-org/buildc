@@ -122,13 +122,14 @@ fn creating_an_image_transcript_matches_the_page() {
             "buildc create key cosign",
             "buildc graph",
             "buildc summary",
-            "buildc why bazaar",
+            "buildc why browser",
             "buildc build",
             "IMAGE_REGISTRY=ghcr.io/example buildc registry ref",
         ]
     );
 }
 
+// The recorded graph output holds a fenced block. The page fences it with more backticks.
 fn marked_fence<'a>(page: &'a str, kind: &str, command: &str) -> &'a str {
     let marker = format!("<!-- {kind}: {command} -->\n");
     assert_eq!(
@@ -138,7 +139,6 @@ fn marked_fence<'a>(page: &'a str, kind: &str, command: &str) -> &'a str {
     );
     let marked = page.split_once(marker.as_str()).unwrap().1;
     let (opening, body) = marked.split_once('\n').unwrap();
-    // The tutorial page fences the recorded graph output with more backticks, because that output holds a fenced block.
     let ticks = opening.chars().take_while(|ch| *ch == '`').count();
     assert!(ticks >= 3, "the {kind} for `{command}` is not fenced");
     let closing = format!("\n{}", "`".repeat(ticks));
@@ -196,11 +196,6 @@ const WRITTEN: &[Written] = &[
         file: None,
     },
     Written {
-        words: "create flavour",
-        flow: "flow-create-flavour",
-        file: Some("example.image.kdl"),
-    },
-    Written {
         words: "create component",
         flow: "flow-create-component",
         file: None,
@@ -211,8 +206,8 @@ const WRITTEN: &[Written] = &[
         file: None,
     },
     Written {
-        words: "import component",
-        flow: "flow-import-component",
+        words: "add component",
+        flow: "flow-add-component",
         file: None,
     },
     Written {

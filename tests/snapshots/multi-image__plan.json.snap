@@ -5,29 +5,27 @@ source: tests/golden/harness.rs
   "schema_version": 1,
   "default_image": "workstation",
   "pr_image": "workstation",
-  "default_target": "workstation/base",
-  "default_published": "workstation-base",
-  "pr_target": "workstation/base",
-  "pr_published": "workstation-base",
-  "ungated_target": "workstation",
-  "ungated_published": "workstation",
+  "default_target": "workstation",
+  "default_published": "workstation",
+  "pr_target": "workstation",
+  "pr_published": "workstation",
   "cache_image": "workstation-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
   "assets": [],
   "images": [
     {
-      "id": "server",
-      "file": "./server.image.kdl",
+      "id": "workstation",
+      "file": "./components/workstation.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
-      "conforms": "",
-      "boot": "",
+      "conforms": "standard",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -55,23 +53,153 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
+      "targets": [
+        {
+          "name": "workstation",
+          "image": "workstation",
+          "published": "workstation",
+          "reference": null,
+          "conforms": "standard",
+          "allows": [],
+          "default": true,
+          "pr": true,
+          "components": [
+            {
+              "path": "core/shared",
+              "variant": null,
+              "description": "A component both images in this repository enable",
+              "options": {},
+              "provides": [
+                "shell-tools",
+                "eza"
+              ],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": "e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
+                "resolved": "a51158fa7035907bebd5db0f24441574a4441c3640de8ff5894c2eef459b9b54",
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "workstation",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
+          "suppressed": [],
+          "secrets": [],
+          "contract_files": [],
+          "verify_exceptions": [],
+          "assets": [],
+          "overlay_files": {},
+          "overlay_overridden": [],
+          "collected_files": {},
+          "collect_destinations": [],
+          "datastream": "generated/workstation/scap/ssg-fedora-ds.xml",
+          "build": {
+            "containerfile": "generated/workstation/Containerfile",
+            "uki": false,
+            "backend": "buildah",
+            "family": "fedora",
+            "base": "quay.io/fedora/fedora-bootc:44",
+            "args": [
+              "TARGET=workstation",
+              "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
+              "ASSET_RESOLUTIONS=",
+              "CONFORMS=standard",
+              "SCAP_CONTENT=/ctx/scap/ssg-fedora-ds.xml",
+              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
+            ],
+            "unresolved": [],
+            "validate": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "file": "./components/server.kdl",
+      "description": "",
+      "keywords": [],
+      "logo_url": "",
+      "conforms": "",
+      "uki": false,
+      "allows": [],
+      "layout": null,
+      "base": {
+        "path": "base-image/fedora-bootc-44",
+        "defined": null,
+        "image": "quay.io/fedora/fedora-bootc:44",
+        "family": "fedora",
+        "scap_content": "ssg-fedora-ds.xml",
+        "scap_pin": {
+          "locator": "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml",
+          "selector": null,
+          "verifier": "402fe92ace1c30bd5a9c0f2806f96b412fec6b781023459bd30c99c6c5163c7b",
+          "tracker": "manual",
+          "reason": "a fixture",
+          "from": "asset",
+          "path": null,
+          "resolved": "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml"
+        },
+        "signed": false,
+        "provides": [
+          "rechunking",
+          "bootc"
+        ],
+        "witnesses": {},
+        "requires": [],
+        "satisfies": []
+      },
       "targets": [
         {
           "name": "server",
           "image": "server",
-          "flavour": null,
           "published": "server",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
           "components": [
             {
               "path": "core/shared",
-              "flavour": null,
               "variant": null,
               "description": "A component both images in this repository enable",
               "options": {},
@@ -99,6 +227,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "server",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -114,338 +269,13 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/server/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=server",
               "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
               "ASSET_RESOLUTIONS=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        }
-      ]
-    },
-    {
-      "id": "workstation",
-      "file": "./workstation.image.kdl",
-      "description": "",
-      "keywords": [],
-      "logo_url": "",
-      "conforms": "standard",
-      "boot": "",
-      "allows": [],
-      "layout": null,
-      "base": {
-        "path": "base-image/fedora-bootc-44",
-        "defined": null,
-        "image": "quay.io/fedora/fedora-bootc:44",
-        "family": "fedora",
-        "scap_content": "ssg-fedora-ds.xml",
-        "scap_pin": {
-          "locator": "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml",
-          "selector": null,
-          "verifier": "402fe92ace1c30bd5a9c0f2806f96b412fec6b781023459bd30c99c6c5163c7b",
-          "tracker": "manual",
-          "reason": "a fixture",
-          "from": "asset",
-          "path": null,
-          "resolved": "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml"
-        },
-        "signed": false,
-        "provides": [
-          "rechunking",
-          "bootc"
-        ],
-        "witnesses": {},
-        "requires": [],
-        "satisfies": []
-      },
-      "flavours": [
-        {
-          "name": "base",
-          "default": true,
-          "pr_build": false
-        },
-        {
-          "name": "dev",
-          "default": false,
-          "pr_build": false
-        }
-      ],
-      "default_flavour": "base",
-      "targets": [
-        {
-          "name": "workstation",
-          "image": "workstation",
-          "flavour": null,
-          "published": "workstation",
-          "conforms": "standard",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [
-            {
-              "name": "workstation/base",
-              "published": "workstation-base"
-            },
-            {
-              "name": "workstation/dev",
-              "published": "workstation-dev"
-            }
-          ],
-          "components": [
-            {
-              "path": "core/shared",
-              "flavour": null,
-              "variant": null,
-              "description": "A component both images in this repository enable",
-              "options": {},
-              "provides": [
-                "shell-tools",
-                "eza"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
-                "resolved": "a51158fa7035907bebd5db0f24441574a4441c3640de8ff5894c2eef459b9b54",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": "generated/workstation/scap/ssg-fedora-ds.xml",
-          "build": {
-            "containerfile": "generated/workstation/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=workstation",
-              "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
-              "ASSET_RESOLUTIONS=",
-              "FLAVOUR=",
-              "CONFORMS=standard",
-              "SCAP_CONTENT=/ctx/scap/ssg-fedora-ds.xml",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        },
-        {
-          "name": "workstation/base",
-          "image": "workstation",
-          "flavour": "base",
-          "published": "workstation-base",
-          "conforms": "",
-          "allows": [],
-          "default": true,
-          "pr": true,
-          "siblings": [
-            {
-              "name": "workstation",
-              "published": "workstation"
-            },
-            {
-              "name": "workstation/dev",
-              "published": "workstation-dev"
-            }
-          ],
-          "components": [
-            {
-              "path": "core/shared",
-              "flavour": null,
-              "variant": null,
-              "description": "A component both images in this repository enable",
-              "options": {},
-              "provides": [
-                "shell-tools",
-                "eza"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
-                "resolved": "a51158fa7035907bebd5db0f24441574a4441c3640de8ff5894c2eef459b9b54",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": null,
-          "build": {
-            "containerfile": "generated/workstation/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=workstation/base",
-              "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
-              "ASSET_RESOLUTIONS=",
-              "FLAVOUR=base",
-              "CONFORMS=",
-              "SCAP_CONTENT=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        },
-        {
-          "name": "workstation/dev",
-          "image": "workstation",
-          "flavour": "dev",
-          "published": "workstation-dev",
-          "conforms": "cusp_fedora",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [
-            {
-              "name": "workstation",
-              "published": "workstation"
-            },
-            {
-              "name": "workstation/base",
-              "published": "workstation-base"
-            }
-          ],
-          "components": [
-            {
-              "path": "core/shared",
-              "flavour": null,
-              "variant": null,
-              "description": "A component both images in this repository enable",
-              "options": {},
-              "provides": [
-                "shell-tools",
-                "eza"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
-                "resolved": "a51158fa7035907bebd5db0f24441574a4441c3640de8ff5894c2eef459b9b54",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "core/dev-tools",
-              "flavour": "dev",
-              "variant": null,
-              "description": "Compilers and language servers, behind the dev flavour",
-              "options": {},
-              "provides": [],
-              "requires": [
-                "shell-tools"
-              ],
-              "met_by": {
-                "shell-tools": {
-                  "how": "listed",
-                  "provider": "core/shared"
-                }
-              },
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "7f8dbc58df70dd22684d74c8244b51d18d471b33a8cd266ae93c5eff90d97e23",
-                "resolved": "2a25305b4860959dcad0e00f52f8a56f997a1e4fe9d28bb750d9c2b910ef6295",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": "generated/workstation/scap/ssg-fedora-ds.xml",
-          "build": {
-            "containerfile": "generated/workstation/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=workstation/dev",
-              "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3 core/dev-tools|7f8dbc58df70dd22684d74c8244b51d18d471b33a8cd266ae93c5eff90d97e23",
-              "ASSET_RESOLUTIONS=",
-              "FLAVOUR=dev",
-              "CONFORMS=cusp_fedora",
-              "SCAP_CONTENT=/ctx/scap/ssg-fedora-ds.xml",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
             "unresolved": [],

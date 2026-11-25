@@ -15,7 +15,7 @@ pub const FILE_SCHEMA_VERSION: Node = Node::new("schema-version",
     .once("")
     .notes(&[
         "A file cannot declare a schema newer than `repo.kdl`.",
-        "`buildc create repo`, `buildc create image` and `buildc create component` write the version, and `buildc` never changes it.",
+        "Every command that writes a new schema file declares the current version. `buildc` never changes the schema version.",
     ]);
 
 pub struct Say {
@@ -35,7 +35,13 @@ impl Say {
         self.text.is_empty()
     }
 
-    fn raise(&self, about: &str, span: impl Into<Span>, src: &Source, issues: &mut Issues) {
+    pub(crate) fn raise(
+        &self,
+        about: &str,
+        span: impl Into<Span>,
+        src: &Source,
+        issues: &mut Issues,
+    ) {
         if self.silent() {
             return;
         }
@@ -52,13 +58,17 @@ pub const NEEDS_VALUE: Say = Say::new("`{}` needs a value", "nothing given", "")
 pub enum Arg {
     None,
     Str,
+    MaybeStr,
     Bool,
     Int,
     Strs,
     Names,
     StrPair(&'static str, &'static str),
+    /// The node takes a string key and then values of any type, as `set "dotnet" #false` does.
+    Keyed(&'static str, &'static str),
     One(&'static [&'static str]),
     MaybeOne(&'static [&'static str]),
+    Many(Option<&'static [&'static str]>),
 }
 
 pub enum Kind {
@@ -246,8 +256,14 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                 schema.arg_say.raise(stray, here, src, issues);
             }
         }
-        Arg::Str => {
+        Arg::Str | Arg::Keyed(..) => {
             if string_arg(node).is_none_or(str::is_empty) {
+                schema.arg_say.raise(about, here, src, issues);
+            }
+        }
+        Arg::MaybeStr => {
+            let positional = node.entries().iter().find(|entry| entry.name().is_none());
+            if positional.is_some() && string_arg(node).is_none_or(str::is_empty) {
                 schema.arg_say.raise(about, here, src, issues);
             }
         }
@@ -289,6 +305,18 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                     .raise(given.unwrap_or(about), here, src, issues);
             }
         }
+        Arg::Many(set) => {
+            for entry in node.entries().iter().filter(|e| e.name().is_none()) {
+                let shown = entry.value().to_string();
+                let given = entry.value().as_string();
+                let fits = given.is_some_and(|value| set.is_none_or(|set| set.contains(&value)));
+                if !fits {
+                    schema
+                        .arg_say
+                        .raise(given.unwrap_or(&shown), here, src, issues);
+                }
+            }
+        }
         Arg::MaybeOne(set) => {
             let positional = node.entries().iter().find(|entry| entry.name().is_none());
             if let Some(entry) = positional {
@@ -299,6 +327,23 @@ pub fn check(node: &KdlNode, schema: &Node, src: &Source, issues: &mut Issues) {
                 }
             }
         }
+    }
+
+    let single = matches!(
+        schema.arg,
+        Arg::Str | Arg::MaybeStr | Arg::Bool | Arg::Int | Arg::One(_) | Arg::MaybeOne(_)
+    );
+    if let Some(second) = node
+        .entries()
+        .iter()
+        .filter(|entry| single && entry.name().is_none())
+        .nth(1)
+    {
+        issues.push(
+            Issue::new(format!("`{about}` takes one value"), src)
+                .at(second.span(), "a second value")
+                .help("nodes on one line are separated by `;`"),
+        );
     }
 
     for entry in node.entries() {
@@ -481,5 +526,32 @@ fn visit(children: &[KdlNode], schema: &Node, src: &Source, issues: &mut Issues)
             seen.push((sub.name, key, span));
         }
         check(child, sub, src, issues);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_text;
+    use crate::parse::component::COMPONENT;
+
+    #[test]
+    fn a_second_value_on_a_single_value_node_names_the_semicolon() {
+        let said = check_text(
+            "description \"Apps\" packages \"htop\"\n",
+            &COMPONENT,
+            false,
+        )
+        .expect("the text is KDL")
+        .plain();
+        assert!(said.contains("`description` takes one value"), "{said}");
+        assert!(said.contains("separated by `;`"), "{said}");
+        let said = check_text(
+            "description \"Apps\"; packages \"htop\"\nvariant \"v\" { set \"fonts\" \"a\" \"b\"; }\n",
+            &COMPONENT,
+            false,
+        )
+        .expect("the text is KDL")
+        .plain();
+        assert!(!said.contains("takes one value"), "{said}");
     }
 }

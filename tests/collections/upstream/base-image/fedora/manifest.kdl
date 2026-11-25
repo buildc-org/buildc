@@ -24,7 +24,9 @@ base "quay.io/fedora/fedora-bootc:{version}" {
     }
     bootloader "grub2"
 }
-imports "fedora-family"
+component "/" {
+    fedora-family
+}
 
 option "version" type="string" {
     default "44"

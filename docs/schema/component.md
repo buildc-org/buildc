@@ -2,9 +2,9 @@
 
 # `manifest.kdl`
 
-Location: `components/<component-name>/manifest.kdl`, in the directory of the component.
+Location: `components/<name>.kdl`, or `components/<name>/manifest.kdl` in the directory of the component. A build can also name a `<name>.kdl` file at the repository root as `./<name>`.
 
-The directory under `components/` is the component's name, and the manifest sits at `manifest.kdl` in it. An image that defines a component inline names it with the path that the image lists.
+A component's name is its path. A directory that holds `manifest.kdl` is named by the directory, and a `<name>.kdl` file is named by the file without `.kdl`. The directory `<name>/` holds the component's content wherever the manifest lives. A component that another component defines inline is named by the path that lists it. An image is a component that a build in `repo.kdl` names.
 
 ```kdl
 schema-version 1
@@ -15,12 +15,13 @@ targets "fedora" "debian"
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this file is written against. |
-| [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. |
+| [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. On the component a build names, it is also the OCI label `org.opencontainers.image.description`. |
+| [`oci-labels`](#oci-labels) (optional) | {&nbsp;[fields](#oci-labels-fields)&nbsp;} | The labels that the build stamps on the published image. |
+| [`conforms`](#conforms) (optional) | *string*, then optionally {&nbsp;[fields](#conforms-fields)&nbsp;} | The benchmark profile that a scan measures the image against. |
 | [`targets`](#targets) (optional,&nbsp;repeatable) | *list of strings* | The base families that this component builds on, which the image's `family` must match. Omit it to target every family. |
-| [`hidden`](#hidden) (optional) | *boolean* | Keeps the component out of picker lists until the user reveals it. |
+| [`hidden`](#hidden) (optional) | *boolean* | Omits this component from component pickers; the component still builds. |
 | [`provides`](#provides) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp;} | A capability that this component provides for the components that require it. |
-| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide. It also orders the build. |
-| [`imports`](#imports) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;} | A component that builds in every image that holds this component. |
+| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | The node names a capability that a component of the image must provide. It also orders the build. |
 | [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after. The component does not require it. |
 | [`removes`](#removes) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#removes-fields)&nbsp;} | A capability that this component withdraws from the image. |
 | [`overrides`](#overrides) (optional,&nbsp;repeatable) | *list of strings* | An absolute path that this component replaces on purpose. |
@@ -37,15 +38,21 @@ targets "fedora" "debian"
 | [`option`](#option) (optional,&nbsp;unique) | *string*, then {&nbsp;[fields](#option-fields)&nbsp;} | One value that an image can set on this component. |
 | [`variant`](#variant) (optional,&nbsp;unique) | *string*, then optionally {&nbsp;[fields](#variant-fields)&nbsp;} | A named set of option values that an image selects with `variant=`. |
 | [`asset`](#asset) (optional,&nbsp;unique) | *string*, then {&nbsp;[fields](#asset-fields)&nbsp;} | A pinned upstream payload that the component fetches during its own layer. |
-| [`network`](#network) (optional) | `scripts` | The declaration that the script step of this component reaches the network. |
+| [`permissions`](#permissions) (optional) | {&nbsp;[fields](#permissions-fields)&nbsp;} | What the build steps of this component ask of the build. |
 | [`packages`](#packages) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#packages-fields)&nbsp;} | The packages that this component installs. |
 | [`package-groups`](#package-groups) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#package-groups-fields)&nbsp;} | The package groups that this component installs. Package groups work with dnf only, so an ungated `package-groups` needs a component that targets only `fedora` or `rhel`. |
 | [`copr`](#copr) (optional,&nbsp;unique) | *string* | The `owner/project` name of a COPR repository that this component enables for its own installs. `copr` works on Fedora only. |
 | [`satisfies`](#satisfies) (optional) | optionally {&nbsp;[fields](#satisfies-fields)&nbsp;} | An audit declaration of the benchmarks and rules that this component claims to harden. `buildc` records the claim and certifies nothing, and the scan checks it after the build. |
 | [`on`](#on) (optional,&nbsp;repeatable) | *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;} | The declarations that the build takes only on the named base families. |
 | [`base`](#base) (optional) | *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;} | The image reference that an image on this base builds from. It makes the component a base. |
+| [`component`](#component) (optional,&nbsp;repeatable) | *string*, then {&nbsp;[fields](#component-fields)&nbsp;} | A path that the segments in the block are read below. The node lists no component at its own path. |
+| [`<name>`](#name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
 
 > [!NOTE]
+> Only the component a build names takes `oci-labels` and `conforms`.
+>
+> A build whose component builds `os-release` takes the build name as its default hostname. The component can set the `default-hostname` option of `os-release` to another value.
+>
 > `requires` and `after` decide the build order. The order of the image list only breaks ties.
 >
 > If nothing provides a `requires`, then `buildc check` fails and names every component that would satisfy it.
@@ -65,19 +72,107 @@ Accepts: *number*
 > [!NOTE]
 > A file cannot declare a schema newer than `repo.kdl`.
 >
-> `buildc create repo`, `buildc create image` and `buildc create component` write the version, and `buildc` never changes it.
+> Every command that writes a new schema file declares the current version. `buildc` never changes the schema version.
 
 <a id="description"></a>
 
 ## `description` (optional)
 
-One line that names the component in the resolved build summary.
+One line that names the component in the resolved build summary. On the component a build names, it is also the OCI label `org.opencontainers.image.description`.
 
 ```kdl
 description "Traditional CLI utilities"
 ```
 
 Accepts: *string*
+
+<a id="oci-labels"></a>
+
+## `oci-labels` (optional)
+
+The build also stamps `description` as the label `org.opencontainers.image.description`.
+
+```kdl
+oci-labels {
+    keywords "desktop" "kde"
+}
+```
+
+Accepts: {&nbsp;[fields](#oci-labels-fields)&nbsp;}
+
+<a id="oci-labels-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`keywords`](#oci-labels-keywords) (optional,&nbsp;repeatable) | *list of strings* | OCI label `io.artifacthub.package.keywords`. The keywords of the image, which the build joins with commas. |
+| [`logo-url`](#oci-labels-logo-url) (optional) | *string* | OCI label `io.artifacthub.package.logo-url`. The URL that points at the logo of the image. |
+
+<a id="oci-labels-keywords"></a>
+
+### `keywords` (optional, repeatable)
+
+OCI label `io.artifacthub.package.keywords`. The keywords of the image, which the build joins with commas.
+
+```kdl
+oci-labels {
+    keywords "desktop" "kde"
+}
+```
+
+Accepts: *list of strings*
+
+<a id="oci-labels-logo-url"></a>
+
+### `logo-url` (optional)
+
+OCI label `io.artifacthub.package.logo-url`. The URL that points at the logo of the image.
+
+```kdl
+oci-labels {
+    logo-url "https://github.com/owner/workstation/raw/main/logo.svg"
+}
+```
+
+Accepts: *string*
+
+<a id="conforms"></a>
+
+## `conforms` (optional)
+
+The name selects a profile in the SSG datastream that the base pins, and `buildc scap` measures the target against its rules. `buildc scap` refuses a name the datastream does not carry.
+
+```kdl
+conforms "standard"
+```
+
+Accepts: *string*, then optionally {&nbsp;[fields](#conforms-fields)&nbsp;}
+
+<a id="conforms-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`allow-remediation`](#conforms-allow-remediation) (optional,&nbsp;unique) | *string* | One rule an installed component refuses that this image lets remediation set anyway. |
+
+> [!NOTE]
+> A scan reports the result. A failed rule fails `buildc scap` only if `audit { enforce #true }` is set.
+
+<a id="conforms-allow-remediation"></a>
+
+### `allow-remediation` (optional, unique)
+
+The rule must be one that a component the image installs refuses, or the allowance lifts nothing and `buildc scap` reports it.
+
+```kdl
+conforms "standard" {
+    allow-remediation "grub2_nousb_argument" because="this machine has no USB keyboard"
+}
+```
+
+Accepts: *string*
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `because=` (optional) | *string* | Why this image overrides the component's judgement. |
 
 <a id="targets"></a>
 
@@ -95,7 +190,7 @@ Accepts: *list of strings*
 
 ## `hidden` (optional)
 
-A component marked `hidden #true` stays out of the component pickers of `buildc add package`, `buildc import component` and `buildc why` by default. The user reveals it by pressing `h` in the picker and naming the component's path on the command line selects it as usual. Hiding changes nothing else and the component still builds and appears in the build summary, `buildc why` and `buildc graph`.
+An explicit path still selects it. A picker omits it until `h` reveals it, or `H` where the picker filters text with `h`.
 
 ```kdl
 hidden #true
@@ -142,7 +237,7 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#provides-fields)&nbsp
 >
 > Declare `luks-initramfs` in a custom base or component only if its initramfs unlocks LUKS. `buildc build` then proves that the binary is present before the installer offers it.
 >
-> Many enabled components may provide one capability. If one of them declares it `exclusive=#true`, then `buildc check` refuses a second provider that builds into the same image or flavour. `buildc import component` asks whether to replace the first. Providers in sibling flavours never build together.
+> Many enabled components may provide one capability. If one of them declares it `exclusive=#true`, then `buildc check` refuses a second provider that builds into the same image. `buildc add component` asks whether to replace the first.
 >
 > A capability name is lower-case letters, digits and dashes, and starts with a letter. The generated graph writes the name unquoted into a mermaid label and a markdown table cell.
 
@@ -210,58 +305,6 @@ requires {
 | Property | Accepts | Description |
 | --- | --- | --- |
 | `min=` (optional) | *string* | The lowest version of the capability that satisfies this requirement. |
-
-<a id="imports"></a>
-
-## `imports` (optional, repeatable)
-
-The value is a component path of lowercase segments joined by `/`, or a `{option}` reference to a string option that resolves to one. The block of an imported path sets the options that the importing component passes to the imported component.
-
-```kdl
-imports "container-runtime"
-```
-
-Accepts: *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;}
-
-<a id="imports-fields"></a>
-
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`<name>`](#imports-name) (optional,&nbsp;repeatable) | optionally {&nbsp;[fields](#imports-name-fields)&nbsp;} | One component path in an `imports` block, which the node name names. Its block sets the options of that component. |
-
-<a id="imports-name"></a>
-
-### `<name>` (optional, repeatable)
-
-One component path in an `imports` block, which the node name names. Its block sets the options of that component.
-
-```kdl
-imports {
-    "container-runtime"
-}
-```
-
-Accepts: optionally {&nbsp;[fields](#imports-name-fields)&nbsp;}
-
-<a id="imports-name-fields"></a>
-
-| Field | Accepts | Description |
-| --- | --- | --- |
-| [`<name>`](#imports-name-name) (optional,&nbsp;repeatable) |  | One option value that the imported component takes, which the node name names. |
-
-<a id="imports-name-name"></a>
-
-#### `<name>` (optional, repeatable)
-
-One option value that the imported component takes, which the node name names.
-
-```kdl
-imports {
-    "container-runtime" {
-        storage-driver "{storage-driver}"
-    }
-}
-```
 
 <a id="after"></a>
 
@@ -479,7 +522,7 @@ Accepts: *string*
 | `because=` (optional) | *string* | Why the component leaves the rule unsatisfied. |
 
 > [!NOTE]
-> Remediation does not set a refused rule. If an image declares `allow-remediation` for the rule, then remediation can set it.
+> Remediation does not set a refused rule. If the image's `conforms` holds `allow-remediation` for the rule, then remediation can set it.
 
 <a id="collects"></a>
 
@@ -635,7 +678,7 @@ Accepts: *string*, then optionally {&nbsp;[fields](#variant-fields)&nbsp;}
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`description`](#variant-description) (optional) | *string* | What the variant is for. |
-| [`set`](#variant-set) (optional,&nbsp;repeatable) | *string* | One option that this variant sets, where the option value follows the option name. A string value may read `{image-id}` alone. |
+| [`set`](#variant-set) (optional,&nbsp;repeatable) | *option name*, then *its value* | One option that this variant sets, where the option value follows the option name. A string value may read `{image-id}` alone. |
 
 > [!NOTE]
 > An image can still set an option on an entry that selects a variant. The option that the image sets wins.
@@ -666,7 +709,7 @@ variant "wine-only" {
 }
 ```
 
-Accepts: *string*
+Accepts: *option name*, then *its value*
 
 <a id="asset"></a>
 
@@ -734,7 +777,7 @@ A pin holds exactly one of these, so every pin says how it stays current:
 | [`sha256`](#asset-pin-sha256) (optional) | *string* | The hash the fetched content must match. |
 
 > [!NOTE]
-> An `asset` holds a `pin`. A library in `sources` declares its own `version`, `sha256` and `unpinned`.
+> An `asset` holds a `pin`. A library in `libraries` declares its own `version`.
 >
 > A base reference holds no `pin`. Its image reference holds the location and the version, and `signed` records whether the base publishes a cosign signature. A base's `scap-content` holds a `pin`, whose `sha256` is the hash of the datastream file itself.
 >
@@ -831,22 +874,65 @@ Accepts: *string*
 > [!NOTE]
 > If a pin names a download and no `sha256`, then `buildc check` reports an error. A pin whose `url` is a Git repository is cloned at its `version` and declares none.
 
-<a id="network"></a>
+<a id="permissions"></a>
 
-## `network` (optional)
+## `permissions` (optional)
 
-The only value is `scripts`, because the package step already declares its network use. Only a `strict` script rule in `repo.kdl` reads the node.
+Each child is one build step, and its block holds what that step needs. The package step needs no declaration, because `packages`, `copr` or a repo file already declares it.
 
 ```kdl
-network "scripts"
+permissions {
+    scripts {
+        network #true
+    }
+}
 ```
 
-Accepts: `scripts`
+Accepts: {&nbsp;[fields](#permissions-fields)&nbsp;}
 
-> [!NOTE]
-> Only a `strict` script rule in `repo.kdl` reads this node.
->
-> The package step needs no declaration, because `packages`, `copr` or a repo file already declares it.
+<a id="permissions-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`scripts`](#permissions-scripts) (optional) | {&nbsp;[fields](#permissions-scripts-fields)&nbsp;} | What the script step of this component needs. |
+
+<a id="permissions-scripts"></a>
+
+### `scripts` (optional)
+
+What the script step of this component needs.
+
+```kdl
+permissions {
+    scripts {
+        network #true
+    }
+}
+```
+
+Accepts: {&nbsp;[fields](#permissions-scripts-fields)&nbsp;}
+
+<a id="permissions-scripts-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`network`](#permissions-scripts-network) (optional) | *boolean* | Whether the script step reaches the network. |
+
+<a id="permissions-scripts-network"></a>
+
+#### `network` (optional)
+
+Only a `strict` script rule in `repo.kdl` reads the value.
+
+```kdl
+permissions {
+    scripts {
+        network #true
+    }
+}
+```
+
+Accepts: *boolean*
 
 <a id="packages"></a>
 
@@ -928,7 +1014,7 @@ satisfies
 
 Accepts: optionally {&nbsp;[fields](#satisfies-fields)&nbsp;}
 
-`buildc generate` writes every claim into `generated/plan.json`. The compliance job in `.github/workflows/build.yml` then:
+`buildc generate` writes every claim into `generated/plan.json`. The compliance job in `.github/workflows/image-build.yml` then:
 
 - resolves each number to an XCCDF rule ID through the SSG datastream;
 - scans the pushed image and compares each claim with the scan result;
@@ -977,10 +1063,11 @@ Accepts: *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;}
 | [`packages`](#packages) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#packages-fields)&nbsp;} | The packages that this component installs. |
 | [`package-groups`](#package-groups) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#package-groups-fields)&nbsp;} | The package groups that this component installs. Package groups work with dnf only, so an ungated `package-groups` needs a component that targets only `fedora` or `rhel`. |
 | [`copr`](#copr) (optional,&nbsp;unique) | *string* | The `owner/project` name of a COPR repository that this component enables for its own installs. `copr` works on Fedora only. |
-| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | A capability that another component must provide. It also orders the build. |
-| [`imports`](#imports) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#imports-fields)&nbsp;} | A component that builds in every image that holds this component. |
+| [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | The node names a capability that a component of the image must provide. It also orders the build. |
 | [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after. The component does not require it. |
 | [`satisfies`](#satisfies) (optional) | optionally {&nbsp;[fields](#satisfies-fields)&nbsp;} | An audit declaration of the benchmarks and rules that this component claims to harden. `buildc` records the claim and certifies nothing, and the scan checks it after the build. |
+| [`component`](#component) (optional,&nbsp;repeatable) | *string*, then {&nbsp;[fields](#component-fields)&nbsp;} | A path that the segments in the block are read below. The node lists no component at its own path. |
+| [`<name>`](#name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
 
 > [!NOTE]
 > A declaration outside a gate applies to every family the component targets. A declaration inside a gate applies to the families that the gate names.
@@ -1062,3 +1149,71 @@ Accepts: *string*, then optionally {&nbsp;[fields](#base-scap-content-fields)&nb
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`pin`](#asset-pin) (optional) | {&nbsp;[fields](#asset-pin-fields)&nbsp;} | Where content comes from, which version it is, what verifies it, and what keeps the version current. |
+
+<a id="component"></a>
+
+## `component` (optional, repeatable)
+
+A path that starts with `/` is read from the library root. Any other path is read from the current context, and `..` goes up one segment. At the top of a manifest the context is the component's own path.
+
+```kdl
+component "/" {
+    desktop-environment
+}
+```
+
+Accepts: *string*, then {&nbsp;[fields](#component-fields)&nbsp;}
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `library=` (optional) | *string* | The library that holds this path and every path below it. |
+| `pin=` (optional) | *string* | The tag or full commit of a remote library that this path and every path below it read. |
+
+<a id="component-fields"></a>
+
+| Field | Accepts | Description |
+| --- | --- | --- |
+| [`<name>`](#name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
+
+<a id="name"></a>
+
+## `<name>` (optional, repeatable)
+
+A segment takes no argument. Its name takes lowercase letters, digits, dashes and dots, starts with a letter, and allows one `@<tag>` on the last part. Every other setting is a child node. A child with an argument sets an option of the component. The option value may read `{image-id}` and `{base-url}`.
+
+```kdl
+desktop-environment
+```
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `variant=` (optional) | *string* | The variant of the component that this path builds. |
+| `library=` (optional) | *string* | The library that holds this path and every path below it. |
+| `pin=` (optional) | *string* | The tag or full commit of a remote library that this path and every path below it read. |
+| `digest=` (optional) | *string* | The digest of the base image reference. |
+| `signed=` (optional) | *boolean* | Whether the base image publishes a cosign signature. |
+
+> [!NOTE]
+> In a manifest, a quoted segment may read a string option of the component, as in `repos { "{repo}" }`. The path resolves after the option values.
+>
+> In a manifest, a segment inside an `on` block builds only on the families that the gate names.
+>
+> A segment is read below the current context. At the top of a manifest the context is the component's own path, and `component "<path>"` sets another.
+>
+> A component that another component defines inline must have no manifest file. `buildc check` refuses the pair and names both.
+>
+> `library=` and `pin=` hold for every path below the segment that sets them.
+>
+> `pin=` reads the component's own directory at the pin, and the paths that the component lists read at the library `version`. `buildc check` refuses `pin=` on a component of a local library and a pin that is neither a tag nor a full 40-character commit.
+>
+> If two components pin one path, then the pin of the component that lists the other wins.
+>
+> If two components set one option of a path, then the value of the component that lists the other wins. A list value appends to the value that it inherits, and the default is part of that value.
+>
+> A `remove` child of a list value takes a value out of what the list inherits, as in `flatpaks "a" { remove "b" }`. `buildc check` refuses a `remove` of a value that the list does not hold.
+>
+> `buildc check` refuses two components that set different values if neither component lists the other. `buildc why` reports each value that each component applies.
+>
+> The base is the listed component that declares `base`. Only its segment takes `digest=` and `signed=`.
+>
+> `buildc add component` adds a reference to a library component. `buildc copy component` copies one into a local library and records where it came from in that library's `origins.kdl`.

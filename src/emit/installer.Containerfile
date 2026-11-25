@@ -122,9 +122,9 @@ QUIET
 
 RUN systemctl enable var-lib-buildc-store.mount var-lib-containers-storage.mount
 
-ARG INSTALLER_VERSION=0.1.0
-ARG INSTALLER_SHA256_X86_64=93c06b6ee14b7abbf3ea83a478bb118fd258bc1f659157d9a76c46376ec4eec4
-ARG INSTALLER_SHA256_AARCH64=f73e5c1424a565df4e920a6b2e3bde988288e2becffc6a8264af0e5d64ca8452
+ARG INSTALLER_VERSION=0.2.0
+ARG INSTALLER_SHA256_X86_64=eed7ec1bb87f9b3f382ed778bfe19efdb3e3fc27817e29c97f5718323b7e022b
+ARG INSTALLER_SHA256_AARCH64=9009afae74abcea2bd4bb6b7578085b5c2fc6804c87cbadbcc0aba01ec2deff9
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \

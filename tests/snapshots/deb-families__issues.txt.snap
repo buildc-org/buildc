@@ -1,38 +1,38 @@
 ---
 source: tests/golden/harness.rs
 ---
-  x `debian` declares an install layout, and nothing in the image provides
+  x `debian` declares an install block, and nothing in the image provides
   | `bootc`
-   ,-[tests/repos/deb-families/debian.image.kdl:8:5]
- 7 | 
- 8 |     layout {
-   :     ^^^|^^
-   :        `-- a bootc-only node
- 9 |         filesystem "btrfs"
+   ,-[tests/repos/deb-families/repo.kdl:6:9]
+ 5 |     debian {
+ 6 |         install {
+   :         ^^^|^^^
+   :            `-- a bootc-only node
+ 7 |             filesystem "btrfs"
    `----
-  help: an install layout describes how bootc installs the image: use a base
-        that provides `bootc`, or drop `layout`
+  help: an install block describes how bootc installs the image: use a base
+        that provides `bootc`, or drop `install`
 
-  x `forky` declares an install layout, and nothing in the image provides
+  x `forky` declares an install block, and nothing in the image provides
   | `bootc`
-   ,-[tests/repos/deb-families/forky.image.kdl:8:5]
- 7 | 
- 8 |     layout {
-   :     ^^^|^^
-   :        `-- a bootc-only node
- 9 |         bootloader "grub2"
-   `----
-  help: an install layout describes how bootc installs the image: use a base
-        that provides `bootc`, or drop `layout`
+    ,-[tests/repos/deb-families/repo.kdl:12:9]
+ 11 |     forky {
+ 12 |         install {
+    :         ^^^|^^^
+    :            `-- a bootc-only node
+ 13 |             bootloader "grub2"
+    `----
+  help: an install block describes how bootc installs the image: use a base
+        that provides `bootc`, or drop `install`
 
-  x `ubuntu` declares an install layout, and nothing in the image provides
+  x `ubuntu` declares an install block, and nothing in the image provides
   | `bootc`
-   ,-[tests/repos/deb-families/ubuntu.image.kdl:8:5]
- 7 | 
- 8 |     layout {
-   :     ^^^|^^
-   :        `-- a bootc-only node
- 9 |         bootloader "grub2"
-   `----
-  help: an install layout describes how bootc installs the image: use a base
-        that provides `bootc`, or drop `layout`
+    ,-[tests/repos/deb-families/repo.kdl:17:9]
+ 16 |     ubuntu {
+ 17 |         install {
+    :         ^^^|^^^
+    :            `-- a bootc-only node
+ 18 |             bootloader "grub2"
+    `----
+  help: an install block describes how bootc installs the image: use a base
+        that provides `bootc`, or drop `install`

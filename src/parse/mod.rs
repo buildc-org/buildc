@@ -1,11 +1,14 @@
 pub mod asset;
 pub mod component;
+pub(crate) mod declaration;
 pub mod disk;
 pub mod image;
+pub mod local;
 pub mod options;
 pub mod remote;
 pub mod repo;
 pub mod schema;
+pub(crate) mod tree;
 
 use crate::diag::{Issue, Issues, Source, Span};
 use crate::model::image::{is_name, SCHEMA_VERSION};
@@ -180,7 +183,6 @@ pub(crate) fn string_args(node: &KdlNode) -> Vec<&str> {
 pub(crate) struct Named<'a> {
     pub name: &'a str,
     pub node: &'a KdlNode,
-    pub kids: &'a [KdlNode],
     pub span: Span,
 }
 
@@ -192,7 +194,6 @@ pub(crate) fn names(node: &KdlNode) -> Vec<Named<'_>> {
             .map(|kid| Named {
                 name: kid.name().value(),
                 node: kid,
-                kids: kids(kid),
                 span: kid.name().span().into(),
             })
             .collect(),
@@ -204,7 +205,6 @@ pub(crate) fn names(node: &KdlNode) -> Vec<Named<'_>> {
                 entry.value().as_string().map(|name| Named {
                     name,
                     node,
-                    kids: &[],
                     span: entry.span().into(),
                 })
             })

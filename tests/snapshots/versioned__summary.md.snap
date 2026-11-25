@@ -1,7 +1,7 @@
 ---
 source: tests/golden/harness.rs
 ---
-4 components, the ungated set.
+5 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
@@ -9,3 +9,4 @@ source: tests/golden/harness.rs
 | `core/tools` |  |  |  |  |
 | `core/needs-build-tool` |  |  |  |  |
 | `core/needs-dnf5` |  |  |  |  |
+| `versioned` |  |  |  |  |

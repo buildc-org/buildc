@@ -1,0 +1,34 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+repo name
+Example
+
+Creating example...
+
+  1) sensible defaults  fill every row that has a default
+  2) minimal repo  write only the tree, git and repo.kdl
+repo setup [1-2, 0 for none]: 2
+
+initialised a git repository in example
+
+example/
+├── components/
+│   └── + .gitkeep
+├── disk_config/
+│   └── + disk.toml
+├── + .dockerignore
+├── + .gitattributes
+├── + .gitignore
+├── + .shellcheckrc
+├── + README.md
+└── + repo.kdl
+
+next:
+  cd example
+  buildc generate
+  git add -A && git commit
+
+==== exit 0

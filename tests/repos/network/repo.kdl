@@ -3,3 +3,11 @@ name "Network"
 security-policy {
     network "strict"
 }
+
+builds {
+    network {
+        install {
+            bootloader "grub2"
+        }
+    }
+}

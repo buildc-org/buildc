@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-overlay",
   "pr_target": "broken-overlay",
   "pr_published": "broken-overlay",
-  "ungated_target": "broken-overlay",
-  "ungated_published": "broken-overlay",
   "cache_image": "broken-overlay-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-overlay",
-      "file": "./image.kdl",
+      "file": "./components/broken-overlay.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-overlay",
           "image": "broken-overlay",
-          "flavour": null,
           "published": "broken-overlay",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/first",
-              "flavour": null,
               "variant": null,
               "description": "Ships a file a later component ships too",
               "options": {},
@@ -90,7 +84,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/second",
-              "flavour": null,
               "variant": null,
               "description": "Ships the same path without saying so",
               "options": {},
@@ -118,7 +111,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/third",
-              "flavour": null,
               "variant": null,
               "description": "Overrides a path no earlier component ships",
               "options": {},
@@ -136,6 +128,33 @@ source: tests/golden/harness.rs
                 "content": "970705063cea90cc19aeb993c0e460d17792fa9962a70a984941d07c662387eb",
                 "resolved": "06cc95cbe53a47eb217978f8e15196a1095cf663cba6d93e6d5b432f809c53e1",
                 "repo": true,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "broken-overlay",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
                 "imported": null
               },
               "origin": {
@@ -166,6 +185,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-overlay/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

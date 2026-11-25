@@ -1,8 +1,9 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `apps/browser` | A flatpak application, which the base satisfies the runtime for |  |  |  |
+| `suppressed` |  |  |  |  |

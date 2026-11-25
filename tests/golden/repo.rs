@@ -95,7 +95,11 @@ fn verify(name: &str, root: &Path) {
     let dropped = root.join(".github/workflows/smoke-test.yml");
     let repo = root.join("repo.kdl");
     let text = std::fs::read_to_string(&repo).unwrap();
-    std::fs::write(&repo, text.replace("    smoke-test\n", "")).unwrap();
+    std::fs::write(
+        &repo,
+        text.replace("        smoke-test { schedule frequency=\"weekly\" }\n", ""),
+    )
+    .unwrap();
     out.push_str(&format!("==== one workflow undeclared\n{}", issues()));
 
     let run = buildc::run(Command::Generate, None, &here);
@@ -124,7 +128,7 @@ fn create_into(name: &str, root: &Path) {
             root: &here,
             repo: "example",
             url: None,
-            sources_text: "",
+            libraries_text: "",
         },
         Some("Server".into()),
         Some("quay.io/fedora/fedora-bootc:44".into()),
@@ -141,6 +145,7 @@ fn create_into(name: &str, root: &Path) {
         Some("My Editor".into()),
         vec![("provides".into(), "editor".into())],
         vec!["example".into(), "server".into()],
+        None,
         false,
         &silent,
     )
@@ -163,6 +168,7 @@ fn create_into(name: &str, root: &Path) {
         Some("plain".into()),
         Vec::new(),
         Vec::new(),
+        None,
         false,
         &silent,
     )
@@ -174,8 +180,8 @@ fn create_into(name: &str, root: &Path) {
     for file in [
         "components/my-editor/manifest.kdl",
         "components/plain/manifest.kdl",
-        "example.image.kdl",
-        "server.image.kdl",
+        "example.kdl",
+        "server.kdl",
     ] {
         out.push_str(&format!(
             "==== {file}\n{}",
@@ -194,20 +200,25 @@ fn create_into(name: &str, root: &Path) {
 
 fn copied(name: &str, root: &Path) {
     let mut out = String::new();
-    let collections = crate_dir().join("tests/collections");
+    // A scratch copy of a library is not under version control. The origin of a component copied from it records no pin.
+    let collections = root.join("libraries");
+    for library in ["upstream", "community"] {
+        copy(
+            &crate_dir().join("tests/collections").join(library),
+            &collections.join(library),
+        );
+    }
+    std::fs::remove_file(root.join("example.kdl")).unwrap();
+    // The rewritten `repo.kdl` names no build. Nothing then reads the image that `create repo` wrote.
     std::fs::write(
         root.join("repo.kdl"),
-        format!(
-            "schema-version 1\nname \"Imported\"\nsources {{\n    components \"upstream\" {{ dir {:?} }}\n    components \"community\" {{ dir {:?} }}\n}}\n",
-            collections.join("upstream").display(),
-            collections.join("community").display()
-        ),
+        "schema-version 1\nname \"Imported\"\nlibraries default=\"imported-library\" {\n    local {\n        imported-library { source \".\" }\n        upstream { source \"libraries/upstream\" }\n        community { source \"libraries/community\" }\n    }\n}\n",
     )
     .unwrap();
     let here = given(root);
 
     let (list, issues, _) = buildc::declarations(&here);
-    let sources = list.sources;
+    let sources = list.libraries;
     out.push_str(&format!("==== the registry\n{}", issues.plain()));
     for collection in &sources {
         out.push_str(&format!("{}\n", collection.name));
@@ -231,23 +242,25 @@ fn copied(name: &str, root: &Path) {
         "upstream/nosuch",
         "flatpak",
     ] {
-        out.push_str(&format!("==== import {wanted}\n"));
-        let imported = buildc::import::Component::collect(
-            buildc::import::Request {
-                name: Some(wanted.to_string()),
-                image: None,
-                datastream: None,
-                dependencies: false,
-            },
-            &here,
-            &sources,
-            false,
-            &common::prompt::Prompt::silent(),
-            &mut |_| {},
-        )
-        .map_err(|err| err.message().to_string())
-        .and_then(|component| component.apply(&here, &sources));
-        match imported {
+        out.push_str(&format!("==== copy {wanted}\n"));
+        let request = buildc::copy_component::Request {
+            paths: vec![wanted.to_string()],
+            from: None,
+            build: None,
+        };
+        // Row one of the destination picker is this repository. A bare `browser` sits in two libraries. The script declines the library choice.
+        let answers = match wanted {
+            "browser" => ["1", "0"],
+            _ => ["1", "Yes"],
+        };
+        let prompt = common::prompt::Prompt::scripted(answers.map(str::to_string).to_vec());
+        let copied = buildc::copy_component::Copy::collect(&request, &here, &prompt, &mut |_| {})
+            .map_err(|err| err.message().to_string())
+            .and_then(|copy| match copy {
+                Some(copy) => copy.apply(&here).map(|_| ()),
+                None => Err("cancelled".to_string()),
+            });
+        match copied {
             Ok(()) => out.push_str("copied\n"),
             Err(message) => out.push_str(&format!("{message}\n")),
         }
@@ -262,8 +275,8 @@ fn copied(name: &str, root: &Path) {
     out.extend(written);
 
     out.push_str(&format!(
-        "==== the lock\n{}",
-        std::fs::read_to_string(root.join("components/components.lock.kdl")).unwrap()
+        "==== the origins\n{}",
+        std::fs::read_to_string(root.join("components/origins.kdl")).unwrap()
     ));
     out.push_str(&format!(
         "==== check\n{}",
@@ -436,8 +449,14 @@ fn why_unbuilt(root: &Path) {
     assert_eq!(bare, full, "the full path is a name like any other");
 
     std::fs::write(
-        temp.join("also.image.kdl"),
-        "schema-version 1\n\nimage \"also\" {\n    \n    base-image {\n        base \"ghcr.io/ublue-os/bazzite:stable\" { family \"fedora\"; }\n    }\n\n    apps {\n        flatpak\n    }\n}\n",
+        temp.join("components/also.kdl"),
+        "schema-version 1\n\ncomponent \"/\" {\n    base-image {\n        base \"ghcr.io/ublue-os/bazzite:stable\" { family \"fedora\"; }\n    }\n\n    apps {\n        flatpak\n    }\n}\n",
+    )
+    .unwrap();
+    let repo = std::fs::read_to_string(temp.join("repo.kdl")).unwrap();
+    std::fs::write(
+        temp.join("repo.kdl"),
+        repo.replacen("builds {\n", "builds {\n    also\n", 1),
     )
     .unwrap();
     out.push_str("==== and the same component in an image that does build it\n");
@@ -449,7 +468,8 @@ fn why_unbuilt(root: &Path) {
             .next()
             .unwrap_or_default(),
     );
-    std::fs::remove_file(temp.join("also.image.kdl")).unwrap();
+    std::fs::remove_file(temp.join("components/also.kdl")).unwrap();
+    std::fs::write(temp.join("repo.kdl"), repo).unwrap();
 
     std::fs::remove_dir_all(temp.join("components/apps/flatpak")).unwrap();
     out.push_str("==== and one whose manifest never loaded\n");
@@ -489,32 +509,6 @@ fn unenforced(root: &Path) {
     );
 }
 
-fn unpinned_import(root: &Path) {
-    let here = given(root);
-    let (list, _, _) = buildc::declarations(&here);
-    assert!(
-        list.sources.iter().any(|c| c.unpinned()),
-        "the fixture has to declare an unpinned collection"
-    );
-    let refused = buildc::import::find(&here, &list.sources, "anything", true)
-        .err()
-        .expect("enforcement refuses an unpinned collection");
-    assert!(refused.contains("follows a moving ref"), "{refused}");
-}
-
-fn refused_everywhere(root: &Path) {
-    let here = given(root);
-    let checked = buildc::run(Command::Check, None, &here)
-        .problems
-        .issues
-        .plain();
-    assert!(checked.contains("tracks its library"), "{checked}");
-    for command in [Command::Generate, Command::Verify] {
-        let said = buildc::run(command, None, &here).problems.issues.plain();
-        assert!(said.starts_with(&checked), "{command:?}: {said}");
-    }
-}
-
 fn assert_no_default(root: &Path) {
     let here = given(root);
     for quiet in [Command::Check, Command::Generate] {
@@ -537,7 +531,7 @@ fn assert_no_default(root: &Path) {
     ] {
         let issues = buildc::run(loud, None, &here).problems.issues.plain();
         assert!(
-            issues.contains("2 images are declared and none is the default"),
+            issues.contains("2 builds are declared and none is the default"),
             "{loud:?} reported {issues}"
         );
     }
@@ -557,14 +551,13 @@ fn repo_case(name: &str) {
             why(name, &root, "core/hello");
             summary_on_host(&root);
         }
-        "broken-lock" => refused_everywhere(&root),
+        "edited-copy" => why(name, &root, "core/edited"),
         "no-default" => assert_no_default(&root),
         "seeding" => why(name, &root, "flatpak"),
         "suppressed" => {
             why_unbuilt(&root);
             summary_on_host(&root);
         }
-        "unpinned-source" => unpinned_import(&root),
         _ => {}
     }
 }
@@ -589,13 +582,10 @@ repo_cases! {
     broken_collect => "broken-collect",
     broken_cycle => "broken-cycle",
     broken_fetch => "broken-fetch",
-    broken_flavours => "broken-flavours",
-    broken_fragment => "broken-fragment",
     broken_graph => "broken-graph",
     broken_image => "broken-image",
     broken_key => "broken-key",
     broken_layout => "broken-layout",
-    broken_lock => "broken-lock",
     broken_component => "broken-component",
     broken_network => "broken-network",
     broken_options => "broken-options",
@@ -607,6 +597,7 @@ repo_cases! {
     broken_syntax => "broken-syntax",
     collecting => "collecting",
     deb_families => "deb-families",
+    edited_copy => "edited-copy",
     enforced => "enforced",
     future_schema => "future-schema",
     media_recipe => "media-recipe",
@@ -649,9 +640,13 @@ fn every_repo_fixture_has_a_case() {
 }
 
 #[test]
-fn the_library_cache_changes_no_output() {
+fn a_repository_holding_its_components_reads_no_library_cache() {
     let root = init_repo("cache-blind");
     seed_library(&root);
+    let upstream = crate_dir().join("tests/collections/upstream");
+    for held in ["base-image", "fedora-family"] {
+        copy(&upstream.join(held), &root.join("components").join(held));
+    }
     let run = || {
         (
             buildc::run(Command::Check, None, &root)

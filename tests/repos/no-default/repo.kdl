@@ -1,2 +1,7 @@
 schema-version 1
 name "No Default"
+
+builds {
+    workstation
+    server
+}

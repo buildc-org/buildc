@@ -23,39 +23,40 @@ impl Disk {
     }
 
     pub fn scan(root: &Path) -> Self {
-        // A directory that only ships a collected file is still a component.
-        // Nothing inside that directory names the file, so the collected names are read first.
-        let first = Self::walk(root, &[]);
+        Self::scan_at(&layout::components(root), &[])
+    }
+
+    /// A directory that only ships a collected file is still a component.
+    /// Nothing inside it names the file.
+    /// The first walk reads the collected names for the second.
+    pub fn scan_at(components: &Path, collected_elsewhere: &[String]) -> Self {
+        let first = Self::walk(components, collected_elsewhere);
         if first.collectors.is_empty() {
             return first;
         }
-        let collected: Vec<String> = first.collectors.keys().cloned().collect();
-        Self::walk(root, &collected)
+        let mut collected: Vec<String> = first.collectors.keys().cloned().collect();
+        collected.extend(collected_elsewhere.iter().cloned());
+        Self::walk(components, &collected)
     }
 
-    fn walk(root: &Path, collected: &[String]) -> Self {
+    fn walk(components: &Path, collected: &[String]) -> Self {
         let mut out = Self::default();
 
-        let components = layout::components(root);
         let found = layout::component_dirs(
-            &components,
+            components,
             |path| {
                 layout::is_component(path) || collected.iter().any(|file| path.join(file).is_file())
             },
             |name| name == "_template",
         );
         for path in found {
-            let manifest = path.join(layout::MANIFEST_FILE);
+            let manifest = layout::manifest_at(&path);
             let name = path
-                .strip_prefix(&components)
+                .strip_prefix(components)
                 .unwrap_or(&path)
                 .display()
                 .to_string();
-            let mut paths = overlay_paths(&path.join(layout::OVERLAY));
-            for (gated, _) in layout::FAMILY_DIRS {
-                paths.extend(overlay_paths(&path.join(gated).join(layout::OVERLAY)));
-            }
-            out.overlays.insert(name.clone(), paths);
+            out.overlays.insert(name.clone(), shipped(&path));
 
             let Ok(text) = std::fs::read_to_string(&manifest) else {
                 continue;
@@ -120,6 +121,14 @@ impl Disk {
             .entry(kind.to_string())
             .or_insert_with(|| (component.to_string(), refused.plain()));
     }
+}
+
+pub(crate) fn shipped(dir: &Path) -> Vec<String> {
+    let mut paths = overlay_paths(&dir.join(layout::OVERLAY));
+    for (gated, _) in layout::FAMILY_DIRS {
+        paths.extend(overlay_paths(&dir.join(gated).join(layout::OVERLAY)));
+    }
+    paths
 }
 
 fn overlay_paths(overlay: &Path) -> Vec<String> {

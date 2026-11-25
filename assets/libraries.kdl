@@ -1,0 +1,4 @@
+buildc {
+    source "https://github.com/buildc-org/library"
+    description "Feature components and base images for many use cases"
+}

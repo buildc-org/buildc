@@ -1,11 +1,11 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
 Buildc v{version}
 
 Error: no component in this repository declares a signing key.
 
-Keys come from components: image signing from a component carrying the cosign public key, Secure Boot from a kernel module carrying a MOK certificate. Import one and run this again.
+Keys come from components: image signing from a component carrying the cosign public key, Secure Boot from a kernel module carrying a MOK certificate. Add one and run this again.
 
 Run 'buildc --help' to list the commands
 ==== exit 1

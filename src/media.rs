@@ -86,8 +86,7 @@ fn staged(root: &Path, opts: &Options) -> Result<(String, Documents), String> {
         .ok_or("no target to build installer media for; name one with `--target`")?;
     let published = target.published();
     let tag = crate::registry::tag(opts.tag.as_deref());
-    let imgref =
-        crate::registry::reference(&list, root, opts.target.as_deref(), opts.tag.as_deref())?;
+    let imgref = crate::registry::reference(&list, opts.target.as_deref(), opts.tag.as_deref())?;
     let image = match &opts.image {
         Some(named) => format!("{named}:{tag}"),
         None => crate::registry::at("localhost", &published, &tag),
@@ -202,7 +201,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         for file in [
             "repo.kdl",
-            "deb.image.kdl",
+            "components/deb.kdl",
             "components/core/luks/manifest.kdl",
             "components/base-image/debian-forky/manifest.kdl",
         ] {
@@ -252,7 +251,7 @@ mod tests {
                 .join("tests/repos")
                 .join(repo);
             let list = crate::model::image::List::load(&root).0;
-            let name = list.ungated_target().unwrap().to_string();
+            let name = list.default_target().unwrap().to_string();
             live_env(&list, &name, "localhost/payload:latest")
                 .lines()
                 .filter(|line| line.starts_with("ARG LIVE_BASE="))

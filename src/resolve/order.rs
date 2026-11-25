@@ -39,9 +39,7 @@ pub fn sort(image: &Image, issues: &mut Issues) -> Vec<usize> {
             .chain(component.policies.iter().copied());
         for name in soft {
             for provider in offered(name) {
-                let drags_below_gate =
-                    entry.flavour.is_none() && image.entries[provider].flavour.is_some();
-                if provider != index && !drags_below_gate {
+                if provider != index {
                     waits_on[index].push(provider);
                 }
             }
@@ -59,24 +57,18 @@ pub fn sort(image: &Image, issues: &mut Issues) -> Vec<usize> {
         }
     }
 
-    // The generated Containerfile declares ARG FLAVOUR directly above the first gated component, so every ungated component sorts before it.
-    let key = |index: usize| {
-        let gated = u8::from(image.entries[index].flavour.is_some());
-        Reverse((gated, index))
-    };
-
-    let mut ready: BinaryHeap<Reverse<(u8, usize)>> = (0..n)
+    let mut ready: BinaryHeap<Reverse<usize>> = (0..n)
         .filter(|&index| remaining[index] == 0)
-        .map(key)
+        .map(Reverse)
         .collect();
 
     let mut order = Vec::with_capacity(n);
-    while let Some(Reverse((_, index))) = ready.pop() {
+    while let Some(Reverse(index)) = ready.pop() {
         order.push(index);
         for &waiting in &blocking[index] {
             remaining[waiting] -= 1;
             if remaining[waiting] == 0 {
-                ready.push(key(waiting));
+                ready.push(Reverse(waiting));
             }
         }
     }
@@ -97,10 +89,7 @@ pub fn apply(image: &mut Image, order: &[usize]) {
 }
 
 fn report_cycle(image: &Image, waits_on: &[Vec<usize>], remaining: &[usize], issues: &mut Issues) {
-    let name = |index: usize| match &image.entries[index].flavour {
-        Some(flavour) => format!("{} [{flavour}]", image.entries[index].path),
-        None => image.entries[index].path.clone(),
-    };
+    let name = |index: usize| image.entries[index].path.clone();
 
     let mut issue = Issue::new("the component graph has a cycle", &image.src).help(
         "a requirement implies ordering, so a cycle has no build order at all; \

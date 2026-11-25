@@ -6,4 +6,6 @@ base "example.invalid/collected:1" {
     family "fedora"
     bootloader "grub2"
 }
-imports "fedora-family"
+component "/" {
+    fedora-family
+}

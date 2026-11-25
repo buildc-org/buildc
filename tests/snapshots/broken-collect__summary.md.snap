@@ -1,8 +1,7 @@
 ---
 source: tests/golden/harness.rs
-assertion_line: 50
 ---
-4 components, the ungated set.
+5 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
@@ -10,3 +9,4 @@ assertion_line: 50
 | `core/absent` | Contributes a file it does not ship, twice, out of range |  |  |  |
 | `core/unclaimed` | Ships a collected filename nothing in this image collects |  |  |  |
 | `core/shipper` | Ships a file whose collector is enabled but refused |  |  |  |
+| `broken-collect` |  |  |  |  |

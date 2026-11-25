@@ -23,14 +23,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/enforced/components/one/hello,t
     --mount=type=tmpfs,target=/tmp \
     bash /generated/enforced/components/one/hello.sh
 
-# ---- core/consumer ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/enforced/components/core/consumer.sh,target=/generated/enforced/components/core/consumer.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/enforced/components/core/consumer.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 

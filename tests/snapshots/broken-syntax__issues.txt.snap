@@ -1,38 +1,48 @@
 ---
 source: tests/golden/harness.rs
 ---
-  x tests/repos/broken-syntax/image.kdl is not valid KDL
-   ,-[tests/repos/broken-syntax/image.kdl:3:23]
- 2 | 
- 3 | image "broken-syntax" {
-   :                       |
-   :                       `-- No closing '}' for child block
-   `----
-
   x unknown node `colour` in repo.kdl
    ,-[tests/repos/broken-syntax/repo.kdl:3:1]
  2 | name "Broken Syntax"
  3 | colour "blue"
    : ^^^|^^
    :    `-- not part of the schema
+ 4 | 
    `----
-  help: repo.kdl holds `schema-version`, `buildc-version`, `name`, `default-
-        image`, `pr-image`, `seed`, a `workflows` block, a `sources` block, a
-        `manifest` block, an `audit` block and a `security-policy` block: what
-        is true of the repository. An image goes in a file of its own
+  help: repo.kdl holds `schema-version`, `buildc-version`, `name`, `base-url`,
+        `registry`, `backend`, `seed`, a `builds` block, a `github` block, a
+        `libraries` block, a `library` block, a `renovate` block, a `manifest`
+        block, an `audit` block and a `security-policy` block. These nodes
+        state what is true of the repository. An image is the component that a
+        build in `builds` names
 
-  x unknown top-level node `palette`
-   ,-[tests/repos/broken-syntax/second.image.kdl:3:1]
+  x tests/repos/broken-syntax/components/broken-syntax.kdl is not valid KDL
+   ,-[tests/repos/broken-syntax/components/broken-syntax.kdl:3:12]
  2 | 
- 3 | palette {
-   : ^^^|^^^
-   :    `-- not part of the schema
- 4 |     accent "red"
+ 3 | base-image {
+   :            |
+   :            `-- No closing '}' for child block
    `----
-  help: an image file holds `schema-version` and `image` nodes; an image's
-        components, its base among them, are path segments inside its `image`
-        node
 
-  x tests/repos/broken-syntax/second.image.kdl declares no image
-  help: an image file holds at least one `image` node, as in `image
-        "workstation" { }`, and its id is what the image publishes as
+  x `second` lists no base
+   ,-[tests/repos/broken-syntax/components/second.kdl:1:1]
+ 1 | schema-version 1
+   : ^
+   : `-- nothing to build on
+ 2 | 
+   `----
+  help: list a base component, such as `base-image { fedora-bootc { version
+        "44" } }`, or define one inline with `base "<image reference>"`
+
+  x `palette` is not a component
+   ,-[tests/repos/broken-syntax/components/second.kdl:4:5]
+ 3 | component "/" {
+ 4 |     palette {
+   :     ^^^|^^^
+   :        `-- nothing to build
+ 5 |         accent "red"
+   `----
+  help: give components/palette a manifest.kdl, a component.sh, a repo.sh, a
+        packages.sh, a finalize.sh, a files/ directory, a Containerfile.inc or
+        a file that another component collects, or define it inline with a
+        manifest node such as `packages`

@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -920,14 +919,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/bare-component/components/hello
 # ---- hello overlays ----
 COPY --from=ctx /generated/bare-component/components/hello/files/ /
 
-# ---- menu ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/bare-component/components/menu.sh,target=/generated/bare-component/components/menu.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/bare-component/components/menu.sh
-
 # ---- apps ----
 RUN --mount=type=bind,from=ctx,source=/generated/bare-component/components/apps,target=/ctx/components/apps \
     --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
@@ -1004,13 +995,6 @@ COMPONENT_DIR=/ctx/components/hello
 export COMPONENT_DIR
 
 source /ctx/components/hello/component.sh
-==== generated/bare-component/components/menu.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/menu
-export COMPONENT_DIR
 ==== generated/bare-component/components/apps.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1191,6 +1175,7 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
@@ -1199,30 +1184,32 @@ graph LR
     m1["menu"]
     m2["apps"]
     m3["apps/editor"]
-    m2 -->|"apps"| m3
+    m4["bare-component"]
+    m4 ==>|"lists"| m0
+    m4 ==>|"lists"| m1
+    m4 ==>|"lists"| m2
+    m4 ==>|"lists"| m3
 ```
 
 ## Capabilities
 
 | Name | Kind | Provided by | Required by | After |
 |---|---|---|---|---|
-| `apps` | capability | `apps` | `apps/editor` |  |
 | `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `hello` | `bare-component` | lists |
+| `menu` | `bare-component` | lists |
+| `apps` | `bare-component` | lists |
+| `apps/editor` | `bare-component` | lists |
 ==== generated/bare-component/graph.json
 {
   "image": "bare-component",
   "capabilities": [
-    {
-      "name": "apps",
-      "kind": "capability",
-      "build_only": false,
-      "provider": "apps",
-      "required_by": [
-        "apps/editor"
-      ],
-      "after": []
-    },
     {
       "name": "bootc",
       "kind": "capability",
@@ -1241,14 +1228,35 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "hello",
+      "by": "bare-component",
+      "how": "lists"
+    },
+    {
+      "component": "menu",
+      "by": "bare-component",
+      "how": "lists"
+    },
+    {
+      "component": "apps",
+      "by": "bare-component",
+      "how": "lists"
+    },
+    {
+      "component": "apps/editor",
+      "by": "bare-component",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "ceec48e3defdbe045d78130956ff2d8da030f6e8af3594603339fd5685de81c5",
-  "files": 32
+  "root": "d911f2f2d41e8fc6494d7cc9f1a8a0e182b60c77e2f9deb5b4342b6ed3f9cd7a",
+  "files": 31
 }
 ==== generated/bare-component/components/hello/component.sh
 ==== generated/bare-component/components/hello/files/etc/motd

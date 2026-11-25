@@ -82,8 +82,7 @@ pub const PIN: Node = Node::new("pin",
         ]),
     ])
     .notes(&[
-        "An `asset` holds a `pin`. A library in `sources` declares its own `version`, \
-         `sha256` and `unpinned`.",
+        "An `asset` holds a `pin`. A library in `libraries` declares its own `version`.",
         "A base reference holds no `pin`. Its image reference holds the location and the \
          version, and `signed` records whether the base publishes a cosign signature. A base's \
          `scap-content` holds a `pin`, whose `sha256` is the hash of the datastream file itself.",

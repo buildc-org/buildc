@@ -2,3 +2,7 @@ schema-version 1
 name "Broken Seed"
 
 seed "example" collection="buildc-org"
+
+builds {
+    example
+}

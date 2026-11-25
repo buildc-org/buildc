@@ -1,14 +1,7 @@
 Example
-Yes
+1
 1
 someone
 Skip
-
 Yes
-Desktop
-2
-1 2
-No
-No
-06:00
 1

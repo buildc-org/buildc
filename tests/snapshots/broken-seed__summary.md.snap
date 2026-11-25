@@ -1,8 +1,9 @@
 ---
 source: tests/golden/harness.rs
 ---
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `core/hello` | A component no declared collection provides |  |  |  |
+| `example` |  |  |  |  |

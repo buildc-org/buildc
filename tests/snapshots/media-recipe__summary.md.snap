@@ -1,8 +1,9 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `core/luks` | The LUKS initramfs witness, carried by a component and not by the base |  |  |  |
+| `deb` |  |  |  |  |

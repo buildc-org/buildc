@@ -1,8 +1,13 @@
 schema-version 1
 name "Sourced"
 
-sources {
-    components "held" {
-        dir "collection"
+libraries default="sourced-library" {
+    local {
+        sourced-library { source "." }
+        held { source "collection" }
     }
+}
+
+builds {
+    sourced
 }

@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "shim",
   "pr_target": "shim",
   "pr_published": "shim",
-  "ungated_target": "shim",
-  "ungated_published": "shim",
   "cache_image": "shim-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "shim",
-      "file": "./image.kdl",
+      "file": "./components/shim.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "uki-shim",
+      "uki": true,
       "allows": [],
       "layout": null,
       "base": {
@@ -47,26 +45,24 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "shim",
           "image": "shim",
-          "flavour": null,
           "published": "shim",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "uki",
-              "flavour": null,
               "variant": null,
               "description": "UKI provider fixture",
-              "options": {},
+              "options": {
+                "OPT_TRUST": "shim"
+              },
               "provides": [
                 "boot-chain-uki"
               ],
@@ -80,7 +76,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "9647b3a756ac6866e92d2f7b06d55fb3631a6abe18f2b749b261322d9a8ec9fe",
+                "content": "7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -92,14 +88,11 @@ source: tests/golden/harness.rs
               "refuses": []
             },
             {
-              "path": "enrolment",
-              "flavour": null,
+              "path": "shim",
               "variant": null,
-              "description": "Secure Boot enrollment provider fixture",
+              "description": "",
               "options": {},
-              "provides": [
-                "secureboot-enrolment"
-              ],
+              "provides": [],
               "requires": [],
               "met_by": {},
               "witnessed": [],
@@ -110,7 +103,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "be348235fe8e5af650ce6222c0cf89d4feac0cf5ce93d883a4070715714dffb1",
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -135,11 +128,12 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/shim/Containerfile",
             "uki": true,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=shim",
-              "COMPONENT_HASHES=uki|9647b3a756ac6866e92d2f7b06d55fb3631a6abe18f2b749b261322d9a8ec9fe enrolment|be348235fe8e5af650ce6222c0cf89d4feac0cf5ce93d883a4070715714dffb1",
+              "COMPONENT_HASHES=uki|7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
@@ -153,12 +147,12 @@ source: tests/golden/harness.rs
     },
     {
       "id": "db",
-      "file": "./image.kdl",
+      "file": "./components/db.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "uki-db",
+      "uki": true,
       "allows": [],
       "layout": null,
       "base": {
@@ -178,26 +172,24 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "db",
           "image": "db",
-          "flavour": null,
           "published": "db",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
           "components": [
             {
               "path": "uki",
-              "flavour": null,
               "variant": null,
               "description": "UKI provider fixture",
-              "options": {},
+              "options": {
+                "OPT_TRUST": "db"
+              },
               "provides": [
                 "boot-chain-uki"
               ],
@@ -211,7 +203,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "9647b3a756ac6866e92d2f7b06d55fb3631a6abe18f2b749b261322d9a8ec9fe",
+                "content": "7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -223,14 +215,11 @@ source: tests/golden/harness.rs
               "refuses": []
             },
             {
-              "path": "enrolment",
-              "flavour": null,
+              "path": "db",
               "variant": null,
-              "description": "Secure Boot enrollment provider fixture",
+              "description": "",
               "options": {},
-              "provides": [
-                "secureboot-enrolment"
-              ],
+              "provides": [],
               "requires": [],
               "met_by": {},
               "witnessed": [],
@@ -241,7 +230,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "be348235fe8e5af650ce6222c0cf89d4feac0cf5ce93d883a4070715714dffb1",
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -266,11 +255,12 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/db/Containerfile",
             "uki": true,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=db",
-              "COMPONENT_HASHES=uki|9647b3a756ac6866e92d2f7b06d55fb3631a6abe18f2b749b261322d9a8ec9fe enrolment|be348235fe8e5af650ce6222c0cf89d4feac0cf5ce93d883a4070715714dffb1",
+              "COMPONENT_HASHES=uki|7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
@@ -283,13 +273,13 @@ source: tests/golden/harness.rs
       ]
     },
     {
-      "id": "missing",
-      "file": "./image.kdl",
+      "id": "plain",
+      "file": "./components/plain.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "uki-db",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -309,20 +299,45 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
-          "name": "missing",
-          "image": "missing",
-          "flavour": null,
-          "published": "missing",
+          "name": "plain",
+          "image": "plain",
+          "published": "plain",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
-          "components": [],
+          "components": [
+            {
+              "path": "plain",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            }
+          ],
           "suppressed": [],
           "secrets": [],
           "contract_files": [],
@@ -334,12 +349,13 @@ source: tests/golden/harness.rs
           "collect_destinations": [],
           "datastream": null,
           "build": {
-            "containerfile": "generated/missing/Containerfile",
-            "uki": true,
+            "containerfile": "generated/plain/Containerfile",
+            "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
-              "TARGET=missing",
+              "TARGET=plain",
               "COMPONENT_HASHES=",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"

@@ -1,4 +1,9 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
+2 components.
 
+| Component | Description | Options | Satisfies | Refuses |
+| --- | --- | --- | --- | --- |
+| `palette` |  |  |  |  |
+| `second` |  |  |  |  |

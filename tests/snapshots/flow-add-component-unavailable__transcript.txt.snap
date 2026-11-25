@@ -1,0 +1,12 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+  1) upstream/debian-family  apt and its state directories, which every deb build layer reaches for
+components [1, 0 for none]: 1
+
+
+example/
+└── ~ example.kdl  `debian-family` added to `example`
+==== exit 0

@@ -82,7 +82,7 @@ pub(crate) fn target(
 ) -> Option<crate::model::image::Target> {
     match &opts.target {
         Some(named) => list.find_target(named).ok(),
-        None => list.ungated_target(),
+        None => list.default_target(),
     }
 }
 
@@ -94,7 +94,7 @@ fn access(root: &Path, opts: &Options) -> Access {
     let Some(target) = target(&list, opts) else {
         return Access::default();
     };
-    let Some((_, _, entries)) = crate::emit::plan::of_target(&list, &target.to_string()) else {
+    let Some((_, entries)) = crate::emit::plan::of_target(&list, &target.to_string()) else {
         return Access::default();
     };
     let dirs: Vec<_> = entries.iter().map(|entry| entry.path.clone()).collect();
@@ -281,11 +281,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-vm-family.{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\nname \"Deb\"\n").unwrap();
-        crate::init::put(
-            &root.join("deb.image.kdl"),
-            "schema-version 1\n\nimage \"deb\" {\n    \n    base-image {\n        debian\n    }\n\n    login\n}\n",
-        )
-        .unwrap();
+        crate::testing::images(&root, &[("deb", "base-image {\n    debian\n}\n\nlogin\n")]);
         for (path, image, family) in [
             ("debian", "docker.io/library/debian:forky", "debian"),
             ("fedora", "quay.io/fedora/fedora-bootc:44", "fedora"),
@@ -371,13 +367,13 @@ mod tests {
         assert_eq!(family(&root, &opts(Some("localhost/other"))), None);
 
         crate::init::put(
-            &root.join("fed.image.kdl"),
-            "schema-version 1\n\nimage \"fed\" {\n    \n    base-image {\n        fedora\n    }\n\n}\n",
+            &crate::testing::image_file(&root, "fed"),
+            "schema-version 1\n\ncomponent \"/\" {\n    base-image {\n        fedora\n    }\n}\n",
         )
         .unwrap();
         crate::init::put(
             &root.join("repo.kdl"),
-            "schema-version 1\nname \"Deb\"\ndefault-image \"fed\"\n",
+            "schema-version 1\nname \"Deb\"\nbuilds default=\"fed\" {\n    deb\n    fed\n}\n",
         )
         .unwrap();
         assert_eq!(family(&root, &opts(None)).as_deref(), Some("fedora"));

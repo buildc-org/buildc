@@ -17,7 +17,7 @@ fn spdx_id(component: &str, asset: &str) -> String {
 }
 
 pub fn build(list: &List, target: &str) -> Option<Json> {
-    let (_, _, entries) = of_target(list, target)?;
+    let (_, entries) = of_target(list, target)?;
     let components: Vec<&Component> = entries
         .iter()
         .filter_map(|e| e.component.as_ref())

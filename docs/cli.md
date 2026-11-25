@@ -28,24 +28,22 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | [`buildc create repo [name]`](#buildc-create-repo) | write a repository and its first image | [repository&nbsp;layout](schema/repository.md) |
 | [`buildc create git`](#buildc-create-git) | put a directory under git control |  |
 | [`buildc create scripts [name]...`](#buildc-create-scripts) | copy the scripts that buildc supplies into scripts/ | [`scripts/`](schema/repository.md) |
-| [`buildc set library`](#buildc-set-library) | add a component library to the repository | [`repo.kdl`&nbsp;›&nbsp;`sources`](schema/repo.md#sources) |
+| [`buildc set library [name]`](#buildc-set-library) | add a component library to the repository | [`repo.kdl`&nbsp;›&nbsp;`libraries`](schema/repo.md#libraries) |
 
 ### Image
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create image [name]`](#buildc-create-image) | add an image and choose its base | [`image.kdl`](schema/image.md) |
-| [`buildc create flavour [name]`](#buildc-create-flavour) | add a second build of an image with more components | [`image.kdl`&nbsp;›&nbsp;`flavours`](schema/image.md#image-flavours) |
+| [`buildc create image [name]`](#buildc-create-image) | add an image and choose its base | [`<name>.kdl`](schema/component.md) |
 
 ### Components
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in an image | [`manifest.kdl`](schema/component.md) |
-| [`buildc add package [name]...`](#buildc-add-package) | add packages to a package group | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
-| [`buildc import component [name]`](#buildc-import-component) | copy a component from a declared library into this repository | [`components.lock.kdl`](schema/lock.md) |
-| [`buildc detach component [path]`](#buildc-detach-component) | make an imported component the repository's own | [`components.lock.kdl`](schema/lock.md) |
-| [`buildc fetch components [path]...`](#buildc-fetch-components) | refresh each tracked component from its library | [`components.lock.kdl`](schema/lock.md) |
+| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in a component's body | [`manifest.kdl`](schema/component.md) |
+| [`buildc add package [name]...`](#buildc-add-package) | add package names to a component, or write a new package group | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
+| [`buildc add component [path]...`](#buildc-add-component) | add a reference to a library component to local components | [`manifest.kdl`](schema/component.md) |
+| [`buildc copy component [path]...`](#buildc-copy-component) | copy library components into a local library and point the references at the copies | [`origins.kdl`](schema/origins.md) |
 
 ### Keys
 
@@ -79,7 +77,7 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc set workflows`](#buildc-set-workflows) | choose the CI workflows the repository generates | [`repo.kdl`&nbsp;›&nbsp;`workflows`](schema/repo.md#workflows) |
+| [`buildc set workflows [workflow]`](#buildc-set-workflows) | choose the CI workflows the repository generates | [`repo.kdl`&nbsp;›&nbsp;`github`](schema/repo.md#github) |
 
 ### Inspect
 
@@ -99,9 +97,9 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc set conforms [image]`](#buildc-set-conforms) | choose the benchmark profile an image is measured against | [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms) |
+| [`buildc set conforms [image]`](#buildc-set-conforms) | choose the benchmark profile an image is measured against | [`<name>.kdl`&nbsp;›&nbsp;`conforms`](schema/component.md#conforms) |
 | [`buildc set claims [component]`](#buildc-set-claims) | choose the benchmark rules that a component claims | [`manifest.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies) |
-| [`buildc coverage [image]`](#buildc-coverage) | print which component claims each rule of the image's profile | [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms) |
+| [`buildc coverage [image]`](#buildc-coverage) | print which component claims each rule of the image's profile | [`<name>.kdl`&nbsp;›&nbsp;`conforms`](schema/component.md#conforms) |
 | [`buildc scap content`](#buildc-scap-content) | print the datastream that the target is measured with |  |
 | [`buildc scap tailoring`](#buildc-scap-tailoring) | print the XCCDF tailoring that a scan runs |  |
 | [`buildc scap rules [number]...`](#buildc-scap-rules) | print the rule name for each benchmark number |  |
@@ -184,11 +182,14 @@ Creates a repository for images. Every other command reads the `repo.kdl` that
 it writes, so it runs first. It creates a directory named after the repository,
 or uses the directory that `--root` names.
 
-It asks for the repository name, the host and account, the first image and its
-base, the base components, the CI workflows and schedule, and the scripts to
-keep in `scripts/`. When the user gives an owner, `repo.kdl` also declares
-`base-url`, the repository URL that image option values read as `{base-url}`.
-It shows every answer on a review screen before it writes.
+It asks for the repository name and the setup path. The defaults path fills the
+provider, the libraries, the first image and its base, the workflows, the
+schedule and the scripts. The minimal path writes the tree, git and `repo.kdl`.
+`repo.kdl` declares the default libraries. When the user gives an owner,
+`repo.kdl` also declares `base-url`, the repository URL that image option
+values read as `{base-url}`. The minimal path's review screen names the
+command that sets each other unset row. The command shows every answer on a
+review screen before it writes.
 
 **Usage:** `buildc create repo [OPTIONS] [name]`
 
@@ -210,15 +211,7 @@ It shows every answer on a review screen before it writes.
 ```text
 example/
 ├── components/
-│   ├── base-image/
-│   │   └── fedora/
-│   │       └── + manifest.kdl
-│   ├── fedora-family/
-│   │   ├── lib/
-│   │   │   └── + family.sh
-│   │   └── + manifest.kdl
-│   ├── + .gitkeep
-│   └── + components.lock.kdl
+│   └── + .gitkeep
 ├── disk_config/
 │   └── + disk.toml
 ├── scripts/
@@ -228,14 +221,14 @@ example/
 ├── + .gitignore
 ├── + .shellcheckrc
 ├── + README.md
-├── + desktop.image.kdl
-└── + repo.kdl
+├── + example.kdl
+└── ~ repo.kdl  the workflows it generates
 ```
 
 > [!WARNING]
-> The `buildc` source that `repo.kdl` declares is `unpinned`. Each
-> fetch takes the head of its branch, and no hash checks what arrives. To pin
-> it, add `version` and `sha256` beside its `url`.
+> The `buildc` library that `repo.kdl` declares names no `version`, so it
+> follows its default branch. Each `buildc generate` moves its components to
+> the head of that branch and records the commit in `repo.lock.kdl`.
 
 > [!NOTE]
 > It runs `git init` and does no other git step. It prints the commands for the
@@ -266,29 +259,25 @@ nest.
 
 ## `buildc create image`
 
-Adds an image to the repository, in a new image file at the root. The file
-name derives from the image name, so "My Desktop" writes
-`my-desktop.image.kdl`.
+Adds an image to the repository as a new component file at the repository
+root, and names it in `builds` in `repo.kdl`. The file name derives from the
+image name, so "My Desktop" writes `my-desktop.kdl`.
 
 It asks for the image name, which defaults to the repository name, and for the
-base. The catalog offers the base, and `--base` names one.
+base. The libraries offer the base, and `--base` names one. If the base offers
+more than one bootloader, it asks which one the build installs and writes it
+into the build's `install` block.
 
-If the base is a catalogued component that imports no build environment, it
-offers to add its family adapter. If the base requires a component that the
-image does not list, it offers to add its providers. It copies each accepted
-component from the declared collections into `components/` and records it in
-`components/components.lock.kdl`. A component the repository already holds is
-listed as it is. A base outside the catalog declares no family, so the tool
-offers no adapter and asks no family question.
+If the base lists no build environment for its family, the command offers the
+library's family adapter. If the base lists no `os-release` component, it
+offers the library's `os-release` and sets its `name` option to the image name.
+If the base requires a capability, it offers a provider of it. The image file
+lists each accepted component by its path. Nothing is copied, and the build
+reads each component from its library. If two libraries hold the path, then
+the line names the library with `library=`.
 
-The components a library base imports are copied into `components/` beside
-it, and the image file lists none of them.
-
-If the base imports no `os-release` component, the command offers the library's
-`os-release`. When the user accepts, the command copies the component and sets
-its `name` option to the image name. When `repo.kdl` declares `base-url`, the
-command also sets `home-url` to `{base-url}` and `bug-report-url` to
-`{base-url}/issues`.
+When `repo.kdl` declares `base-url`, the command also sets the `home-url` of
+`os-release` to `{base-url}` and its `bug-report-url` to `{base-url}/issues`.
 
 **Usage:** `buildc create image [OPTIONS] [name]`
 
@@ -301,113 +290,61 @@ command also sets `home-url` to `{base-url}` and `bug-report-url` to
 | `--owner <name>` | the account or organisation for the seeded home URL; ignored when repo.kdl declares base-url |
 | `--base <ref>` | a bootc image reference, catalogued or not; skips the base picker |
 
-**Schema:** [`image.kdl`](schema/image.md)
+**Schema:** [`<name>.kdl`](schema/component.md)
 
 **What it writes:**
 
 ```text
 example/
-├── components/
-│   ├── base-image/
-│   │   └── collected/
-│   │       └── + manifest.kdl
-│   └── ~ components.lock.kdl  base-image/collected recorded
-├── + beta.image.kdl
-└── ~ repo.kdl  example set as the default image
+├── + beta.kdl
+└── ~ repo.kdl  `beta` added as a build
 ```
 
 > [!NOTE]
-> A base outside the catalog writes a base component with no `family` block.
-> The tool asks no family question, and it offers no family adapter.
-> `buildc check` then reports each capability that no component provides.
+> A base outside the libraries gets its own base component under `base-image/`
+> with no `family` block. The tool then asks no family question and offers no
+> family adapter. `buildc check` reports each capability that no component
+> provides.
 >
-> If the repository declares no `default-image`, then a second image adds one
-> to `repo.kdl` that names the first image. A bare `buildc build` then builds what
-> it built before.
+> If the repository holds one build and `builds` declares no `default=`, then a
+> second image sets `default=` to the first build. A bare `buildc build` then
+> builds what it built before.
 >
-> To offer the base's components, it reads the declared collections, and fetches a
-> collection that is not on this machine. With no terminal, it fetches
-> nothing.
+> To offer the bases and their components, it fetches each declared library
+> that is not on this machine.
 >
-> When the base declares a family, its components are the family adapter and a
-> provider of each capability that the base requires. The family adapter is the
-> component that `targets` the family and `provides "build-environment"`.
-
-## `buildc create flavour`
-
-Adds a flavour to an image. A flavour is a second build of the image with more
-components, published as `<image>-<flavour>` beside the image. The command
-declares the flavour in the image's `flavours` block. Add components to the
-flavour with `buildc create component` or `buildc import component`, and choose the
-flavour there.
-
-It asks for the flavour name and the image that publishes it.
-
-**Usage:** `buildc create flavour [OPTIONS] [name]`
-
-| Argument | Description |
-| --- | --- |
-| `<name>` | the flavour name |
-
-| Option | Description |
-| --- | --- |
-| `--image <name>` | the image that publishes the flavour |
-
-**Schema:** [`image.kdl`&nbsp;›&nbsp;`flavours`](schema/image.md#image-flavours)
-
-**What it writes:**
-
-```text
-example/
-└── ~ example.image.kdl  dx added to flavours
-```
-
-`example.image.kdl` after it runs:
-
-```kdl
-schema-version 1
-
-image "example" {
-    layout {
-        bootloader "grub2"
-    }
-
-    base-image {
-        fedora {
-            version "44"
-            signed #false
-        }
-    }
-    flavours {
-        dx
-    }
-}
-```
-
-> [!NOTE]
-> It writes neither `default` nor `pr-build`. Each one changes what a build
-> does, so the user writes it.
->
-> It refuses a name that the image already declares, and `none`, which names
-> the image's own build.
+> The family adapter is the component that `targets` the family and
+> `provides "build-environment"`.
 
 ## `buildc create component`
 
 Writes a new component. A directory component is a manifest at
-`components/<name>/manifest.kdl`. The command offers to list it in images.
-`--inline` writes it as a block inside one image file instead, and the block
-defines the component and lists it in that image or flavour.
+`<name>/manifest.kdl` in the folder of the library that `libraries default=`
+names. In a new repository that library is `local-library` and its folder is
+`components/`. The command offers to list it in builds.
+`--build` names a build, and it is repeatable. The command lists the component
+as a bare child of each build's component and writes its directory where that
+child resolves. A build whose file sits at the repository root reads a bare
+child from the default library. A build whose component is `components/<build>`
+reads it from `components/<build>/`. `--inline` writes the component as a
+block inside another component instead, and that body lists the block.
+
+`--inline` takes one holder. `--build <name>` puts the block in that build's
+component file. `--in <component>` puts it in a local component's body, and the
+name is relative to that component. Without either flag, the command shows one
+picker of the local components, with the builds' components first. A component
+in a remote library is refused.
 
 The name can be a path. As a directory component, `apps/firefox` writes
 `components/apps/firefox/manifest.kdl`. As an inline component, it writes a
 `firefox` block inside an `apps` block.
 
 The command asks for the component name. For an inline component it then asks
-for the image or flavour that holds the block. For both kinds it asks for an
+for the component or build that holds the block. For both kinds it asks for an
 optional description and optional base family restrictions. For a directory
-component it then asks which images and flavours list the component. The
-command writes no packages. `buildc add package` adds them afterward and
-creates the group when the path is new.
+component it then asks which builds list the component, and no row starts
+checked. The command writes no packages. `buildc add package` adds them, and a
+path the repository does not hold writes a new package group.
 
 **Usage:** `buildc create component [OPTIONS] [name]`
 
@@ -417,9 +354,10 @@ creates the group when the path is new.
 
 | Option | Description |
 | --- | --- |
-| `--image <name>` | an image that lists the component |
+| `--build <name>` | a build whose component lists the component; repeatable |
+| `--in <component>` | a local component whose body holds an inline definition |
 | `--with <verb=value>` | one more manifest line, such as `provides=browser`; repeatable |
-| `--inline` | write the component as a block in one image file |
+| `--inline` | write the component as a block inside another component's body |
 
 **Schema:** [`manifest.kdl`](schema/component.md)
 
@@ -430,31 +368,43 @@ example/
 ├── components/
 │   └── my-editor/
 │       └── + manifest.kdl
-└── ~ example.image.kdl  my-editor added to components
+└── ~ example.kdl  my-editor added to components
 ```
 
 > [!NOTE]
-> An image and one of its own flavours cannot both list the component. The image
-> entry already reaches every flavour of that image.
+> Choosing no build is valid for a directory component. The component then
+> exists in the default library with no listing. Leaving the picker writes
+> nothing.
 >
-> Choosing no image is valid for a directory component. The component then
-> exists with no listing. Leaving the picker writes nothing.
+> If `libraries default=` names a remote library, then the command refuses.
+> buildc writes no component into a remote library.
 >
-> An inline component belongs to one image or flavour. `--inline` therefore
-> takes one `--image`. If nothing can be asked, then an inline component needs
-> that `--image`. The command refuses an inline component when the user
-> chooses no image.
+> The command refuses two `--build` values whose builds read the bare child
+> from different folders. One component has only one directory.
+>
+> An inline component sits in one holder. `--inline` takes one `--build` or
+> one `--in`, and the command refuses the two together. If nothing can be
+> asked, then an inline component needs one of them. The command refuses an
+> inline component when the user chooses no holder.
+>
+> `--in` names a component this repository holds. A component in a remote
+> library is refused, and `buildc copy component` makes a local copy first.
+>
+> The command refuses a name whose first segment is a manifest node, such as
+> `packages`. A component file reads a bare node of that name as the manifest
+> node, so no tree could list the component.
 >
 > An inline component needs at least one manifest line. A description, a
 > `targets` restriction or a `--with` line each counts.
 >
 > One name cannot be a directory component and an inline component at once.
 > The command refuses an inline component when `components/<name>/` already
-> holds a component. It refuses a directory component when an image file
+> holds a component. It refuses a directory component when a component's body
 > already defines the name inline.
 >
 > `--with packages=...` is refused. `buildc add package <names...> --component
-> <name>` adds the packages and creates the component when the path is new.
+> <name>` adds the packages, and it creates the component when the path is
+> new.
 >
 > The command writes a directory component unless `--inline` is given.
 
@@ -511,7 +461,7 @@ It asks for the kind.
 > edit the file.
 >
 > If no component declares the kind, then it names a component in the declared
-> collections that does, and the `buildc import component` line that adds it.
+> libraries that does, and the `buildc add component` line that adds it.
 
 ## `buildc create scripts`
 
@@ -548,32 +498,32 @@ does not hold yet.
 
 ## `buildc add package`
 
-Adds packages to a package group. The command takes the package names as
-arguments, such as `buildc add package firefox htop`. With no names given, it
-asks for them. The prompt reads `packages`, with the hint `separated by a
-space`.
+Adds packages to a package group. The group is a directory component or a
+block inside another component's body. A path the repository does not hold
+writes a new group in the folder of the library that `libraries default=`
+names. If the default library is remote, then the command refuses a new directory group.
 
-The packages go into a package group, an ordinary component that lives either
-in its own directory under `components/` or as a block declared inline inside
-an image file. `--component <path>` names the group directly, such as `apps` or
-`apps/firefox`. Without `--component`, in a terminal, the command shows one
-screen with two rows. The first row, `group name`, starts empty and takes
-`apps` on an empty submit. The second row, `select component`, opens a picker
-of the components the repository holds and choosing one fills the group name
-with that component.
+The names are arguments and the command asks for them when none is given. The
+prompt is `packages`, with `separated by a space` as its hint.
 
-If the group already exists, the new names join it wherever it lives and the
-command asks nothing more. A group path the repository does not hold yet
-creates a new group instead. In a terminal, the command then asks which image
-or flavour should get it, as a multi-select of every image and flavour in the
-repository, even when the repository has only one image. Every selected image
-gets its own inline copy of the group holding the packages. If no image is
-selected, the group becomes a directory component instead, at
-`components/<path>/manifest.kdl`.
+`--component` names the group. Without it, a terminal asks for a `group name`
+first. The field uses `apps` when it is left empty. The second row is `select
+component`, which opens a picker of the components this repository holds. If no
+terminal is watching, the command refuses and names `--component`.
 
-`--image <name>` selects an image without the prompt, or a flavour as
-`<image>/<flavour>`. It can be given more than once. A name given twice still
-counts once.
+A new group with no build becomes a directory component. `--build` names a
+build, and it is repeatable. Every build named receives an inline copy of the
+group as a bare child of its component. With `--build`, `--component` also
+names a group that the build's component lists bare. An existing inline group
+with several copies is targeted with `select component` or one `--build`.
+
+A component with no `packages` node gains one. A component directory that
+holds only scripts gains a `manifest.kdl`. An inline definition gains the node
+inside its own block. Otherwise the names join the first top-level `packages`
+node in the shape it already uses. If the node lists its names on one line,
+then the new names go after its last name. If the node holds its names in a
+block, then each new name goes on its own line inside the block. A repeat call
+writes only the names the component does not list yet.
 
 **Usage:** `buildc add package [OPTIONS] [name]...`
 
@@ -583,8 +533,8 @@ counts once.
 
 | Option | Description |
 | --- | --- |
-| `--component <path>` | the path of the package group that receives the packages |
-| `--image <name>` | the image or `<image>/<flavour>` that holds the group (repeatable) |
+| `--component <path>` | the group path that receives the names; a new path writes a group |
+| `--build <name>` | a build whose component gets an inline copy; repeatable |
 
 **Schema:** [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages)
 
@@ -592,189 +542,192 @@ counts once.
 
 ```text
 example/
-└── ~ example.image.kdl  firefox and wireguard-tools added to `packages`
+└── ~ example.kdl  firefox and wireguard-tools added to `packages`
 ```
 
 > [!NOTE]
-> A name listed twice in one call counts once. A call with no names is refused.
->
-> When nothing can be asked, for example with `--no-tui` or with no terminal,
-> the command refuses and names `--component`.
->
-> A component with no `packages` node gains one. A component directory that
-> holds only scripts also gains a `manifest.kdl`.
->
-> Otherwise the new names join the component's first top-level `packages` node
-> and keep its layout. A node that lists its names on one line gets the new
-> names after its last name. A node that holds its names in a block gets each
-> new name on its own line inside the block.
->
-> A name the group already lists is reported and not written again. A repeat
-> call is safe.
->
 > A name inside a family-gated `on` block counts as listed. The command does
 > not add it again at the top level.
 >
-> The command writes every new name outside any `on` gate and every base family
-> the component targets installs it. A name that differs by family goes in an
-> `on` block. The user writes that block by hand in the manifest or image file.
+> The command writes each name outside any `on` gate. Every base family that
+> the component targets then installs it. A name that differs by family
+> belongs in an `on` block. The user writes that block in the manifest or
+> image file.
 >
-> If the `packages` node carries `enablerepo=`, the new names install with that
-> repository enabled too.
->
-> One image and one of its own flavours cannot both get the new group because
-> the image's entry already reaches its flavours.
->
-> A new group path must be a valid component path. Each `/` segment takes
-> lowercase letters, digits and dashes and starts with a letter.
->
-> An image or flavour that the repository does not declare is refused.
->
-> A new group that would go inline in an image is refused when that image
-> already lists the same path as an ordinary entry, such as a component
-> imported from a library. The refusal names the image and the path. Nothing is
-> written.
->
-> The same inline path can exist in several images, one copy each.
->
-> If a group has several inline copies, `--component` alone is refused because
-> it cannot tell which copy is meant. The user picks one copy with `select
-> component` or with exactly one `--image`.
->
-> Once a group exists inline, `--image` must name an image that holds a copy.
-> The refusal names the images that do. The command does not add a copy to a
-> further image.
->
-> `--image` with a directory component is refused because a directory component
-> belongs to no single image.
->
-> A component marked `hidden #true` stays out of the `select component` picker
-> until the user presses `h`. A revealed hidden component is dimmed and still
-> selectable. An explicit `--component` path selects a hidden component as
-> usual.
->
-> A directory component that tracks its library stays out of the `select
-> component` picker because the command refuses to edit such a component. A
-> typed group name or an explicit `--component` path still reaches the refusal.
-> If no component is left to pick, then the form shows no `select component`
-> row.
+> If the `packages` node carries `enablerepo=`, then the new names install with
+> that repository enabled too.
 >
 > A name takes letters, digits and `. _ + : -`, with at most one `=` before a
 > version. An option reference such as `firefox={version}` is accepted in place
-> of literal text. The rule exists because the build writes the name straight
-> into a shell command line. A name that breaks the rule is refused before
-> anything is written. An install that needs other characters belongs in the
-> component's `component.sh` script.
+> of literal text. The rule holds because the build writes the name straight
+> into its RUN line. A name that breaks the rule is refused before anything is
+> written. An install that needs other characters belongs in `component.sh`.
 >
-> A directory component that tracks its library is refused because an edit
-> would no longer match its lock entry. A new inline or directory group at a
-> tracked path is refused the same way. Running `buildc detach component <path>`
-> first ends the tracking.
+> A path that is both a directory component and an inline component is
+> refused the same way `buildc check` refuses it.
 >
-> If the lock file does not parse, then the command refuses and names the lock
-> file. Nothing is written.
+> A component marked `hidden #true` stays out of `select component` until `h`
+> reveals it. An explicit `--component` path still selects it.
 >
-> A path that is both a directory component and an inline component is refused,
-> whether the user types it or picks it. `buildc check` refuses it the same way.
->
-> The `create component` command writes no packages. The user runs `buildc add
-> package` afterward to add them, or writes the `packages` line in the manifest
-> or image file by hand.
+> `buildc create component` writes no packages. Run this command after it, or
+> write the `packages` line in the manifest or image file by hand.
 
-## `buildc import component`
+## `buildc add component`
 
-Copies a component from a library into `components/<name>`, and records it in
-`components/components.lock.kdl`: the library, the component's path there, the
-library's revision and the content hash. The repository holds the copy, so a
-fetch never changes it.
+Adds a reference to a component to one or more local components. The command
+copies nothing. A build reads the component from its library when it builds.
 
 It asks for:
 
-1. The image or flavour that the components are for, or none.
-2. The components. A component that the image's base family cannot build, and a
-   base component, are listed as unavailable, with the reason beside them.
-3. If the repository already holds a component at that path, whether to list the
-   local component or import the library's component under another name. The
-   name offered is `<name>@1`.
-4. If several library components provide one capability that they require, which
-   one to use, and whether to add the components that they require. A
-   requirement whose `provider` reads an option takes the answer as that
-   option's value on the component's entry, and the provider is copied in
-   without an entry of its own.
-5. If a component provides a capability that an entry in the same image or
-   flavour declares exclusive, or the other way round, whether to replace that
-   entry or cancel.
-6. Whether to generate the CI workflows that they make runnable.
-7. If they claim benchmark rules, the profile to measure the image against.
-8. Whether the copies track upstream.
+1. The components that take the reference. The picker lists the builds'
+   components, and `h` shows every other local component. If the repository
+   has one build, then its component takes the reference without a question.
+2. The components to add. The picker lists each component that at least one
+   chosen build can use. A component that some chosen builds cannot use names
+   them after `does not support`, and only the others take it.
+3. The library, if more than one library holds a chosen path.
+4. Whether to add the providers that the components require. A summary lists
+   each requirement that a build does not meet and its provider. If several
+   providers meet one requirement, then a picker for that requirement follows.
+5. If a component provides a capability that an entry of the same build holds
+   as exclusive, or the other way round, whether to replace that entry or
+   cancel.
 
-**Usage:** `buildc import component [OPTIONS] [name]`
+The reference reads the component at the library version. `--pin` fixes it at
+a tag or a commit instead.
+
+**Usage:** `buildc add component [OPTIONS] [path]...`
 
 | Argument | Description |
 | --- | --- |
-| `<name>` | the component to copy or `<owner>/<name>` to choose a library |
+| `<path>` | the component path; repeatable |
 
 | Option | Description |
 | --- | --- |
-| `--image <name>` | the image or flavour that lists the component |
-| `--datastream <file>` | SCAP content for the profile offer; the family's installed copy by default, and no content means no offer |
-| `--dependencies` | add provider components for the requirements of the selected components |
+| `--in <component>` | a local component that lists the reference; repeatable |
+| `--library <name>` | the library to read the component from |
+| `--pin <pin>` | a tag or commit that fixes the component; one path only |
+| `--dependencies <provider>` | add the providers that the components require, preferring the named one; repeatable |
 
-**Schema:** [`components.lock.kdl`](schema/lock.md)
+**Schema:** [`manifest.kdl`](schema/component.md)
 
 **What it writes:**
 
 ```text
 example/
-├── components/
-│   ├── browser/
-│   │   └── + manifest.kdl
-│   └── ~ components.lock.kdl  browser recorded
-└── ~ example.image.kdl  browser added to components
+└── ~ example.kdl  `browser` added to `example`
 ```
 
-> [!WARNING]
-> A pinned library is downloaded once and checked against its hash. An
-> `unpinned` library is downloaded each time with no check, and
-> `audit { enforce #true }` refuses it.
+> [!NOTE]
+> A reference below the receiving component's own path is written as a bare
+> child. Every other reference is written inside `component "/"`. A nested path
+> such as `hardware/nvidia/cuda` brings each parent folder that is itself a
+> component.
+>
+> The command writes `library=` only where the path would resolve to another
+> library without it.
+>
+> It reads each remote library from the cache, and it fetches one only when the
+> cache holds none. `buildc generate` refreshes the cache.
+>
+> It refuses a component that a receiving component already lists. It refuses
+> `--pin` with more than one path, and on a component from a `local` library.
+>
+> Without a terminal, `--dependencies` adds every provider without the summary.
+> If several providers meet one requirement, then `--dependencies <provider>`
+> names the one to add, and without it the command refuses and names each. A
+> named provider that meets no requirement a build lacks is refused. A provider
+> that this repository holds wins over a library's provider. An exclusive clash
+> is refused without a terminal.
+>
+> After the write, the command loads the builds again. If a file can no longer
+> be edited, or a reference reads another library or another pin, then every
+> file goes back as it was. A problem that `buildc check` reports stops the
+> command only if it keeps a file from being edited. If the user declines a
+> required component, then the reference stays, and `buildc check` names the
+> component that would satisfy it.
+
+## `buildc copy component`
+
+Copies components from a library into a `local` library, and records where each
+copy came from in that library's `origins.kdl`. The copy is the repository's
+own, and the user may edit it. No fetch changes it.
+
+A path is `<library>/<path>`, or the path alone with `--from`. With `--build`
+and no path, the command copies every remote component that the build reads.
+With neither, it asks for the components from a list of every library.
+
+A copy takes the components nested in its folder. It reads the commit that the
+builds read, so a pinned reference is copied at its pin. A path that no build
+reads is copied at the library `version`.
+
+The command lists each copy and each file whose references change, then asks
+to confirm. It rewrites each reference that would not read the copy, and drops
+its `library=` and `pin=`. If nothing references a copy, then it is copied
+alone, and `buildc add component` adds it to a build.
+
+**Usage:** `buildc copy component [OPTIONS] [path]...`
+
+| Argument | Description |
+| --- | --- |
+| `<path>` | the component as `<library>/<path>`, or its path with `--from`; repeatable |
+
+| Option | Description |
+| --- | --- |
+| `--from <library>` | the library to copy from |
+| `--build <name>` | the build whose commit each copy reads; with no path, every remote component the build reads |
+
+**Schema:** [`origins.kdl`](schema/origins.md)
 
 > [!NOTE]
-> If `repo.kdl` declares no `sources`, then the command refuses and prints the
-> `sources` block that `buildc create repo` writes.
+> If `libraries` declares more than one `local` library, then a terminal asks
+> which one takes the copies. The library that `--from` or a path's first
+> segment names is not offered.
 >
-> It searches every library for a bare name. `<owner>/<name>` picks between
-> two libraries that both hold it.
+> The command refuses a path that the destination already holds. It refuses a
+> component that another component defines inline, and names the component
+> that holds it.
 >
-> It refuses a component that the image already lists, and a component that the
-> image's base family cannot build.
+> If two builds read a path at different commits, then the command refuses and
+> `--build` names the build whose commit to copy.
 >
-> A tracked copy carries `track` in its lock entry. An untracked copy is the
-> repository's own, and its entry keeps where it came from.
+> A reference that reads `library=` or `pin=` from an enclosing node is
+> refused, with the node and its line named.
 >
-> Without a terminal, the copies are tracked, and an image lists them only
-> where `--image` names one. A named component at a path the repository already
-> holds is refused, and so is an exclusive clash. A provider that
-> `--dependencies` brings is listed as the repository holds it. If several
-> library components provide one requirement, then `--dependencies` refuses and
-> names each.
->
-> If the user declines a required component, then the file stays valid, and
-> `buildc check` names the import that would satisfy it.
+> After the copy, the command loads the builds again. If a build no longer
+> loads, or a reference still reads the library, then every file goes back as
+> it was.
 
 ## `buildc set workflows`
 
 Chooses the CI workflows that the repository generates, and writes the choice
-into `workflows` in `repo.kdl`. Run `buildc generate` next to write the workflow
-files. A workflow that the repository cannot run shows its reason and cannot be
-chosen. With no terminal, it changes nothing and says to edit `repo.kdl`.
+into the `github` block in `repo.kdl`. Run `buildc generate` next to write the
+workflow files. A workflow that the repository cannot run shows its reason and
+cannot be chosen.
 
-It asks for the workflows, whether images publish only on scheduled builds, and
-whether image scans run only on scheduled builds. If a chosen workflow has a
-schedule, it asks for the daily build time in UTC.
+With no workflow named, it asks for the workflows, and with no terminal it
+changes nothing and says to edit `repo.kdl`. A newly chosen workflow runs on
+its shipped triggers, and a workflow already listed keeps the triggers written
+for it. If the repository declares more than one build, then it asks which
+builds each newly chosen per-build workflow runs for. If the user chooses every
+build, then the command writes no `builds`. A workflow with no `builds` runs
+for every build.
 
-**Usage:** `buildc set workflows`
+With a workflow named, it lists that workflow and asks nothing. `--on`
+replaces the workflow's triggers, and `--builds` replaces its builds.
 
-**Schema:** [`repo.kdl`&nbsp;›&nbsp;`workflows`](schema/repo.md#workflows)
+**Usage:** `buildc set workflows [OPTIONS] [workflow]`
+
+| Argument | Description |
+| --- | --- |
+| `<workflow>` | the workflow whose triggers or builds are set; a picker over every workflow if absent |
+
+| Option | Description |
+| --- | --- |
+| `--on <trigger>` | a trigger that replaces the workflow's triggers: `push`, `pr`, `schedule` or `tag=<pattern>`; repeatable |
+| `--builds <name>` | a build the workflow runs for, in place of its builds; repeatable |
+
+**Schema:** [`repo.kdl`&nbsp;›&nbsp;`github`](schema/repo.md#github)
 
 **What it writes:**
 
@@ -787,22 +740,62 @@ example/
 > No workflow removes the `workflows` block, and the repository then generates
 > no CI. Leaving the picker changes nothing.
 >
-> Each schedule is an offset from the daily build time, so a new daily time
-> moves every schedule.
+> A trigger's own `builds` and a schedule's `frequency` and `time` are written
+> in `repo.kdl` by hand.
 
 ## `buildc set library`
 
-Adds a library to the `sources` block in `repo.kdl`, either the default
-library or a source the user types. A library holds components and base
-components alike. A source with the same alias is replaced, so the declaration
-moves to what the user chose.
+Adds a library to the `libraries` block in `repo.kdl`. A library holds
+components and base components alike.
 
-It asks for the default library or another source. For another source, it asks
-for the alias, the HTTPS Git URL and the directory inside the repository.
+A name on its own adds that library from the libraries buildc offers.
+`--source` declares the library at an HTTPS Git URL or a path. Its name comes
+from the `name` in the source's `repo.kdl`, else from a URL's owner segment or
+a path's folder name. A name given with `--source` wins. With either argument,
+the command asks nothing.
 
-**Usage:** `buildc set library`
+Without an argument, it asks for the library. The picker lists the libraries
+buildc offers that the repository does not declare yet, and its last row is
+`URL / local path`. That row asks for the library location and then for the
+library name. If buildc has no library left to offer, then the command skips
+the picker and asks for the location at once. A summary shows the location,
+the name and the kind, and the user confirms or cancels.
 
-**Schema:** [`repo.kdl`&nbsp;›&nbsp;`sources`](schema/repo.md#sources)
+buildc derives the kind from the location. A URL is remote. A path that git
+tracks in this repository is local. Any other path is remote and is read as a
+Git checkout at a commit.
+
+**Usage:** `buildc set library [OPTIONS] [name]`
+
+| Argument | Description |
+| --- | --- |
+| `<name>` | a default library to add, or the name of the library at `--source` |
+
+| Option | Description |
+| --- | --- |
+| `--source <url or path>` | a library's HTTPS Git URL or path |
+
+**Schema:** [`repo.kdl`&nbsp;›&nbsp;`libraries`](schema/repo.md#libraries)
+
+> [!NOTE]
+> A name that `libraries` already declares is refused. The command never
+> replaces a library.
+>
+> If no terminal is watching and no argument is given, then the command
+> refuses.
+>
+> If the repository holds `components/`, `workflows/` or `plugins/` and
+> declares no `local` library, then the command also declares this repository
+> as `local-library` under `local`. It becomes the default library if
+> `libraries` names none.
+>
+> If the command writes the first `libraries` block and `components/` does not
+> exist, then it asks whether to create that folder. A yes creates the folder
+> and declares this repository as `local-library`. With an argument, the
+> command asks nothing and creates no folder.
+>
+> If the repository stops loading after the edit, then the command undoes
+> it.
 
 ## `buildc set conforms`
 
@@ -811,9 +804,11 @@ it into the image's `conforms`. A `conforms` turns on the image scan for every
 build. With no terminal, it changes nothing and says to write the line into the
 image file.
 
-It asks for the image if the repository holds several, and for the profile. It
-also asks whether to import collection components that claim rules of the
-profile that no component in the image claims.
+It asks for the image if the repository holds several, and for the profile. If
+a library holds components that claim rules of the profile that no component in
+the image claims, then it asks whether to add a reference to them or copy them
+into the repository. A reference asks for a pin, and a copy asks for the local
+library that takes it.
 
 **Usage:** `buildc set conforms [OPTIONS] [image]`
 
@@ -825,17 +820,13 @@ profile that no component in the image claims.
 | --- | --- |
 | `--datastream <file>` | SCAP content to choose the profile from; the image family's installed copy by default |
 
-**Schema:** [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms)
+**Schema:** [`<name>.kdl`&nbsp;›&nbsp;`conforms`](schema/component.md#conforms)
 
 **What it writes:**
 
 ```text
 example/
-├── components/
-│   ├── sshd/
-│   │   └── + manifest.kdl
-│   └── ~ components.lock.kdl  sshd recorded
-└── ~ example.image.kdl  measured against `standard`, and sshd added to components
+└── ~ example.kdl  measured against `standard`, and sshd listed
 ```
 
 > [!NOTE]
@@ -848,8 +839,8 @@ example/
 > If no `--datastream` is given and no SCAP content is installed for the
 > image's family, then it stops and names `scap-security-guide`.
 >
-> The import offer covers collection components only. A component in the repository
-> needs its path segments in the image, and `buildc check` names it.
+> The offer covers library components only. A component the repository holds
+> needs its path in the image, and `buildc check` names it.
 
 ## `buildc set claims`
 
@@ -936,40 +927,11 @@ It asks for the kind and the file to read.
 > - `pcr-signing` takes a bare PEM public key.
 > - `ssh-keygen` takes an OpenSSH key line.
 
-## `buildc detach component`
-
-Makes an imported component the repository's own copy. The component stops
-tracking its library. `buildc fetch components` then skips it and the user may
-edit it.
-
-With no path, the command asks which tracked component to detach. With no
-`--yes`, it asks before it detaches. With no terminal, it needs the path and `--yes`.
-
-**Usage:** `buildc detach component [OPTIONS] [path]`
-
-| Argument | Description |
-| --- | --- |
-| `<path>` | the component's path under components/ |
-
-| Option | Description |
-| --- | --- |
-| `-y`, `--yes` | detach without asking |
-
-**Schema:** [`components.lock.kdl`](schema/lock.md)
-
-> [!NOTE]
-> The lock entry keeps the library, the component's path in that library, the
-> library's revision and the content hash. `buildc why` still says where the copy came
-> from and reads out each later edit.
->
-> The command changes only `components/components.lock.kdl`. It never touches
-> the component's files.
-
 ## `buildc check`
 
 Reads every file in the repository and reports each problem at the line that
-caused it. Run it after an edit. The last line counts the images, the components,
-the flavours and the listed components that the base provides.
+caused it. Run it after an edit. The last line counts the images, the components
+and the listed components that the base provides.
 
 **Usage:** `buildc check [OPTIONS]`
 
@@ -980,10 +942,15 @@ the flavours and the listed components that the base provides.
 > [!NOTE]
 > It also reports these findings, which do not change the exit code:
 >
-> - A collection describes a base differently from the catalog.
-> - A collection is `unpinned`.
+> - A build reads a remote component that `repo.lock.kdl` does not record.
+> - A locked library has moved at its remote since `buildc generate` locked it.
+> - A components folder is in no library, because no `local` library has the
+>   source `.`.
+> - `buildc-version` names a release with no `sha256`.
+> - A component ships a Containerfile fragment, which the script rule does not
+>   reach.
+> - A scaffolded file differs from what this release of `buildc` scaffolds.
 > - An image `conforms` to a profile, and no listed component claims a rule of it.
-> - A `manifest.kdl` sits inside the directory of another collection component.
 >
 > With `--datastream`, it also counts the rules of each declared profile that
 > no listed component claims, and names the components that would claim them.
@@ -993,9 +960,11 @@ the flavours and the listed components that the base provides.
 
 Writes the build files, and the CI workflows that `repo.kdl` names. Run it
 after a change to a KDL file. `buildc build` refuses build files that are not
-current. It reads the repository's own components, and it reaches the network
-for two pins alone: the SCAP datastream a conforming image's base pins, and
-the commit each cloned asset's tag names. It writes:
+current. It first fetches each remote library at its `version`. It moves each
+unpinned remote component to the commit that `version` names now and records
+that commit in `repo.lock.kdl`. A component that `pin=` names stays at its pin.
+It also reaches the network for the SCAP datastream a conforming image's base
+pins, and for the commit each cloned asset's tag names. It writes:
 
 - `generated/<image>/Containerfile`, one for each image
 - `generated/<image>/components/<component>.sh`, the build script of each component
@@ -1004,7 +973,7 @@ the commit each cloned asset's tag names. It writes:
 - `generated/<image>/graph.md` and `graph.json`, the capability graph
 - `generated/plan.json`
 - `generated/seed.kdl`, if `repo.kdl` names a seedable image
-- each workflow that `workflows` names, under `.github/workflows/`
+- each workflow that the `github` block names, under `.github/workflows/`
 - `.github/renovate.json5`, if `repo.kdl` holds a `renovate` block
 
 **Usage:** `buildc generate`
@@ -1018,6 +987,10 @@ the commit each cloned asset's tag names. It writes:
 >
 > A terminal draws a file tree. A pipe prints one path per line.
 >
+> If a library's remote does not answer, then it reads the commit that the
+> cache holds and says so. Every other command reads each remote component at
+> the commit that `repo.lock.kdl` records.
+>
 > The Containerfile copies `plan.json` into the image at
 > `/usr/share/buildc/manifest.json`, so a built image can say what it is made
 > of.
@@ -1029,14 +1002,13 @@ the commit each cloned asset's tag names. It writes:
 
 ## `buildc build`
 
-Builds one target with the container backend. A target is `<image>` for the
-image, or `<image>/<flavour>` for a flavour. With no target, it builds the
-default image. It checks the committed generated tree against the snapshot
-`buildc generate` wrote, then builds from that tree alone. Every build argument
-that the repository declares comes from `generated/plan.json`, so a source
-edit reaches the build only through the next `buildc generate`. The build
-resolves the version, the registry, the source commit, the backend and the base
-digest when it runs.
+Builds one target with the container backend. A target is a build name. With
+no target, it builds the default build. It checks the committed generated tree
+against the snapshot `buildc generate` wrote, then builds from that tree alone.
+Every build argument that the repository declares comes from
+`generated/plan.json`, so a source edit reaches the build only through the next
+`buildc generate`. The build resolves the version, the registry, the source
+commit, the backend and the base digest when it runs.
 
 **Usage:** `buildc build [OPTIONS] [target]`
 
@@ -1075,6 +1047,11 @@ digest when it runs.
 > buildah store, so it refuses `--backend buildx` for a UKI target. It checks the
 > sealed image against the embedded digest before it applies a tag, so a failed
 > check publishes nothing.
+>
+> An image is bootc when its base or an enabled component provides `bootc`. A
+> build of a non-bootc image declares no `install`. Its build writes no
+> `bootc container lint` step and `buildc validate-image` skips the bootc
+> checks.
 
 ## `buildc vm`
 
@@ -1242,8 +1219,9 @@ base already carries.
 
 Prints what one component is and where each input came from. It lists the
 targets that build it, what it provides and requires, and what it claims to
-harden. It also lists the collection and pin it came from, whether it was
-edited since, what it fetches, and whether it adds a package repository.
+harden. It also lists the library it is read from, or the origin of a copy and
+whether the copy was edited since. It lists what it fetches, and whether it adds
+a package repository.
 
 **Usage:** `buildc why [OPTIONS] [component]`
 
@@ -1264,9 +1242,7 @@ edited since, what it fetches, and whether it adds a package repository.
 > this `buildc` does not read, and names both versions. `buildc plan --json` still
 > prints the document.
 >
-> A component that tracks its library and was edited since its import is refused,
-> so `buildc why` stops. An untracked component edited since its import is said
-> plainly, and it is not an error.
+> A copy edited since it was copied is said plainly, and it is not an error.
 >
 > `buildc` does not read a `repo.sh` file, so it points at the file and prints the
 > URLs it found.
@@ -1275,7 +1251,7 @@ edited since, what it fetches, and whether it adds a package repository.
 
 Prints each rule of the profile that an image `conforms` to, with the component
 that claims it. If no component claims a rule, then it names a component in the
-repository or its collections that would. With no image, the default image
+repository or its libraries that would. With no image, the default image
 applies. A terminal offers a picker.
 
 **Usage:** `buildc coverage [OPTIONS] [image]`
@@ -1289,7 +1265,7 @@ applies. A terminal offers a picker.
 | `--format <md|json>` | `markdown` or `json`; `markdown` is the default |
 | `--datastream <file>` | SCAP content to read the profile from |
 
-**Schema:** [`image.kdl`&nbsp;›&nbsp;`conforms`](schema/image.md#image-conforms)
+**Schema:** [`<name>.kdl`&nbsp;›&nbsp;`conforms`](schema/component.md#conforms)
 
 > [!NOTE]
 > It reads no scan. It says what is claimed, and `buildc scap` measures what
@@ -1500,9 +1476,7 @@ It runs inside a build:
 - `rpm` installs the package, on an rpm family
 - `deb` installs the package, on a deb family
 
-**Usage:** `buildc fetch <what> <url> <sha256> [target] [extra]...
-       fetch [what] [url] [sha256] [target] [extra]... <COMMAND>`
-
+**Usage:** `buildc fetch <what> <url> <sha256> [target] [extra]...`
 
 | Argument | Description |
 | --- | --- |
@@ -1514,45 +1488,20 @@ It runs inside a build:
 
 **Schema:** [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset)
 
-## `buildc fetch components`
-
-Refreshes each tracked component from the library that its lock entry names.
-The command uses the current `sources` entry in `repo.kdl`. It replaces the
-component's files, and records the new content hash and revision in the lock. A
-component whose library has not moved stays as it is. The scheduled
-`update-components` workflow runs it and opens a pull request.
-
-**Usage:** `buildc fetch components [path]...`
-
-| Argument | Description |
-| --- | --- |
-| `<path>` | the components to refresh; every tracked component if absent |
-
-**Schema:** [`components.lock.kdl`](schema/lock.md)
-
-> [!WARNING]
-> A tracked component whose content no longer matches its lock entry stops the
-> update before anything is written. Undo the edit, or make the copy the
-> repository's own with `buildc detach component <path>`.
-
-> [!NOTE]
-> A tracked component whose directory is missing is copied again. A component that
-> another component's directory holds has its own lock entry, so the refresh of
-> the outer component leaves it in place.
-
 ## `buildc registry namespace`
 
 Prints where the images publish. If `$IMAGE_REGISTRY` is set, then it prints
-that value. Otherwise it prints `ghcr.io/<owner>`, with the owner read from the
-GitHub origin remote.
+that value. Otherwise it prints the `registry` that `repo.kdl` names, and it
+fails if `repo.kdl` names none.
 
 **Usage:** `buildc registry namespace`
 
 ## `buildc registry ref`
 
 Prints the full reference that one target publishes under. The reference joins
-the namespace, the name of the target and its tag. With no target, it uses the
-default image.
+the namespace, the name the target publishes under and its tag. A `publish`
+value that holds `/` is the reference without its tag. With no target, it uses
+the default image.
 
 **Usage:** `buildc registry ref [OPTIONS]`
 

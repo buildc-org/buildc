@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "broken-asset",
   "pr_target": "broken-asset",
   "pr_published": "broken-asset",
-  "ungated_target": "broken-asset",
-  "ungated_published": "broken-asset",
   "cache_image": "broken-asset-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -53,12 +51,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "broken-asset",
-      "file": "./image.kdl",
+      "file": "./components/broken-asset.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -77,23 +75,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "broken-asset",
           "image": "broken-asset",
-          "flavour": null,
           "published": "broken-asset",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "core/pins",
-              "flavour": null,
               "variant": null,
               "description": "Asset pins that say nothing usable about what they fetch",
               "options": {},
@@ -109,6 +103,33 @@ source: tests/golden/harness.rs
               "provenance": {
                 "defined": null,
                 "content": "4916772e79c7fc93661bfaadf649b484d0e138d7b38d2dd2166725e39dcb6367",
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
+            },
+            {
+              "path": "broken-asset",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -164,6 +185,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/broken-asset/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

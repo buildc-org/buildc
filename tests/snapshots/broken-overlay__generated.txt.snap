@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -909,24 +908,10 @@ RUN if [ -L /usr/local ]; then mv /usr/local /usr/local.bak && \
     /usr/local/lib /usr/local/lib64 /usr/local/libexec /usr/local/share /usr/local/src; fi
 
 # ---- core/first ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-overlay/components/core/first.sh,target=/generated/broken-overlay/components/core/first.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/broken-overlay/components/core/first.sh
-
 # ---- core/first overlays ----
 COPY --from=ctx /generated/broken-overlay/components/core/first/files/ /
 
 # ---- core/second ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/broken-overlay/components/core/second.sh,target=/generated/broken-overlay/components/core/second.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/broken-overlay/components/core/second.sh
-
 # ---- core/second overlays ----
 COPY --from=ctx /generated/broken-overlay/components/core/second/files/ /
 
@@ -993,20 +978,6 @@ RUN --mount=type=tmpfs,target=/run --network=none bootc container lint
 # ---- BEGIN GENERATED (validate) ----
 
 # ---- END GENERATED (validate) ----
-==== generated/broken-overlay/components/core/first.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/first
-export COMPONENT_DIR
-==== generated/broken-overlay/components/core/second.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/second
-export COMPONENT_DIR
 ==== generated/broken-overlay/components/core/second.sh.tail.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1179,6 +1150,7 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
@@ -1186,6 +1158,10 @@ graph LR
     m0["core/first"]
     m1["core/second"]
     m2["core/third"]
+    m3["broken-overlay"]
+    m3 ==>|"lists"| m0
+    m3 ==>|"lists"| m1
+    m3 ==>|"lists"| m2
 ```
 
 ## Capabilities
@@ -1194,6 +1170,14 @@ graph LR
 |---|---|---|---|---|
 | `bootc` | capability | `base` |  |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `core/first` | `broken-overlay` | lists |
+| `core/second` | `broken-overlay` | lists |
+| `core/third` | `broken-overlay` | lists |
 
 ## Overrides
 
@@ -1227,14 +1211,30 @@ graph LR
       "path": "/usr/lib/nothing.conf"
     }
   ],
-  "imports": [],
+  "imports": [
+    {
+      "component": "core/first",
+      "by": "broken-overlay",
+      "how": "lists"
+    },
+    {
+      "component": "core/second",
+      "by": "broken-overlay",
+      "how": "lists"
+    },
+    {
+      "component": "core/third",
+      "by": "broken-overlay",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "42e1926b189afda582967b63cd13be21fe1b1cb5070e3b6cf2bf804473ed7267",
-  "files": 32
+  "root": "5e9f173b5d2f68d51b13706ab066c5753ea82a66c42cecc1a5c127e4475210ad",
+  "files": 30
 }
 ==== generated/broken-overlay/components/core/first/files/etc/sudoers.d/99-hardening
 ==== generated/broken-overlay/components/core/second/files/etc/sudoers.d/99-hardening

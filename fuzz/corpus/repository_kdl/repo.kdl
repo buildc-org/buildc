@@ -1,2 +1,3 @@
 dschema-version 1
 name "Fuzz"
+builds { fuzz "./image"; }

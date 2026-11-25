@@ -4,6 +4,10 @@ description "Emits its fragment alone"
 
 targets "fedora"
 
-network "scripts"
+permissions {
+    scripts {
+        network #true
+    }
+}
 
 fragment standard-layer=#false

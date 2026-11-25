@@ -1,8 +1,8 @@
 use crate::diag::{Source, Span};
 use crate::model::asset::Asset;
-use crate::model::options::{Opt, Value, Variant};
+use crate::model::options::{Opt, Variant};
 use crate::model::version::Version;
-use crate::provenance::lock::Record;
+use crate::provenance::origins::Origin;
 
 #[derive(Debug)]
 pub struct PackageGroup {
@@ -74,8 +74,19 @@ pub struct Requirement {
 
 pub struct Import {
     pub path: String,
-    pub options: Vec<(String, Vec<Value>)>,
+    pub variant: Option<String>,
+    pub library: Option<String>,
+    pub pin: Option<String>,
+    pub options: Vec<crate::model::options::Setting>,
     pub span: Span,
+    /// The segment only holds further segments.
+    /// It lists the component at its path only if one exists.
+    pub organises: bool,
+    /// The path was written from a library root.
+    pub rooted: bool,
+    pub digest: Option<(String, Span)>,
+    pub signed: Option<(bool, Span)>,
+    pub inline: Option<Vec<Span>>,
 }
 
 pub struct BaseFacts {
@@ -143,6 +154,7 @@ pub struct VerifyException {
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct Refusal {
     pub rule: String,
     pub because: String,
@@ -160,6 +172,8 @@ pub enum Position {
 pub struct Component {
     pub path: String,
     pub dir: String,
+    pub home: std::path::PathBuf,
+    pub library: Option<String>,
     pub src: Source,
     pub description: String,
     pub targets: Vec<String>,
@@ -176,7 +190,6 @@ pub struct Component {
     pub overrides: Vec<Decl>,
     pub verify_exceptions: Vec<VerifyException>,
     pub refuses: Vec<Refusal>,
-    pub flavour: Option<String>,
     pub collects: Vec<Collect>,
     pub contributes: Vec<Contribution>,
     pub modes: Vec<FileMode>,
@@ -193,14 +206,22 @@ pub struct Component {
     pub helpers: Vec<Decl>,
     pub satisfies: Vec<Coverage>,
     pub resolved: Vec<(String, String)>,
+    pub changes: Vec<crate::model::options::Change>,
     pub fragment: Option<String>,
     pub fragment_position: Position,
     pub standard_layer: bool,
     pub content: Option<String>,
-    pub imported: Option<Record>,
+    pub imported: Option<Origin>,
     pub repo: bool,
     pub network: Option<Span>,
     pub access: Access,
+    pub fields: Vec<(String, Span)>,
+    pub keywords: Vec<String>,
+    pub logo_url: String,
+    pub conforms: String,
+    pub allows: Vec<Refusal>,
+    /// The manifest sits outside the components folder of every library.
+    pub outside: bool,
 }
 
 impl Component {

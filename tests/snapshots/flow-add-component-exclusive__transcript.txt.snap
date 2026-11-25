@@ -1,0 +1,13 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+  1) Replace `flathub`
+  2) Cancel
+`flatpak` is exclusive. `flathub` already provides it in `example`. [1-2, 0 for none]: 1
+
+
+example/
+└── ~ example.kdl  `flathub` removed, and `flatpak` added to `example`
+==== exit 0

@@ -24,7 +24,7 @@ pub fn dir(image: &Image, path: &str) -> PathBuf {
         .join(path)
 }
 
-pub fn of(image: &Image, collection: &Collection, root: &Path) -> Content {
+pub fn of(image: &Image, collection: &Collection) -> Content {
     let family = image.family();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut content = Content {
@@ -40,7 +40,7 @@ pub fn of(image: &Image, collection: &Collection, root: &Path) -> Content {
             continue;
         }
         let mut files = Vec::new();
-        resolve_one(&mut files, image, component, collection, family, root);
+        resolve_one(&mut files, image, component, collection, family);
         if !files.is_empty() {
             if let Some(hash) = hash(&files) {
                 content.hashes.insert(entry.path.clone(), hash);
@@ -58,9 +58,8 @@ fn resolve_one(
     component: &Component,
     collection: &Collection,
     family: &str,
-    root: &Path,
 ) {
-    let on_disk = layout::component(root, &component.path);
+    let on_disk = component.home.as_path();
     let at = dir(image, &component.path);
 
     for file in [
@@ -68,29 +67,29 @@ fn resolve_one(
         layout::PACKAGES_SCRIPT,
         layout::FINALIZE_SCRIPT,
     ] {
-        for script in layout::layered(&on_disk, family, file) {
+        for script in layout::layered(on_disk, family, file) {
             copy(&at, &script, &on_disk.join(&script), copies);
         }
     }
-    if let Some(script) = layout::shipped(&on_disk, family, layout::REPO_SCRIPT) {
+    if let Some(script) = layout::shipped(on_disk, family, layout::REPO_SCRIPT) {
         copy(&at, &script, &on_disk.join(&script), copies);
     }
 
     if image.answers(layout::SELINUX.capability) {
-        for file in layout::SELINUX.files(&on_disk) {
+        for file in layout::SELINUX.files(on_disk) {
             let rel = format!("{}/{file}", layout::SELINUX.dir);
             copy(&at, &rel, &on_disk.join(&rel), copies);
         }
     }
     if image.answers(layout::APPARMOR.capability) {
-        for file in layout::APPARMOR.files(&on_disk) {
+        for file in layout::APPARMOR.files(on_disk) {
             let rel = format!("{}/{file}", layout::APPARMOR.dir);
             copy(&at, &rel, &on_disk.join(&rel), copies);
         }
     }
 
-    let roots = std::iter::once((String::new(), on_disk.clone())).chain(
-        layout::family_dirs(&on_disk, family)
+    let roots = std::iter::once((String::new(), on_disk.to_path_buf())).chain(
+        layout::family_dirs(on_disk, family)
             .into_iter()
             .map(|gated| (gated.to_string(), on_disk.join(gated))),
     );
@@ -123,7 +122,7 @@ fn resolve_one(
     }
 
     if component.fragment.is_some() || !component.standard_layer {
-        copy_whole(&at, &on_disk, family, copies);
+        copy_whole(&at, on_disk, family, copies);
     }
 
     let mut by_path: BTreeMap<PathBuf, usize> = BTreeMap::new();

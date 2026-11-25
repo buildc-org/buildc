@@ -1,2 +1,9 @@
 schema-version 1
-image { name "Fuzz" modules {} }
+component "/" {
+    base-image {
+        fuzz
+    }
+    tools {
+        packages "vim"
+    }
+}

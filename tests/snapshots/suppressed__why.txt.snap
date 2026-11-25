@@ -36,7 +36,7 @@ A claim the tool records rather than certifies. The scan is what confirms it.
 | --- | --- |
 | declared | `88c547072a77b325e12905325aece95dea820caba0f53d6ab858f2a9cca0f204` |
 
-It was written in this repository rather than imported, so nothing upstream to compare it against.
+It was written in this repository, so no library holds a version to compare it against.
 
 ## What it pulls in
 

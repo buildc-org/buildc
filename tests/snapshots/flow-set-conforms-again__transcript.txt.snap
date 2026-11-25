@@ -9,5 +9,5 @@ SCAP profile [1-2, 0 for none]: 2
 
 
 example/
-└── ~ example.image.kdl  measured against `ospp`
+└── ~ example.kdl  measured against `ospp`
 ==== exit 0

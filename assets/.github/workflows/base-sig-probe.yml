@@ -3,7 +3,7 @@ name: Base image probe
 
 on:
   schedule:
-    - cron: '30 6 * * *'  # buildc:schedule
+    - cron: '0 3 * * *'  # buildc:schedule
   workflow_dispatch:
 
 permissions: {}
@@ -71,7 +71,7 @@ jobs:
             [ -n "${image}" ] || continue
             if cosign download signature "${base}" > /dev/null 2>&1; then
               actual="true"
-              # The probe asks only whether the signature carries a certificate identity, so any signer is accepted.
+              # The probe accepts any signer and asks only whether the signature names a certificate identity.
               if cosign verify --certificate-identity-regexp='.*' \
                 --certificate-oidc-issuer-regexp='.*' "${base}" > /dev/null 2>&1; then
                 kind="signed, and the signature names its signer"
@@ -84,13 +84,13 @@ jobs:
             fi
             echo "${image}: ${base} is ${kind}, recorded as ${recorded}"
             if [ "${actual}" != "${recorded}" ]; then
-              sed -i "s/signed #${recorded}/signed #${actual}/" "${file}"
-              if ! grep -q "signed #${actual}" "${file}"; then
-                echo "::error file=${file}::\`${image}\` writes no \`signed\` line for the probe to correct; add \`signed #${recorded}\` to its base entry" >&2
+              sed -i "s/signed=#${recorded}/signed=#${actual}/" "${file}"
+              if ! grep -q "signed=#${actual}" "${file}"; then
+                echo "::error file=${file}::\`${image}\` writes no \`signed=\` property for the probe to correct; add \`signed=#${recorded}\` to its base segment" >&2
                 exit 1
               fi
-              echo "  corrected ${file}: signed #${recorded} -> #${actual}"
-              changed="${changed}${changed:+, }\`${image}\` (\`${base}\`): \`signed #${recorded}\` to \`#${actual}\`"
+              echo "  corrected ${file}: signed=#${recorded} -> #${actual}"
+              changed="${changed}${changed:+, }\`${image}\` (\`${base}\`): \`signed=#${recorded}\` to \`#${actual}\`"
             fi
 
             probe="$(tr ' ' '\n' <<< "${witnesses}" | cut -d= -f2 | tr ',' '\n' | sort -u \

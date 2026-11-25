@@ -9,17 +9,17 @@ This `repo.kdl` holds three nodes:
 ```kdl
 schema-version 1
 name "Workstation"
-workflows at="12:30" {
-    build
+builds default="workstation" {
+    workstation
 }
 ```
 
 A node sits on one line and has these parts:
 
-- The node name comes first, as `schema-version`, `name` and `workflows` do.
+- The node name comes first, as `schema-version`, `name` and `builds` do.
 - A value after the name is an argument. `name` takes one argument, `"Workstation"`.
-- A `key=value` pair is a property. `at="12:30"` is a property of `workflows`.
-- A block in braces holds child nodes. `build` is a child of `workflows`.
+- A `key=value` pair is a property. `default="workstation"` is a property of `builds`.
+- A block in braces holds child nodes. `workstation` is a child of `builds`.
 
 The schema pages list the nodes that each file accepts, with the arguments, properties and children of each node.
 
@@ -49,7 +49,7 @@ audit {
 // The schema release that this file is written against.
 schema-version 1
 name "Workstation"
-/-workflows at="12:30" {
-    build
+/-builds default="workstation" {
+    workstation
 }
 ```

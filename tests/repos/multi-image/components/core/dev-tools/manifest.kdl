@@ -1,6 +1,6 @@
 schema-version 1
 
-description "Compilers and language servers, behind the dev flavour"
+description "Compilers and language servers"
 
 targets "fedora"
 

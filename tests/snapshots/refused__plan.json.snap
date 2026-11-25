@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "refused",
   "pr_target": "refused",
   "pr_published": "refused",
-  "ungated_target": "refused",
-  "ungated_published": "refused",
   "cache_image": "refused-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "refused",
-      "file": "./example.image.kdl",
+      "file": "./components/refused.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "standard",
-      "boot": "",
+      "uki": false,
       "allows": [
         {
           "rule": "sshd_disable_root_login",
@@ -71,14 +69,12 @@ source: tests/golden/harness.rs
           }
         ]
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "refused",
           "image": "refused",
-          "flavour": null,
           "published": "refused",
+          "reference": null,
           "conforms": "standard",
           "allows": [
             {
@@ -92,11 +88,9 @@ source: tests/golden/harness.rs
           ],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "one/contradicts",
-              "flavour": null,
               "variant": null,
               "description": "Claims a number and refuses the rule that number reaches",
               "options": {},
@@ -136,7 +130,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "one/typo",
-              "flavour": null,
               "variant": null,
               "description": "Refuses a rule the content carries nothing by",
               "options": {},
@@ -177,6 +170,33 @@ source: tests/golden/harness.rs
                   "because": "the fixture needs one refusal an image lifts"
                 }
               ]
+            },
+            {
+              "path": "refused",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -192,6 +212,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/refused/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

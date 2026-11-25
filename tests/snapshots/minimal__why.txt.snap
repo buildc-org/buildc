@@ -35,7 +35,7 @@ Nothing. It declares no `satisfies`.
 | --- | --- |
 | declared | `5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a` |
 
-It was written in this repository rather than imported, so nothing upstream to compare it against.
+It was written in this repository, so no library holds a version to compare it against.
 
 ## What it pulls in
 
@@ -100,6 +100,8 @@ It enables one, in `components/core/hello/repo.sh`. There is no grammar for that
   "satisfies": [],
   "content": "5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a",
   "built": null,
+  "library": null,
+  "settings": [],
   "imported": null,
   "modified": false,
   "fetches": [],
@@ -109,7 +111,7 @@ It enables one, in `components/core/hello/repo.sh`. There is no grammar for that
 }
 ==== unknown
   x `nosuch` is not a component this repository lists
-  help: components: hello, fedora-family
+  help: components: hello, fedora-family, minimal
 
 ==== from the baked manifest, with no repository
 # core/hello
@@ -145,7 +147,7 @@ Nothing. It declares no `satisfies`.
 | --- | --- |
 | declared | `5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a` |
 
-It was written in this repository rather than imported, so nothing upstream to compare it against.
+It was written in this repository, so no library holds a version to compare it against.
 
 ## What it pulls in
 
@@ -164,7 +166,7 @@ It enables one, in `components/core/hello/repo.sh`. There is no grammar for that
 Not readable from here: a finished image carries the manifest, not the component tree.
 
 ==== the names it knows
-hello, fedora-family
+hello, fedora-family, minimal
 ==== against a build record that disagrees
 
 
@@ -175,4 +177,4 @@ hello, fedora-family
 
 **The two documents disagree**, which they cannot if both came from this build.
 
-It was written in this repository rather than imported, so nothing upstream to compare it against.
+It was written in this repository, so no library holds a version to compare it against.

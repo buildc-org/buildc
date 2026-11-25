@@ -1,0 +1,18 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+Dependencies the images do not provide:
+
+  upstream/needs-family > example
+    requires: build-environment
+    provider component: upstream/fedora-family
+
+Add these provider components? (Yes/No)
+Yes
+
+
+example/
+└── ~ example.kdl  `fedora-family` added to `example`, and `needs-family` added to `example`
+==== exit 0

@@ -1,2 +1,6 @@
 schema-version 1
 name "Broken Collect"
+
+builds {
+    broken-collect
+}

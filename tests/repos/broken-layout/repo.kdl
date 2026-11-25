@@ -1,3 +1,17 @@
 schema-version 1
 name "Broken Layout"
-default-image "sealed"
+builds default="sealed" {
+    sealed {
+        install {
+            filesystem "xfs" subvolumes=#true pool="rpool"
+            var-disk "sdb"
+        }
+    }
+    halfway {
+        install {
+            filesystem "zfs"
+            composefs #true
+        }
+    }
+}
+

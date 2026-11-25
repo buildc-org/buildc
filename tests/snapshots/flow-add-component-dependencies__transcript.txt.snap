@@ -1,0 +1,9 @@
+---
+source: tests/golden/harness.rs
+---
+Buildc v{version}
+
+
+example/
+└── ~ example.kdl  `flatpak` added to `example`, and `browser` added to `example`
+==== exit 0

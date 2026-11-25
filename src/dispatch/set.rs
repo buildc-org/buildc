@@ -30,32 +30,48 @@ pub(super) fn workflows(call: Call) -> Result<ExitCode, Error> {
         rest,
         prompt,
         here,
+        flags,
         ..
     } = call;
-    if let [word, ..] = rest {
-        return Err(Error::Invocation(format!("`{name}` does not take {word}")));
-    }
+    let Flags {
+        on,
+        workflow_builds,
+        ..
+    } = flags;
+    let workflow = one_name(rest, name)?;
     let Some(root) = open(here)? else {
         return Ok(ExitCode::from(REPO_ERROR));
     };
-    if !prompt.asks() {
-        return Err(Error::Invocation(crate::setup::BY_HAND.to_string()));
-    }
     let list = crate::load(&root).list;
-    let on: Vec<&str> = list.workflows.iter().map(|w| w.name.as_str()).collect();
-    let mut say = |text: &str| print!("{text}");
-    let Some(set) = crate::setup::Workflows::collect(
-        &crate::resolve::workflow::Basis::of(&list),
-        &on,
-        list.workflows_at,
-        list.publishes_scheduled,
-        list.scans_scheduled,
-        crate::setup::Field::Workflows,
-        prompt,
-        &mut say,
-    )?
-    else {
-        return Ok(ExitCode::SUCCESS);
+    let set = match workflow {
+        Some(stem) => {
+            let file = root.join(crate::layout::REPO_FILE);
+            let text = std::fs::read_to_string(&file)
+                .map_err(|err| Error::Operation(format!("{}: {err}", file.display())))?;
+            crate::setup::Workflows::named(&text, &list, &stem, &on, &workflow_builds)?
+        }
+        None => {
+            if !prompt.asks() {
+                return Err(Error::Invocation(crate::setup::BY_HAND.to_string()));
+            }
+            let listed: Vec<&str> = list.workflows.iter().map(|w| w.name.as_str()).collect();
+            let mut say = |text: &str| print!("{text}");
+            let Some(mut set) = crate::setup::Workflows::collect(
+                &crate::resolve::workflow::Basis::of(&list),
+                &listed,
+                crate::setup::Field::Workflows,
+                prompt,
+                &mut say,
+            )?
+            else {
+                return Ok(ExitCode::SUCCESS);
+            };
+            let builds: Vec<String> = list.builds.iter().map(|build| build.name.clone()).collect();
+            if !set.ask_builds(&listed, &builds, prompt)? {
+                return Ok(ExitCode::SUCCESS);
+            }
+            set
+        }
     };
     let wrote = set.apply(&root)?;
     crate::report::report(&root, &wrote);
@@ -64,12 +80,28 @@ pub(super) fn workflows(call: Call) -> Result<ExitCode, Error> {
 }
 
 pub(super) fn library(call: Call) -> Result<ExitCode, Error> {
-    let Call { prompt, here, .. } = call;
-    let kind = crate::model::remote::Kind::Components;
+    let Call {
+        name,
+        rest,
+        prompt,
+        here,
+        flags,
+        ..
+    } = call;
+    let library = one_name(rest, name)?;
     let Some(root) = open(here)? else {
         return Ok(ExitCode::from(REPO_ERROR));
     };
-    let Some(set) = crate::set::Library::adding(kind, prompt)? else {
+    let Some(set) = crate::set::Library::adding(
+        &root,
+        crate::init::assets()
+            .map(|assets| crate::collection::defaults(&assets))
+            .unwrap_or_default(),
+        library,
+        flags.source,
+        prompt,
+    )?
+    else {
         return Ok(ExitCode::SUCCESS);
     };
     let wrote = set.apply(&root)?;
@@ -96,13 +128,12 @@ pub(super) fn conforms(call: Call) -> Result<ExitCode, Error> {
             crate::conformance::CONFORMS_BY_HAND.to_string(),
         ));
     }
-    let Some(set) = crate::set::Conforms::collect(&root, name, datastream, prompt, &mut |text| {
-        print!("{text}");
-    })?
+    let mut say = |text: &str| print!("{text}");
+    let Some(set) = crate::set::Conforms::collect(&root, name, datastream, prompt, &mut say)?
     else {
         return Ok(ExitCode::SUCCESS);
     };
-    let wrote = set.apply(&root)?;
+    let wrote = set.apply(&root, prompt, &mut say)?;
     crate::report::report(&root, &wrote);
     Ok(ExitCode::SUCCESS)
 }

@@ -1,5 +1,0 @@
-schema-version 1
-
-description "A component in a repository whose flavours are wrong"
-
-targets "fedora"

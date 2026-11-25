@@ -1,14 +1,5 @@
 Example
-Yes
-2
-forge.example.org
-someone
-
-Yes
-Desktop
-2
 1
-No
-No
-03:15
+someone
+Yes
 1

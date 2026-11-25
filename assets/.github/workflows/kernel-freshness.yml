@@ -3,7 +3,7 @@ name: Kernel freshness
 
 on:
   schedule:
-    - cron: '30 9 * * *'  # buildc:schedule
+    - cron: '0 3 * * *'  # buildc:schedule
   workflow_dispatch:
 
 env:
@@ -91,8 +91,8 @@ jobs:
               } > "$RUNNER_TEMP/pr-body.md"
               gh pr create --head "$branch" --title "$title" \
                 --label "$label" --body-file "$RUNNER_TEMP/pr-body.md"
-              # A branch this token pushes gets no push-triggered run, so the workflow dispatches the build.
-              gh workflow run build.yml --ref "$branch"
+              # A branch pushed with GITHUB_TOKEN starts no workflow run. The build is dispatched here.
+              gh workflow run image-build.yml --ref "$branch"
               git checkout -
             }
 

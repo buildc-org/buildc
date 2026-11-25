@@ -1,0 +1,11 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        debian-forky
+    }
+
+    core {
+        luks
+    }
+}

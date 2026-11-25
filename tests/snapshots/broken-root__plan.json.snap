@@ -3,18 +3,16 @@ source: tests/golden/harness.rs
 ---
 {
   "schema_version": 1,
-  "default_image": null,
-  "pr_image": null,
-  "default_target": null,
-  "default_published": null,
-  "pr_target": null,
-  "pr_published": null,
-  "ungated_target": null,
-  "ungated_published": null,
-  "cache_image": null,
+  "default_image": "same",
+  "pr_image": "same",
+  "default_target": "same",
+  "default_published": "same",
+  "pr_target": "same",
+  "pr_published": "same",
+  "cache_image": "same-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "same",
-      "file": "./image.kdl",
+      "file": "./components/same.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": null,
       "base": {
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "same",
           "image": "same",
-          "flavour": null,
           "published": "same",
+          "reference": null,
           "conforms": "",
           "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [],
+          "default": true,
+          "pr": true,
           "components": [
             {
               "path": "fedora-family",
-              "flavour": null,
               "variant": null,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
@@ -92,7 +86,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/hello",
-              "flavour": null,
               "variant": null,
               "description": "The smallest component a repository can hold",
               "options": {},
@@ -125,53 +118,13 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": null,
-          "build": {
-            "containerfile": "generated/same/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=same",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd core/hello|2aa97c8cef0c64b9f131034a947d5ae71e02d2ec1a6f2495b037afc4426bb679",
-              "ASSET_RESOLUTIONS=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        },
-        {
-          "name": "same",
-          "image": "same",
-          "flavour": null,
-          "published": "same",
-          "conforms": "",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [],
-          "components": [
+            },
             {
-              "path": "fedora-family",
-              "flavour": null,
+              "path": "same",
               "variant": null,
-              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
+              "description": "",
               "options": {},
-              "provides": [
-                "build-environment"
-              ],
+              "provides": [],
               "requires": [],
               "met_by": {},
               "witnessed": [],
@@ -182,43 +135,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
-                "resolved": "7f29c604f709bc5b8e15710d1df2a3733a22007ae56f6f1710d11fce5312d009",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "core/hello",
-              "flavour": null,
-              "variant": null,
-              "description": "The smallest component a repository can hold",
-              "options": {},
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "fastfetch"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "2aa97c8cef0c64b9f131034a947d5ae71e02d2ec1a6f2495b037afc4426bb679",
+                "content": null,
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -243,243 +160,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/same/Containerfile",
             "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=same",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd core/hello|2aa97c8cef0c64b9f131034a947d5ae71e02d2ec1a6f2495b037afc4426bb679",
-              "ASSET_RESOLUTIONS=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        }
-      ]
-    },
-    {
-      "id": "same",
-      "file": "./image.kdl",
-      "description": "",
-      "keywords": [],
-      "logo_url": "",
-      "conforms": "",
-      "boot": "",
-      "allows": [],
-      "layout": null,
-      "base": {
-        "path": "base-image/fedora-bootc-44",
-        "defined": null,
-        "image": "quay.io/fedora/fedora-bootc:44",
-        "family": "fedora",
-        "scap_content": "",
-        "scap_pin": null,
-        "signed": false,
-        "provides": [
-          "rechunking",
-          "bootc"
-        ],
-        "witnesses": {},
-        "requires": [],
-        "satisfies": []
-      },
-      "flavours": [],
-      "default_flavour": null,
-      "targets": [
-        {
-          "name": "same",
-          "image": "same",
-          "flavour": null,
-          "published": "same",
-          "conforms": "",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [],
-          "components": [
-            {
-              "path": "fedora-family",
-              "flavour": null,
-              "variant": null,
-              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
-              "options": {},
-              "provides": [
-                "build-environment"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
-                "resolved": "7f29c604f709bc5b8e15710d1df2a3733a22007ae56f6f1710d11fce5312d009",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "core/hello",
-              "flavour": null,
-              "variant": null,
-              "description": "The smallest component a repository can hold",
-              "options": {},
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "fastfetch"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "2aa97c8cef0c64b9f131034a947d5ae71e02d2ec1a6f2495b037afc4426bb679",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": null,
-          "build": {
-            "containerfile": "generated/same/Containerfile",
-            "uki": false,
-            "family": "fedora",
-            "base": "quay.io/fedora/fedora-bootc:44",
-            "args": [
-              "TARGET=same",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd core/hello|2aa97c8cef0c64b9f131034a947d5ae71e02d2ec1a6f2495b037afc4426bb679",
-              "ASSET_RESOLUTIONS=",
-              "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
-            ],
-            "unresolved": [],
-            "validate": []
-          }
-        },
-        {
-          "name": "same",
-          "image": "same",
-          "flavour": null,
-          "published": "same",
-          "conforms": "",
-          "allows": [],
-          "default": false,
-          "pr": false,
-          "siblings": [],
-          "components": [
-            {
-              "path": "fedora-family",
-              "flavour": null,
-              "variant": null,
-              "description": "dnf5 and its plugins, which every fedora build layer reaches for",
-              "options": {},
-              "provides": [
-                "build-environment"
-              ],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
-                "resolved": "7f29c604f709bc5b8e15710d1df2a3733a22007ae56f6f1710d11fce5312d009",
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            },
-            {
-              "path": "core/hello",
-              "flavour": null,
-              "variant": null,
-              "description": "The smallest component a repository can hold",
-              "options": {},
-              "provides": [],
-              "requires": [],
-              "met_by": {},
-              "witnessed": [],
-              "removes": [],
-              "files": {},
-              "packages": [
-                {
-                  "family": "fedora",
-                  "names": [
-                    "fastfetch"
-                  ],
-                  "enablerepo": null
-                }
-              ],
-              "groups": [],
-              "coprs": [],
-              "provenance": {
-                "defined": null,
-                "content": "2aa97c8cef0c64b9f131034a947d5ae71e02d2ec1a6f2495b037afc4426bb679",
-                "resolved": null,
-                "repo": false,
-                "imported": null
-              },
-              "origin": {
-                "how": "listed"
-              },
-              "satisfies": [],
-              "refuses": []
-            }
-          ],
-          "suppressed": [],
-          "secrets": [],
-          "contract_files": [],
-          "verify_exceptions": [],
-          "assets": [],
-          "overlay_files": {},
-          "overlay_overridden": [],
-          "collected_files": {},
-          "collect_destinations": [],
-          "datastream": null,
-          "build": {
-            "containerfile": "generated/same/Containerfile",
-            "uki": false,
+            "backend": "buildah",
             "family": "fedora",
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [

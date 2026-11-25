@@ -1,2 +1,10 @@
 schema-version 1
 name "Bare Component"
+
+builds {
+    bare-component {
+        install {
+            bootloader "grub2"
+        }
+    }
+}

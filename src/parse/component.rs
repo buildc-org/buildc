@@ -2,7 +2,7 @@ use crate::diag::{Issue, Issues, Source, Span};
 use crate::layout;
 use crate::model::component::{
     Access, BaseFacts, Capability, Collect, Component, Contribution, Copr, Coverage, Decl,
-    FileMode, Import, Key, Located, PackageGroup, Position, Requirement, VerifyException,
+    FileMode, Import, Key, Located, PackageGroup, Position, Refusal, Requirement, VerifyException,
 };
 use crate::model::image::{Entry, Image, List};
 use crate::model::options::{Opt, OptType};
@@ -10,6 +10,7 @@ use crate::model::version::Version;
 use crate::parse::disk::Disk;
 use crate::parse::prop_span;
 use crate::parse::schema::{check_doc, Arg, Kind, Node, Prop, Say, FILE_SCHEMA_VERSION};
+use crate::parse::tree::{is_context, Props};
 use crate::parse::{asset, boolean, check_capability, check_path, child, flag, int_prop, kids};
 use crate::parse::{bool_arg, string_arg, string_args, syntax_issue};
 use crate::parse::{names, options, prop, text};
@@ -157,9 +158,10 @@ const GATED: &[Node] = &[
     PACKAGE_GROUPS,
     COPR,
     REQUIRES,
-    IMPORTS,
     AFTER,
     SATISFIES,
+    crate::parse::tree::CONTEXT,
+    crate::parse::tree::SEGMENT,
 ];
 
 #[rustfmt::skip]
@@ -224,11 +226,11 @@ const REQUIRED: Node = Node::new("",
 
 #[rustfmt::skip]
 const REQUIRES: Node = Node::new("requires",
-    "A capability that another component must provide. It also orders the build.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.").example("\"libostree\" min=\"2025.3\"")
+    "The node names a capability that a component of the image must provide. It also orders the build.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.").example("\"libostree\" min=\"2025.3\"")
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
     .props(&[MIN], Say::new("`{}` is not a `requires` property", "not part of the schema",
         "`requires` accepts `min`; a component that chooses its provider \
-         imports it, as `imports \"{container-runtime}\"`"))
+         lists it in its body"))
     .children(&[REQUIRED], Say::NONE)
     .notes(&[
         "A `min` is opt-in. A requirement without one is satisfied by any provider. A \
@@ -241,28 +243,6 @@ const REQUIRES: Node = Node::new("requires",
         "A component's own version is measured after its layer. `buildc validate-image` \
          checks the floor on it.",
     ]);
-
-#[rustfmt::skip]
-const IMPORTS: Node = Node::new("imports",
-    "A component that builds in every image that holds this component.").about("The value is a component path of lowercase segments joined by `/`, or a `{option}` reference to a string option that resolves to one. The block of an imported path sets the options that the importing component passes to the imported component.").example("\"container-runtime\"")
-    .arg(Arg::Names, Say::new("`{}` needs a component path", "nothing named",
-        "`imports \"identity\"`, one path for each component that this component brings"))
-    .props(&[], Say::new("`{}` is not an `imports` property", "not part of the schema",
-        "`imports` takes component paths, and a path's block in the block form sets the options"))
-    .children(&[IMPORTED], Say::NONE);
-
-#[rustfmt::skip]
-const IMPORTED: Node = Node::new("",
-    "One component path in an `imports` block, which the node name names. Its block sets the options of that component.").example("\"container-runtime\"")
-    .arg(Arg::None, Say::new("`{}` is a second path on one line of the block", "one path per line",
-        "give each path its own line"))
-    .props(&[], Say::new("`{}` is not an `imports` property", "not part of the schema",
-        "a path's block sets the options, as `\"container-runtime\" { storage-driver \"vfs\" }`"))
-    .children(&[IMPORTED_OPTION], Say::NONE);
-
-#[rustfmt::skip]
-const IMPORTED_OPTION: Node = Node::new("",
-    "One option value that the imported component takes, which the node name names.").example("storage-driver \"{storage-driver}\"");
 
 #[rustfmt::skip]
 const AFTER: Node = Node::new("after",
@@ -329,7 +309,7 @@ const SATISFIES: Node = Node::new("satisfies",
     .children(BENCHMARKS, Say::NONE)
     .lists(&[
         ("`buildc generate` writes every claim into `generated/plan.json`. The compliance job in \
-          `.github/workflows/build.yml` then:", &[
+          `.github/workflows/image-build.yml` then:", &[
             "resolves each number to an XCCDF rule ID through the SSG datastream;",
             "scans the pushed image and compares each claim with the scan result;",
             "reports a number that maps to no rule as a failed declaration;",
@@ -359,8 +339,8 @@ const ON: Node = Node::new("on",
     .props(&[], Say::new("`{}` is not an `on` property", "not part of the schema",
         "`on` takes family names alone"))
     .children(GATED, Say::new("`{}` is not gated by family", "not allowed in an `on` block",
-        "an `on` block holds `packages`, `package-groups`, `copr`, `requires`, `imports`, `after` \
-         and `satisfies`; `component.sh`, `finalize.sh` and `files/` are gated by putting them in a \
+        "an `on` block holds `packages`, `package-groups`, `copr`, `requires`, `after`, \
+         `satisfies` and component paths; `component.sh`, `finalize.sh` and `files/` are gated by putting them in a \
          `<family>/` directory, and everything else a manifest declares is family-neutral"))
     .notes(&[
         "A declaration outside a gate applies to every family the component targets. A \
@@ -406,21 +386,23 @@ const BASE_SCAP_CONTENT: Node = Node::new("scap-content",
 
 #[rustfmt::skip]
 pub const COMPONENT: Node = Node::new("component",
-    "One component, which declares what it builds on, what it needs and what it installs.").about("The directory under `components/` is the component's name, and the manifest sits at `manifest.kdl` in it. An image that defines a component inline names it with the path that the image lists.").scaffolds(&["schema-version", "description", "targets"])
+    "One component, which declares what it builds on, what it needs and what it installs.").about("A component's name is its path. A directory that holds `manifest.kdl` is named by the directory, and a `<name>.kdl` file is named by the file without `.kdl`. The directory `<name>/` holds the component's content wherever the manifest lives. A component that another component defines inline is named by the path that lists it. An image is a component that a build in `repo.kdl` names.").scaffolds(&["schema-version", "description", "targets"])
     .children(&[
         FILE_SCHEMA_VERSION,
-        Node::new("description", "One line that names the component in the resolved build summary.").example("\"Traditional CLI utilities\"")
+        Node::new("description", "One line that names the component in the resolved build summary. On the component a build names, it is also the OCI label `org.opencontainers.image.description`.").example("\"Traditional CLI utilities\"")
             .arg(Arg::Str, Say::new("`description` needs a string", "no description given", ""))
             .once(""),
+        crate::parse::image::OCI_LABELS,
+        crate::parse::image::CONFORMS,
         Node::new("targets",
             "The base families that this component builds on, which the image's `family` must match. Omit it to target every family.").about("Each name must be `fedora`, `rhel`, `debian` or `ubuntu`. An image whose base family this node omits reports the component as unsupported.").example("\"fedora\" \"debian\"")
             .arg(Arg::Strs, Say::new("`{}` needs at least one family", "nothing named",
                 "`targets \"fedora\"`, one name for each base family the component builds on"))
             .props(&[], Say::new("`{}` is not a `targets` property", "not part of the schema",
                 "`targets` takes family names alone")),
-        Node::new("hidden", "Keeps the component out of picker lists until the user reveals it.").about("A component marked `hidden #true` stays out of the component pickers of `buildc add package`, `buildc import component` and `buildc why` by default. The user reveals it by pressing `h` in the picker and naming the component's path on the command line selects it as usual. Hiding changes nothing else and the component still builds and appears in the build summary, `buildc why` and `buildc graph`.").example("#true")
+        Node::new("hidden", "Omits this component from component pickers; the component still builds.").about("An explicit path still selects it. A picker omits it until `h` reveals it, or `H` where the picker filters text with `h`.").example("#true")
             .arg(Arg::Bool, Say::new("`hidden` takes #true or #false", "not a boolean",
-                "`hidden #true` keeps the component out of picker lists until the user reveals it"))
+                "`hidden #true` keeps the component out of component pickers"))
             .once(""),
 
         Node::new("provides", "A capability that this component provides for the components that require it.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `base-image` is provided by a `base` node. A manifest cannot declare it.").example("\"flatpak\"")
@@ -448,14 +430,13 @@ pub const COMPONENT: Node = Node::new("component",
                  installer offers it.",
                 "Many enabled components may provide one capability. If one of them declares it \
                  `exclusive=#true`, then `buildc check` refuses a second provider that builds \
-                 into the same image or flavour. `buildc import component` asks whether to replace \
-                 the first. Providers in sibling flavours never build together.",
+                 into the same image. `buildc add component` asks whether to replace the \
+                 first.",
                 "A capability name is lower-case letters, digits and dashes, and starts with a \
                  letter. The generated graph writes the name unquoted into a mermaid label and a \
                  markdown table cell.",
             ]),
         REQUIRES,
-        IMPORTS,
         AFTER,
         Node::new("removes", "A capability that this component withdraws from the image.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` reports a name that the base and the other enabled components do not provide.").example("\"bootupctl\"")
             .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named",
@@ -509,8 +490,8 @@ pub const COMPONENT: Node = Node::new("component",
             ], Say::new("unknown `refuses` property `{}`", "not part of the schema",
                 "`refuses` accepts `because`"))
             .notes(&[
-                "Remediation does not set a refused rule. If an image declares \
-                 `allow-remediation` for the rule, then remediation can set it.",
+                "Remediation does not set a refused rule. If the image's `conforms` \
+                 holds `allow-remediation` for the rule, then remediation can set it.",
             ]),
 
         Node::new("collects", "A filename that this component gathers from every component that ships one. A collector claims one filename across the image.").about("The filename is claimed once across the image, and `into` must be an absolute path. `buildc check` reports a shipped file that no enabled collector claims.").example("\"flatpaks.list\" into=\"/usr/share/flatpak-defaults/apps.list\" priority=500")
@@ -579,17 +560,34 @@ pub const COMPONENT: Node = Node::new("component",
         options::OPTION,
         options::VARIANT,
         asset::ASSET,
-        Node::new("network", "The declaration that the script step of this component reaches the network.").about("The only value is `scripts`, because the package step already declares its network use. Only a `strict` script rule in `repo.kdl` reads the node.").example("\"scripts\"")
-            .arg(Arg::One(&["scripts"]), Say::new("`{}` is not a step this component declares",
-                "not a step",
-                "`network \"scripts\"`; a `packages`, `copr` or repo file already declares the \
-                 package step"))
+        Node::new("permissions", "What the build steps of this component ask of the build.")
+            .about("Each child is one build step, and its block holds what that step needs. \
+                The package step needs no declaration, because `packages`, `copr` or a repo \
+                file already declares it.")
+            .arg(Arg::None, Say::new("`permissions` takes no argument", "the steps belong in the block",
+                "`permissions { scripts { network #true } }`"))
             .once("")
-            .notes(&[
-                "Only a `strict` script rule in `repo.kdl` reads this node.",
-                "The package step needs no declaration, because `packages`, `copr` or a repo \
-                 file already declares it.",
-            ]),
+            .empty(Say::new("`permissions` declares nothing", "empty block",
+                "omit the block if no step asks for anything"))
+            .children(&[
+                Node::new("scripts", "What the script step of this component needs.")
+                    .arg(Arg::None, Say::new("`scripts` takes no argument", "the needs belong in the block",
+                        "`scripts { network #true }`"))
+                    .once("")
+                    .empty(Say::new("`scripts` declares nothing", "empty block",
+                        "`scripts { network #true }`, or omit the block"))
+                    .children(&[
+                        Node::new("network", "Whether the script step reaches the network.")
+                            .about("Only a `strict` script rule in `repo.kdl` reads the value.")
+                            .example("#true")
+                            .arg(Arg::Bool, Say::new("`network` needs #true or #false", "not a boolean",
+                                "`network #true` declares that the script step reaches the network"))
+                            .once(""),
+                    ], Say::new("`scripts` holds no `{}`", "not part of the schema",
+                        "`scripts` holds `network`")),
+            ], Say::new("`{}` is not a step that `permissions` declares", "not a step",
+                "`permissions` holds `scripts`; a `packages`, `copr` or repo file already declares \
+                 the package step")),
 
         PACKAGES,
         PACKAGE_GROUPS,
@@ -606,10 +604,16 @@ pub const COMPONENT: Node = Node::new("component",
                 "`base` takes its reference, and its block holds `family`, `bootloader` and `scap-content`"))
             .children(&[BASE_FAMILY, BASE_BOOTLOADER, BASE_SCAP_CONTENT], Say::new("`base` holds no `{}`", "not allowed in `base`",
                 "a base's block holds `family`, `bootloader` and `scap-content`; an image sets \
-                 `digest` and `signed` in the base's segment")),
-    ], Say::new("unknown node `{}`", "not part of the schema",
-        "docs/schema/component.md documents every node a manifest may hold"))
+                 `digest=` and `signed=` on the base's segment")),
+
+        crate::parse::tree::CONTEXT,
+        crate::parse::tree::SEGMENT,
+    ], Say::NONE)
     .notes(&[
+        "Only the component a build names takes `oci-labels` and `conforms`.",
+        "A build whose component builds `os-release` takes the build name as its default \
+         hostname. The component can set the `default-hostname` option of `os-release` to \
+         another value.",
         "`requires` and `after` decide the build order. The order of the image list only breaks \
          ties.",
         "If nothing provides a `requires`, then `buildc check` fails and names every component that \
@@ -771,6 +775,59 @@ fn base_block(reference: &KdlNode) -> BaseFacts {
     }
 }
 
+fn is_tree_path(path: &str) -> bool {
+    path.contains('{') || crate::model::image::is_local_path(path)
+}
+
+fn is_tree_node(node: &KdlNode) -> bool {
+    !crate::parse::image::is_manifest_node(node.name().value())
+}
+
+fn tree_texts<'a>(node: &'a KdlNode, out: &mut Vec<(&'a str, Span)>) {
+    out.push((node.name().value(), node.name().span().into()));
+    let body = crate::parse::tree::body(node);
+    for kid in body.settings {
+        let span: Span = kid.name().span().into();
+        out.extend(string_args(kid).into_iter().map(|text| (text, span)));
+    }
+    for kid in body.nested {
+        tree_texts(kid, out);
+    }
+}
+
+fn tree_paths<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>, at: &str) -> Vec<String> {
+    fn walk(node: &KdlNode, parent: &str, out: &mut Vec<String>) {
+        if is_context(node) {
+            let Some(context) =
+                string_arg(node).and_then(|arg| crate::parse::tree::context(parent, arg).ok())
+            else {
+                return;
+            };
+            for kid in kids(node) {
+                walk(kid, &context, out);
+            }
+            return;
+        }
+        let path = crate::parse::tree::join(parent, node.name().value());
+        let body = crate::parse::tree::body(node);
+        let organises = crate::parse::tree::organises(node, &body);
+        if !organises {
+            out.push(path.clone());
+        }
+        for kid in body.nested {
+            walk(kid, &path, out);
+        }
+    }
+    let mut out = Vec::new();
+    for node in nodes
+        .into_iter()
+        .filter(|node| is_tree_node(node) || is_context(node))
+    {
+        walk(node, at, &mut out);
+    }
+    out
+}
+
 fn listed<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>, want: &str) -> Vec<String> {
     nodes
         .into_iter()
@@ -797,15 +854,7 @@ fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut
                     .into_iter()
                     .map(|named| (named.name, named.span)),
             ),
-            "imports" => {
-                for named in names(node) {
-                    texts.push((named.name, named.span));
-                    for kid in named.kids {
-                        let span: Span = kid.name().span().into();
-                        texts.extend(string_args(kid).into_iter().map(|text| (text, span)));
-                    }
-                }
-            }
+            _ if is_tree_node(node) || is_context(node) => tree_texts(node, &mut texts),
             _ => {}
         }
     }
@@ -822,6 +871,7 @@ fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut
                 .map(|opt| opt.ty)
             {
                 Some(OptType::String) => continue,
+                None if resolve_options::BUILD_VALUES.contains(&name.as_str()) => continue,
                 Some(OptType::Bool) => format!("`{{{name}}}` reads a bool option"),
                 Some(OptType::List) => format!("`{{{name}}}` reads a list option"),
                 None => format!("`{{{name}}}` names no option of this component"),
@@ -835,6 +885,27 @@ fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut
             );
         }
     }
+}
+
+fn escaped(escape: &layout::Escape, held: &str) -> Issue {
+    let (at, title) = layout::escaped(escape, held);
+    Issue::new(title, &Source::new(at.display().to_string(), String::new())).help(
+        "a component reads files from its own library alone; replace the link with the file it points to",
+    )
+}
+
+pub(crate) fn two_manifests(path: &str, files: &[std::path::PathBuf]) -> Option<Issue> {
+    let [first, second, ..] = files else {
+        return None;
+    };
+    let src = Source::new(second.display().to_string(), String::new());
+    Some(
+        Issue::new(format!("`{path}` has two manifests"), &src).help(format!(
+            "a component's manifest lives in one place; merge {} into {} and delete one",
+            second.display(),
+            first.display()
+        )),
+    )
 }
 
 fn gate_families(node: &KdlNode, src: &Source, issues: &mut Issues) -> Vec<String> {
@@ -863,6 +934,16 @@ fn gate_families(node: &KdlNode, src: &Source, issues: &mut Issues) -> Vec<Strin
 struct RepoSchema<'a> {
     version: Option<u32>,
     src: &'a Source,
+}
+
+#[derive(Clone, Copy)]
+struct Place<'a> {
+    path: &'a str,
+    home: &'a Path,
+    root: &'a Path,
+    library: Option<&'a str>,
+    outside: bool,
+    origins: Option<&'a Path>,
 }
 
 struct Gated {
@@ -916,41 +997,67 @@ impl Component {
         issues: &mut Issues,
     ) -> Option<Self> {
         let dir_rel = &entry.path;
-        let file = root
-            .join(layout::COMPONENTS)
-            .join(dir_rel)
-            .join(layout::MANIFEST_FILE)
-            .display()
-            .to_string();
+        let home = entry.dir(root);
+        let library = entry.library();
+        let held = format!(
+            "`{}` in {}",
+            entry.path,
+            crate::resolve::library::shown(library)
+        );
+        if let Some(escape) = layout::escape(entry.tree(root), &home) {
+            issues.push(escaped(&escape, &held));
+            return None;
+        }
+        let files = layout::manifests_at(&home);
+        if let Some(issue) = two_manifests(&entry.path, &files) {
+            issues.push(issue);
+            return None;
+        }
+        let file = layout::manifest_at(&home).display().to_string();
+        // A copy of a remote component lives in a local library.
+        // A component that a remote library holds is never such a copy and has no origins file.
+        let origins = match &entry.held {
+            Some(held) if held.remote.is_some() => None,
+            Some(held) => Some(held.components.join(layout::ORIGINS_FILE)),
+            None => Some(layout::origins(root)),
+        };
 
+        let place = Place {
+            path: &entry.path,
+            home: &home,
+            root,
+            library,
+            outside: entry.home.is_some(),
+            origins: origins.as_deref(),
+        };
         let family = image.base.as_ref().map(|base| base.family.as_str());
         let mut component = match &entry.inline {
-            Some(_) if disk.is_component(dir_rel) => {
+            Some(inline)
+                if files
+                    .iter()
+                    .any(|held| held.display().to_string() != inline.src.name()) =>
+            {
                 issues.push(
                     Issue::new(
-                        format!(
-                            "`{}` is defined inline, and components/{dir_rel} is a component too",
-                            entry.path
-                        ),
-                        &image.src,
+                        format!("`{}` is defined inline and in a manifest file", entry.path),
+                        &inline.src,
                     )
                     .at(entry.span, "defined here")
                     .help(format!(
-                        "list components/{dir_rel} by its segments alone, or give the inline \
-                         definition a path of its own"
+                        "a component's manifest lives in one place; list `{}` by its path alone, \
+                         or move the inline definition into {file}",
+                        entry.path
                     )),
                 );
                 return None;
             }
-            Some(spans) => {
-                let nodes = crate::parse::image::nodes_at(&image.src, spans);
-                Self::parse_inline(&entry.path, root, &nodes, family, &image.src, issues)
+            Some(inline) => {
+                let nodes = crate::parse::image::nodes_at(&inline.src, &inline.spans);
+                Self::parse_inline(place, &nodes, family, &inline.src, issues)
             }
             None => match std::fs::read_to_string(&file) {
                 Ok(text) => Self::parse_against(
-                    &entry.path,
-                    dir_rel,
-                    root,
+                    place,
                     text,
                     family,
                     RepoSchema {
@@ -966,29 +1073,30 @@ impl Component {
                     );
                     return None;
                 }
-                Err(_) if disk.is_component(dir_rel) => {
-                    Self::bare(&entry.path, dir_rel, root, issues)
+                Err(_) if entry.held.is_some() || disk.is_component(dir_rel) => {
+                    Self::bare(place, issues)
                 }
                 Err(_) => {
-                    let issue =
-                        Issue::new(format!("`{}` is not a component", entry.path), &image.src);
-                    issues.push(match nested_help(root, disk, dir_rel) {
-                        Some(help) => issue
-                            .at(entry.span, "content of another component")
-                            .help(help),
-                        None => issue.at(entry.span, "nothing to build").help(format!(
-                            "give components/{dir_rel} a manifest.kdl, a component.sh, a \
-                             repo.sh, a packages.sh, a finalize.sh, a files/ directory, a \
-                             Containerfile.inc or a file that another component collects, \
-                             or define it inline with a manifest node such as `packages`"
-                        )),
-                    });
+                    issues.push(
+                        Issue::new(format!("`{}` is not a component", entry.path), &image.src)
+                            .at(entry.span, "nothing to build")
+                            .help(format!(
+                                "give components/{dir_rel} a manifest.kdl, a component.sh, a \
+                                 repo.sh, a packages.sh, a finalize.sh, a files/ directory, a \
+                                 Containerfile.inc or a file that another component collects, \
+                                 or define it inline with a manifest node such as `packages`"
+                            )),
+                    );
                     return None;
                 }
             },
         };
-        component.flavour = entry.flavour.clone();
-        component.resolved = resolve_options::resolve(
+        // An image file that no build names yet reads as a component.
+        // Only a component that a tree reaches is refused for the facts of an image.
+        if entry.path != image.component {
+            component.refuse_image_facts(issues);
+        }
+        (component.resolved, component.changes) = resolve_options::resolve(
             &component.options,
             &component.variants,
             &component.src,
@@ -997,30 +1105,63 @@ impl Component {
             issues,
         );
         resolve_options::apply(&mut component, entry, image, issues);
-        if let Some(parent) = enclosing(&entry.path, |parent| {
-            disk.is_component(parent) || image.defined.iter().any(|defined| defined == parent)
-        }) {
-            component.requires.push(Requirement {
-                name: parent.to_string(),
-                span: Span::default(),
-                min: None,
-            });
+        // The library walk above skips an overlay.
+        // A helper path can run through one and gets its own check here.
+        let through = component
+            .helpers
+            .iter()
+            .find_map(|helper| layout::leaves(&home, &home.join(&helper.name)));
+        if let Some(escape) = through {
+            issues.push(escaped(&escape, &held));
+            return None;
         }
         Some(component)
     }
 
-    fn bare(path: &str, dir_rel: &str, root: &Path, issues: &mut Issues) -> Self {
-        let dir = layout::component(root, dir_rel);
-        let src = Source::new(dir.display().to_string(), String::new());
-        let component = Self::empty(path, dir_rel, root, &src);
-        Self::rest(component, path, root, &dir, &[], &src, issues)
+    fn refuse_image_facts(&self, issues: &mut Issues) {
+        for (name, span) in &self.fields {
+            issues.push(
+                Issue::new(
+                    format!("`{}` sets `{name}`, which only an image takes", self.path),
+                    &self.src,
+                )
+                .at(*span, "not the component a build names")
+                .help(format!(
+                    "move `{name}` to the component that `builds` in repo.kdl names"
+                )),
+            );
+        }
+        for import in &self.imports {
+            crate::parse::tree::refuse_base_facts(
+                &import.path,
+                import.digest.as_ref().map(|(_, span)| *span),
+                import.signed.map(|(_, span)| span),
+                &self.src,
+                issues,
+            );
+        }
     }
 
-    fn empty(path: &str, dir_rel: &str, root: &Path, src: &Source) -> Self {
-        let dir = layout::component(root, dir_rel);
+    fn bare(place: Place, issues: &mut Issues) -> Self {
+        let src = Source::new(place.home.display().to_string(), String::new());
+        let component = Self::empty(place, &src);
+        Self::rest(
+            component,
+            place.path,
+            place.root,
+            place.home,
+            &[],
+            &src,
+            issues,
+        )
+    }
+
+    fn empty(place: Place, src: &Source) -> Self {
         Self {
-            path: path.to_string(),
-            dir: dir_rel.to_string(),
+            path: place.path.to_string(),
+            dir: place.path.to_string(),
+            home: place.home.to_path_buf(),
+            library: place.library.map(str::to_string),
             description: String::new(),
             targets: Vec::new(),
             hidden: false,
@@ -1033,14 +1174,13 @@ impl Component {
             after: Vec::new(),
             policies: [layout::SELINUX, layout::APPARMOR]
                 .iter()
-                .filter(|policy| !policy.files(&dir).is_empty())
+                .filter(|policy| !policy.files(place.home).is_empty())
                 .map(|policy| policy.capability)
                 .collect(),
             files: Vec::new(),
             overrides: Vec::new(),
             verify_exceptions: Vec::new(),
             refuses: Vec::new(),
-            flavour: None,
             collects: Vec::new(),
             contributes: Vec::new(),
             modes: Vec::new(),
@@ -1057,26 +1197,35 @@ impl Component {
             helpers: Vec::new(),
             satisfies: Vec::new(),
             resolved: Vec::new(),
-            fragment: std::fs::read_to_string(dir.join("Containerfile.inc")).ok(),
+            changes: Vec::new(),
+            fragment: std::fs::read_to_string(place.home.join("Containerfile.inc")).ok(),
             fragment_position: Position::default(),
             standard_layer: true,
-            content: crate::provenance::lock::hash(&dir),
-            imported: crate::provenance::lock::entry(root, dir_rel),
+            content: crate::provenance::origins::hash(place.home),
+            imported: place.origins.and_then(|file| {
+                crate::provenance::origins::read_at(file)
+                    .into_iter()
+                    .find(|held| held.name == place.path)
+            }),
             repo: layout::FAMILY_DIRS
                 .iter()
-                .map(|(gated, _)| dir.join(gated).join(layout::REPO_SCRIPT))
-                .chain(std::iter::once(dir.join(layout::REPO_SCRIPT)))
+                .map(|(gated, _)| place.home.join(gated).join(layout::REPO_SCRIPT))
+                .chain(std::iter::once(place.home.join(layout::REPO_SCRIPT)))
                 .any(|at| at.is_file()),
             network: None,
             access: Access::OPEN,
+            fields: Vec::new(),
+            keywords: Vec::new(),
+            logo_url: String::new(),
+            conforms: String::new(),
+            allows: Vec::new(),
+            outside: place.outside,
             src: src.clone(),
         }
     }
 
     fn parse_against(
-        path: &str,
-        dir_rel: &str,
-        root: &Path,
+        place: Place,
         text: String,
         family: Option<&str>,
         repo: RepoSchema,
@@ -1086,8 +1235,7 @@ impl Component {
             version: repo_version,
             src: repo_src,
         } = repo;
-        let dir = layout::component(root, dir_rel);
-        let file = dir.join(layout::MANIFEST_FILE).display().to_string();
+        let file = layout::manifest_at(place.home).display().to_string();
 
         let src = &Source::new(&file, text.clone());
         let doc: KdlDocument = match text.parse() {
@@ -1100,20 +1248,11 @@ impl Component {
 
         check_doc(&doc, &COMPONENT, src, issues);
         crate::parse::check_file_version(&doc, repo_version, repo_src, src, issues);
-        Some(Self::parse_doc(
-            path,
-            dir_rel,
-            root,
-            doc.nodes(),
-            family,
-            src,
-            issues,
-        ))
+        Some(Self::parse_doc(place, doc.nodes(), family, src, issues))
     }
 
-    pub(crate) fn parse_inline(
-        path: &str,
-        root: &Path,
+    fn parse_inline(
+        place: Place,
         nodes: &[KdlNode],
         family: Option<&str>,
         src: &Source,
@@ -1125,25 +1264,25 @@ impl Component {
             .find(|node| node.name().value() == "schema-version")
         {
             issues.push(
-                Issue::new(format!("`{path}` declares a schema version inline"), src)
-                    .at(version.name().span(), "set by the image file")
-                    .help("the image file's own `schema-version` covers the definitions it holds"),
+                Issue::new(
+                    format!("`{}` declares a schema version inline", place.path),
+                    src,
+                )
+                .at(version.name().span(), "set by the image file")
+                .help("the image file's own `schema-version` covers the definitions it holds"),
             );
         }
-        Self::parse_doc(path, path, root, nodes, family, src, issues)
+        Self::parse_doc(place, nodes, family, src, issues)
     }
 
     fn parse_doc(
-        path: &str,
-        dir_rel: &str,
-        root: &Path,
+        place: Place,
         nodes: &[KdlNode],
         family: Option<&str>,
         src: &Source,
         issues: &mut Issues,
     ) -> Self {
-        let dir = layout::component(root, dir_rel);
-        let mut component = Self::empty(path, dir_rel, root, src);
+        let mut component = Self::empty(place, src);
 
         let mut fragment_seen = false;
         let mut gated: Vec<(String, Span)> = Vec::new();
@@ -1151,7 +1290,7 @@ impl Component {
             match node.name().value() {
                 "on" => {}
                 _ => {
-                    component.take(node, &[], &dir, src, issues, &mut fragment_seen);
+                    component.take(node, &[], place.home, src, issues, &mut fragment_seen);
                     continue;
                 }
             }
@@ -1170,7 +1309,12 @@ impl Component {
             let keep = family.is_none_or(|want| gate.iter().any(|name| name == want));
             let mark = component.gated();
             for child in kids(node) {
-                component.take(child, &gate, &dir, src, issues, &mut fragment_seen);
+                let name = child.name().value();
+                // The schema walk cannot refuse an ungated manifest node here because the tree segment in `GATED` matches every name.
+                if !is_tree_node(child) && !GATED.iter().any(|gated| gated.name == name) {
+                    ON.child_say.raise(name, child.name().span(), src, issues);
+                }
+                component.take(child, &gate, place.home, src, issues, &mut fragment_seen);
             }
             if !keep {
                 component.ungate(mark);
@@ -1206,11 +1350,12 @@ impl Component {
             issues,
         );
 
-        Self::rest(component, path, root, &dir, &gated, src, issues)
+        Self::rest(
+            component, place.path, place.root, place.home, &gated, src, issues,
+        )
     }
 
-    #[cfg(test)]
-    fn parse(
+    pub(crate) fn parse(
         path: &str,
         dir_rel: &str,
         root: &Path,
@@ -1218,10 +1363,17 @@ impl Component {
         family: Option<&str>,
         issues: &mut Issues,
     ) -> Option<Self> {
+        let home = layout::component(root, dir_rel);
+        let origins = layout::origins(root);
         Self::parse_against(
-            path,
-            dir_rel,
-            root,
+            Place {
+                path,
+                home: &home,
+                root,
+                library: None,
+                outside: false,
+                origins: Some(&origins),
+            },
             text,
             family,
             RepoSchema {
@@ -1250,11 +1402,10 @@ impl Component {
                     }
                 }
                 "targets" => component.parse_targets(node, src, issues),
-                "hidden" => component.hidden = is_hidden(node),
+                "hidden" => component.hidden = hidden_nodes(std::iter::once(node)),
                 kind @ ("provides" | "requires" | "after" | "removes") => {
                     component.parse_capabilities(kind, node, src, issues)
                 }
-                "imports" => component.parse_imports(node, src, issues),
                 "overrides" => component.parse_overrides(node, src, issues),
                 "mode" => component.parse_mode(node, dir, src, issues),
                 kind @ ("secret" | "arg") => {
@@ -1302,10 +1453,11 @@ impl Component {
                         }
                     }
                 }
-                "network" => {
-                    if string_arg(node) == Some("scripts") {
-                        component.network = Some(node.name().span().into());
-                    }
+                "permissions" => {
+                    component.network = child(node, "scripts")
+                        .and_then(|scripts| child(scripts, "network"))
+                        .filter(|network| bool_arg(network) == Some(true))
+                        .map(|network| network.name().span().into());
                 }
                 "asset" => {
                     if let Some(pin) = asset::parse(node, src, issues) {
@@ -1335,8 +1487,65 @@ impl Component {
                 "package-groups" => component.parse_package_groups(node, gate, src, issues),
                 "copr" => component.parse_copr(node, gate, src, issues),
                 "satisfies" => component.satisfies.extend(coverages(node, src, issues)),
-                _ => {}
+                "component" => {
+                    let (at, top) = component.top();
+                    component.parse_context(node, &at, &top, src, issues);
+                }
+                name if crate::parse::image::is_field(name) => {
+                    component.parse_field(node);
+                    component
+                        .fields
+                        .push((name.to_string(), node.name().span().into()));
+                }
+                name if crate::parse::image::is_manifest_node(name) => {}
+                _ => {
+                    let (at, top) = component.top();
+                    component.parse_tree(node, &at, &top, src, issues);
+                }
             }
+        }
+    }
+
+    /// A component file outside every library has no path in a library to read its bare children below.
+    /// They read from the library root instead.
+    fn top(&self) -> (String, Props) {
+        match self.outside {
+            true => (
+                String::new(),
+                Props {
+                    rooted: true,
+                    ..Props::default()
+                },
+            ),
+            false => (self.path.clone(), Props::default()),
+        }
+    }
+
+    fn parse_field(&mut self, node: &KdlNode) {
+        match node.name().value() {
+            "oci-labels" => {
+                self.keywords = kids(node)
+                    .iter()
+                    .filter(|kid| kid.name().value() == "keywords")
+                    .flat_map(|kid| string_args(kid).into_iter().map(str::to_string))
+                    .collect();
+                self.logo_url = text(node, "logo-url");
+            }
+            "conforms" => {
+                self.conforms = string_arg(node).unwrap_or_default().to_string();
+                self.allows = kids(node)
+                    .iter()
+                    .filter(|kid| kid.name().value() == "allow-remediation")
+                    .filter_map(|kid| {
+                        Some(Refusal {
+                            rule: string_arg(kid)?.to_string(),
+                            because: prop(kid, "because").unwrap_or_default().to_string(),
+                            span: kid.name().span().into(),
+                        })
+                    })
+                    .collect();
+            }
+            _ => {}
         }
     }
 
@@ -1627,27 +1836,122 @@ impl Component {
         }
     }
 
-    fn parse_imports(&mut self, node: &KdlNode, src: &Source, issues: &mut Issues) {
-        for named in names(node) {
-            let path = named.name;
-            if !path.contains('{') && !crate::model::image::is_local_path(path) {
-                issues.push(
-                    Issue::new(format!("`{path}` is not a component path"), src)
-                        .at(named.span, "not a path under components/")
-                        .help("a path is segments of lowercase letters, digits and dashes, joined by `/`"),
-                );
-                continue;
-            }
-            let options = named
-                .kids
+    fn parse_tree(
+        &mut self,
+        node: &KdlNode,
+        parent: &str,
+        above: &Props,
+        src: &Source,
+        issues: &mut Issues,
+    ) {
+        let name = node.name().value();
+        let span: Span = node.name().span().into();
+        if node.entries().iter().any(|entry| entry.name().is_none()) {
+            let help = match name {
+                _ if [BASE_FAMILY, BASE_BOOTLOADER, BASE_SCAP_CONTENT]
+                    .iter()
+                    .any(|held| held.name == name) =>
+                {
+                    format!(
+                        "`{name}` belongs in the `base` block, as `base \"<image reference>\" {{ {name} \"…\" }}`"
+                    )
+                }
+                "id" => "the build name in `repo.kdl` is the image's published name".to_string(),
+                "name" | "pretty-name" | "url" | "issues-url" => format!(
+                    "the os-release fields are options of the `os-release` component; list \
+                     `os-release` in the image and set {} in its block",
+                    match name {
+                        "url" => "`home-url` and `documentation-url`".to_string(),
+                        "issues-url" => "`support-url` and `bug-report-url`".to_string(),
+                        other => format!("`{other}`"),
+                    }
+                ),
+                _ => format!(
+                    "`{name}` is no manifest node, so it reads as a component path, and a \
+                     path segment takes no argument"
+                ),
+            };
+            issues.push(
+                Issue::new(format!("`{name}` takes no argument"), src)
+                    .at(span, "a path segment")
+                    .help(help),
+            );
+            return;
+        }
+        let path = crate::parse::tree::join(parent, name);
+        if !is_tree_path(&path) {
+            issues.push(
+                Issue::new(format!("`{path}` is not a component path"), src)
+                    .at(span, "not a path in a library")
+                    .help(
+                        "a segment is lowercase letters, digits, dashes and dots, or a quoted \
+                         `{option}`",
+                    ),
+            );
+            return;
+        }
+        let props = Props::read(node, &path, above, src, issues);
+        let body = crate::parse::tree::body(node);
+        let organises = crate::parse::tree::organises(node, &body);
+        let crate::parse::tree::Body {
+            settings: set,
+            inline,
+            nested,
+        } = body;
+        self.imports.push(Import {
+            path: path.clone(),
+            organises,
+            inline,
+            rooted: props.rooted,
+            digest: props.digest.clone(),
+            signed: props.signed,
+            variant: props.variant.clone(),
+            library: props.library.clone(),
+            pin: props.pin.clone(),
+            options: set
                 .iter()
-                .map(|kid| (kid.name().value().to_string(), options::args(kid)))
-                .collect();
-            self.imports.push(Import {
-                path: path.to_string(),
-                options,
-                span: named.span,
-            });
+                .map(|kid| options::setting(kid, src, issues))
+                .collect(),
+            span,
+        });
+        for kid in nested {
+            self.parse_tree(kid, &path, &props, src, issues);
+        }
+    }
+
+    fn parse_context(
+        &mut self,
+        node: &KdlNode,
+        at: &str,
+        above: &Props,
+        src: &Source,
+        issues: &mut Issues,
+    ) {
+        let span: Span = node.name().span().into();
+        let Some(arg) = string_arg(node) else {
+            return;
+        };
+        let context = match crate::parse::tree::context(at, arg) {
+            Ok(context) => context,
+            Err(problem) => {
+                issues.push(
+                    Issue::new(problem, src)
+                        .at(span, "not a path in the library")
+                        .help(
+                            "`/` reads from the library root, and each `..` goes up one segment \
+                             of the current context",
+                        ),
+                );
+                return;
+            }
+        };
+        let mut props = Props::read(node, "component", above, src, issues);
+        props.rooted |= arg.starts_with('/');
+        for kid in kids(node) {
+            match is_context(kid) {
+                true => self.parse_context(kid, &context, &props, src, issues),
+                false => self.parse_tree(kid, &context, &props, src, issues),
+            }
         }
     }
 
@@ -1858,6 +2162,17 @@ impl Component {
         let collected = string_args(node).first().map(|s| s.to_string());
         let into = prop(node, "into");
         match (collected, into, priority(node)) {
+            (Some(collected), _, _)
+                if collected.is_empty()
+                    || collected.contains('/')
+                    || matches!(collected.as_str(), "." | "..") =>
+            {
+                issues.push(
+                    Issue::new(format!("`{collected}` is not a filename"), src)
+                        .at(node.name().span(), "the collected name goes here")
+                        .help("the build reads each contribution from this name inside the contributing component, so it is a plain name such as `flatpaks.list`"),
+                );
+            }
             (Some(collected), Some(into), Some(priority)) if into.starts_with('/') => {
                 self.collects.push(Collect {
                     file: collected,
@@ -2134,17 +2449,9 @@ pub fn satisfies_span(kdl: &str) -> Option<Span> {
     Some(node.span().into())
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum PackageInsert {
-    Args { at: usize },
-    Children { close: usize },
-}
-
 #[derive(Default)]
 pub(crate) struct PackageLine {
-    /// `None` says the component has no top-level `packages` node.
-    pub insert: Option<PackageInsert>,
-    /// A name inside an `on` gate counts because a gated package must not be added a second time.
+    pub node: Option<Span>,
     pub names: Vec<String>,
 }
 
@@ -2159,6 +2466,7 @@ fn gather_packages(nodes: &[&KdlNode], names: &mut Vec<String>) {
     for node in nodes {
         match node.name().value() {
             "packages" => names.extend(package_names(node)),
+            // A gated package counts as listed so that the same name is not added a second time.
             "on" => {
                 let below: Vec<&KdlNode> = kids(node).iter().collect();
                 gather_packages(&below, names);
@@ -2168,51 +2476,31 @@ fn gather_packages(nodes: &[&KdlNode], names: &mut Vec<String>) {
     }
 }
 
-fn package_line(nodes: &[&KdlNode], text: &str) -> PackageLine {
+fn package_line(nodes: &[&KdlNode]) -> PackageLine {
     let mut names = Vec::new();
     gather_packages(nodes, &mut names);
-    let insert = nodes
+    let node = nodes
         .iter()
         .find(|node| node.name().value() == "packages")
-        .map(|node| {
-            if let Some(entry) = node
-                .entries()
-                .iter()
-                .rev()
-                .find(|entry| entry.name().is_none())
-            {
-                let end = Span::from(entry.span());
-                return PackageInsert::Args {
-                    at: end.offset + end.len,
-                };
-            }
-            match crate::parse::block_close(node, text) {
-                Some(close) => PackageInsert::Children { close },
-                None => {
-                    let end = Span::from(node.name().span());
-                    PackageInsert::Args {
-                        at: end.offset + end.len,
-                    }
-                }
-            }
-        });
-    PackageLine { insert, names }
+        .map(|node| node.span().into());
+    PackageLine { node, names }
 }
 
 pub(crate) fn packages(text: &str) -> Result<PackageLine, String> {
     let doc: KdlDocument = text.parse().map_err(|_| "is not valid KDL".to_string())?;
     let nodes: Vec<&KdlNode> = doc.nodes().iter().collect();
-    Ok(package_line(&nodes, text))
+    Ok(package_line(&nodes))
 }
 
 pub(crate) fn inline_packages(src: &Source, spans: &[Span]) -> PackageLine {
     let held = crate::parse::image::nodes_at(src, spans);
     let nodes: Vec<&KdlNode> = held.iter().collect();
-    package_line(&nodes, src.text())
+    package_line(&nodes)
 }
 
-/// Each option reference stands in as the valid token `x` because the build resolves the option's value later.
 pub(crate) fn check_package(name: &str) -> Option<&'static str> {
+    // The build resolves an option's value later.
+    // Each option reference stands in as the valid token `x` so that only the literal text is judged.
     let literal = resolve_options::interpolate(name, |_| "x".to_string());
     bad_package(&literal)
 }
@@ -2241,7 +2529,7 @@ fn default(doc: &KdlDocument, name: &str) -> String {
         .to_string()
 }
 
-pub fn summary(file: &Path) -> Summary {
+pub fn summary(file: &Path, at: &str) -> Summary {
     let Some(doc) = std::fs::read_to_string(file)
         .ok()
         .and_then(|text| text.parse::<KdlDocument>().ok())
@@ -2284,8 +2572,13 @@ pub fn summary(file: &Path) -> Summary {
         provides,
         exclusive,
         targets: strings("targets"),
-        requires: listed("requires"),
-        imports: listed("imports")
+        requires: nodes
+            .iter()
+            .filter(|node| node.name().value() == "requires")
+            .flat_map(|node| names(node))
+            .map(|named| named.name.to_string())
+            .collect(),
+        imports: tree_paths(nodes.iter().copied(), at)
             .iter()
             .map(|path| resolve_options::interpolate(path, |name| default(&doc, name)))
             .collect(),
@@ -2333,13 +2626,13 @@ pub fn offered_base(
         _ => String::new(),
     });
     Some(crate::model::component::BaseComponent {
+        imports: tree_paths(nodes, &name),
         name,
         owner,
         image,
         family: base.family,
         provides: listed("provides"),
         requires: listed("requires"),
-        imports: listed("imports"),
         about: one("description"),
         version,
         scap_content: base.scap_content,
@@ -2347,14 +2640,10 @@ pub fn offered_base(
     })
 }
 
-fn is_hidden(node: &KdlNode) -> bool {
-    bool_arg(node) == Some(true)
-}
-
 fn hidden_nodes<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>) -> bool {
     nodes
         .into_iter()
-        .any(|node| node.name().value() == "hidden" && is_hidden(node))
+        .any(|node| node.name().value() == "hidden" && bool_arg(node) == Some(true))
 }
 
 pub(crate) fn hidden(file: &Path) -> bool {
@@ -2371,49 +2660,24 @@ pub(crate) fn inline_hidden(src: &Source, spans: &[Span]) -> bool {
     hidden_nodes(crate::parse::image::nodes_at(src, spans).iter())
 }
 
-pub(crate) fn validate_manifest(
-    file: &Path,
-    repo_version: Option<u32>,
-    repo_src: &Source,
-) -> Issues {
-    let mut issues = Issues::default();
-    let text = match std::fs::read_to_string(file) {
-        Ok(text) => text,
-        Err(err) => {
-            let src = Source::new(file.display().to_string(), String::new());
-            issues.push(Issue::new(
-                format!("{} cannot be read: {err}", file.display()),
-                &src,
-            ));
-            return issues;
-        }
-    };
-    let src = Source::new(file.display().to_string(), text.clone());
-    let doc: KdlDocument = match text.parse() {
-        Ok(doc) => doc,
-        Err(err) => {
-            issues.push(syntax_issue(&err, src.name(), &src));
-            return issues;
-        }
-    };
-    check_doc(&doc, &COMPONENT, &src, &mut issues);
-    crate::parse::check_file_version(&doc, repo_version, repo_src, &src, &mut issues);
-    issues
-}
-
 pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues) {
-    let listed: BTreeSet<String> = list
-        .images
+    let mut listed: BTreeSet<String> = list
+        .builds
         .iter()
-        .flat_map(|image| {
-            image
-                .entries
-                .iter()
-                .chain(&image.suppressed)
-                .chain(image.base_entry.iter().map(|held| &held.entry))
-        })
-        .map(|entry| entry.path.clone())
+        .map(|build| build.component.clone())
         .collect();
+    listed.extend(
+        list.images
+            .iter()
+            .flat_map(|image| {
+                image
+                    .entries
+                    .iter()
+                    .chain(&image.suppressed)
+                    .chain(image.base_entry.iter().map(|held| &held.entry))
+            })
+            .map(|entry| entry.path.clone()),
+    );
 
     for dir in disk.components() {
         if listed.contains(dir) {
@@ -2422,9 +2686,14 @@ pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues
         let file = layout::manifest(root, dir);
         if let Ok(text) = std::fs::read_to_string(&file) {
             Component::parse_against(
-                dir,
-                dir,
-                root,
+                Place {
+                    path: dir,
+                    home: &layout::component(root, dir),
+                    root,
+                    library: None,
+                    outside: false,
+                    origins: Some(&layout::origins(root)),
+                },
                 text,
                 None,
                 RepoSchema {
@@ -2437,26 +2706,20 @@ pub fn check_unlisted(list: &List, root: &Path, disk: &Disk, issues: &mut Issues
     }
 }
 
-pub(crate) fn nested_help(root: &Path, disk: &Disk, path: &str) -> Option<String> {
-    if !layout::component(root, path).is_dir() {
-        return None;
-    }
-    let parent = enclosing(path, |parent| disk.is_component(parent))?;
-    Some(format!(
-        "give components/{path} a manifest.kdl because inside components/{parent} only a \
-         manifest.kdl makes a directory a component of its own"
-    ))
-}
-
-fn enclosing(path: &str, is_component: impl Fn(&str) -> bool) -> Option<&str> {
-    path.rmatch_indices('/')
-        .map(|(at, _)| &path[..at])
-        .find(|parent| is_component(parent))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_paths_of_a_tree_leave_out_an_inline_definitions_own_nodes() {
+        let doc: KdlDocument = "tools {\n    permissions { scripts { network #true; }; }\n}\nhardware {\n    nvidia\n}\n"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            tree_paths(doc.nodes(), ""),
+            vec!["tools", "hardware/nvidia"]
+        );
+    }
 
     fn messages(text: &str) -> Vec<String> {
         let text = format!("schema-version 1\n{text}");
@@ -2475,24 +2738,12 @@ mod tests {
     }
 
     #[test]
-    fn a_packages_node_with_no_argument_takes_its_first_one_after_the_name() {
-        let text = "schema-version 1\n\npackages\n";
+    fn a_package_line_holds_the_first_packages_node_and_every_listed_name() {
+        let text =
+            "schema-version 1\n\npackages {\n    \"htop\"\n}\non \"fedora\" { packages \"git\" }\n";
         let line = packages(text).expect("valid KDL");
-        let at = text.find("packages").unwrap() + "packages".len();
-        assert_eq!(line.insert, Some(PackageInsert::Args { at }));
-    }
-
-    #[test]
-    fn a_block_packages_node_takes_a_child_before_its_closing_brace() {
-        let text = "schema-version 1\n\npackages {\n    \"htop\"\n}\n";
-        let line = packages(text).expect("valid KDL");
-        assert_eq!(
-            line.insert,
-            Some(PackageInsert::Children {
-                close: text.rfind('}').unwrap()
-            })
-        );
-        assert_eq!(line.names, ["htop"]);
+        assert_eq!(line.node.map(|node| node.offset), text.find("packages"));
+        assert_eq!(line.names, ["htop", "git"]);
     }
 
     #[test]
@@ -2866,7 +3117,7 @@ refuses "grub2_nousb_argument" because="two"
             "provides \"one\" exclusive=#true\nprovides \"two\"\nkey \"cosign\" { generator \"cosign\" }\n",
         )
         .unwrap();
-        let read = summary(&file);
+        let read = summary(&file, "");
         assert_eq!(read.exclusive, ["one"]);
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -2890,10 +3141,111 @@ on "fedora" {
 "#,
         )
         .unwrap();
-        let read = summary(&file);
+        let read = summary(&file, "");
         assert_eq!(read.requires, ["everywhere", "on-fedora"]);
         assert_eq!(read.satisfies, ["1.1.1.1", "CCI-000199"]);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_bare_child_is_below_the_component_and_a_component_node_sets_the_context() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ncommon\ncomponent \"..\" library=\"upstream\" { shared }\ncomponent \"/fedora\" { build-environment }\n";
+        let component = Component::parse(
+            "hardware/nvidia",
+            "hardware/nvidia",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        assert!(issues.findings().is_empty(), "{:?}", issues.findings());
+        let read: Vec<_> = component
+            .imports
+            .iter()
+            .map(|import| (import.path.as_str(), import.library.as_deref()))
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("hardware/nvidia/common", None),
+                ("hardware/shared", Some("upstream")),
+                ("fedora/build-environment", None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_component_node_that_climbs_above_the_root_or_includes_nothing_is_refused() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ncomponent \"../../..\" { one }\ncomponent \"/\"\ncomponent \"/Bad_Name\" { two }\n";
+        Component::parse("a/b", "a/b", Path::new("."), text.into(), None, &mut issues)
+            .expect("the manifest parses");
+        let found = issues.findings();
+        for wanted in [
+            "climbs above the library root",
+            "`component` includes nothing",
+            "`/Bad_Name` is not a component path",
+        ] {
+            assert!(
+                found.iter().any(|message| message.contains(wanted)),
+                "{wanted}: {found:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_tree_child_reads_the_library_and_pin_of_the_segment_above_it() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ncomponent \"/\" {\n    apps library=\"upstream\" pin=\"v1\" {\n        flatpak\n        browser pin=\"v2\"\n    }\n}\n";
+        let component = Component::parse(
+            "tree",
+            "tree",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        assert!(issues.findings().is_empty(), "{:?}", issues.findings());
+        let read: Vec<_> = component
+            .imports
+            .iter()
+            .map(|import| {
+                (
+                    import.path.as_str(),
+                    import.library.as_deref(),
+                    import.pin.as_deref(),
+                    import.organises,
+                )
+            })
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("apps", Some("upstream"), Some("v1"), true),
+                ("apps/flatpak", Some("upstream"), Some("v1"), false),
+                ("apps/browser", Some("upstream"), Some("v2"), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tree_child_with_an_argument_is_refused() {
+        assert_eq!(
+            parsed("stray", "drives \"a truck\""),
+            ["`drives` takes no argument"]
+        );
+    }
+
+    #[test]
+    fn a_manifest_node_that_takes_no_gate_is_refused_in_one() {
+        let found = parsed("gated", "on \"fedora\" { targets \"fedora\"; }");
+        assert!(
+            found.contains(&"`targets` is not gated by family".to_string()),
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -2901,7 +3253,7 @@ on "fedora" {
         let gate = parsed("gated", "on \"fedora\" { }");
         assert!(gate.contains(&"`on` gates nothing".to_string()), "{gate:?}");
         let stray = parsed("stray", "family \"fedora\"");
-        assert_eq!(stray, ["unknown node `family`"]);
+        assert_eq!(stray, ["`family` takes no argument"]);
         let base = parsed("base", "base \"example\" { family \"arch\"; }");
         assert!(base.is_empty(), "{base:?}");
     }
@@ -2952,7 +3304,7 @@ on "fedora" {
         let file =
             std::env::temp_dir().join(format!("buildc-summary-hidden-{}.kdl", std::process::id()));
         std::fs::write(&file, "schema-version 1\nhidden #true\n").unwrap();
-        let summary = summary(&file);
+        let summary = summary(&file, "");
         std::fs::remove_file(&file).unwrap();
         assert!(summary.hidden);
     }
@@ -2964,7 +3316,7 @@ on "fedora" {
             std::process::id()
         ));
         std::fs::write(&file, "schema-version 1\nhidden #false\n").unwrap();
-        let summary = summary(&file);
+        let summary = summary(&file, "");
         std::fs::remove_file(&file).unwrap();
         assert!(!summary.hidden);
     }
@@ -3034,12 +3386,9 @@ on "fedora" { targets "debian"; packages }
                 "`fragment` is declared twice",
                 "unknown `packages` property `weak`",
                 "unknown `package-groups` property `weak`",
-                "unknown node `drives`",
                 "`cis-fedora` has no rules listed",
                 "benchmark `cis-fedora` is declared twice",
                 "`satisfies` is declared twice",
-                "unknown node `family`",
-                "`targets` is not gated by family",
                 "`packages` needs at least one name",
             ]
         );

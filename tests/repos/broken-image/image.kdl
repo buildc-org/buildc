@@ -1,5 +1,0 @@
-schema-version 1
-
-image "Not An Id" {
-    name "Broken Image"
-}

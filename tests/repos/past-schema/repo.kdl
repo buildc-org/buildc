@@ -1,2 +1,6 @@
 schema-version 0
 name "Past Schema"
+
+builds {
+    minimal
+}

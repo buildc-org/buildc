@@ -9,12 +9,10 @@ source: tests/golden/harness.rs
   "default_published": "debian",
   "pr_target": "debian",
   "pr_published": "debian",
-  "ungated_target": "debian",
-  "ungated_published": "debian",
   "cache_image": "debian-cache",
   "backend": "buildah",
   "manifest_label": false,
-  "workflows": [],
+  "workflows": {},
   "audit": {
     "enforce": false
   },
@@ -22,12 +20,12 @@ source: tests/golden/harness.rs
   "images": [
     {
       "id": "debian",
-      "file": "./debian.image.kdl",
+      "file": "./components/debian.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "btrfs",
@@ -46,23 +44,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "debian",
           "image": "debian",
-          "flavour": null,
           "published": "debian",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": true,
           "pr": true,
-          "siblings": [],
           "components": [
             {
               "path": "debian-family",
-              "flavour": null,
               "variant": null,
               "description": "apt, which every Debian-family build layer reaches for",
               "options": {},
@@ -92,7 +86,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/menu",
-              "flavour": null,
               "variant": null,
               "description": "Collects the justfile fragments the rest of the image contributes",
               "options": {},
@@ -120,7 +113,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/shared",
-              "flavour": null,
               "variant": null,
               "description": "A component both the Debian and Ubuntu images enable",
               "options": {},
@@ -160,6 +152,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "debian",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -187,6 +206,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/debian/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "debian",
             "base": "docker.io/library/debian:forky",
             "args": [
@@ -196,19 +216,21 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=docker.io/library/debian:forky"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]
     },
     {
       "id": "forky",
-      "file": "./forky.image.kdl",
+      "file": "./components/forky.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "",
@@ -229,23 +251,19 @@ source: tests/golden/harness.rs
         ],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "forky",
           "image": "forky",
-          "flavour": null,
           "published": "forky",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
           "components": [
             {
               "path": "debian-family",
-              "flavour": null,
               "variant": null,
               "description": "apt, which every Debian-family build layer reaches for",
               "options": {},
@@ -275,7 +293,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/bootc-base",
-              "flavour": null,
               "variant": null,
               "description": "What a container base needs before it is a bootc image at all",
               "options": {},
@@ -306,7 +323,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/confined",
-              "flavour": null,
               "variant": null,
               "description": "Ships one AppArmor profile, which the parser has to accept",
               "options": {},
@@ -334,7 +350,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/menu",
-              "flavour": null,
               "variant": null,
               "description": "Collects the justfile fragments the rest of the image contributes",
               "options": {},
@@ -362,7 +377,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/shared",
-              "flavour": null,
               "variant": null,
               "description": "A component both the Debian and Ubuntu images enable",
               "options": {},
@@ -402,6 +416,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "forky",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -429,6 +470,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/forky/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "debian",
             "base": "docker.io/library/debian:forky",
             "args": [
@@ -438,19 +480,21 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=docker.io/library/debian:forky"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]
     },
     {
       "id": "ubuntu",
-      "file": "./ubuntu.image.kdl",
+      "file": "./components/ubuntu.kdl",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
-      "boot": "",
+      "uki": false,
       "allows": [],
       "layout": {
         "filesystem": "",
@@ -469,23 +513,19 @@ source: tests/golden/harness.rs
         "requires": [],
         "satisfies": []
       },
-      "flavours": [],
-      "default_flavour": null,
       "targets": [
         {
           "name": "ubuntu",
           "image": "ubuntu",
-          "flavour": null,
           "published": "ubuntu",
+          "reference": null,
           "conforms": "",
           "allows": [],
           "default": false,
           "pr": false,
-          "siblings": [],
           "components": [
             {
               "path": "debian-family",
-              "flavour": null,
               "variant": null,
               "description": "apt, which every Debian-family build layer reaches for",
               "options": {},
@@ -515,7 +555,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/menu",
-              "flavour": null,
               "variant": null,
               "description": "Collects the justfile fragments the rest of the image contributes",
               "options": {},
@@ -543,7 +582,6 @@ source: tests/golden/harness.rs
             },
             {
               "path": "core/shared",
-              "flavour": null,
               "variant": null,
               "description": "A component both the Debian and Ubuntu images enable",
               "options": {},
@@ -583,6 +621,33 @@ source: tests/golden/harness.rs
               },
               "satisfies": [],
               "refuses": []
+            },
+            {
+              "path": "ubuntu",
+              "variant": null,
+              "description": "",
+              "options": {},
+              "provides": [],
+              "requires": [],
+              "met_by": {},
+              "witnessed": [],
+              "removes": [],
+              "files": {},
+              "packages": [],
+              "groups": [],
+              "coprs": [],
+              "provenance": {
+                "defined": null,
+                "content": null,
+                "resolved": null,
+                "repo": false,
+                "imported": null
+              },
+              "origin": {
+                "how": "listed"
+              },
+              "satisfies": [],
+              "refuses": []
             }
           ],
           "suppressed": [],
@@ -610,6 +675,7 @@ source: tests/golden/harness.rs
           "build": {
             "containerfile": "generated/ubuntu/Containerfile",
             "uki": false,
+            "backend": "buildah",
             "family": "ubuntu",
             "base": "docker.io/library/ubuntu:26.04",
             "args": [
@@ -619,7 +685,9 @@ source: tests/golden/harness.rs
               "BASE_DECLARED=docker.io/library/ubuntu:26.04"
             ],
             "unresolved": [],
-            "validate": []
+            "validate": [
+              "BOOTC=false"
+            ]
           }
         }
       ]

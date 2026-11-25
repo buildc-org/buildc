@@ -327,10 +327,10 @@ usage: generated/scripts/vm.sh <command> <qcow2|raw> [options]
   An installer ISO is not a VM disk. Use `buildc media`.
 
   --image <ref>       container image to convert (default: localhost/ and
-                      the plan's ungated published name)
+                      the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      what a rebuild builds (default: the plan's ungated target)
+  --target <build>    the build a rebuild builds (default: the default build
+                      in repo.kdl)
   --rebuild           generate, then build the container image
                       first. The one form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -505,7 +505,7 @@ install_disk() {
     rm -rf "$layout"
     skopeo copy "containers-storage:${ref}" "oci:${layout}"
 
-    # bootc ignores the root SSH key option on a composefs disk, so the key travels as a systemd credential.
+    # bootc ignores the root SSH key option on a composefs disk. The key travels as a systemd credential instead.
     if [ -n "$ssh_key" ]; then
         [ -s "$ssh_key" ] || die "$ssh_key does not hold an SSH public key"
         key_args=(--karg "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$ssh_key")")
@@ -597,11 +597,10 @@ usage: generated/scripts/media.sh <build|run> [options]
   run       boot that ISO under qemu, building it if it is missing
 
   --image <ref>       container image the media installs (default: localhost/
-                      and the plan's ungated published name)
+                      and the default build's published name)
   --tag <tag>         its tag (default: $DEFAULT_TAG, else latest)
-  --target <image/flavour>
-                      the target the media installs (default: the plan's
-                      ungated target)
+  --target <build>    the build the media installs (default: the default
+                      build in repo.kdl)
   --rebuild           generate, then build the container image first. The one
                       form of this that changes the repository.
   --ram <size>        memory for the virtual machine (default: 8G)
@@ -917,14 +916,6 @@ RUN --mount=type=bind,from=ctx,source=/generated/enforced/components/one/hello,t
     --mount=type=tmpfs,target=/tmp \
     bash /generated/enforced/components/one/hello.sh
 
-# ---- core/consumer ----
-RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
-    --mount=type=bind,from=ctx,source=/generated/enforced/components/core/consumer.sh,target=/generated/enforced/components/core/consumer.sh \
-    --mount=type=cache,target=/var/cache \
-    --mount=type=cache,target=/var/log \
-    --mount=type=tmpfs,target=/tmp \
-    bash /generated/enforced/components/core/consumer.sh
-
 # ---- image version ----
 ARG IMAGE_VERSION=dev
 
@@ -1005,13 +996,6 @@ else
 fi
 
 source /ctx/components/one/hello/component.sh
-==== generated/enforced/components/core/consumer.sh
-#!/usr/bin/env bash
-# GENERATED FILE, do not edit.
-set -euxo pipefail
-
-COMPONENT_DIR=/ctx/components/core/consumer
-export COMPONENT_DIR
 ==== generated/enforced/finalize.sh
 #!/usr/bin/env bash
 # GENERATED FILE, do not edit.
@@ -1161,13 +1145,17 @@ GENERATED FILE, do not edit.
 An arrow points from a provider to what needs it, dotted for `after`,
 which orders the build without requiring anything. Layers build left to
 right.
+A thick arrow points from a component to what it lists or imports.
 
 ```mermaid
 graph LR
     base["quay.io/fedora/fedora-bootc:44"]
     m0["one/hello"]
     m1["core/consumer"]
+    m2["enforced"]
     m0 -->|"hello"| m1
+    m2 ==>|"lists"| m0
+    m2 ==>|"lists"| m1
 ```
 
 ## Capabilities
@@ -1177,6 +1165,13 @@ graph LR
 | `bootc` | capability | `base` |  |  |
 | `hello` | capability | `one/hello` | `core/consumer` |  |
 | `rechunking` | capability | `base` |  |  |
+
+## Imports
+
+| Component | By | How |
+|---|---|---|
+| `one/hello` | `enforced` | lists |
+| `core/consumer` | `enforced` | lists |
 ==== generated/enforced/graph.json
 {
   "image": "enforced",
@@ -1209,14 +1204,25 @@ graph LR
     }
   ],
   "overrides": [],
-  "imports": [],
+  "imports": [
+    {
+      "component": "one/hello",
+      "by": "enforced",
+      "how": "lists"
+    },
+    {
+      "component": "core/consumer",
+      "by": "enforced",
+      "how": "lists"
+    }
+  ],
   "suppressed": []
 }
 ==== generated/plan.json
 ==== generated/snapshot.json
 {
-  "root": "e7863bac5eee364db8ed65a6623615ed58101a9c4d2c5fc113fd76b0e92dd2a3",
-  "files": 28
+  "root": "6f0fe8c4a7ed439884a83d56f489a95b51a6796d4aa6ac491877ae692779cfe3",
+  "files": 27
 }
 ==== generated/enforced/components/one/hello/component.sh
 ==== generated/enforced/components/one/hello/repo.sh

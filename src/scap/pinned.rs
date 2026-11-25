@@ -81,7 +81,7 @@ pub(crate) fn dir(image: &Image) -> PathBuf {
 }
 
 pub(crate) fn fetch(image: &Image, root: &Path) -> Result<Option<Pinned>, String> {
-    if !image.declares_conforms() {
+    if image.conforms.is_empty() {
         return Ok(None);
     }
     let Some(base) = &image.base else {

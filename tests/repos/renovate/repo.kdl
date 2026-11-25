@@ -1,6 +1,14 @@
 schema-version 1
 name "Renovate"
 
+builds default="renovate" {
+    renovate {
+        install {
+            bootloader "grub2"
+        }
+    }
+}
+
 renovate rebaseWhen="never" prConcurrentLimit=2 {
     schedule "* 0-5 * * 1"
     packageRules {

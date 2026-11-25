@@ -1,8 +1,9 @@
 ---
-source: tests/golden.rs
+source: tests/golden/harness.rs
 ---
-1 component, the ungated set.
+2 components.
 
 | Component | Description | Options | Satisfies | Refuses |
 | --- | --- | --- | --- | --- |
 | `core/configurable` `variant=nonexistent` | Declares two options, and a variant that sets an undeclared one | `OPT_FONTS="JetBrainsMono"` `OPT_STARSHIP="1"` |  |  |
+| `broken-options` |  |  |  |  |

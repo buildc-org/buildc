@@ -1,6 +1,5 @@
 ---
 source: tests/golden/harness.rs
-assertion_line: 41
 ---
 ==== the registry
 upstream
@@ -16,69 +15,30 @@ upstream/fedora-family  dnf5 and its plugins, which every fedora build layer rea
 upstream/flatpak  Flatpak client and a daily update timer
 upstream/needs-family  A component that needs the family adapter under it (requires build-environment)
 upstream/signature-policy  Sigstore signature verification for the image's own updates
-==== import flatpak
+==== copy flatpak
 copied
-==== import browser
-`browser` names more than one component; name which one, as `community/browser`
-==== import upstream/browser
+==== copy browser
+`upstream` and `community` each hold `browser`; `--from <library>` names one
+==== copy upstream/browser
 copied
-==== import community/browser
-`browser` is already in this repository and differs from the library's; run `buildc import component` in a terminal to list the local `browser` or import the library's under another name
-==== import nosuch
-no component called `nosuch` in upstream, community
-==== import upstream/nosuch
-no component called `nosuch` in upstream
-==== import flatpak
-`flatpak` is already in this repository; run `buildc import component` in a terminal to list the local `flatpak` or import the library's under another name
+==== copy community/browser
+`components/browser` already exists, so `browser` is not copied
+==== copy nosuch
+no library holds `nosuch`; `buildc copy component <library>/<path>` names the library
+==== copy upstream/nosuch
+library `upstream` holds no component `nosuch`
+==== copy flatpak
+`components/flatpak` already exists, so `flatpak` is not copied
 ==== the tree
 components/.gitkeep
-components/base-image/fedora/manifest.kdl
 components/browser/manifest.kdl
-components/components.lock.kdl
-components/fedora-family/lib/family.sh
-components/fedora-family/manifest.kdl
 components/flatpak/files/usr/share/example/remotes.list
 components/flatpak/manifest.kdl
-==== the lock
-component "base-image/fedora" {
-    library "buildc"
-    path "base-image/fedora"
-    url "https://github.com/buildc-org/library"
-    content "2a4dfa8762a792bcddcb833f986dd701dccb4a0b50678d8a8561833e9f9bbf86"
-    track
-}
-
-component "browser" {
-    library "upstream"
-    path "browser"
-    content "9cd0b8e41aae776f69cb633ba00970d49cf4b37f3e1dd94af1dc210649515a41"
-    track
-}
-
-component "fedora-family" {
-    library "buildc"
-    path "fedora-family"
-    url "https://github.com/buildc-org/library"
-    content "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd"
-    track
-}
-
-component "flatpak" {
-    library "upstream"
-    path "flatpak"
-    content "3661e826e22fa5fc15a5bea24a0f191ad712f7b003c830670b7d94ee83b1c796"
-    track
+components/origins.kdl
+==== the origins
+origin "libraries/upstream" {
+    component "browser" hash="9cd0b8e41aae776f69cb633ba00970d49cf4b37f3e1dd94af1dc210649515a41"
+    component "flatpak" hash="3661e826e22fa5fc15a5bea24a0f191ad712f7b003c830670b7d94ee83b1c796"
 }
 ==== check
 ==== check after an edit
-  x `components/flatpak` tracks its library, and its content no longer matches
-  | its lock entry
-    ,-[target/tmp/copy/components/components.lock.kdl:24:1]
- 23 | 
- 24 | component "flatpak" {
-    : ^^^^|^^^^
-    :     `-- this entry
- 25 |     library "upstream"
-    `----
-  help: undo the edit to `components/flatpak`, or run `buildc detach component
-        flatpak` to make the copy the repository's own

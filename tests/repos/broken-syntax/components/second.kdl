@@ -1,0 +1,7 @@
+schema-version 1
+
+component "/" {
+    palette {
+        accent "red"
+    }
+}

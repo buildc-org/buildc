@@ -25,6 +25,21 @@ fn declared(
     prompt: &Prompt,
 ) -> Result<Declared, Error> {
     let mut disk = Disk::scan(root);
+    // The disk scan misses the keys of a component that a build reads from another library.
+    let mut list = crate::load(root).list;
+    for component in list
+        .images
+        .iter_mut()
+        .flat_map(|image| image.entries.iter_mut())
+        .filter_map(|entry| entry.component.as_mut())
+    {
+        for key in std::mem::take(&mut component.keys) {
+            let declaring = disk.keys.entry(key.kind.clone()).or_default();
+            if !declaring.iter().any(|(path, _)| *path == component.path) {
+                declaring.push((component.path.clone(), key));
+            }
+        }
+    }
     let kind = match kind {
         Some(kind) => kind,
         None => which(command, &disk, prompt)?,
@@ -311,17 +326,23 @@ fn refused(kind: &str, (component, refusals): &(String, String)) -> String {
 
 fn absent(root: &Path, kind: &str, disk: &Disk) -> String {
     let (list, ..) = crate::declarations(root);
-    let index = crate::provider::Index::scan(root, &list.sources, disk, true);
-    let found: Vec<String> = index
-        .declaring_key(kind)
+    let index = crate::provider::Index::scan(root, &list.libraries, disk, true);
+    let declaring = index.declaring_key(kind);
+    let found: Vec<String> = declaring
         .iter()
         .map(|component| component.qualified())
         .collect();
-    match found.first() {
+    match declaring.first() {
         Some(first) => format!(
-            "The {} component must be imported before creating {kind} keys.\n\
-             You can add it with `buildc import component {first}`",
-            found.join(" or ")
+            "The {} component must be added before creating {kind} keys.\n\
+             You can add it with `buildc add component {}{}`",
+            found.join(" or "),
+            first.name,
+            first
+                .owner
+                .as_ref()
+                .map(|owner| format!(" --library {owner}"))
+                .unwrap_or_default()
         ),
         None => match index.unsearched() {
             said if said.is_empty() => undeclared(kind, disk),
@@ -339,12 +360,12 @@ fn undeclared(kind: &str, disk: &Disk) -> String {
         true => format!(
             "no component in this repository declares {noun}.\n\n\
              Keys come from components: image signing from a component carrying the cosign public \
-             key, Secure Boot from a kernel module carrying a MOK certificate. Import one and \
+             key, Secure Boot from a kernel module carrying a MOK certificate. Add one and \
              run this again."
         ),
         false => format!(
             "no component in this repository declares {noun}.\n\n\
-             The keys declared here are {}. Import a component carrying one and run this again.",
+             The keys declared here are {}. Add a component carrying one and run this again.",
             listed(disk)
         ),
     }
@@ -484,8 +505,8 @@ fn unwritten(path: &Path) -> Result<(), String> {
     }
 }
 
+// A generated private key sits in the shared temporary directory. The workspace is readable by its owner alone.
 fn workspace(what: &str) -> Result<PathBuf, String> {
-    // The generated private key sits in a shared temporary directory, so the workspace is readable by its owner alone.
     let dir = std::env::temp_dir().join(format!("buildc-{what}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
@@ -794,9 +815,46 @@ key "keylime-ca" {
         assert_eq!(
             message.message(),
             "no component in this repository declares a cosign key.\n\n\
-             The keys declared here are secureboot. Import a component carrying one and run this again."
+             The keys declared here are secureboot. Add a component carrying one and run this again."
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_key_of_a_component_a_build_reads_from_a_library_is_declared() {
+        let root = std::env::temp_dir().join(format!("buildc-key-library-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let files = [
+            (
+                "repo.kdl",
+                "schema-version 1\n\nlibraries default=\"me\" {\n    local {\n        me { source \".\" }\n        shelf { source \"shelf\" }\n    }\n}\n\nbuilds {\n    ws\n}\n",
+            ),
+            (
+                "components/ws.kdl",
+                "schema-version 1\nbase \"quay.io/fedora/fedora-bootc:44\"\n\ncomponent \"/\" {\n    signing\n}\n",
+            ),
+            (
+                "shelf/signing/manifest.kdl",
+                "schema-version 1\n\nkey \"cosign\" {\n    generator \"cosign\"\n    public \"/etc/pki/containers/cosign.pub\"\n    private \"cosign.key\"\n}\n",
+            ),
+        ];
+        for (path, text) in files {
+            crate::init::put(&root.join(path), text).unwrap();
+        }
+        let found = declared(
+            "create key",
+            &root,
+            Some("cosign".into()),
+            None,
+            &Prompt::silent(),
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            found
+                .map(|key| key.public)
+                .map_err(|err| err.message().to_string()),
+            Ok("/etc/pki/containers/cosign.pub".to_string())
+        );
     }
 
     #[test]

@@ -1,0 +1,14 @@
+schema-version 1
+
+component "/" {
+    base-image {
+        pinned-base digest="sha256:0000000000000000000000000000000000000000000000000000000000000000" signed=#false
+    }
+
+    core {
+        needs
+        needs-build-tool
+        needs-dnf5
+        tools
+    }
+}

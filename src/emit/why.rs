@@ -54,6 +54,7 @@ pub struct Why {
     pub imported_by: Vec<Imported>,
     pub provides: Vec<(String, Vec<String>)>,
     pub requires: Vec<(String, Option<String>)>,
+    pub prefers: Vec<(String, String)>,
     pub packages: Vec<(String, Vec<String>, Option<String>)>,
     pub groups: Vec<(String, Vec<String>, Option<String>)>,
     pub coprs: Vec<(String, String)>,
@@ -70,6 +71,87 @@ pub struct Why {
     pub source: Option<(String, String)>,
     pub library: Option<String>,
     pub settings: Vec<Set>,
+    pub variants: Vec<VariantSet>,
+    pub image_fields: Vec<ImageFields>,
+}
+
+pub struct VariantSet {
+    pub image: String,
+    pub name: String,
+    pub default: bool,
+}
+
+pub struct ImageFields {
+    pub image: String,
+    pub fields: Vec<ImageField>,
+}
+
+pub struct ImageField {
+    pub name: &'static str,
+    pub component: Option<String>,
+    pub value: String,
+}
+
+fn image_fields(image: &Image) -> ImageFields {
+    ImageFields {
+        image: image.id.clone(),
+        fields: field_values(|name| match name {
+            "description" => image.description.clone(),
+            "keywords" => image.keywords.join(", "),
+            "logo-url" => image.logo_url.clone(),
+            "conforms" => image.conforms.clone(),
+            _ => String::new(),
+        })
+        .into_iter()
+        .map(|(name, value)| ImageField {
+            name,
+            component: image.source_of(name).map(str::to_string),
+            value,
+        })
+        .collect(),
+    }
+}
+
+fn manifest_fields(image: &Json) -> ImageFields {
+    let sources: Vec<(String, String)> = items(image, "fields")
+        .iter()
+        .filter_map(|one| Some((text(one, "field")?, text(one, "component")?)))
+        .collect();
+    ImageFields {
+        image: text(image, "id").unwrap_or_default(),
+        fields: field_values(|name| match name {
+            "description" => text(image, "description").unwrap_or_default(),
+            "keywords" => strings(image, "keywords").join(", "),
+            "logo-url" => text(image, "logo_url").unwrap_or_default(),
+            "conforms" => text(image, "conforms").unwrap_or_default(),
+            _ => String::new(),
+        })
+        .into_iter()
+        .map(|(name, value)| ImageField {
+            name,
+            component: sources
+                .iter()
+                .find(|(field, _)| field == name)
+                .map(|(_, component)| component.clone()),
+            value,
+        })
+        .collect(),
+    }
+}
+
+fn field_values(value: impl Fn(&str) -> String) -> Vec<(&'static str, String)> {
+    crate::model::image::FIELDS
+        .iter()
+        .map(|name| (*name, value(name)))
+        .collect()
+}
+
+fn field_label(name: &str) -> String {
+    match name {
+        "keywords" => "oci-labels { keywords }".to_string(),
+        "logo-url" => "oci-labels { logo-url }".to_string(),
+        other => other.to_string(),
+    }
 }
 
 pub struct Set {
@@ -154,6 +236,22 @@ pub fn of(list: &List, path: &str) -> Option<Why> {
             }
             listed = true;
             let built = image.id.clone();
+            if let Some(component) = &entry.component {
+                if let Some(variant) = &component.variant {
+                    let set = VariantSet {
+                        image: built.clone(),
+                        name: variant.clone(),
+                        default: component.variant_default,
+                    };
+                    if !why
+                        .variants
+                        .iter()
+                        .any(|held| held.image == set.image && held.name == set.name)
+                    {
+                        why.variants.push(set);
+                    }
+                }
+            }
             for change in entry
                 .component
                 .iter()
@@ -171,6 +269,9 @@ pub fn of(list: &List, path: &str) -> Option<Why> {
                 });
             }
             why.images.push(built);
+        }
+        if image.component == path {
+            why.image_fields.push(image_fields(image));
         }
         let suppressed = image.suppressed.iter().any(|entry| entry.path == path);
         if suppressed {
@@ -231,6 +332,9 @@ pub fn of(list: &List, path: &str) -> Option<Why> {
                     .then(|| "base".to_string())
             });
         why.requires.push((decl.name.clone(), from));
+        if let Some(prefer) = &decl.prefer {
+            why.prefers.push((decl.name.clone(), prefer.clone()));
+        }
     }
 
     Some(why)
@@ -305,6 +409,51 @@ impl Why {
                 .iter()
                 .map(|imported| Part::Text(imported.sentence())),
         );
+        if !self.variants.is_empty() {
+            out.push(Part::Heading("Which variant it builds".into()));
+            for variant in &self.variants {
+                let default = match variant.default {
+                    true => ", the default",
+                    false => "",
+                };
+                out.push(Part::Text(format!(
+                    "`{}` builds variant `{}`{default}.",
+                    variant.image, variant.name
+                )));
+            }
+        }
+        if !self.image_fields.is_empty() {
+            out.push(Part::Heading("The image it builds".into()));
+            for set in &self.image_fields {
+                out.push(Part::Table(Table {
+                    title: match self.image_fields.len() {
+                        1 => String::new(),
+                        _ => set.image.clone(),
+                    },
+                    header: &["Field", "Set by", "Value"],
+                    rows: set
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            (
+                                vec![
+                                    format!("`{}`", field_label(field.name)),
+                                    match &field.component {
+                                        Some(component) => format!("`{component}`"),
+                                        None => "no component".to_string(),
+                                    },
+                                    match field.value.is_empty() {
+                                        true => "not set".to_string(),
+                                        false => field.value.clone(),
+                                    },
+                                ],
+                                false,
+                            )
+                        })
+                        .collect(),
+                }));
+            }
+        }
         if !self.settings.is_empty() {
             out.push(Part::Heading("How its options are set".into()));
             out.push(Part::Table(Table {
@@ -379,6 +528,19 @@ impl Why {
                 header: &["Direction", "What", "With"],
                 rows,
             })),
+        }
+
+        if !self.prefers.is_empty() {
+            out.push(Part::Heading("What it prefers".into()));
+            out.push(Part::Table(Table {
+                title: String::new(),
+                header: &["Capability", "Component"],
+                rows: self
+                    .prefers
+                    .iter()
+                    .map(|(name, prefer)| (vec![format!("`{name}`"), format!("`{prefer}`")], false))
+                    .collect(),
+            }));
         }
 
         if !self.packages.is_empty() || !self.groups.is_empty() {
@@ -560,6 +722,9 @@ impl Why {
                     let _ = writeln!(out, "{text}\n");
                 }
                 Part::Table(table) => {
+                    if !table.title.is_empty() {
+                        let _ = writeln!(out, "**{}**\n", table.title);
+                    }
                     let _ = writeln!(out, "| {} |", table.header.join(" | "));
                     let _ = writeln!(out, "| {} |", vec!["---"; table.header.len()].join(" | "));
                     for (cells, _) in &table.rows {
@@ -605,6 +770,15 @@ impl Why {
                     ])
                 })),
             ),
+            (
+                "prefers",
+                Json::array(self.prefers.iter().map(|(name, prefer)| {
+                    Json::object([
+                        ("capability", Json::string(name)),
+                        ("component", Json::string(prefer)),
+                    ])
+                })),
+            ),
             ("packages", batches(&self.packages)),
             ("groups", batches(&self.groups)),
             (
@@ -625,6 +799,39 @@ impl Why {
             ("content", Json::optional(self.content.clone())),
             ("built", Json::optional(self.built.clone())),
             ("library", Json::optional(self.library.clone())),
+            (
+                "variants",
+                Json::array(self.variants.iter().map(|variant| {
+                    Json::object([
+                        ("image", Json::string(&variant.image)),
+                        ("name", Json::string(&variant.name)),
+                        ("default", Json::Bool(variant.default)),
+                    ])
+                })),
+            ),
+            (
+                "image_fields",
+                Json::array(self.image_fields.iter().map(|set| {
+                    Json::object([
+                        ("image", Json::string(&set.image)),
+                        (
+                            "fields",
+                            Json::array(set.fields.iter().map(|field| {
+                                Json::object([
+                                    ("field", Json::string(field.name)),
+                                    ("component", Json::optional(field.component.clone())),
+                                    (
+                                        "value",
+                                        Json::optional(
+                                            (!field.value.is_empty()).then(|| field.value.clone()),
+                                        ),
+                                    ),
+                                ])
+                            })),
+                        ),
+                    ])
+                })),
+            ),
             (
                 "settings",
                 Json::array(self.settings.iter().map(|set| {
@@ -777,6 +984,14 @@ pub fn on_host(manifest: &Json, record: Option<&Json>, path: &str) -> Option<Why
             continue;
         };
         found = true;
+        if let Some(image) = image_of(manifest, target) {
+            let built = text(image, "id").unwrap_or_default();
+            if text(image, "component").as_deref() == Some(path)
+                && !why.image_fields.iter().any(|held| held.image == built)
+            {
+                why.image_fields.push(manifest_fields(image));
+            }
+        }
         if let Some(name) = text(target, "published").or_else(|| text(target, "name")) {
             let origin = field(component, "origin");
             if let Some(by) = origin.and_then(|origin| text(origin, "by")) {

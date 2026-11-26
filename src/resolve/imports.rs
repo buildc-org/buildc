@@ -18,9 +18,14 @@ struct Wanted {
     span: Span,
     organises: bool,
     rooted: bool,
+    root_file: bool,
     inline: Option<Vec<Span>>,
     digest: Option<(String, Span)>,
     signed: Option<(bool, Span)>,
+    key: Option<(String, Span)>,
+    key_sha256: Option<(String, Span)>,
+    identity: Option<(String, Span)>,
+    issuer: Option<(String, Span)>,
 }
 
 struct Importer {
@@ -54,40 +59,129 @@ pub fn place(image: &mut Image, own: &Component, libraries: &Libraries) {
     }
 }
 
+pub fn find_bases(
+    image: &Image,
+    own: &Entry,
+    component: &Component,
+    libraries: &Libraries,
+    load: &mut impl FnMut(&Entry, &Image, &mut Issues) -> Option<Component>,
+    issues: &mut Issues,
+) -> Vec<Entry> {
+    let mut found = Vec::new();
+    let mut seen = vec![own.path.clone()];
+    walk_bases(
+        image, own, component, libraries, load, &mut seen, &mut found, issues,
+    );
+    found
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one base walk threads its importer, cache and result through each child"
+)]
+fn walk_bases(
+    image: &Image,
+    entry: &Entry,
+    component: &Component,
+    libraries: &Libraries,
+    load: &mut impl FnMut(&Entry, &Image, &mut Issues) -> Option<Component>,
+    seen: &mut Vec<String>,
+    found: &mut Vec<Entry>,
+    issues: &mut Issues,
+) {
+    let mut importer = Importer::of(entry, component);
+    for want in std::mem::take(&mut importer.wanted) {
+        let Ok(Some(mut child)) = listing(want, &importer, false, libraries) else {
+            continue;
+        };
+        if seen.contains(&child.path) {
+            continue;
+        }
+        seen.push(child.path.clone());
+        if let Err(why) = libraries.revise(&mut child, &image.id) {
+            issues.push(
+                Issue::new(why, &importer.src)
+                    .at(child.span, "the base")
+                    .help("the build reads a remote component at one commit"),
+            );
+            continue;
+        }
+        // The walk uses the loaded component only to find the next `base`. The image loads it again and reports its issues there.
+        let Some(child_component) = load(&child, image, &mut Issues::default()) else {
+            continue;
+        };
+        if child_component.base.is_some() {
+            found.push(child);
+            continue;
+        }
+        walk_bases(
+            image,
+            &child,
+            &child_component,
+            libraries,
+            load,
+            seen,
+            found,
+            issues,
+        );
+    }
+}
+
 fn listing(
     want: Wanted,
     importer: &Importer,
     by_build: bool,
     libraries: &Libraries,
 ) -> Result<Option<Entry>, Issue> {
-    let resolved = match &want.inline {
-        Some(_) => Ok(importer.held.clone()),
-        None => libraries.resolve(
+    let mut home = None;
+    let held = match &want.inline {
+        Some(_) => importer.held.clone(),
+        None if want.root_file => match libraries.root_file(&want.path) {
+            Some(at) => {
+                home = Some(at);
+                None
+            }
+            None if want.organises => return Ok(None),
+            None => {
+                return Err(Issue::new(
+                    format!(
+                        "`{}` names `{}`, which is no component at the repository root",
+                        importer.by, want.path
+                    ),
+                    &importer.src,
+                )
+                .at(want.span, "not a component there")
+                .help(
+                    "a `component` path in a file outside every library reads the repository \
+                     root, as `component \"./<name>\"`",
+                ))
+            }
+        },
+        None => match libraries.resolve(
             &want.path,
             want.library.as_deref(),
             want.rooted,
             importer.library.as_deref(),
-        ),
-    };
-    let held = match resolved {
-        Ok(held) => held,
-        // Only an absent path lets an organising segment through.
-        // Two holders and an undeclared `library=` stay refusals because a child's own `library=` never settles them.
-        Err(Unresolved::Absent { .. }) if want.organises => return Ok(None),
-        // An unwritten path that the build lists falls back to the local library so that the load can name what the directory lacks.
-        Err(Unresolved::Absent {
-            library: None,
-            unread,
-        }) if by_build && unread.is_empty() && libraries.reads_own() => None,
-        Err(why) => {
-            return Err(unresolved(
-                &importer.by,
-                &want.path,
-                why,
-                &importer.src,
-                want.span,
-            ))
-        }
+        ) {
+            Ok(held) => held,
+            // Only an absent path lets an organising segment through.
+            // Two holders and an undeclared `library=` stay refusals because a child's own `library=` never settles them.
+            Err(Unresolved::Absent { .. }) if want.organises => return Ok(None),
+            // An unwritten path that the build lists falls back to the local library so that the load can name what the directory lacks.
+            Err(Unresolved::Absent {
+                library: None,
+                unread,
+            }) if by_build && unread.is_empty() && libraries.reads_own() => None,
+            Err(why) => {
+                return Err(unresolved(
+                    &importer.by,
+                    &want.path,
+                    why,
+                    &importer.src,
+                    want.span,
+                ))
+            }
+        },
     };
     let by = (!by_build).then(|| importer.by.clone());
     let setter = Setter {
@@ -104,6 +198,10 @@ fn listing(
         pin: want.pin,
         digest: want.digest,
         signed: want.signed,
+        key: want.key,
+        key_sha256: want.key_sha256,
+        identity: want.identity,
+        issuer: want.issuer,
         options: vec![setter.layer()],
         setters: vec![setter],
         span: match by_build {
@@ -116,6 +214,7 @@ fn listing(
             spans,
         }),
         held,
+        home,
         ..Entry::default()
     }))
 }
@@ -209,9 +308,14 @@ fn wanted(component: &[Import]) -> Vec<Wanted> {
             span: import.span,
             organises: import.organises,
             rooted: import.rooted,
+            root_file: import.root_file,
             inline: import.inline.clone(),
             digest: import.digest.clone(),
             signed: import.signed,
+            key: import.key.clone(),
+            key_sha256: import.key_sha256.clone(),
+            identity: import.identity.clone(),
+            issuer: import.issuer.clone(),
         })
         .collect()
 }
@@ -220,6 +324,7 @@ fn wanted(component: &[Import]) -> Vec<Wanted> {
 struct Merged {
     path: String,
     variant: Option<String>,
+    variant_at: Option<usize>,
     pin: Option<String>,
     options: Vec<Layer>,
 }
@@ -327,6 +432,55 @@ fn pass_once(
     found
 }
 
+pub fn inherit(image: &mut Image) {
+    let mut by = image
+        .base_entry
+        .as_ref()
+        .and_then(|held| held.entry.imported_by.clone());
+    let mut chain = Vec::new();
+    while let Some(current) = by {
+        chain.push(current.clone());
+        by = image
+            .entries
+            .iter()
+            .find(|entry| entry.path == current)
+            .and_then(|entry| entry.imported_by.clone());
+    }
+    // The chain runs from the base outward. The reverse of that order lets the component nearest the build fill a field first.
+    for path in chain.iter().rev() {
+        let Some(component) = image
+            .entries
+            .iter()
+            .find(|entry| &entry.path == path)
+            .and_then(|entry| entry.component.as_ref())
+        else {
+            continue;
+        };
+        let description = component.description.clone();
+        let keywords = component.keywords.clone();
+        let logo_url = component.logo_url.clone();
+        let conforms = component.conforms.clone();
+        let allows = component.allows.clone();
+        if image.description.is_empty() && !description.is_empty() {
+            image.description = description;
+            image.field_source("description", path);
+        }
+        if image.keywords.is_empty() && !keywords.is_empty() {
+            image.keywords = keywords;
+            image.field_source("keywords", path);
+        }
+        if image.logo_url.is_empty() && !logo_url.is_empty() {
+            image.logo_url = logo_url;
+            image.field_source("logo-url", path);
+        }
+        if image.conforms.is_empty() && !conforms.is_empty() {
+            image.conforms = conforms;
+            image.field_source("conforms", path);
+            image.allows = allows;
+        }
+    }
+}
+
 fn revise(entry: &mut Entry, libraries: &Libraries, image: &Image, issues: &mut Issues) {
     if let Err(why) = libraries.revise(entry, &image.id) {
         issues.push(
@@ -340,10 +494,12 @@ fn revise(entry: &mut Entry, libraries: &Libraries, image: &Image, issues: &mut 
 fn settle(entry: &mut Entry, seeded: &[Merged]) {
     if let Some(merged) = seeded.iter().find(|merged| merged.path == entry.path) {
         entry.variant.clone_from(&merged.variant);
+        entry.variant_at = merged.variant_at;
         entry.pin.clone_from(&merged.pin);
         entry.options.clone_from(&merged.options);
     } else if let Some(setter) = entry.setters.first() {
         entry.variant.clone_from(&setter.variant);
+        entry.variant_at = setter.variant.is_some().then_some(0);
         entry.pin.clone_from(&setter.pin);
         entry.options = vec![setter.layer()];
     }
@@ -381,9 +537,13 @@ fn bring(
         }
     }
     let base = image.base.as_ref().map(|base| base.path.clone());
+    let holds_base = image
+        .base_entry
+        .as_ref()
+        .is_some_and(|held| held.entry.imported_by.as_deref() == Some(by.as_str()));
     for want in wanted {
         if base.as_deref() == Some(want.path.as_str()) {
-            if !by_build {
+            if !by_build && !holds_base {
                 found.push(
                     Issue::new(format!("`{by}` lists the base `{}`", want.path), &src)
                         .at(want.span, "only the build's component lists the base")
@@ -425,6 +585,13 @@ fn bring(
                 continue;
             }
         };
+        if image
+            .base_entry
+            .as_ref()
+            .is_some_and(|held| held.entry.path == entry.path)
+        {
+            continue;
+        }
         let from = entry.library();
         match image
             .entries
@@ -552,6 +719,11 @@ fn merge(image: &Image) -> (Vec<Merged>, Vec<Issue>) {
         merged.push(Merged {
             path: entry.path.clone(),
             variant: variants.last().and_then(|s| s.variant.clone()),
+            variant_at: variants.last().and_then(|chosen| {
+                ordered
+                    .iter()
+                    .position(|setter| std::ptr::eq(*setter, *chosen))
+            }),
             pin: pins.last().and_then(|s| s.pin.clone()),
             options: layers(&ordered, near),
         });

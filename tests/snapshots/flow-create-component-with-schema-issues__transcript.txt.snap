@@ -7,6 +7,6 @@ Buildc v{version}
 example/
 ├── components/
 │   └── local-tool/
-│       └── + manifest.kdl
+│       └── + component.kdl
 └── ~ example.kdl  local-tool added to components
 ==== exit 0

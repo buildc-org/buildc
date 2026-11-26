@@ -304,6 +304,14 @@ fn record_layer(audit_enforce: bool, bootc: bool, early: bool, measure: &str) ->
         "COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json\n\n\
          ARG BASE\n\
          ARG BASE_DECLARED=\"\"\n\
+         ARG BASE_SIGNED=\"\"\n\
+         ARG BASE_ATTESTATION_PREDICATE=\"\"\n\
+         ARG BASE_ATTESTATION_SUBJECT=\"\"\n\
+         ARG BASE_ATTESTATION_SHA256=\"\"\n\
+         ARG BASE_ATTESTATION_PAYLOAD_SHA256=\"\"\n\
+         ARG BASE_SBOM_PACKAGES=\"\"\n\
+         ARG BASE_VERIFIED_SIGNATURE=\"\"\n\
+         ARG BASE_VERIFIED_ATTESTATION=\"\"\n\
          ARG TARGET=\"\"\n\
          ARG SOURCE_COMMIT=\"\"\n\
          ARG BUILD_BACKEND=\"\"\n\
@@ -322,6 +330,14 @@ fn record_layer(audit_enforce: bool, bootc: bool, early: bool, measure: &str) ->
         out,
         "RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \\\n    \
          BASE=\"${{BASE}}\" BASE_DECLARED=\"${{BASE_DECLARED}}\" TARGET=\"${{TARGET}}\" \\\n    \
+         BASE_SIGNED=\"${{BASE_SIGNED}}\" \\\n    \
+         BASE_ATTESTATION_PREDICATE=\"${{BASE_ATTESTATION_PREDICATE}}\" \\\n    \
+         BASE_ATTESTATION_SUBJECT=\"${{BASE_ATTESTATION_SUBJECT}}\" \\\n    \
+         BASE_ATTESTATION_SHA256=\"${{BASE_ATTESTATION_SHA256}}\" \\\n    \
+         BASE_ATTESTATION_PAYLOAD_SHA256=\"${{BASE_ATTESTATION_PAYLOAD_SHA256}}\" \\\n    \
+         BASE_SBOM_PACKAGES=\"${{BASE_SBOM_PACKAGES}}\" \\\n    \
+         BASE_VERIFIED_SIGNATURE=\"${{BASE_VERIFIED_SIGNATURE}}\" \\\n    \
+         BASE_VERIFIED_ATTESTATION=\"${{BASE_VERIFIED_ATTESTATION}}\" \\\n    \
          SOURCE_COMMIT=\"${{SOURCE_COMMIT}}\" BUILD_BACKEND=\"${{BUILD_BACKEND}}\" \\\n    \
          COMPONENT_HASHES=\"${{COMPONENT_HASHES}}\" \\\n    \
          ASSET_RESOLUTIONS=\"${{ASSET_RESOLUTIONS}}\" BUILDC_VERSION=\"${{BUILDC_VERSION}}\" "

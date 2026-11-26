@@ -1306,7 +1306,7 @@ mod tests {
         );
         let base = |content: &str| {
             crate::init::put(
-                &root.join("components/base-image/centos/manifest.kdl"),
+                &root.join("components/base-image/centos/component.kdl"),
                 &format!(
                     "schema-version 1\n\nbase \"quay.io/centos-bootc/centos-bootc:stream10\" {{\n    family \"rhel\"\n    {content}\n}}\n"
                 ),

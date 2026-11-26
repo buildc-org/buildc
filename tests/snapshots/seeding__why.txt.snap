@@ -10,10 +10,15 @@ A component imported from the collection this repository publishes
 
 example
 
+## Which variant it builds
+
+`example` builds variant `beta`.
+
 ## How its options are set
 
 | Build | Option | Set by | Value |
 | --- | --- | --- | --- |
+| `example` | `remotes` | `beta` | sets "flathub", "flathub-beta" |
 | `example` | `system-wide` | `example` | sets #false |
 
 ## What it exchanges
@@ -36,11 +41,11 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be` |
+| declared | `2efca4872970d31a041abc336fff41cbd1d1249ba7846cc64d64df7a0d6a90bf` |
 
 It is the repository's own copy of `flatpak` from `https://github.com/buildc-org/modules` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was copied.**
+Its content still matches what was copied.
 
 ## What it pulls in
 
@@ -66,6 +71,7 @@ None. It declares no `copr` and ships no `repo.sh` file.
     }
   ],
   "requires": [],
+  "prefers": [],
   "packages": [
     {
       "family": "fedora",
@@ -78,10 +84,28 @@ None. It declares no `copr` and ships no `repo.sh` file.
   "groups": [],
   "coprs": [],
   "satisfies": [],
-  "content": "deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be",
+  "content": "2efca4872970d31a041abc336fff41cbd1d1249ba7846cc64d64df7a0d6a90bf",
   "built": null,
   "library": null,
+  "variants": [
+    {
+      "image": "example",
+      "name": "beta",
+      "default": false
+    }
+  ],
+  "image_fields": [],
   "settings": [
+    {
+      "image": "example",
+      "option": "remotes",
+      "by": "beta",
+      "verb": "sets",
+      "values": [
+        "\"flathub\"",
+        "\"flathub-beta\""
+      ]
+    },
     {
       "image": "example",
       "option": "system-wide",
@@ -97,7 +121,7 @@ None. It declares no `copr` and ships no `repo.sh` file.
     "path": "flatpak",
     "pin": "0123456789abcdef0123456789abcdef01234567"
   },
-  "modified": true,
+  "modified": false,
   "fetches": [],
   "repo": null
 }
@@ -134,11 +158,11 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be` |
+| declared | `2efca4872970d31a041abc336fff41cbd1d1249ba7846cc64d64df7a0d6a90bf` |
 
 It is the repository's own copy of `flatpak` from `https://github.com/buildc-org/modules` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was copied.**
+Its content still matches what was copied.
 
 ## What it pulls in
 
@@ -155,11 +179,11 @@ example, fedora-family, flatpak, hello
 
 | Content | Hash |
 | --- | --- |
-| declared | `deb16d7bc597e50fb1c20f6f0fbd4d550031efaaf306125a53679675367c12be` |
+| declared | `2efca4872970d31a041abc336fff41cbd1d1249ba7846cc64d64df7a0d6a90bf` |
 | observed by the build | `not what was declared` |
 
 **The two documents disagree**, which they cannot if both came from this build.
 
 It is the repository's own copy of `flatpak` from `https://github.com/buildc-org/modules` at `0123456789abcdef0123456789abcdef01234567`.
 
-**It has been edited since it was copied.**
+Its content still matches what was copied.

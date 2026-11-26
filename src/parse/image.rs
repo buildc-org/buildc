@@ -333,6 +333,7 @@ impl Image {
             suppressed: Vec::new(),
             outside,
             span: Span::default(),
+            fields: Vec::new(),
         };
         image.check_id(issues);
         image
@@ -504,7 +505,7 @@ mod tests {
             let dir = root.join("components").join(dir);
             std::fs::create_dir_all(&dir).expect("the temporary directory is writable");
             std::fs::write(
-                dir.join("manifest.kdl"),
+                dir.join("component.kdl"),
                 format!("schema-version 1\n{manifest}"),
             )
             .expect("the temporary directory is writable");
@@ -840,6 +841,83 @@ mod tests {
         );
         holds(&found, "`signed` on `x` has the wrong value");
         holds(&found, "`digest` is declared twice");
+    }
+
+    #[test]
+    fn a_base_segment_records_one_verifier_and_defaults_its_issuer() {
+        let root = repository(
+            "verify",
+            "component \"/\" { x signed=#true identity=\"https://github.com/owner/repo/.github/workflows/image-build.yml@refs/heads/main\" }\n",
+            &[("x", "base \"x\" { family \"fedora\"; }\n")],
+        );
+        let loaded = crate::load(&root);
+        let found = loaded.issues.findings();
+        let verify = loaded
+            .list
+            .images
+            .first()
+            .and_then(|image| image.base.as_ref())
+            .and_then(|base| base.verify.as_ref());
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(found.is_empty(), "{found:?}");
+        let verify = verify.expect("the base records its verifier");
+        assert_eq!(
+            verify.identity.as_deref(),
+            Some("https://github.com/owner/repo/.github/workflows/image-build.yml@refs/heads/main")
+        );
+        assert_eq!(
+            verify.issuer.as_deref(),
+            Some(crate::model::component::GITHUB_OIDC_ISSUER)
+        );
+        assert_eq!(verify.key, None);
+    }
+
+    #[test]
+    fn a_base_that_names_two_trust_roots_is_refused() {
+        let found = semantic_messages(
+            "component \"/\" { x signed=#true key=\"keys/cosign.pub\" identity=\"me@example.org\" }\n",
+        );
+        holds(&found, "the base names a `key=` and an `identity=`");
+    }
+
+    #[test]
+    fn a_key_hash_without_a_key_is_refused() {
+        let found = semantic_messages(
+            "component \"/\" { x key-sha256=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"; }\n",
+        );
+        holds(&found, "`key-sha256=` pins a key with no `key=`");
+    }
+
+    #[test]
+    fn a_verifier_without_a_signed_base_is_refused() {
+        let found = semantic_messages("component \"/\" { x key=\"keys/cosign.pub\" }\n");
+        holds(
+            &found,
+            "a verifier names a base that is not declared signed",
+        );
+    }
+
+    #[test]
+    fn an_issuer_without_an_identity_is_refused() {
+        let found = semantic_messages(
+            "component \"/\" { x signed=#true issuer=\"https://issuer.example\" }\n",
+        );
+        holds(&found, "`issuer=` names an issuer with no `identity=`");
+    }
+
+    #[test]
+    fn a_verifier_on_a_component_below_the_base_is_refused() {
+        let found = semantic_messages(
+            "component \"/\" { x\n tools key=\"keys/cosign.pub\" signed=#true }\n",
+        );
+        holds(&found, "`tools` is not the base, so it takes no `key=`");
+    }
+
+    #[test]
+    fn a_key_path_that_leaves_the_repository_is_refused() {
+        let found =
+            semantic_messages("component \"/\" { x signed=#true key=\"/etc/cosign.pub\" }\n");
+        holds(&found, "`key` on `x` has the wrong value");
     }
 
     #[test]

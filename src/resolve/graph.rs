@@ -363,6 +363,73 @@ fn check_base_requires(image: &Image, index: &Index, issues: &mut Issues) {
 fn check_requires(image: &Image, index: &Index, issues: &mut Issues) {
     for component in image.components() {
         for decl in &component.requires {
+            if let Some(prefer) = &decl.prefer {
+                let held = index.matching(prefer);
+                match held.as_slice() {
+                    [] => issues.push(
+                        Issue::new(
+                            format!(
+                                "`{}` prefers `{prefer}` for `{}`, which no declared library that buildc read holds",
+                                component.path, decl.name
+                            ),
+                            &component.src,
+                        )
+                        .at(decl.span, "not held")
+                        .help(match index.unsearched() {
+                            why if why.is_empty() => "a preference names a component path with an optional library prefix; `buildc add component` lists what the libraries hold".to_string(),
+                            why => format!("{why}; a preference names a component path with an optional library prefix"),
+                        }),
+                    ),
+                    [preferred] => {
+                        if !preferred
+                            .declares
+                            .provides
+                            .iter()
+                            .any(|offered| crate::resolve::meets(offered, &decl.name))
+                        {
+                            let providers: Vec<String> = index
+                                .of(&decl.name)
+                                .iter()
+                                .map(|provider| format!("`{}`", provider.qualified()))
+                                .collect();
+                            issues.push(
+                                Issue::new(
+                                    format!(
+                                        "`{}` prefers `{prefer}` for `{}`, and `{prefer}` does not provide it",
+                                        component.path, decl.name
+                                    ),
+                                    &component.src,
+                                )
+                                .at(decl.span, "does not provide it")
+                                .help(match providers.is_empty() {
+                                    true => format!(
+                                        "nothing in the declared libraries provides `{}`",
+                                        decl.name
+                                    ),
+                                    false => format!("providers: {}", crate::said(&providers)),
+                                }),
+                            );
+                        }
+                    }
+                    many => {
+                        let names: Vec<String> = many
+                            .iter()
+                            .map(|provider| format!("`{}`", provider.qualified()))
+                            .collect();
+                        issues.push(
+                            Issue::new(
+                                format!(
+                                    "`{}` prefers `{prefer}` for `{}`, and more than one library holds that path",
+                                    component.path, decl.name
+                                ),
+                                &component.src,
+                            )
+                            .at(decl.span, "ambiguous")
+                            .help(format!("write the library prefix: {}", crate::said(&names))),
+                        );
+                    }
+                }
+            }
             if let Some(remover) = image.remover(&decl.name) {
                 issues.push(
                     Issue::new(

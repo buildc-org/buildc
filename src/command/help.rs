@@ -104,7 +104,7 @@ pub(super) const CREATE_IMAGE_NOTES: &str = r#"> [!NOTE]
 > `provides "build-environment"`."#;
 
 pub(super) const CREATE_COMPONENT: &str = r#"Writes a new component. A directory component is a manifest at
-`<name>/manifest.kdl` in the folder of the library that `libraries default=`
+`<name>/component.kdl` in the folder of the library that `libraries default=`
 names. In a new repository that library is `local-library` and its folder is
 `components/`. The command offers to list it in builds.
 `--build` names a build, and it is repeatable. The command lists the component
@@ -121,7 +121,7 @@ picker of the local components, with the builds' components first. A component
 in a remote library is refused.
 
 The name can be a path. As a directory component, `apps/firefox` writes
-`components/apps/firefox/manifest.kdl`. As an inline component, it writes a
+`components/apps/firefox/component.kdl`. As an inline component, it writes a
 `firefox` block inside an `apps` block.
 
 The command asks for the component name. For an inline component it then asks
@@ -188,7 +188,7 @@ names a group that the build's component lists bare. An existing inline group
 with several copies is targeted with `select component` or one `--build`.
 
 A component with no `packages` node gains one. A component directory that
-holds only scripts gains a `manifest.kdl`. An inline definition gains the node
+holds only scripts gains a `component.kdl`. An inline definition gains the node
 inside its own block. Otherwise the names join the first top-level `packages`
 node in the shape it already uses. If the node lists its names on one line,
 then the new names go after its last name. If the node holds its names in a
@@ -583,16 +583,24 @@ against the snapshot `buildc generate` wrote, then builds from that tree alone.
 Every build argument that the repository declares comes from
 `generated/plan.json`, so a source edit reaches the build only through the next
 `buildc generate`. The build resolves the version, the registry, the source
-commit, the backend and the base digest when it runs."#;
+commit, the backend and the base digest when it runs. It then fetches the
+base's SPDX attestation, checks that its subject names the digest, and
+verifies the signature when the base names a verifier."#;
 
 pub(super) const BUILD_NOTES: &str = r#"> [!NOTE]
 > It writes no build file. Run `buildc generate` first, or `buildc vm run
 > --rebuild` to run both.
 >
-> It reaches a remote for two answers. It resolves the base digest, and it asks
-> each cloned asset's remote which commit the tag names. If a tag names another
-> commit than the one `buildc generate` recorded, then it refuses the build. If
-> a remote does not answer, then it warns, and an enforced audit refuses.
+> It reaches a remote for three answers. It resolves the base digest. It
+> fetches the base's SPDX attestation. It asks each cloned asset's remote
+> which commit the tag names. If a tag names another commit than the one
+> `buildc generate` recorded, then it refuses the build. If a remote does not
+> answer, then it warns and an enforced audit refuses.
+>
+> A base with no attestation leaves a gap in the build record. The build
+> continues and `audit { enforce #true }` refuses. A base that names a verifier
+> is different. A failed check, or a machine without `cosign`, refuses the
+> build.
 >
 > It resolves the base tag to a digest once, and passes it as the `BASE` build
 > argument. If `$BASE` is set, then it uses that value as already resolved.
@@ -819,11 +827,18 @@ pub(super) const WHY_NOTES: &str = r#"> [!NOTE]
 
 pub(super) const BUILD_RECORD: &str = r#"Writes `/usr/share/buildc/build.json`, the record of what the build resolved.
 The baked `manifest.json` beside it holds what the repository declared. The
-record holds the digest of the base, the version the build measured for each
-capability from its package, the commit of each cloned asset, the source
-commit, the `buildc` release, the target, the content hash of each component,
-and whether enforcement was on. The versions sit in `base.versions`. That
-key is absent when the build measured none.
+record holds the digest of the base, the base's SPDX attestation (its
+predicate, subject, envelope hash and decoded payload hash), the SBOM package
+count, whether the base declares a signature, whether a verifier checked the
+signature and that the checked attestation carries the recorded payload, the
+version the build measured for each capability from its package, the commit of
+each cloned asset, the source commit, the `buildc` release, the target, the
+content hash of each component, and whether enforcement was on. The versions
+sit in `base.versions`. That key is absent when the build measured none. A base
+that published no attestation records null there, and `verified` says whether a
+verifier checked it. A verifier that checked a different payload refuses the
+build, so `verified.base_attestation` is true only for the payload in the
+record.
 
 No file under `generated/` holds the record, so `buildc verify` never compares
 it. The record changes with each build."#;

@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "renovate",
       "file": "./components/renovate.kdl",
+      "component": "renovate",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -61,12 +64,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -76,7 +81,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "content": "52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42",
                 "resolved": "63e02c5ee645e8ab913a8613a284caec1d0aa38476f11ac43660dae33065c0ea",
                 "repo": false,
                 "imported": null
@@ -90,6 +95,7 @@ source: tests/golden/harness.rs
             {
               "path": "apps/browser",
               "variant": null,
+              "variant-default": false,
               "description": "A browser whose image entry sets the version",
               "options": {
                 "OPT_LANG_VERSION": "2",
@@ -97,6 +103,7 @@ source: tests/golden/harness.rs
               },
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -114,7 +121,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044",
+                "content": "06de6f5ff150e8eef98b4cfb50e3b4f6a6e4e7ef60208b51d16bd4697129adb3",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -128,12 +135,14 @@ source: tests/golden/harness.rs
             {
               "path": "apps/editor",
               "variant": null,
+              "variant-default": false,
               "description": "An editor whose image entry leaves the version at its default",
               "options": {
                 "OPT_VERSION": "9.1"
               },
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -151,7 +160,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "36d3856b67abbd26da0eb450cec7d0d4b96b1833d7d87cad40e673aa31408886",
+                "content": "239ad453ea680b204ac79623e3a163f7efee010c798111866428bfcc805974b0",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -165,12 +174,14 @@ source: tests/golden/harness.rs
             {
               "path": "apps/image-viewer@1",
               "variant": null,
+              "variant-default": false,
               "description": "A viewer imported under a local name, whose entry sits on one line",
               "options": {
                 "OPT_VERSION": "3.1"
               },
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -188,7 +199,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "72ccfe481ba1956dfab74ebaeb61aba802464dba992d55b7d1a3e497e561f501",
+                "content": "411bca642381f98ec77f51c77fddc5d3738e0dbc0fb00929f313a8ac4731e0ab",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -202,10 +213,12 @@ source: tests/golden/harness.rs
             {
               "path": "renovate",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -245,7 +258,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=renovate",
-              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb apps/browser|97b8dfa80bc98b20c40b4bf3bbb9993c62a1915eee0a26fc30636fe188b57044 apps/editor|36d3856b67abbd26da0eb450cec7d0d4b96b1833d7d87cad40e673aa31408886 apps/image-viewer@1|72ccfe481ba1956dfab74ebaeb61aba802464dba992d55b7d1a3e497e561f501",
+              "COMPONENT_HASHES=fedora-family|52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42 apps/browser|06de6f5ff150e8eef98b4cfb50e3b4f6a6e4e7ef60208b51d16bd4697129adb3 apps/editor|239ad453ea680b204ac79623e3a163f7efee010c798111866428bfcc805974b0 apps/image-viewer@1|411bca642381f98ec77f51c77fddc5d3738e0dbc0fb00929f313a8ac4731e0ab",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

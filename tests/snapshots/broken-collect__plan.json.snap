@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-collect",
       "file": "./components/broken-collect.kdl",
+      "component": "broken-collect",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,10 +61,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/menu",
               "variant": null,
+              "variant-default": false,
               "description": "Collects a file, but declares no destination for it",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -71,7 +76,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "230dc232f392a08f23990e73df8c5ea5946a2b1e4d7f4d07c6ba4499fbb0f2b5",
+                "content": "965e0266a29ec55e9ef733499908d1e766d1d17199b39ec3299a38a777096c0b",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -85,10 +90,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/absent",
               "variant": null,
+              "variant-default": false,
               "description": "Contributes a file it does not ship, twice, out of range",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -98,7 +105,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "7df8d45e92866e3e0a31de2fbd1b42eaba0aa3df3f9e07bab24fd226c039a61c",
+                "content": "b2e08f4d96659d2e6eeba872d0a29a3213167819c86759b316f14e24d065e0e2",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -112,10 +119,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/unclaimed",
               "variant": null,
+              "variant-default": false,
               "description": "Ships a collected filename nothing in this image collects",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -125,7 +134,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "d3bc1d00abfafb0e74d42bb426e25c4d5c80795cb7b8d329587061095e343510",
+                "content": "45404736e1ae2223875f7f2bbb5be48031f38e805bdc56793c40215fc8d0e71a",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -139,10 +148,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/shipper",
               "variant": null,
+              "variant-default": false,
               "description": "Ships a file whose collector is enabled but refused",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -152,7 +163,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "3eb321679de82c90dbe6ba756b7a5faf49663394c1a8ed0c0940aa48d2583a81",
+                "content": "fd66bf5bcefbd30d36ad99aa9d0192e039ebaff5422f71b1a1cf60eb0e2492ad",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -166,10 +177,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-collect",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -209,7 +222,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-collect",
-              "COMPONENT_HASHES=core/menu|230dc232f392a08f23990e73df8c5ea5946a2b1e4d7f4d07c6ba4499fbb0f2b5 core/absent|7df8d45e92866e3e0a31de2fbd1b42eaba0aa3df3f9e07bab24fd226c039a61c core/unclaimed|d3bc1d00abfafb0e74d42bb426e25c4d5c80795cb7b8d329587061095e343510 core/shipper|3eb321679de82c90dbe6ba756b7a5faf49663394c1a8ed0c0940aa48d2583a81",
+              "COMPONENT_HASHES=core/menu|965e0266a29ec55e9ef733499908d1e766d1d17199b39ec3299a38a777096c0b core/absent|b2e08f4d96659d2e6eeba872d0a29a3213167819c86759b316f14e24d065e0e2 core/unclaimed|45404736e1ae2223875f7f2bbb5be48031f38e805bdc56793c40215fc8d0e71a core/shipper|fd66bf5bcefbd30d36ad99aa9d0192e039ebaff5422f71b1a1cf60eb0e2492ad",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

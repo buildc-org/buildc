@@ -1,5 +1,7 @@
 use crate::diag::{Issue, Source, Span};
-use crate::model::component::{Access, Capability, Component, Coverage, Refusal, Requirement};
+use crate::model::component::{
+    Access, Capability, Component, Coverage, Refusal, Requirement, TrustRoot,
+};
 use crate::model::options::Setting;
 use crate::model::remote::Collection;
 
@@ -96,6 +98,32 @@ pub struct Image {
     pub suppressed: Vec<Entry>,
     pub outside: bool,
     pub span: Span,
+    pub fields: Vec<FieldSource>,
+}
+
+pub const FIELDS: [&str; 4] = ["description", "keywords", "logo-url", "conforms"];
+
+pub struct FieldSource {
+    pub name: &'static str,
+    pub component: String,
+}
+
+impl Image {
+    pub fn field_source(&mut self, name: &'static str, component: &str) {
+        if self.fields.iter().all(|held| held.name != name) {
+            self.fields.push(FieldSource {
+                name,
+                component: component.to_string(),
+            });
+        }
+    }
+
+    pub fn source_of(&self, name: &str) -> Option<&str> {
+        self.fields
+            .iter()
+            .find(|held| held.name == name)
+            .map(|held| held.component.as_str())
+    }
 }
 
 impl Base {
@@ -145,6 +173,7 @@ pub struct BaseEntry {
     pub entry: Entry,
     pub digest: Option<String>,
     pub signed: bool,
+    pub verify: Option<TrustRoot>,
 }
 
 pub struct Base {
@@ -158,6 +187,7 @@ pub struct Base {
     pub src: Source,
     pub satisfies: Vec<Coverage>,
     pub signed: bool,
+    pub verify: Option<TrustRoot>,
     pub bootloaders: Vec<String>,
     pub files: Vec<crate::model::component::Located>,
     pub tracker: Option<crate::model::options::VersionTracker>,
@@ -255,9 +285,14 @@ impl Setter {
 pub struct Entry {
     pub path: String,
     pub variant: Option<String>,
+    pub variant_at: Option<usize>,
     pub pin: Option<String>,
     pub digest: Option<(String, Span)>,
     pub signed: Option<(bool, Span)>,
+    pub key: Option<(String, Span)>,
+    pub key_sha256: Option<(String, Span)>,
+    pub identity: Option<(String, Span)>,
+    pub issuer: Option<(String, Span)>,
     pub options: Vec<Layer>,
     pub setters: Vec<Setter>,
     pub span: Span,

@@ -146,7 +146,7 @@ jobs:
           \`provides\` lives in the base component, which this workflow does not
           edit. A tracked base takes the library's correction through the
           component update workflow. An untracked base is this repository's own,
-          so edit its \`manifest.kdl\`, or its definition in the image file, to
+          so edit its \`component.kdl\`, or its definition in the image file, to
           match.
           EOF
           number="$(gh issue list --state open --search "in:title \"${title}\"" \
@@ -212,7 +212,7 @@ jobs:
           `provides` lives in the base component, which this workflow does not
           edit. A tracked base takes the library's correction through the
           component update workflow. An untracked base is this repository's own,
-          so edit its `manifest.kdl`, or its definition in the image file, to
+          so edit its `component.kdl`, or its definition in the image file, to
           match.
 
           A capability the base carries is one no component has to build, and

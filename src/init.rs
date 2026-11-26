@@ -388,7 +388,7 @@ mod tests {
     fn a_component_copy_refuses_a_link_outside_the_component() {
         let at = std::env::temp_dir().join(format!("buildc-link-{}", std::process::id()));
         put(&at.join("library/shared/notes"), "shared\n").unwrap();
-        put(&at.join("library/browser/manifest.kdl"), "").unwrap();
+        put(&at.join("library/browser/component.kdl"), "").unwrap();
         std::os::unix::fs::symlink(
             at.join("library/shared/notes"),
             at.join("library/browser/notes"),
@@ -407,7 +407,7 @@ mod tests {
         let at = std::env::temp_dir().join(format!("buildc-link-kept-{}", std::process::id()));
         let _ = fs::remove_dir_all(&at);
         let from = at.join("library/browser");
-        put(&from.join("manifest.kdl"), "").unwrap();
+        put(&from.join("component.kdl"), "").unwrap();
         put(&from.join("lib/family.sh"), "true\n").unwrap();
         fs::create_dir_all(from.join("files/etc")).unwrap();
         std::os::unix::fs::symlink("/dev/null", from.join("files/etc/masked.service")).unwrap();

@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "deb",
       "file": "./components/deb.kdl",
+      "component": "deb",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -58,12 +61,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/luks",
               "variant": null,
+              "variant-default": false,
               "description": "The LUKS initramfs witness, carried by a component and not by the base",
               "options": {},
               "provides": [
                 "luks-initramfs"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -73,7 +78,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "c54d668a97aeac1c5aea2e887e1cccbb65b36531e9fbbee6eb85bd3f3c19e2dc",
+                "content": "21a6e25adeef2d1efa344af126df1d99848df546cb24396cf27ba7b815379304",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -87,10 +92,12 @@ source: tests/golden/harness.rs
             {
               "path": "deb",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -130,7 +137,7 @@ source: tests/golden/harness.rs
             "base": "docker.io/library/debian:forky",
             "args": [
               "TARGET=deb",
-              "COMPONENT_HASHES=core/luks|c54d668a97aeac1c5aea2e887e1cccbb65b36531e9fbbee6eb85bd3f3c19e2dc",
+              "COMPONENT_HASHES=core/luks|21a6e25adeef2d1efa344af126df1d99848df546cb24396cf27ba7b815379304",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=docker.io/library/debian:forky"
             ],

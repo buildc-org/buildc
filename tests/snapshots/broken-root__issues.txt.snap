@@ -16,8 +16,10 @@ source: tests/golden/harness.rs
 
   x nothing reads `image.kdl`
   help: a build reads a file at the repository root when `builds` names it, as
-        `image "./image"`
+        in `image "./image"`. A root file that a build reaches names another
+        root file with `component "./image"`
 
   x nothing reads `notes.kdl`
   help: a build reads a file at the repository root when `builds` names it, as
-        `notes "./notes"`
+        in `notes "./notes"`. A root file that a build reaches names another
+        root file with `component "./notes"`

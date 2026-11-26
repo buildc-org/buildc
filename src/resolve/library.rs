@@ -15,6 +15,7 @@ pub struct Libraries {
     pub(crate) follow: bool,
     declared: Vec<Shelf>,
     default: Option<Option<String>>,
+    root_files: Vec<(String, PathBuf)>,
     pub collectors: BTreeMap<String, Collector>,
 }
 
@@ -52,6 +53,7 @@ impl Libraries {
         libraries: &[Collection],
         root_library: Option<&str>,
         default: Option<&str>,
+        root_files: Vec<(String, PathBuf)>,
     ) -> Self {
         let root_library = root_library.map(str::to_string);
         let local = reads_own(libraries, root_library.as_deref()).then(|| layout::components(root));
@@ -115,8 +117,16 @@ impl Libraries {
             declared,
             default,
             root_library,
+            root_files,
             collectors,
         }
+    }
+
+    pub fn root_file(&self, path: &str) -> Option<PathBuf> {
+        self.root_files
+            .iter()
+            .find(|(name, _)| name == path)
+            .map(|(_, home)| home.clone())
     }
 
     pub fn collector_names(&self) -> Vec<String> {

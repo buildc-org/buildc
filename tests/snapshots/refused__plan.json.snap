@@ -21,10 +21,17 @@ source: tests/golden/harness.rs
     {
       "id": "refused",
       "file": "./components/refused.kdl",
+      "component": "refused",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "standard",
+      "fields": [
+        {
+          "field": "conforms",
+          "component": "refused"
+        }
+      ],
       "uki": false,
       "allows": [
         {
@@ -54,6 +61,7 @@ source: tests/golden/harness.rs
           "resolved": "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml"
         },
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -92,10 +100,12 @@ source: tests/golden/harness.rs
             {
               "path": "one/contradicts",
               "variant": null,
+              "variant-default": false,
               "description": "Claims a number and refuses the rule that number reaches",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -105,7 +115,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "be3d967d72fde6565dd06dc0dd7c7e4658a3550d54026c113aba12cf916b528d",
+                "content": "c4ed1f56820ead3322659387524afee3a6564192eb0c7acfbb6b9c5fdd281f1b",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -131,10 +141,12 @@ source: tests/golden/harness.rs
             {
               "path": "one/typo",
               "variant": null,
+              "variant-default": false,
               "description": "Refuses a rule the content carries nothing by",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -144,7 +156,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "42dba35bdaa206d9dd601a14551c9c781300dc776208530db6dbab7c55ca3820",
+                "content": "8890f5ff4d41f4a2e4e75c644ca87257c2ab569ce68069fe8ceadb9edd55cf80",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -174,10 +186,12 @@ source: tests/golden/harness.rs
             {
               "path": "refused",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -217,7 +231,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=refused",
-              "COMPONENT_HASHES=one/contradicts|be3d967d72fde6565dd06dc0dd7c7e4658a3550d54026c113aba12cf916b528d one/typo|42dba35bdaa206d9dd601a14551c9c781300dc776208530db6dbab7c55ca3820",
+              "COMPONENT_HASHES=one/contradicts|c4ed1f56820ead3322659387524afee3a6564192eb0c7acfbb6b9c5fdd281f1b one/typo|8890f5ff4d41f4a2e4e75c644ca87257c2ab569ce68069fe8ceadb9edd55cf80",
               "ASSET_RESOLUTIONS=",
               "CONFORMS=standard",
               "SCAP_CONTENT=",

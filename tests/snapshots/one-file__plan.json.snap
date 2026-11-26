@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "alpha",
       "file": "./components/alpha.kdl",
+      "component": "alpha",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,12 +61,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -73,7 +78,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+                "content": "16bb2a2c4e5e88c3ba3f17c0c6bf24dcb1e17a97a2a136881465489f13bd1e61",
                 "resolved": "fd12cbfa3961053ecccaa1ca74a0b8ad993eeabd3cae5e09bc784112f2d6659d",
                 "repo": false,
                 "imported": null
@@ -87,10 +92,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/hello",
               "variant": null,
+              "variant-default": false,
               "description": "The smallest component a repository can hold",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -108,7 +115,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "ca401792ab96b790c3b016ce00a42a03d2c5e4a47113106eb4da4dab42a33f5d",
+                "content": "4d0d6665fd0a23520c0dd7649190a0404ae3e1941edbc64c06ade7af785e0383",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -122,10 +129,12 @@ source: tests/golden/harness.rs
             {
               "path": "alpha",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -165,7 +174,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=alpha",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd core/hello|ca401792ab96b790c3b016ce00a42a03d2c5e4a47113106eb4da4dab42a33f5d",
+              "COMPONENT_HASHES=fedora-family|16bb2a2c4e5e88c3ba3f17c0c6bf24dcb1e17a97a2a136881465489f13bd1e61 core/hello|4d0d6665fd0a23520c0dd7649190a0404ae3e1941edbc64c06ade7af785e0383",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
@@ -178,10 +187,12 @@ source: tests/golden/harness.rs
     {
       "id": "beta",
       "file": "./components/beta.kdl",
+      "component": "beta",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -193,6 +204,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -215,12 +227,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -230,7 +244,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+                "content": "16bb2a2c4e5e88c3ba3f17c0c6bf24dcb1e17a97a2a136881465489f13bd1e61",
                 "resolved": "5416040c6f4397a184f652849a3718cfda3ecaa760957e435defa17b333ecac8",
                 "repo": false,
                 "imported": null
@@ -244,10 +258,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/hello",
               "variant": null,
+              "variant-default": false,
               "description": "The smallest component a repository can hold",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -265,7 +281,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "ca401792ab96b790c3b016ce00a42a03d2c5e4a47113106eb4da4dab42a33f5d",
+                "content": "4d0d6665fd0a23520c0dd7649190a0404ae3e1941edbc64c06ade7af785e0383",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -279,10 +295,12 @@ source: tests/golden/harness.rs
             {
               "path": "beta",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -322,7 +340,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=beta",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd core/hello|ca401792ab96b790c3b016ce00a42a03d2c5e4a47113106eb4da4dab42a33f5d",
+              "COMPONENT_HASHES=fedora-family|16bb2a2c4e5e88c3ba3f17c0c6bf24dcb1e17a97a2a136881465489f13bd1e61 core/hello|4d0d6665fd0a23520c0dd7649190a0404ae3e1941edbc64c06ade7af785e0383",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

@@ -29,7 +29,7 @@ A claim the tool records rather than certifies. The scan is what confirms it.
 
 | Content | Hash |
 | --- | --- |
-| declared | `ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca` |
+| declared | `76260ae5f256c602879d00d8ce3dc5b16df07b05824851462dec2d140c4a1017` |
 
 It is the repository's own copy of `hello` from `https://github.com/owner/components` at `0123456789abcdef0123456789abcdef01234567`.
 
@@ -67,6 +67,7 @@ It enables one, in `components/one/hello/repo.sh`. There is no grammar for that 
     }
   ],
   "requires": [],
+  "prefers": [],
   "packages": [],
   "groups": [],
   "coprs": [],
@@ -86,9 +87,11 @@ It enables one, in `components/one/hello/repo.sh`. There is no grammar for that 
       ]
     }
   ],
-  "content": "ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca",
+  "content": "76260ae5f256c602879d00d8ce3dc5b16df07b05824851462dec2d140c4a1017",
   "built": null,
   "library": null,
+  "variants": [],
+  "image_fields": [],
   "settings": [],
   "imported": {
     "origin": "https://github.com/owner/components",
@@ -141,7 +144,7 @@ A claim the tool records rather than certifies. The scan is what confirms it.
 
 | Content | Hash |
 | --- | --- |
-| declared | `ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca` |
+| declared | `76260ae5f256c602879d00d8ce3dc5b16df07b05824851462dec2d140c4a1017` |
 
 It is the repository's own copy of `hello` from `https://github.com/owner/components` at `0123456789abcdef0123456789abcdef01234567`.
 
@@ -166,7 +169,7 @@ consumer, enforced, hello
 
 | Content | Hash |
 | --- | --- |
-| declared | `ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca` |
+| declared | `76260ae5f256c602879d00d8ce3dc5b16df07b05824851462dec2d140c4a1017` |
 | observed by the build | `not what was declared` |
 
 **The two documents disagree**, which they cannot if both came from this build.

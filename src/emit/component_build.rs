@@ -30,6 +30,55 @@ fn file_name(entry: &Entry) -> String {
     format!("{}.sh", entry.path)
 }
 
+/// The selected variant's directory comes first so its file wins over the component's file of the same name.
+fn content_dirs(entry: &Entry, root: &Path) -> Vec<PathBuf> {
+    let home = entry.dir(root);
+    let variant = entry
+        .component
+        .as_ref()
+        .and_then(|component| component.variant.as_deref());
+    let mut out = Vec::new();
+    if let Some(at) = layout::variant_home(&home, variant) {
+        out.push(at);
+    }
+    out.push(home);
+    out
+}
+
+fn shipped_path(entry: &Entry, root: &Path, family: &str, file: &str) -> Option<(PathBuf, String)> {
+    layout::shipped_across(&content_dirs(entry, root), family, file)
+}
+
+pub(crate) fn script_paths(entry: &Entry, root: &Path, family: &str, file: &str) -> Vec<String> {
+    let dirs = content_dirs(entry, root);
+    let mut out = Vec::new();
+    if dirs.iter().any(|dir| dir.join(file).is_file()) {
+        out.push(file.to_string());
+    }
+    for (name, taken_on) in layout::FAMILY_DIRS.iter() {
+        if !taken_on.contains(&family) {
+            continue;
+        }
+        let script = format!("{name}/{file}");
+        if dirs.iter().any(|dir| dir.join(&script).is_file()) {
+            out.push(script);
+        }
+    }
+    out
+}
+
+fn files_of(entry: &Entry, root: &Path, files: impl Fn(&Path) -> Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for dir in content_dirs(entry, root) {
+        for file in files(&dir) {
+            if !out.contains(&file) {
+                out.push(file);
+            }
+        }
+    }
+    out
+}
+
 pub fn installs_packages(image: &Image, entry: &Entry, component: &Component, root: &Path) -> bool {
     let base_family = image.family();
     !split_packages(entry, component, base_family, image, root).is_empty()
@@ -43,8 +92,8 @@ fn split_packages(
     root: &Path,
 ) -> String {
     let mut out = package_step(entry, component, base_family, root);
-    let on_disk = entry.dir(root);
-    if image.answers(layout::SELINUX.capability) && !layout::SELINUX.files(&on_disk).is_empty() {
+    let policies = files_of(entry, root, |dir| layout::SELINUX.files(dir));
+    if image.answers(layout::SELINUX.capability) && !policies.is_empty() {
         out.push_str("\nsource /ctx/lib/selinux-helpers.sh\nensure_checkpolicy\n");
     }
     out
@@ -166,23 +215,28 @@ fn witnesses_in_layer(root: &Path, entry: &Entry, family: &str, component: &Comp
 }
 
 pub fn overlay_prefixes(root: &Path, entry: &Entry, family: &str) -> Vec<String> {
-    let on_disk = entry.dir(root);
+    let dirs = content_dirs(entry, root);
     let mut out = Vec::new();
-    if on_disk.join(layout::OVERLAY).is_dir() {
+    if dirs.iter().any(|dir| dir.join(layout::OVERLAY).is_dir()) {
         out.push(String::new());
     }
-    for gated in layout::family_dirs(&on_disk, family) {
-        if on_disk.join(gated).join(layout::OVERLAY).is_dir() {
-            out.push(gated.to_string());
+    for (name, taken_on) in layout::FAMILY_DIRS.iter() {
+        if !taken_on.contains(&family) {
+            continue;
+        }
+        if dirs
+            .iter()
+            .any(|dir| dir.join(name).join(layout::OVERLAY).is_dir())
+        {
+            out.push((*name).to_string());
         }
     }
     out
 }
 
 pub fn package_reads_dir(root: &Path, entry: &Entry, family: &str) -> bool {
-    let on_disk = entry.dir(root);
-    layout::shipped(&on_disk, family, layout::REPO_SCRIPT).is_some()
-        || !layout::layered(&on_disk, family, layout::PACKAGES_SCRIPT).is_empty()
+    shipped_path(entry, root, family, layout::REPO_SCRIPT).is_some()
+        || !script_paths(entry, root, family, layout::PACKAGES_SCRIPT).is_empty()
 }
 
 pub fn script_reads_dir(
@@ -193,16 +247,15 @@ pub fn script_reads_dir(
     family: &str,
     collection: &Collection,
 ) -> bool {
-    let on_disk = entry.dir(root);
     let packages_here =
         !splits(image, entry, component, root) && package_reads_dir(root, entry, family);
     let has_overlay = !overlay_prefixes(root, entry, family).is_empty();
     let collected_here = collection.by_component.contains_key(&entry.path) && !has_overlay;
-    !layout::layered(&on_disk, family, layout::SCRIPT).is_empty()
+    !script_paths(entry, root, family, layout::SCRIPT).is_empty()
         || (image.answers(layout::SELINUX.capability)
-            && !layout::SELINUX.files(&on_disk).is_empty())
+            && !files_of(entry, root, |dir| layout::SELINUX.files(dir)).is_empty())
         || (image.answers(layout::APPARMOR.capability)
-            && !layout::APPARMOR.files(&on_disk).is_empty())
+            && !files_of(entry, root, |dir| layout::APPARMOR.files(dir)).is_empty())
         || collected_here
         || packages_here
 }
@@ -285,9 +338,8 @@ fn package_step(entry: &Entry, component: &Component, base_family: &str, root: &
     let dir = format!("/ctx/components/{}", entry.path);
     let mut out = String::new();
 
-    let on_disk = entry.dir(root);
-    if let Some(at) = layout::shipped(&on_disk, base_family, layout::REPO_SCRIPT) {
-        match repo_id(&on_disk.join(&at)).filter(|_| crate::parse::component::rpm(base_family)) {
+    if let Some((home, at)) = shipped_path(entry, root, base_family, layout::REPO_SCRIPT) {
+        match repo_id(&home.join(&at)).filter(|_| crate::parse::component::rpm(base_family)) {
             Some(id) => {
                 let _ = write!(
                     out,
@@ -304,7 +356,7 @@ fn package_step(entry: &Entry, component: &Component, base_family: &str, root: &
         }
     }
 
-    let scripts = layout::layered(&on_disk, base_family, layout::PACKAGES_SCRIPT);
+    let scripts = script_paths(entry, root, base_family, layout::PACKAGES_SCRIPT);
     out.push_str(family_helpers(component, base_family, !scripts.is_empty()));
     for copr in coprs(component, base_family) {
         let _ = write!(
@@ -376,7 +428,6 @@ fn rest(
     root: &Path,
 ) -> String {
     let dir = format!("/ctx/components/{}", entry.path);
-    let on_disk = entry.dir(root);
     let mut out = String::new();
 
     for key in &component.keys {
@@ -385,12 +436,12 @@ fn rest(
         let _ = writeln!(out, "\ninstall -D -m 0644 -- {from} {to}",);
     }
 
-    for script in layout::layered(&on_disk, base_family, layout::SCRIPT) {
+    for script in script_paths(entry, root, base_family, layout::SCRIPT) {
         let _ = write!(out, "\nsource {dir}/{script}\n");
     }
 
     let policy = match image.answers(layout::SELINUX.capability) {
-        true => layout::SELINUX.files(&on_disk),
+        true => files_of(entry, root, |dir| layout::SELINUX.files(dir)),
         false => Vec::new(),
     };
     if !policy.is_empty() {
@@ -405,7 +456,7 @@ fn rest(
     }
 
     let profiles = match image.answers(layout::APPARMOR.capability) {
-        true => layout::APPARMOR.files(&on_disk),
+        true => files_of(entry, root, |dir| layout::APPARMOR.files(dir)),
         false => Vec::new(),
     };
     if !profiles.is_empty() {

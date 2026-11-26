@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-graph",
       "file": "./components/broken-graph.kdl",
+      "component": "broken-graph",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc",
@@ -62,6 +65,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/one",
               "variant": null,
+              "variant-default": false,
               "description": "Requires a capability nothing in this image provides",
               "options": {},
               "provides": [],
@@ -70,6 +74,7 @@ source: tests/golden/harness.rs
                 "apparmor-policy",
                 "nothing"
               ],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -87,7 +92,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "62b3f836a737326e0092ce4bc7c63d694f6cabe74ca03a2726114b0bcd38171b",
+                "content": "d9e1aed493f1a1653fa67b6f0022e3514131e84fbf9c5c044a8008a66f4eb39a",
                 "resolved": "febe70a154b0c95e24bdd144b8fa4f6715cb4a7c45101fa65ef1900e00a59245",
                 "repo": false,
                 "imported": null
@@ -101,6 +106,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/two",
               "variant": null,
+              "variant-default": false,
               "description": "Provides what the base already provides",
               "options": {},
               "provides": [
@@ -108,6 +114,7 @@ source: tests/golden/harness.rs
                 "shell-tools"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -117,7 +124,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "8cd9695dd9e92a193ead8d1f983c545515d65bb514fd3313e04c83ab91ffb871",
+                "content": "9f96454e3b8b915969fb99c3bb2a7cbd15a7ae355de76b53ce6e846a78ef2fc1",
                 "resolved": "bb96ff913f5a592a483f620fc54e6eb14f50b9b9cde482790e7c6bc2eb7524ea",
                 "repo": false,
                 "imported": null
@@ -131,12 +138,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/three",
               "variant": null,
+              "variant-default": false,
               "description": "Provides the same capability as another enabled component",
               "options": {},
               "provides": [
                 "shell-tools"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -146,7 +155,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "8d275468dd52beea4750eef06656b8134779e449061c93d13f5960bc6cc3e103",
+                "content": "86dac2b5c2cd1ea6a68c0fcb83168e18b53baa6a56bca9ca94f023778319d19f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -160,10 +169,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-graph",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -203,7 +214,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-graph",
-              "COMPONENT_HASHES=core/one|62b3f836a737326e0092ce4bc7c63d694f6cabe74ca03a2726114b0bcd38171b core/two|8cd9695dd9e92a193ead8d1f983c545515d65bb514fd3313e04c83ab91ffb871 core/three|8d275468dd52beea4750eef06656b8134779e449061c93d13f5960bc6cc3e103",
+              "COMPONENT_HASHES=core/one|d9e1aed493f1a1653fa67b6f0022e3514131e84fbf9c5c044a8008a66f4eb39a core/two|9f96454e3b8b915969fb99c3bb2a7cbd15a7ae355de76b53ce6e846a78ef2fc1 core/three|86dac2b5c2cd1ea6a68c0fcb83168e18b53baa6a56bca9ca94f023778319d19f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

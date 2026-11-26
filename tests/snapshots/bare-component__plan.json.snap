@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "bare-component",
       "file": "./components/bare-component.kdl",
+      "component": "bare-component",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -61,10 +64,12 @@ source: tests/golden/harness.rs
             {
               "path": "hello",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -88,10 +93,12 @@ source: tests/golden/harness.rs
             {
               "path": "menu",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -101,7 +108,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "b54feb522c877f97d2eb1c03b82c1cae4c35f4ef6cdda08bad9e7f788f672173",
+                "content": "02ce67ff730e2a43b08df909d2199c1c1d85ae760c4b91f423750ce559dd1aba",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -115,10 +122,12 @@ source: tests/golden/harness.rs
             {
               "path": "apps",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -142,10 +151,12 @@ source: tests/golden/harness.rs
             {
               "path": "apps/editor",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -169,10 +180,12 @@ source: tests/golden/harness.rs
             {
               "path": "bare-component",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -229,7 +242,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=bare-component",
-              "COMPONENT_HASHES=hello|c2d1623de00f1d529cc0d583f23f4f963307b32a8ebdd8a2aec003fd1b829cc9 menu|b54feb522c877f97d2eb1c03b82c1cae4c35f4ef6cdda08bad9e7f788f672173 apps|f0c9ce6caf1bf31e3982de3365cb90c3f79ff140a8e42796cb2b711edaf5a06f apps/editor|d3b3189e72b2564dd629a1e7262f0ee1e059fab537ce4b4b6e2ec08f9d59130d",
+              "COMPONENT_HASHES=hello|c2d1623de00f1d529cc0d583f23f4f963307b32a8ebdd8a2aec003fd1b829cc9 menu|02ce67ff730e2a43b08df909d2199c1c1d85ae760c4b91f423750ce559dd1aba apps|f0c9ce6caf1bf31e3982de3365cb90c3f79ff140a8e42796cb2b711edaf5a06f apps/editor|d3b3189e72b2564dd629a1e7262f0ee1e059fab537ce4b4b6e2ec08f9d59130d",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

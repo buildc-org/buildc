@@ -1,10 +1,10 @@
-<a id="manifest.kdl"></a>
+<a id="component.kdl"></a>
 
-# `manifest.kdl`
+# `component.kdl`
 
-Location: `components/<name>.kdl`, or `components/<name>/manifest.kdl` in the directory of the component. A build can also name a `<name>.kdl` file at the repository root as `./<name>`.
+Location: `components/<name>.kdl`, or `components/<name>/component.kdl` in the directory of the component. A `<name>.kdl` file at the repository root is a component when `builds` names it as `./<name>` or another root file reaches it with `component "./<name>"`.
 
-A component's name is its path. A directory that holds `manifest.kdl` is named by the directory, and a `<name>.kdl` file is named by the file without `.kdl`. The directory `<name>/` holds the component's content wherever the manifest lives. A component that another component defines inline is named by the path that lists it. An image is a component that a build in `repo.kdl` names.
+A component's name is its path. A directory that holds `component.kdl` is named by the directory, and a `<name>.kdl` file is named by the file without `.kdl`. The directory `<name>/` holds the component's content wherever the manifest lives. A component that another component defines inline is named by the path that lists it. An image is a component that a build in `repo.kdl` names.
 
 ```kdl
 schema-version 1
@@ -15,7 +15,7 @@ targets "fedora" "debian"
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`schema-version`](#schema-version) (required) | *number* | The schema release that this file is written against. |
-| [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. On the component a build names, it is also the OCI label `org.opencontainers.image.description`. |
+| [`description`](#description) (optional) | *string* | One line that names the component in the resolved build summary. On a component that a build's tree reaches, it is also the OCI label `org.opencontainers.image.description`. |
 | [`oci-labels`](#oci-labels) (optional) | {&nbsp;[fields](#oci-labels-fields)&nbsp;} | The labels that the build stamps on the published image. |
 | [`conforms`](#conforms) (optional) | *string*, then optionally {&nbsp;[fields](#conforms-fields)&nbsp;} | The benchmark profile that a scan measures the image against. |
 | [`targets`](#targets) (optional,&nbsp;repeatable) | *list of strings* | The base families that this component builds on, which the image's `family` must match. Omit it to target every family. |
@@ -37,6 +37,7 @@ targets "fedora" "debian"
 | [`fragment`](#fragment) (optional) |  | Where the component's `Containerfile.inc` goes in relation to the generated layer. |
 | [`option`](#option) (optional,&nbsp;unique) | *string*, then {&nbsp;[fields](#option-fields)&nbsp;} | One value that an image can set on this component. |
 | [`variant`](#variant) (optional,&nbsp;unique) | *string*, then optionally {&nbsp;[fields](#variant-fields)&nbsp;} | A named set of option values that an image selects with `variant=`. |
+| [`default-variant`](#default-variant) (optional) | *string* | The variant that an entry takes when it selects none. |
 | [`asset`](#asset) (optional,&nbsp;unique) | *string*, then {&nbsp;[fields](#asset-fields)&nbsp;} | A pinned upstream payload that the component fetches during its own layer. |
 | [`permissions`](#permissions) (optional) | {&nbsp;[fields](#permissions-fields)&nbsp;} | What the build steps of this component ask of the build. |
 | [`packages`](#packages) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#packages-fields)&nbsp;} | The packages that this component installs. |
@@ -45,11 +46,11 @@ targets "fedora" "debian"
 | [`satisfies`](#satisfies) (optional) | optionally {&nbsp;[fields](#satisfies-fields)&nbsp;} | An audit declaration of the benchmarks and rules that this component claims to harden. `buildc` records the claim and certifies nothing, and the scan checks it after the build. |
 | [`on`](#on) (optional,&nbsp;repeatable) | *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;} | The declarations that the build takes only on the named base families. |
 | [`base`](#base) (optional) | *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;} | The image reference that an image on this base builds from. It makes the component a base. |
-| [`component`](#component) (optional,&nbsp;repeatable) | *string*, then {&nbsp;[fields](#component-fields)&nbsp;} | A path that the segments in the block are read below. The node lists no component at its own path. |
+| [`component`](#component) (optional,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#component-fields)&nbsp;} | An instance of the component at a path, or a context that the segments in the block are read below. |
 | [`<name>`](#name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
 
 > [!NOTE]
-> Only the component a build names takes `oci-labels` and `conforms`.
+> A component that a build's tree reaches on the way to the base may set `oci-labels` and `conforms`. The nearest setting reaches the image.
 >
 > A build whose component builds `os-release` takes the build name as its default hostname. The component can set the `default-hostname` option of `os-release` to another value.
 >
@@ -78,7 +79,7 @@ Accepts: *number*
 
 ## `description` (optional)
 
-One line that names the component in the resolved build summary. On the component a build names, it is also the OCI label `org.opencontainers.image.description`.
+One line that names the component in the resolved build summary. On a component that a build's tree reaches, it is also the OCI label `org.opencontainers.image.description`.
 
 ```kdl
 description "Traditional CLI utilities"
@@ -276,6 +277,7 @@ Accepts: *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp
 | Property | Accepts | Description |
 | --- | --- | --- |
 | `min=` (optional) | *string* | The lowest version of the capability that satisfies this requirement. |
+| `prefer=` (optional) | *string* | The component that should provide this capability. |
 
 <a id="requires-fields"></a>
 
@@ -305,6 +307,7 @@ requires {
 | Property | Accepts | Description |
 | --- | --- | --- |
 | `min=` (optional) | *string* | The lowest version of the capability that satisfies this requirement. |
+| `prefer=` (optional) | *string* | The component that should provide this capability. |
 
 <a id="after"></a>
 
@@ -711,6 +714,18 @@ variant "wine-only" {
 
 Accepts: *option name*, then *its value*
 
+<a id="default-variant"></a>
+
+## `default-variant` (optional)
+
+A component that declares variants names exactly one default. An entry that writes no `variant=` takes it, and the name must be a declared variant.
+
+```kdl
+default-variant "lean"
+```
+
+Accepts: *string*
+
 <a id="asset"></a>
 
 ## `asset` (optional, unique)
@@ -1066,7 +1081,7 @@ Accepts: *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;}
 | [`requires`](#requires) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#requires-fields)&nbsp;} | The node names a capability that a component of the image must provide. It also orders the build. |
 | [`after`](#after) (optional,&nbsp;repeatable) | *list of strings*, or {&nbsp;[one name per line](#after-fields)&nbsp;} | A capability that this component builds after. The component does not require it. |
 | [`satisfies`](#satisfies) (optional) | optionally {&nbsp;[fields](#satisfies-fields)&nbsp;} | An audit declaration of the benchmarks and rules that this component claims to harden. `buildc` records the claim and certifies nothing, and the scan checks it after the build. |
-| [`component`](#component) (optional,&nbsp;repeatable) | *string*, then {&nbsp;[fields](#component-fields)&nbsp;} | A path that the segments in the block are read below. The node lists no component at its own path. |
+| [`component`](#component) (optional,&nbsp;repeatable) | *string*, then optionally {&nbsp;[fields](#component-fields)&nbsp;} | An instance of the component at a path, or a context that the segments in the block are read below. |
 | [`<name>`](#name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
 
 > [!NOTE]
@@ -1086,13 +1101,22 @@ Accepts: *list of strings*, then optionally {&nbsp;[fields](#on-fields)&nbsp;}
 
 ## `base` (optional)
 
-The reference may carry a `{option}` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.
+The reference may carry a `{option}` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused. A component that derives from a published image records the image's `digest=`, `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=` on this node.
 
 ```kdl
 base "quay.io/fedora/fedora-bootc:{version}"
 ```
 
 Accepts: *string*, then optionally {&nbsp;[fields](#base-fields)&nbsp;}
+
+| Property | Accepts | Description |
+| --- | --- | --- |
+| `digest=` (optional) | *string* | The digest of the base image reference. |
+| `signed=` (optional) | *boolean* | Whether the base image publishes a cosign signature. |
+| `key=` (optional) | *string* | The repository path of the cosign public key that verifies the base. |
+| `key-sha256=` (optional) | *string* | The sha256 that pins a local cosign public key's content. |
+| `identity=` (optional) | *string* | The certificate identity that verifies a keyless signature of the base. |
+| `issuer=` (optional) | *string* | The OIDC issuer of the certificate identity; it defaults to GitHub's. |
 
 <a id="base-fields"></a>
 
@@ -1154,26 +1178,36 @@ Accepts: *string*, then optionally {&nbsp;[fields](#base-scap-content-fields)&nb
 
 ## `component` (optional, repeatable)
 
-A path that starts with `/` is read from the library root. Any other path is read from the current context, and `..` goes up one segment. At the top of a manifest the context is the component's own path.
+A path that names a component lists it, and the block holds that component's option values and nested components. A path of `/`, `.` or `..` sets the context alone and takes no `variant=` or base facts. A path that starts with `/` is read from the library root. Any other path is read from the current context, and `..` goes up one segment. At the top of a manifest the context is the component's own path. A file outside every library reads the repository root in place of a library root.
 
 ```kdl
-component "/" {
-    desktop-environment
-}
+component "/hardware"
 ```
 
-Accepts: *string*, then {&nbsp;[fields](#component-fields)&nbsp;}
+Accepts: *string*, then optionally {&nbsp;[fields](#component-fields)&nbsp;}
 
 | Property | Accepts | Description |
 | --- | --- | --- |
+| `variant=` (optional) | *string* | The variant of the component that this path builds. |
 | `library=` (optional) | *string* | The library that holds this path and every path below it. |
 | `pin=` (optional) | *string* | The tag or full commit of a remote library that this path and every path below it read. |
+| `digest=` (optional) | *string* | The digest of the base image reference. |
+| `signed=` (optional) | *boolean* | Whether the base image publishes a cosign signature. |
+| `key=` (optional) | *string* | The repository path of the cosign public key that verifies the base. |
+| `key-sha256=` (optional) | *string* | The sha256 that pins a local cosign public key's content. |
+| `identity=` (optional) | *string* | The certificate identity that verifies a keyless signature of the base. |
+| `issuer=` (optional) | *string* | The OIDC issuer of the certificate identity; it defaults to GitHub's. |
 
 <a id="component-fields"></a>
 
 | Field | Accepts | Description |
 | --- | --- | --- |
 | [`<name>`](#name) (optional,&nbsp;repeatable) |  | One part of a component path, which lists the component at that path or holds further parts. |
+
+> [!NOTE]
+> In a file outside every library, `component "./<name>"` and `component "/<name>"` both read the component file at the repository root.
+>
+> A bare child of a file outside every library reads from the library root.
 
 <a id="name"></a>
 
@@ -1192,10 +1226,12 @@ desktop-environment
 | `pin=` (optional) | *string* | The tag or full commit of a remote library that this path and every path below it read. |
 | `digest=` (optional) | *string* | The digest of the base image reference. |
 | `signed=` (optional) | *boolean* | Whether the base image publishes a cosign signature. |
+| `key=` (optional) | *string* | The repository path of the cosign public key that verifies the base. |
+| `key-sha256=` (optional) | *string* | The sha256 that pins a local cosign public key's content. |
+| `identity=` (optional) | *string* | The certificate identity that verifies a keyless signature of the base. |
+| `issuer=` (optional) | *string* | The OIDC issuer of the certificate identity; it defaults to GitHub's. |
 
 > [!NOTE]
-> In a manifest, a quoted segment may read a string option of the component, as in `repos { "{repo}" }`. The path resolves after the option values.
->
 > In a manifest, a segment inside an `on` block builds only on the families that the gate names.
 >
 > A segment is read below the current context. At the top of a manifest the context is the component's own path, and `component "<path>"` sets another.
@@ -1214,6 +1250,8 @@ desktop-environment
 >
 > `buildc check` refuses two components that set different values if neither component lists the other. `buildc why` reports each value that each component applies.
 >
-> The base is the listed component that declares `base`. Only its segment takes `digest=` and `signed=`.
+> The base is the component that declares `base`. A source-composed image lists it as a segment, and a base-derived component is the build's own component. Only a base entry takes `digest=`, `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=`.
+>
+> `key=` names a cosign public key at a repository path. `identity=` names a keyless certificate identity, and `issuer=` defaults to GitHub's OIDC issuer. Either one verifies the base's signature, and each needs `signed=#true`.
 >
 > `buildc add component` adds a reference to a library component. `buildc copy component` copies one into a local library and records where it came from in that library's `origins.kdl`.

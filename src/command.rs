@@ -59,15 +59,15 @@ impl Verb {
             Self::CreateRepo => Some(("repository&nbsp;layout", Area::Repository, "")),
             Self::CreateImage => Some(("`<name>.kdl`", Area::Component, "")),
             Self::CreateModule | Self::AddComponent => {
-                Some(("`manifest.kdl`", Area::Component, ""))
+                Some(("`component.kdl`", Area::Component, ""))
             }
             Self::AddPackage => Some((
-                "`manifest.kdl`&nbsp;›&nbsp;`packages`",
+                "`component.kdl`&nbsp;›&nbsp;`packages`",
                 Area::Component,
                 "packages",
             )),
             Self::CreateKey | Self::SetKey => {
-                Some(("`manifest.kdl`&nbsp;›&nbsp;`key`", Area::Component, "key"))
+                Some(("`component.kdl`&nbsp;›&nbsp;`key`", Area::Component, "key"))
             }
             Self::CreateScripts => Some(("`scripts/`", Area::Repository, "")),
             Self::CopyComponent => Some(("`origins.kdl`", Area::Origins, "")),
@@ -83,18 +83,18 @@ impl Verb {
                 "conforms",
             )),
             Self::SetClaims => Some((
-                "`manifest.kdl`&nbsp;›&nbsp;`satisfies`",
+                "`component.kdl`&nbsp;›&nbsp;`satisfies`",
                 Area::Component,
                 "satisfies",
             )),
             Self::Generate => Some(("`generated/`", Area::Repository, "")),
             Self::Fetch => Some((
-                "`manifest.kdl`&nbsp;›&nbsp;`asset`",
+                "`component.kdl`&nbsp;›&nbsp;`asset`",
                 Area::Component,
                 "asset",
             )),
             Self::ValidateImage => Some((
-                "`manifest.kdl`&nbsp;›&nbsp;`allow-verify`",
+                "`component.kdl`&nbsp;›&nbsp;`allow-verify`",
                 Area::Component,
                 "allow-verify",
             )),

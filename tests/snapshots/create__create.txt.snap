@@ -1,13 +1,13 @@
 ---
 source: tests/golden/harness.rs
 ---
-==== components/my-editor/manifest.kdl
+==== components/my-editor/component.kdl
 schema-version 1
 
 provides "editor"
 
 packages "nano"
-==== components/plain/manifest.kdl
+==== components/plain/component.kdl
 schema-version 1
 ==== example.kdl
 schema-version 1

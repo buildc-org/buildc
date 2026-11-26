@@ -266,7 +266,7 @@ pub const REPO: Node = Node::new("repo",
                     .about("The node name is the target, cache and published name, and an option \
                         value reads it as `{image-id}`. The argument names the component that \
                         the build builds. A path that starts with `./` reads `<path>.kdl` or \
-                        `<path>/manifest.kdl` from the repository root, and any other path names \
+                        `<path>/component.kdl` from the repository root, and any other path names \
                         a component in the components folder. With no argument, the build uses \
                         the component of its own name in the components folder.")
                     .example("workstation \"./workstation\"")
@@ -680,7 +680,7 @@ impl List {
             libraries: Vec::new(),
             root_library: None,
             default_library: None,
-            resolver: crate::resolve::library::Libraries::read(root, &[], None, None),
+            resolver: crate::resolve::library::Libraries::read(root, &[], None, None, Vec::new()),
             default_image_id: None,
             seed: None,
             manifest_label: false,
@@ -766,31 +766,89 @@ impl List {
         list.check_remote_paths(root, &mut issues);
         list.check_local_paths(root, &mut issues);
         list.load_images(root, &mut issues);
-        for name in strays {
-            let stem = name.trim_end_matches(".kdl");
-            if list
-                .builds
-                .iter()
-                .any(|build| build.component.strip_prefix("./") == Some(stem))
-            {
-                continue;
-            }
-            let path = root.join(name).display().to_string();
-            issues.push(
-                Issue::new(format!("nothing reads `{name}`"), &Source::new(&path, "")).help(
-                    format!("a build reads a file at the repository root when `builds` names it, as `{stem} \"./{stem}\"`"),
-                ),
-            );
-        }
-
         for image in &mut list.images {
             image.repo_base_url.clone_from(&list.base_url);
+        }
+        let mut root_files: Vec<(String, std::path::PathBuf)> = list
+            .images
+            .iter()
+            .filter_map(|image| {
+                let home = image.entries.first()?.home.clone()?;
+                Some((
+                    image
+                        .component
+                        .strip_prefix("./")
+                        .unwrap_or(&image.component)
+                        .to_string(),
+                    home,
+                ))
+            })
+            .collect();
+        let mut at = 0;
+        let mut reached = true;
+        while at < root_files.len() {
+            let name = root_files[at].0.clone();
+            at += 1;
+            let Some(children) = crate::parse::component::root_imports(
+                root,
+                &name,
+                list.schema_version,
+                &list.repo_src,
+            ) else {
+                reached = false;
+                break;
+            };
+            for child in children {
+                if root_files.iter().any(|(held, _)| held == &child) {
+                    continue;
+                }
+                let home = root.join(&child);
+                // The reach skips a missing root file so the resolver reports the reference.
+                if layout::manifest_at(&home).is_file() {
+                    let file = layout::manifest_at(&home);
+                    if git_ignores(root, &[&file, &home]) {
+                        issues.push(
+                            Issue::new(
+                                format!("`component \"./{child}\"` reads a file that git ignores"),
+                                &Source::new(file.display().to_string(), ""),
+                            )
+                            .help(
+                                "a build reads a file that the repository carries, so CI reads \
+                                 it too",
+                            ),
+                        );
+                    }
+                    root_files.push((child, home));
+                }
+            }
+        }
+        if reached {
+            for name in strays {
+                let stem = name.trim_end_matches(".kdl");
+                if root_files.iter().any(|(held, _)| held == stem) {
+                    continue;
+                }
+                if list
+                    .builds
+                    .iter()
+                    .any(|build| build.component.strip_prefix("./") == Some(stem))
+                {
+                    continue;
+                }
+                let path = root.join(name).display().to_string();
+                issues.push(
+                    Issue::new(format!("nothing reads `{name}`"), &Source::new(&path, "")).help(
+                        format!("a build reads a file at the repository root when `builds` names it, as in `{stem} \"./{stem}\"`. A root file that a build reaches names another root file with `component \"./{stem}\"`"),
+                    ),
+                );
+            }
         }
         list.resolver = crate::resolve::library::Libraries::read(
             root,
             &list.libraries,
             list.root_library.as_deref(),
             list.default_library.as_ref().map(|(name, _)| name.as_str()),
+            root_files,
         );
         list.resolver.follow = follow;
         list.load_bases(root, &mut issues);
@@ -815,9 +873,19 @@ impl List {
     }
 
     fn load_bases(&mut self, root: &Path, issues: &mut Issues) {
-        let disk = crate::parse::disk::Disk::default();
+        let disk = crate::parse::disk::Disk::scan_at(
+            &crate::layout::components(root),
+            &self.resolver.collector_names(),
+        );
         let version = self.schema_version;
         let repo_src = &self.repo_src;
+        let mut load = |entry: &crate::model::image::Entry,
+                        image: &crate::model::image::Image,
+                        issues: &mut Issues| {
+            crate::model::component::Component::load(
+                entry, image, root, &disk, version, repo_src, issues,
+            )
+        };
         check_keyword_dirs(root, issues);
         for image in &mut self.images {
             // This early read takes the image fields and finds the base.
@@ -837,9 +905,20 @@ impl List {
                 image.logo_url.clone_from(&own.logo_url);
                 image.conforms.clone_from(&own.conforms);
                 image.allows.clone_from(&own.allows);
+                let own_path = image.component.clone();
+                for (name, given) in [
+                    ("description", !own.description.is_empty()),
+                    ("keywords", !own.keywords.is_empty()),
+                    ("logo-url", !own.logo_url.is_empty()),
+                    ("conforms", !own.conforms.is_empty()),
+                ] {
+                    if given {
+                        image.field_source(name, &own_path);
+                    }
+                }
                 crate::resolve::imports::place(image, own, &self.resolver);
             }
-            image.base_entry = take_base(image, root, issues);
+            image.base_entry = take_base(image, own.as_ref(), &self.resolver, &mut load, issues);
             if let Some(held) = &mut image.base_entry {
                 if let Err(why) = self.resolver.revise(&mut held.entry, &image.id) {
                     issues.push(
@@ -859,8 +938,12 @@ impl List {
                     repo_src,
                     issues,
                 );
-                let base =
-                    component.and_then(|component| based(held, component, &image.src, issues));
+                let base = component.and_then(|component| {
+                    if component.path != image.component {
+                        component.refuse_image_facts(image, issues);
+                    }
+                    based(held, component, &image.src, issues)
+                });
                 image.base = base;
             }
         }
@@ -1824,67 +1907,98 @@ fn declares_own(
 
 fn take_base(
     image: &mut crate::model::image::Image,
-    root: &Path,
+    own: Option<&crate::model::component::Component>,
+    libraries: &crate::resolve::library::Libraries,
+    load: &mut impl FnMut(
+        &crate::model::image::Entry,
+        &crate::model::image::Image,
+        &mut Issues,
+    ) -> Option<crate::model::component::Component>,
     issues: &mut Issues,
 ) -> Option<crate::model::image::BaseEntry> {
-    let bases: Vec<usize> = (0..image.entries.len())
-        .filter(|at| declares_base(&image.entries[*at], root))
+    let own_base = own.is_some_and(|component| component.base.is_some());
+    // The image's first entry is the build's own component.
+    let nested = match own {
+        Some(component) => {
+            let own_entry = image.entries.first()?;
+            crate::resolve::imports::find_bases(
+                image, own_entry, component, libraries, load, issues,
+            )
+        }
+        None => Vec::new(),
+    };
+    let mut bases: Vec<crate::model::image::Entry> = own_base
+        .then(|| image.entries.remove(0))
+        .into_iter()
         .collect();
+    bases.extend(nested);
     let src = &image.src;
-    match bases[..] {
-        [] => {
-            issues.push(
-                Issue::new(format!("`{}` lists no base", image.id), src)
-                    .at(image.span, "nothing to build on")
-                    .help(
-                        "list a base component, such as `base-image { fedora-bootc { version \
-                         \"44\" } }`, or define one inline with `base \"<image reference>\"`",
-                    ),
-            );
-            return None;
-        }
-        [_, _, ..] => {
-            let mut issue = Issue::new(format!("`{}` lists two bases", image.id), src)
-                .help("an image builds on one base; a second base is a second image");
-            for at in &bases {
-                issue = issue.at(image.entries[*at].span, "a base");
-            }
-            issues.push(issue);
-            for at in bases.iter().rev() {
-                image.entries.remove(*at);
-            }
-            return None;
-        }
-        [_] => {}
+    if bases.is_empty() {
+        issues.push(
+            Issue::new(format!("`{}` lists no base", image.id), src)
+                .at(image.span, "nothing to build on")
+                .help(
+                    "list a base component, such as `base-image { fedora-bootc { version \
+                     \"44\" } }`, or define one inline with `base \"<image reference>\"`",
+                ),
+        );
+        return None;
     }
-    let entry = image.entries.remove(bases[0]);
+    if bases.len() > 1 {
+        let mut issue = Issue::new(format!("`{}` lists two bases", image.id), src)
+            .help("an image builds on one base; a second base is a second image");
+        for entry in &bases {
+            issue = issue.at(entry.span, "a base");
+        }
+        issues.push(issue);
+        return None;
+    }
+    let entry = bases.pop().expect("one base");
+    image.entries.retain(|other| other.path != entry.path);
     for other in &image.entries {
         crate::parse::tree::refuse_base_facts(
             &other.path,
-            other.digest.as_ref().map(|(_, span)| *span),
-            other.signed.map(|(_, span)| span),
+            &[
+                ("digest", other.digest.as_ref().map(|(_, span)| *span)),
+                ("signed", other.signed.map(|(_, span)| span)),
+                ("key", other.key.as_ref().map(|(_, span)| *span)),
+                (
+                    "key-sha256",
+                    other.key_sha256.as_ref().map(|(_, span)| *span),
+                ),
+                ("identity", other.identity.as_ref().map(|(_, span)| *span)),
+                ("issuer", other.issuer.as_ref().map(|(_, span)| *span)),
+            ],
             src,
             issues,
         );
     }
-    let digest = entry.digest.as_ref().map(|(digest, _)| digest.clone());
-    let signed = entry.signed.is_some_and(|(signed, _)| signed);
+    let facts = own_base
+        .then(|| own.and_then(|component| component.base.as_ref()))
+        .flatten();
+    let digest = match facts {
+        Some(facts) => facts.digest.clone(),
+        None => entry.digest.as_ref().map(|(digest, _)| digest.clone()),
+    };
+    let signed = match facts {
+        Some(facts) => facts.signed,
+        None => entry.signed.is_some_and(|(signed, _)| signed),
+    };
+    let verify = match facts {
+        Some(facts) => facts.verify.clone(),
+        None => crate::model::component::TrustRoot::of(
+            entry.key.as_ref(),
+            entry.key_sha256.as_ref(),
+            entry.identity.as_ref(),
+            entry.issuer.as_ref(),
+        ),
+    };
     Some(crate::model::image::BaseEntry {
         entry,
         digest,
         signed,
+        verify,
     })
-}
-
-fn declares_base(entry: &crate::model::image::Entry, root: &Path) -> bool {
-    let based = |nodes: &[kdl::KdlNode]| nodes.iter().any(|node| node.name().value() == "base");
-    match &entry.inline {
-        Some(inline) => based(&crate::parse::image::nodes_at(&inline.src, &inline.spans)),
-        None => std::fs::read_to_string(layout::manifest_at(&entry.dir(root)))
-            .ok()
-            .and_then(|text| text.parse::<KdlDocument>().ok())
-            .is_some_and(|doc| based(doc.nodes())),
-    }
 }
 
 fn check_keyword_dirs(root: &Path, issues: &mut Issues) {
@@ -1971,20 +2085,29 @@ fn based(
                 }
             })
         });
+    let digest = held.digest.clone().or_else(|| facts.digest.clone());
+    let image = match digest {
+        Some(digest) => format!("{}@{digest}", facts.image),
+        None => facts.image.clone(),
+    };
+    let signed = held.entry.signed.map_or(facts.signed, |(signed, _)| signed);
+    // A segment that declares the base unsigned also drops the verifier declared on the base node.
+    let verify = match held.entry.signed {
+        Some((false, _)) => None,
+        _ => held.verify.clone().or_else(|| facts.verify.clone()),
+    };
     Some(crate::model::image::Base {
         path: held.entry.path.clone(),
         library: component.library.clone(),
-        image: match &held.digest {
-            Some(digest) => format!("{}@{digest}", facts.image),
-            None => facts.image,
-        },
+        image,
         family: facts.family,
         provides: component.provides,
         requires: component.requires,
         imports: component.imports,
         src: component.src,
         satisfies: component.satisfies,
-        signed: held.signed,
+        signed,
+        verify,
         scap_content: facts.scap_content,
         scap_pin: facts.scap_pin,
         bootloaders: facts.bootloaders,
@@ -2065,10 +2188,10 @@ mod tests {
 
         std::fs::write(&file, "schema-version 1\n\nexample\nhello\n").unwrap();
         std::fs::create_dir_all(dir.join("components/hello")).unwrap();
-        let manifest = dir.join("components/hello/manifest.kdl");
+        let manifest = dir.join("components/hello/component.kdl");
         std::fs::write(&manifest, "packages \"hello\"\n").unwrap();
         let missing = crate::load(&dir).issues.plain();
-        assert!(missing.contains("manifest.kdl"), "{missing}");
+        assert!(missing.contains("component.kdl"), "{missing}");
         assert!(
             missing.contains("this file declares no `schema-version`"),
             "{missing}"
@@ -2076,10 +2199,7 @@ mod tests {
 
         std::fs::write(&manifest, "schema-version 3\n\npackages \"hello\"\n").unwrap();
         let component = crate::load(&dir).issues.plain();
-        assert!(
-            component.contains("manifest.kdl declares schema"),
-            "{component}"
-        );
+        assert!(component.contains("component.kdl"), "{component}");
         assert!(component.contains("version 3, but"), "{component}");
         assert!(component.contains("repo.kdl declares 1"), "{component}");
         std::fs::remove_dir_all(dir).unwrap();
@@ -2731,5 +2851,207 @@ library { path "src" }
         );
         assert_eq!(components_folder("library { components \"/abs\" }\n"), None);
         assert_eq!(components_folder("name \"x\"\n"), None);
+    }
+
+    fn root_repository(name: &str) -> std::path::PathBuf {
+        let dir = root(
+            name,
+            "schema-version 1\nname \"Root\"\nbuilds { one \"./one\" }\n",
+        );
+        std::fs::create_dir_all(dir.join("components/image-base")).unwrap();
+        std::fs::write(
+            dir.join("components/image-base/component.kdl"),
+            "schema-version 1\n\nbase \"quay.io/fedora/fedora-bootc:44\" {\n    family \"fedora\"\n}\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_root_file_that_a_build_reaches_is_a_component() {
+        let dir = root_repository("root-reached");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"./shared\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shared.kdl"),
+            "schema-version 1\n\npackages \"htop\"\n",
+        )
+        .unwrap();
+
+        let loaded = crate::load(&dir);
+        let issues = loaded.issues.plain();
+        assert!(!issues.contains("nothing reads `shared.kdl`"), "{issues}");
+        let one = loaded
+            .list
+            .images
+            .iter()
+            .find(|image| image.id == "one")
+            .expect("the build is declared");
+        let shared = one
+            .components()
+            .find(|component| component.path == "shared")
+            .expect("the root file is read as a component");
+        assert_eq!(shared.packages[0].packages, ["htop"]);
+        assert_eq!(
+            one.base
+                .as_ref()
+                .expect("the bare child finds the base")
+                .path,
+            "image-base"
+        );
+    }
+
+    #[test]
+    fn a_root_component_reaches_another_root_component() {
+        let dir = root_repository("root-chain");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"./between\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("between.kdl"),
+            "schema-version 1\n\ncomponent \"./shared\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shared.kdl"),
+            "schema-version 1\n\npackages \"htop\"\n",
+        )
+        .unwrap();
+
+        let loaded = crate::load(&dir);
+        let issues = loaded.issues.plain();
+        assert!(!issues.contains("nothing reads `between.kdl`"), "{issues}");
+        assert!(!issues.contains("nothing reads `shared.kdl`"), "{issues}");
+        let one = loaded
+            .list
+            .images
+            .iter()
+            .find(|image| image.id == "one")
+            .expect("the build is declared");
+        assert!(one.components().any(|component| component.path == "shared"));
+    }
+
+    #[test]
+    fn a_root_file_that_no_build_reaches_is_refused() {
+        let dir = root_repository("root-stray");
+        std::fs::write(dir.join("one.kdl"), "schema-version 1\n\nimage-base\n").unwrap();
+        std::fs::write(dir.join("notes.kdl"), "schema-version 1\n").unwrap();
+
+        let issues = List::load(&dir).1.plain();
+        assert!(issues.contains("nothing reads `notes.kdl`"), "{issues}");
+    }
+
+    #[test]
+    fn a_root_reference_to_a_missing_file_is_reported_by_the_resolver() {
+        let dir = root_repository("root-missing");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"./missing\"\n",
+        )
+        .unwrap();
+
+        let issues = crate::load(&dir).issues.plain();
+        assert!(
+            issues.contains("`one` names `missing`, which is no component at the repository root"),
+            "{issues}"
+        );
+    }
+
+    #[test]
+    fn a_rooted_component_path_in_a_root_file_reads_the_root() {
+        let dir = root_repository("root-rooted");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"/shared\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shared.kdl"),
+            "schema-version 1\n\npackages \"htop\"\n",
+        )
+        .unwrap();
+
+        let loaded = crate::load(&dir);
+        let issues = loaded.issues.plain();
+        assert!(!issues.contains("nothing reads `shared.kdl`"), "{issues}");
+        let one = loaded
+            .list
+            .images
+            .iter()
+            .find(|image| image.id == "one")
+            .expect("the build is declared");
+        assert!(one.components().any(|component| component.path == "shared"));
+    }
+
+    #[test]
+    fn an_inline_root_component_does_not_read_a_file_of_its_name() {
+        let dir = root_repository("root-inline");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"shared\" { packages \"htop\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shared.kdl"),
+            "schema-version 1\n\npackages \"vim\"\n",
+        )
+        .unwrap();
+
+        let issues = List::load(&dir).1.plain();
+        assert!(issues.contains("nothing reads `shared.kdl`"), "{issues}");
+    }
+
+    #[test]
+    fn a_syntax_error_in_a_middle_root_file_hides_no_unread_file() {
+        let dir = root_repository("root-syntax");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"./between\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("between.kdl"),
+            "schema-version 1\n\ncomponent \"./shared\"\npackages \"htop\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shared.kdl"),
+            "schema-version 1\n\npackages \"vim\"\n",
+        )
+        .unwrap();
+
+        let issues = crate::load(&dir).issues.plain();
+        assert!(issues.contains("between.kdl"), "{issues}");
+        assert!(!issues.contains("nothing reads `shared.kdl`"), "{issues}");
+    }
+
+    #[test]
+    fn a_reached_root_file_that_git_ignores_is_reported() {
+        let dir = root_repository("root-ignored");
+        std::fs::write(
+            dir.join("one.kdl"),
+            "schema-version 1\n\nimage-base\n\ncomponent \"./shared\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shared.kdl"),
+            "schema-version 1\n\npackages \"htop\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join(".gitignore"), "shared.kdl\n").unwrap();
+        let initialised = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&dir)
+            .status()
+            .is_ok_and(|status| status.success());
+        assert!(initialised);
+
+        let issues = List::load(&dir).1.plain();
+        assert!(issues.contains("reads a file that git ignores"), "{issues}");
     }
 }

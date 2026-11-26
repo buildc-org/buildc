@@ -28,8 +28,7 @@ pub fn hooks<'a>(image: &'a Image, root: &Path) -> Vec<(&'a Entry, Vec<String>)>
 }
 
 fn hook_scripts(root: &Path, entry: &Entry, family: &str) -> Vec<String> {
-    let dir = entry.dir(root);
-    layout::layered(&dir, family, layout::FINALIZE_SCRIPT)
+    super::component_build::script_paths(entry, root, family, layout::FINALIZE_SCRIPT)
 }
 
 pub fn runs_hook(root: &Path, entry: &Entry, family: &str) -> bool {

@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-options",
       "file": "./components/broken-options.kdl",
+      "component": "broken-options",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,6 +61,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/configurable",
               "variant": "nonexistent",
+              "variant-default": false,
               "description": "Declares two options, and a variant that sets an undeclared one",
               "options": {
                 "OPT_FONTS": "JetBrainsMono",
@@ -65,6 +69,7 @@ source: tests/golden/harness.rs
               },
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -74,7 +79,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "b627423d24f4f2af379aa8896fd0c7e4607e29b2d0460d746ff85f2685c917fc",
+                "content": "cc45709eccef4f7013791074110d78d6dafb7f58a8a7782413ce84680d9fd997",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -88,10 +93,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-options",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -131,7 +138,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-options",
-              "COMPONENT_HASHES=core/configurable|b627423d24f4f2af379aa8896fd0c7e4607e29b2d0460d746ff85f2685c917fc",
+              "COMPONENT_HASHES=core/configurable|cc45709eccef4f7013791074110d78d6dafb7f58a8a7782413ce84680d9fd997",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

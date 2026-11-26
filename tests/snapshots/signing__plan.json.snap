@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "signing",
       "file": "./components/signing.kdl",
+      "component": "signing",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "bootc",
           "rechunking",
@@ -66,6 +69,7 @@ source: tests/golden/harness.rs
             {
               "path": "kernel/signed-kernel",
               "variant": null,
+              "variant-default": false,
               "description": "A kernel that signs its own modules against a Secure Boot key",
               "options": {},
               "provides": [
@@ -76,6 +80,7 @@ source: tests/golden/harness.rs
               "requires": [
                 "initramfs-generation"
               ],
+              "prefers": {},
               "met_by": {
                 "initramfs-generation": {
                   "how": "base"
@@ -94,7 +99,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "bce96e5f3ecb7583ba10db545618f7d8ebd93c5607d0c507ad475368f7081d93",
+                "content": "e8abed91f74b4152a6628dcf85cd6d7d54402085e56c02be9dd2bb63354a72bf",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -122,6 +127,7 @@ source: tests/golden/harness.rs
             {
               "path": "drivers/kvmfr",
               "variant": null,
+              "variant-default": false,
               "description": "A DKMS module built and signed against the kernel above",
               "options": {},
               "provides": [],
@@ -129,6 +135,7 @@ source: tests/golden/harness.rs
                 "kernel-devel",
                 "kernel-devel-helpers"
               ],
+              "prefers": {},
               "met_by": {
                 "kernel-devel": {
                   "how": "listed",
@@ -147,7 +154,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "c1ce5ab5bacdd9ecc69606ecdbbccbf4848b501c12f39e9fa4299b20ed9ffcb3",
+                "content": "ad5633238fc96105f6520f33c6dfab47db5fde058e976746e8c970bf6e546032",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -161,10 +168,12 @@ source: tests/golden/harness.rs
             {
               "path": "signing",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -211,7 +220,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=signing",
-              "COMPONENT_HASHES=kernel/signed-kernel|bce96e5f3ecb7583ba10db545618f7d8ebd93c5607d0c507ad475368f7081d93 drivers/kvmfr|c1ce5ab5bacdd9ecc69606ecdbbccbf4848b501c12f39e9fa4299b20ed9ffcb3",
+              "COMPONENT_HASHES=kernel/signed-kernel|e8abed91f74b4152a6628dcf85cd6d7d54402085e56c02be9dd2bb63354a72bf drivers/kvmfr|ad5633238fc96105f6520f33c6dfab47db5fde058e976746e8c970bf6e546032",
               "ASSET_RESOLUTIONS=",
               "SCAP_CLAIMED=",
               "SCAP_REFUSED=",

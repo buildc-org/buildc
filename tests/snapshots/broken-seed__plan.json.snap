@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "example",
       "file": "./components/example.kdl",
+      "component": "example",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -55,10 +58,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/hello",
               "variant": null,
+              "variant-default": false,
               "description": "A component no declared collection provides",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -68,7 +73,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "5c5123abf824a6f8658a1cc3a5fc96dd9d07801cb851d8199a7df1284e1bf1c9",
+                "content": "56cd4c794d4989906d9cfa6dad4a809d9c3128bf043090e2d3df53d03add5d8f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -82,10 +87,12 @@ source: tests/golden/harness.rs
             {
               "path": "example",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -125,7 +132,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=example",
-              "COMPONENT_HASHES=core/hello|5c5123abf824a6f8658a1cc3a5fc96dd9d07801cb851d8199a7df1284e1bf1c9",
+              "COMPONENT_HASHES=core/hello|56cd4c794d4989906d9cfa6dad4a809d9c3128bf043090e2d3df53d03add5d8f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

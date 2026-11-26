@@ -20,7 +20,7 @@ source: tests/golden/harness.rs
     {
       "component": "core/pins",
       "name": "tracked-and-manual",
-      "manifest": "components/core/pins/manifest.kdl",
+      "manifest": "components/core/pins/component.kdl",
       "pin": {
         "locator": "https://example.com/download/v{version}/tool.tar.gz",
         "selector": "1.0.0",
@@ -35,7 +35,7 @@ source: tests/golden/harness.rs
     {
       "component": "core/pins",
       "name": "no-tracking",
-      "manifest": "components/core/pins/manifest.kdl",
+      "manifest": "components/core/pins/component.kdl",
       "pin": {
         "locator": "https://example.com/download/v{tag}/tool.tar.gz; rm -rf /",
         "selector": "1.0.0",
@@ -52,10 +52,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-asset",
       "file": "./components/broken-asset.kdl",
+      "component": "broken-asset",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -67,6 +69,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -89,10 +92,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/pins",
               "variant": null,
+              "variant-default": false,
               "description": "Asset pins that say nothing usable about what they fetch",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -102,7 +107,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "4916772e79c7fc93661bfaadf649b484d0e138d7b38d2dd2166725e39dcb6367",
+                "content": "4beb7127d216d60663bccc12a0e2e52a546038806f125d9f4573921bb0c61dba",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -116,10 +121,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-asset",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -149,7 +156,7 @@ source: tests/golden/harness.rs
             {
               "component": "core/pins",
               "name": "tracked-and-manual",
-              "manifest": "components/core/pins/manifest.kdl",
+              "manifest": "components/core/pins/component.kdl",
               "pin": {
                 "locator": "https://example.com/download/v{version}/tool.tar.gz",
                 "selector": "1.0.0",
@@ -164,7 +171,7 @@ source: tests/golden/harness.rs
             {
               "component": "core/pins",
               "name": "no-tracking",
-              "manifest": "components/core/pins/manifest.kdl",
+              "manifest": "components/core/pins/component.kdl",
               "pin": {
                 "locator": "https://example.com/download/v{tag}/tool.tar.gz; rm -rf /",
                 "selector": "1.0.0",
@@ -190,7 +197,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-asset",
-              "COMPONENT_HASHES=core/pins|4916772e79c7fc93661bfaadf649b484d0e138d7b38d2dd2166725e39dcb6367",
+              "COMPONENT_HASHES=core/pins|4beb7127d216d60663bccc12a0e2e52a546038806f125d9f4573921bb0c61dba",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

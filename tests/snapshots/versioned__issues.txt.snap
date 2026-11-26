@@ -3,7 +3,7 @@ source: tests/golden/harness.rs
 ---
   x `core/needs` requires `libostree` at or above `2025.3`. `base-image/
   | pinned-base` carries `2025.2`
-   ,-[tests/repos/versioned/components/core/needs/manifest.kdl:5:10]
+   ,-[tests/repos/versioned/components/core/needs/component.kdl:5:10]
  4 | 
  5 | requires "libostree" min="2025.3"
    :          ^^^^^|^^^^^
@@ -13,7 +13,7 @@ source: tests/golden/harness.rs
 
   x `core/needs-build-tool` requires `build-tool` at or above `1.0`. Every
   | provider declares it `build-only`
-   ,-[tests/repos/versioned/components/core/needs-build-tool/manifest.kdl:5:10]
+   ,-[tests/repos/versioned/components/core/needs-build-tool/component.kdl:5:10]
  4 | 
  5 | requires "build-tool" min="1.0"
    :          ^^^^^^|^^^^^

@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "workstation",
       "file": "./components/workstation.kdl",
+      "component": "workstation",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,6 +61,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/shared",
               "variant": null,
+              "variant-default": false,
               "description": "A component both images in this repository enable",
               "options": {},
               "provides": [
@@ -65,6 +69,7 @@ source: tests/golden/harness.rs
                 "eza"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -74,7 +79,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
+                "content": "5a352345b9fb9af57acc7a292465efb31a8fd45be9023e1c45479094f74a178c",
                 "resolved": "a51158fa7035907bebd5db0f24441574a4441c3640de8ff5894c2eef459b9b54",
                 "repo": false,
                 "imported": null
@@ -88,10 +93,12 @@ source: tests/golden/harness.rs
             {
               "path": "workstation",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -131,7 +138,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=workstation",
-              "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
+              "COMPONENT_HASHES=core/shared|5a352345b9fb9af57acc7a292465efb31a8fd45be9023e1c45479094f74a178c",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
@@ -144,10 +151,12 @@ source: tests/golden/harness.rs
     {
       "id": "server",
       "file": "./components/server.kdl",
+      "component": "server",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -159,6 +168,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -181,6 +191,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/shared",
               "variant": null,
+              "variant-default": false,
               "description": "A component both images in this repository enable",
               "options": {},
               "provides": [
@@ -188,6 +199,7 @@ source: tests/golden/harness.rs
                 "eza"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -197,7 +209,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
+                "content": "5a352345b9fb9af57acc7a292465efb31a8fd45be9023e1c45479094f74a178c",
                 "resolved": "75c7f701d8cca966af071508d87a18986432ea917147839433b3672e025bbf46",
                 "repo": false,
                 "imported": null
@@ -211,10 +223,12 @@ source: tests/golden/harness.rs
             {
               "path": "server",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -254,7 +268,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=server",
-              "COMPONENT_HASHES=core/shared|e702d0918ff8974be2f05205d7657b891658ac98c55ba1d2534c7ce7a9fd0fa3",
+              "COMPONENT_HASHES=core/shared|5a352345b9fb9af57acc7a292465efb31a8fd45be9023e1c45479094f74a178c",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

@@ -620,7 +620,7 @@ fn setup_create_image(flow: &Flow) {
     assert!(!root.join("components/fedora-family").exists());
     flow.buildc(&root, &["--no-tui", "--root", ".", "check"]);
 
-    let manifest = root.join("components/fedora-family/manifest.kdl");
+    let manifest = root.join("components/fedora-family/component.kdl");
     let fork = "schema-version 1\n\ndescription \"The user's own family\"\n";
     std::fs::create_dir_all(manifest.parent().unwrap()).unwrap();
     std::fs::write(&manifest, fork).unwrap();
@@ -649,7 +649,7 @@ fn setup_conforms(flow: &Flow) {
     let conforms = flow.repo("flow-conforms");
     std::fs::create_dir_all(conforms.join("components/hardening")).unwrap();
     std::fs::write(
-        conforms.join("components/hardening/manifest.kdl"),
+        conforms.join("components/hardening/component.kdl"),
         "schema-version 1\n\ndescription \"Claims a rule the profile selects\"\n\ntargets \"fedora\"\n\n\
              satisfies {\n    cis-fedora \"5.2.20\"\n}\n",
     )
@@ -711,7 +711,7 @@ fn setup_component(flow: &Flow) {
     flow.run("flow-create-component", &root, None, &component);
     scaffolded(
         buildc::emit::schema_md::Area::Component,
-        &root.join("components/my-editor/manifest.kdl"),
+        &root.join("components/my-editor/component.kdl"),
     );
     if target == "flow-create-component" {
         return;
@@ -842,7 +842,7 @@ fn setup_add_package(flow: &Flow) {
         ],
     );
     let manifest =
-        std::fs::read_to_string(root.join("components/local-tools/manifest.kdl")).unwrap();
+        std::fs::read_to_string(root.join("components/local-tools/component.kdl")).unwrap();
     assert!(manifest.ends_with("\npackages \"nano\"\n"), "{manifest}");
     let example = std::fs::read_to_string(root.join("example.kdl")).unwrap();
     std::fs::write(root.join("second.kdl"), example).unwrap();
@@ -931,7 +931,7 @@ fn setup_set_conforms_copy(flow: &Flow) {
     let image = std::fs::read_to_string(copied.join("example.kdl")).unwrap();
     let origins = std::fs::read_to_string(copied.join("components/origins.kdl")).unwrap();
     assert!(
-        image.contains("\nsshd\n") && copied.join("components/sshd/manifest.kdl").is_file(),
+        image.contains("\nsshd\n") && copied.join("components/sshd/component.kdl").is_file(),
         "{image}"
     );
     assert!(origins.contains("component \"sshd\""), "{origins}");
@@ -1016,7 +1016,7 @@ fn setup_add_component_family(flow: &Flow) {
     let family = flow.repo_with("flow-add-component-family-in", "upstream");
     std::fs::create_dir_all(family.join("components/base-image/plain")).unwrap();
     std::fs::write(
-        family.join("components/base-image/plain/manifest.kdl"),
+        family.join("components/base-image/plain/component.kdl"),
         "schema-version 1\n\nbase \"quay.io/fedora/fedora-bootc:44\" { family \"fedora\"; }\n",
     )
     .unwrap();
@@ -1064,7 +1064,7 @@ fn setup_set_claims(flow: &Flow) {
     lists_sshd(&claimed);
     std::fs::create_dir_all(claimed.join("components/sshd")).unwrap();
     std::fs::write(
-        claimed.join("components/sshd/manifest.kdl"),
+        claimed.join("components/sshd/component.kdl"),
         format!("{CLAIMANT}\nsatisfies {{\n    cis-fedora \"5.5.2\"\n}}\n"),
     )
     .unwrap();
@@ -1083,7 +1083,7 @@ fn setup_set_claims_two(flow: &Flow) {
     lists_sshd(&two);
     std::fs::create_dir_all(two.join("components/sshd")).unwrap();
     std::fs::write(
-        two.join("components/sshd/manifest.kdl"),
+        two.join("components/sshd/component.kdl"),
         format!(
             "{CLAIMANT}\nsatisfies {{\n    cis-fedora \"5.5.2\"\n    \
                  stig-fedora \"RHEL-09-232010\"\n}}\n"
@@ -1104,7 +1104,7 @@ fn setup_set_claims_two(flow: &Flow) {
             stream.as_str(),
         ],
     );
-    let merged = std::fs::read_to_string(two.join("components/sshd/manifest.kdl")).unwrap();
+    let merged = std::fs::read_to_string(two.join("components/sshd/component.kdl")).unwrap();
     assert_eq!(merged.matches("satisfies ").count(), 1, "{merged}");
     assert!(
         !merged.contains("cis-fedora") && !merged.contains("stig-fedora"),
@@ -1391,7 +1391,7 @@ fn setup_check_unfetched(flow: &Flow) {
     let unfetched = flow.repo("flow-unfetched");
     std::fs::create_dir_all(unfetched.join("components/core/one")).unwrap();
     std::fs::write(
-        unfetched.join("components/core/one/manifest.kdl"),
+        unfetched.join("components/core/one/component.kdl"),
         "schema-version 1\n\ndescription \"Builds things\"\n\ntargets \"fedora\"\n\nrequires \"flatpak\"\n",
     )
     .unwrap();
@@ -1411,7 +1411,7 @@ fn setup_check_unfetched(flow: &Flow) {
 fn on_debian(root: &Path) -> PathBuf {
     std::fs::create_dir_all(root.join("components/base-image/debian")).unwrap();
     std::fs::write(
-        root.join("components/base-image/debian/manifest.kdl"),
+        root.join("components/base-image/debian/component.kdl"),
         "schema-version 1\n\nbase \"docker.io/library/debian:forky\" { family \"debian\"; }\n",
     )
     .unwrap();
@@ -1446,7 +1446,7 @@ fn setup_add_component_exclusive(flow: &Flow) {
     let root = flow.repo_sourced(target);
     std::fs::create_dir_all(root.join("components/flathub")).unwrap();
     std::fs::write(
-        root.join("components/flathub/manifest.kdl"),
+        root.join("components/flathub/component.kdl"),
         "schema-version 1\n\ndescription \"Flathub remote\"\n\nprovides \"flatpak\" exclusive=#true\n",
     )
     .unwrap();
@@ -1478,7 +1478,7 @@ fn setup_add_component_exclusive(flow: &Flow) {
                 buildc::parse::image::listed(&image, "flathub") == 0,
                 "{image}"
             );
-            assert!(root.join("components/flathub/manifest.kdl").is_file());
+            assert!(root.join("components/flathub/component.kdl").is_file());
         }
         _ => {
             let silent = [&["--no-tui"][..], &args[..]].concat();
@@ -1736,7 +1736,7 @@ fn setup_collides(flow: &Flow) {
     let remotes = "components/editor/files/usr/share/example";
     std::fs::create_dir_all(collide.join(remotes)).unwrap();
     std::fs::write(
-        collide.join("components/editor/manifest.kdl"),
+        collide.join("components/editor/component.kdl"),
         "schema-version 1\n\ndescription \"Editor shipping its own flatpak remotes\"\n\ntargets \"fedora\"\n",
     )
     .unwrap();
@@ -1787,7 +1787,7 @@ fn setup_key_kinds(flow: &Flow) {
     let root = flow.repo("flow-key");
     std::fs::create_dir_all(root.join("components/signed-kernel")).unwrap();
     std::fs::write(
-        root.join("components/signed-kernel/manifest.kdl"),
+        root.join("components/signed-kernel/component.kdl"),
         KEYHOLDER,
     )
     .unwrap();
@@ -1809,7 +1809,7 @@ fn setup_key_refused(flow: &Flow, args: &[&str]) {
     let root = flow.repo("flow-key");
     std::fs::create_dir_all(root.join("components/signed-kernel")).unwrap();
     std::fs::write(
-        root.join("components/signed-kernel/manifest.kdl"),
+        root.join("components/signed-kernel/component.kdl"),
         KEYHOLDER.replace("bits=4096", "bits=1024"),
     )
     .unwrap();
@@ -2007,7 +2007,7 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
     let claims_root = flow.repo("buildc-terminal-smoke-claims");
     lists_sshd(&claims_root);
     std::fs::create_dir_all(claims_root.join("components/sshd")).unwrap();
-    std::fs::write(claims_root.join("components/sshd/manifest.kdl"), CLAIMANT).unwrap();
+    std::fs::write(claims_root.join("components/sshd/component.kdl"), CLAIMANT).unwrap();
     let claims_command = format!(
         "'{}' --root . set claims sshd --datastream '{stream}'",
         env!("CARGO_BIN_EXE_buildc")
@@ -2025,7 +2025,8 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
         "{errors}{}",
         String::from_utf8_lossy(&raw)
     );
-    let picked = std::fs::read_to_string(claims_root.join("components/sshd/manifest.kdl")).unwrap();
+    let picked =
+        std::fs::read_to_string(claims_root.join("components/sshd/component.kdl")).unwrap();
     assert!(picked.contains("    standard \"1.1.1.1\"\n"), "{picked}");
 
     let made = flow.repo_sourced("flow-create-image-cancel-in");
@@ -2075,6 +2076,6 @@ fn buildc_terminal_smoke_waits_for_each_screen() {
     let image = std::fs::read_to_string(root.join("gamma.kdl")).unwrap();
     assert!(!image.contains("family"), "{image}");
     let base =
-        std::fs::read_to_string(root.join("components/base-image/own/manifest.kdl")).unwrap();
+        std::fs::read_to_string(root.join("components/base-image/own/component.kdl")).unwrap();
     assert!(!base.contains("family"), "{base}");
 }

@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-overlay",
       "file": "./components/broken-overlay.kdl",
+      "component": "broken-overlay",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,10 +61,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/first",
               "variant": null,
+              "variant-default": false,
               "description": "Ships a file a later component ships too",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -71,7 +76,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "938c4d46c89896ad3027e0f4f2753362c051bf40c3e0c5edc5e53aa04b15b141",
+                "content": "95f5b585383319b4b8b32cb8d6f658664b5a57ecc6d2d3a3840a0fcef1cd584b",
                 "resolved": "b51f433d2d7950a15abc1b548d6b8d4a359b99a71d74a63a24d1300476950f31",
                 "repo": false,
                 "imported": null
@@ -85,10 +90,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/second",
               "variant": null,
+              "variant-default": false,
               "description": "Ships the same path without saying so",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -98,7 +105,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "c0f70fb7eb59c3d40f7b4de6bf352e2d6614bc4e3c237603c4101df8edc60c98",
+                "content": "b2af0102f9fb9fe58074cb655efd13fa7c110d8bd3cd79d1dc12cee65efa33c9",
                 "resolved": "f3879d8ea709e995776b58e1d7df14a70a9f8a46e972e5f53e200e5ce7beff10",
                 "repo": false,
                 "imported": null
@@ -112,10 +119,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/third",
               "variant": null,
+              "variant-default": false,
               "description": "Overrides a path no earlier component ships",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -125,7 +134,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "970705063cea90cc19aeb993c0e460d17792fa9962a70a984941d07c662387eb",
+                "content": "616a36fb047357790a6a892ca463855f60dd91126b22dfa79e400a03d1587e74",
                 "resolved": "06cc95cbe53a47eb217978f8e15196a1095cf663cba6d93e6d5b432f809c53e1",
                 "repo": true,
                 "imported": null
@@ -139,10 +148,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-overlay",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -190,7 +201,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-overlay",
-              "COMPONENT_HASHES=core/first|938c4d46c89896ad3027e0f4f2753362c051bf40c3e0c5edc5e53aa04b15b141 core/second|c0f70fb7eb59c3d40f7b4de6bf352e2d6614bc4e3c237603c4101df8edc60c98 core/third|970705063cea90cc19aeb993c0e460d17792fa9962a70a984941d07c662387eb",
+              "COMPONENT_HASHES=core/first|95f5b585383319b4b8b32cb8d6f658664b5a57ecc6d2d3a3840a0fcef1cd584b core/second|b2af0102f9fb9fe58074cb655efd13fa7c110d8bd3cd79d1dc12cee65efa33c9 core/third|616a36fb047357790a6a892ca463855f60dd91126b22dfa79e400a03d1587e74",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

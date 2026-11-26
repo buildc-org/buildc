@@ -4,7 +4,7 @@ source: tests/golden/harness.rs
 Buildc v{version}
 
   × `core/one` requires `flatpak`, which nothing enabled provides
-   ╭─[./components/core/one/manifest.kdl:7:10]
+   ╭─[./components/core/one/component.kdl:7:10]
  6 │ 
  7 │ requires "flatpak"
    ·          ────┬────
@@ -14,7 +14,7 @@ Buildc v{version}
         neither does the base `base-image/fedora`. `buildc add component`
         lists what the declared libraries provide
 
-buildc: 1 problem in ./components/core/one/manifest.kdl; none in ./repo.kdl, ./example.kdl
+buildc: 1 problem in ./components/core/one/component.kdl; none in ./repo.kdl, ./example.kdl
 buildc: `example` reads `base-image/fedora` from `buildc` at 111111111111, which repo.lock.kdl does not record; `buildc generate` records it
 buildc: `example` reads `fedora-family` from `buildc` at 111111111111, which repo.lock.kdl does not record; `buildc generate` records it
 ==== exit 2

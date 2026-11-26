@@ -1,6 +1,6 @@
 schema-version 1
 
-description "A component imported from the collection this repository publishes"
+description "Installs flatpak and enables the remotes an image asks for"
 
 targets "fedora"
 
@@ -21,4 +21,10 @@ variant "beta" {
     set "remotes" "flathub" "flathub-beta"
 }
 
+default-variant "beta"
+
 packages "flatpak"
+
+satisfies {
+    cis-fedora "9.9.9.9"
+}

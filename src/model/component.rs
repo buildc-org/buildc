@@ -70,6 +70,7 @@ pub struct Requirement {
     pub name: String,
     pub span: Span,
     pub min: Option<Version>,
+    pub prefer: Option<String>,
 }
 
 pub struct Import {
@@ -84,10 +85,48 @@ pub struct Import {
     pub organises: bool,
     /// The path was written from a library root.
     pub rooted: bool,
+    pub root_file: bool,
     pub digest: Option<(String, Span)>,
     pub signed: Option<(bool, Span)>,
+    pub key: Option<(String, Span)>,
+    pub key_sha256: Option<(String, Span)>,
+    pub identity: Option<(String, Span)>,
+    pub issuer: Option<(String, Span)>,
     pub inline: Option<Vec<Span>>,
 }
+
+#[derive(Clone)]
+pub struct TrustRoot {
+    pub key: Option<String>,
+    pub key_sha256: Option<String>,
+    pub identity: Option<String>,
+    pub issuer: Option<String>,
+}
+
+impl TrustRoot {
+    pub fn of(
+        key: Option<&(String, Span)>,
+        key_sha256: Option<&(String, Span)>,
+        identity: Option<&(String, Span)>,
+        issuer: Option<&(String, Span)>,
+    ) -> Option<Self> {
+        let key = key.map(|(key, _)| key.clone());
+        let key_sha256 = key_sha256.map(|(sha256, _)| sha256.clone());
+        let identity = identity.map(|(identity, _)| identity.clone());
+        let issuer = issuer
+            .map(|(issuer, _)| issuer.clone())
+            .or_else(|| identity.as_ref().map(|_| GITHUB_OIDC_ISSUER.to_string()));
+        (key.is_some() || identity.is_some()).then_some(Self {
+            key,
+            key_sha256,
+            identity,
+            issuer,
+        })
+    }
+}
+
+/// A keyless verifier uses this issuer when the base names none.
+pub const GITHUB_OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com";
 
 pub struct BaseFacts {
     pub image: String,
@@ -96,6 +135,9 @@ pub struct BaseFacts {
     pub bootloaders: Vec<String>,
     pub scap_content: String,
     pub scap_pin: Option<crate::provenance::Evidence>,
+    pub digest: Option<String>,
+    pub signed: bool,
+    pub verify: Option<TrustRoot>,
 }
 
 pub struct BaseComponent {
@@ -199,6 +241,9 @@ pub struct Component {
     pub args: Vec<Decl>,
     pub options: Vec<Opt>,
     pub variants: Vec<Variant>,
+    pub default_variant: Option<String>,
+    pub variant: Option<String>,
+    pub variant_default: bool,
     pub assets: Vec<Asset>,
     pub packages: Vec<PackageGroup>,
     pub groups: Vec<PackageGroup>,
@@ -208,6 +253,7 @@ pub struct Component {
     pub resolved: Vec<(String, String)>,
     pub changes: Vec<crate::model::options::Change>,
     pub fragment: Option<String>,
+    pub fragment_declared: bool,
     pub fragment_position: Position,
     pub standard_layer: bool,
     pub content: Option<String>,

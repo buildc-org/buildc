@@ -63,6 +63,33 @@ for field in $measurements; do
         "$(json_string "${parts[3]}")")"
 done
 
+signed=false
+[ "${BASE_SIGNED:-}" = "true" ] && signed=true
+
+attestation=null
+sbom=null
+if [ -n "${BASE_ATTESTATION_SHA256:-}" ]; then
+    attestation="$(printf '{"predicate": %s, "subject": %s, "sha256": %s, "payload_sha256": %s}' \
+        "$(json_string "${BASE_ATTESTATION_PREDICATE:-}")" \
+        "$(json_string "${BASE_ATTESTATION_SUBJECT:-}")" \
+        "$(json_string "${BASE_ATTESTATION_SHA256:-}")" \
+        "$(json_string "${BASE_ATTESTATION_PAYLOAD_SHA256:-}")")"
+    sbom="$(printf '{"packages": %s}' "${BASE_SBOM_PACKAGES:-0}")"
+fi
+
+signature=false
+[ "${BASE_VERIFIED_SIGNATURE:-}" = "true" ] && signature=true
+attestation_checked=false
+[ "${BASE_VERIFIED_ATTESTATION:-}" = "true" ] && attestation_checked=true
+
+base="$(printf '{"declared": %s, "resolved": %s, "signed": %s, "attestation": %s, "sbom": %s' \
+    "$(optional "${BASE_DECLARED:-}")" "$(optional "${BASE:-}")" \
+    "$signed" "$attestation" "$sbom")"
+if [ -n "$versions" ]; then
+    base="$base, \"versions\": [$versions]"
+fi
+base="$base}"
+
 text="$(
     printf '{\n'
     printf '  "schema_version": 1,\n'
@@ -72,18 +99,12 @@ text="$(
     printf '  "buildc": %s,\n' "$(json_string "${BUILDC_VERSION:?build-record: BUILDC_VERSION is unset}")"
     printf '  "backend": %s,\n' "$(optional "${BUILD_BACKEND:-}")"
     printf '  "source_commit": %s,\n' "$(optional "${SOURCE_COMMIT:-}")"
-    # An unversioned image writes no `versions` key. A consumer sees the key only when the build measured one.
-    if [ -n "$versions" ]; then
-        printf '  "base": {"declared": %s, "resolved": %s, "versions": [%s]},\n' \
-            "$(optional "${BASE_DECLARED:-}")" "$(optional "${BASE:-}")" "$versions"
-    else
-        printf '  "base": {"declared": %s, "resolved": %s},\n' \
-            "$(optional "${BASE_DECLARED:-}")" "$(optional "${BASE:-}")"
-    fi
+    printf '  "base": %s,\n' "$base"
     printf '  "components": [%s],\n' "$components"
     printf '  "assets": [%s],\n' "$assets"
     printf '  "audit": {"enforce": %s},\n' "$enforce"
-    printf '  "verified": null\n'
+    printf '  "verified": {"base_signature": %s, "base_attestation": %s}\n' \
+        "$signature" "$attestation_checked"
     printf '}\n'
 )"
 

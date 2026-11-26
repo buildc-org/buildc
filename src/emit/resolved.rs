@@ -125,6 +125,14 @@ fn resolve_one(
         copy_whole(&at, on_disk, family, copies);
     }
 
+    if let Some(variant) = &component.variant {
+        let from = layout::variant_dir(on_disk, variant);
+        if from.is_dir() {
+            // The variant is a full overlay of the component so a file of the same name replaces the component's file.
+            copy_whole(&at, &from, family, copies);
+        }
+    }
+
     let mut by_path: BTreeMap<PathBuf, usize> = BTreeMap::new();
     let mut kept: Vec<CopyFile> = Vec::with_capacity(copies.len());
     for file in copies.drain(..) {
@@ -161,6 +169,10 @@ fn walk_whole(
         let Ok(rel) = path.strip_prefix(root) else {
             continue;
         };
+        // The variants directory is not image content because the selected variant is copied separately.
+        if here == root && rel == Path::new(layout::VARIANTS) {
+            continue;
+        }
         if held.iter().any(|component| rel.starts_with(component)) {
             continue;
         }

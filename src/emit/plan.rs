@@ -66,10 +66,22 @@ fn image(root: &Path, list: &List, image: &Image, resolved: &Resolved) -> Json {
     Json::object([
         ("id", Json::string(&image.id)),
         ("file", Json::string(&image.file)),
+        ("component", Json::string(&image.component)),
         ("description", Json::string(&image.description)),
         ("keywords", Json::strings(image.keywords.iter().cloned())),
         ("logo_url", Json::string(&image.logo_url)),
         ("conforms", Json::string(&image.conforms)),
+        (
+            "fields",
+            Json::array(crate::model::image::FIELDS.iter().filter_map(|name| {
+                image.source_of(name).map(|component| {
+                    Json::object([
+                        ("field", Json::string(*name)),
+                        ("component", Json::string(component)),
+                    ])
+                })
+            })),
+        ),
         ("uki", Json::Bool(image.seals_uki())),
         ("allows", refusals(&image.allows)),
         (
@@ -107,6 +119,18 @@ fn image(root: &Path, list: &List, image: &Image, resolved: &Resolved) -> Json {
                         base.scap_pin.as_ref().map_or(Json::Null, |pin| pin.json()),
                     ),
                     ("signed", Json::Bool(base.signed)),
+                    (
+                        "verify",
+                        match &base.verify {
+                            None => Json::Null,
+                            Some(root) => Json::object([
+                                ("key", Json::optional(root.key.clone())),
+                                ("key_sha256", Json::optional(root.key_sha256.clone())),
+                                ("identity", Json::optional(root.identity.clone())),
+                                ("issuer", Json::optional(root.issuer.clone())),
+                            ]),
+                        },
+                    ),
                     (
                         "provides",
                         Json::strings(base.shipped().map(|decl| decl.name.clone())),
@@ -431,7 +455,14 @@ fn component(
     let component = entry.component.as_ref();
     Json::object([
         ("path", Json::string(&entry.path)),
-        ("variant", Json::optional(entry.variant.clone())),
+        (
+            "variant",
+            Json::optional(component.and_then(|component| component.variant.clone())),
+        ),
+        (
+            "variant-default",
+            Json::Bool(component.is_some_and(|component| component.variant_default)),
+        ),
         (
             "description",
             Json::string(
@@ -461,6 +492,17 @@ fn component(
             Json::strings(decls(component, |m| {
                 m.requires.iter().map(|decl| decl.name.clone()).collect()
             })),
+        ),
+        (
+            "prefers",
+            Json::map(
+                component
+                    .into_iter()
+                    .flat_map(|m| m.requires.iter())
+                    .filter_map(|decl| {
+                        Some((decl.name.clone(), Json::string(decl.prefer.as_ref()?)))
+                    }),
+            ),
         ),
         ("met_by", met_by(entry, image, entries)),
         (
@@ -798,7 +840,7 @@ fn assets(components: &[&Component]) -> Json {
             ("name", Json::string(&asset.name)),
             (
                 "manifest",
-                Json::string(format!("components/{}/manifest.kdl", component.dir)),
+                Json::string(format!("components/{}/component.kdl", component.dir)),
             ),
             ("pin", asset.pin.json()),
         ])

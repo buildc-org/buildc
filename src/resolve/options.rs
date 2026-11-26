@@ -5,15 +5,29 @@ use crate::model::options::{
     check_values, env_name, env_value, Change, Opt, OptType, Value, Variant, Verb,
 };
 
+pub struct Resolved {
+    pub env: Vec<(String, String)>,
+    pub changes: Vec<Change>,
+    pub variant: Option<String>,
+    pub variant_default: bool,
+}
+
+#[derive(Clone, Copy)]
+struct Picked<'a> {
+    at: usize,
+    variant: &'a Variant,
+    image_id: &'a [(&'a str, &'a str)],
+}
+
 pub fn resolve(
     options: &[Opt],
     variants: &[Variant],
+    default_variant: Option<&str>,
     src: &Source,
     entry: &Entry,
     image: &Image,
     issues: &mut Issues,
-) -> (Vec<(String, String)>, Vec<Change>) {
-    let selected = entry.variant.as_ref();
+) -> Resolved {
     let component_path = entry.path.as_str();
     let list_src = &image.src;
 
@@ -36,62 +50,52 @@ pub fn resolve(
         })
         .collect();
 
-    let find = |name: &str| options.iter().find(|o| o.name == name);
-
-    if let Some(want) = selected {
-        match variants.iter().find(|v| &v.name == want) {
-            Some(variant) => {
-                for (name, values, span) in &variant.sets {
-                    let Some(opt) = find(name) else {
-                        issues.push(
-                            Issue::new(
-                                format!("variant `{want}` sets `{name}`, which this component does not declare"),
-                                src,
-                            )
-                            .at(*span, "no such option")
-                            .help("a variant may only set options declared in the same manifest"),
-                        );
-                        continue;
-                    };
-                    let values = match filled(values, &image_id) {
-                        Ok(values) => values,
-                        Err(reference) => {
-                            issues.push(
-                                Issue::new(
-                                    format!("variant `{want}` sets `{name}` to a value that reads `{{{reference}}}`. A variant cannot read that value"),
-                                    src,
-                                )
-                                .at(*span, "an unknown reference")
-                                .help("a variant may read `{image-id}`; an image passes any other value as the option"),
-                            );
-                            continue;
-                        }
-                    };
-                    if check_values(name, opt.ty, &values, src, *span, issues) {
-                        if let Some(slot) = resolved.iter_mut().find(|(n, _)| n == name) {
-                            slot.1 = values;
-                        }
-                    }
-                }
-            }
-            None => {
-                let known: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
-                issues.push(
-                    Issue::new(
-                        format!("`{component_path}` has no variant `{want}`"),
-                        list_src,
-                    )
-                    .help(if known.is_empty() {
-                        "this component declares no variants".to_string()
-                    } else {
-                        format!("declared variants: {}", known.join(", "))
-                    }),
-                );
-            }
-        }
+    // A default variant applies before every layer. An explicit variant applies at the setter that selected it.
+    let selected = entry.variant.as_deref().or(default_variant);
+    let selected_explicit = entry.variant.is_some();
+    let chosen = selected.and_then(|want| variants.iter().find(|v| v.name == want));
+    if let (Some(want), None) = (selected, chosen) {
+        let known: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+        issues.push(
+            Issue::new(
+                format!("`{component_path}` has no variant `{want}`"),
+                list_src,
+            )
+            .help(if known.is_empty() {
+                "this component declares no variants".to_string()
+            } else {
+                format!("declared variants: {}", known.join(", "))
+            }),
+        );
     }
 
-    let changes = layered(options, entry, image, &mut resolved, issues);
+    let mut changes = Vec::new();
+    if let Some(variant) = chosen.filter(|_| !selected_explicit) {
+        changes.extend(apply_variant(
+            &variant.name,
+            variant,
+            options,
+            &mut resolved,
+            &image_id,
+            src,
+            issues,
+        ));
+    }
+    let at = entry.variant_at.unwrap_or(entry.options.len());
+    let layered_variant = chosen.filter(|_| selected_explicit).map(|variant| Picked {
+        at,
+        variant,
+        image_id: &image_id,
+    });
+    changes.extend(layered(
+        options,
+        entry,
+        image,
+        layered_variant,
+        src,
+        &mut resolved,
+        issues,
+    ));
 
     let env = options
         .iter()
@@ -104,7 +108,66 @@ pub fn resolve(
             (env_name(&opt.name), env_value(opt.ty, &values))
         })
         .collect();
-    (env, changes)
+    Resolved {
+        env,
+        changes,
+        variant: selected.map(str::to_string),
+        variant_default: selected.is_some() && !selected_explicit,
+    }
+}
+
+fn apply_variant(
+    want: &str,
+    variant: &Variant,
+    options: &[Opt],
+    resolved: &mut [(String, Vec<Value>)],
+    image_id: &[(&str, &str)],
+    src: &Source,
+    issues: &mut Issues,
+) -> Vec<Change> {
+    let mut changes = Vec::new();
+    for (name, values, span) in &variant.sets {
+        let Some(opt) = options.iter().find(|o| &o.name == name) else {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "variant `{want}` sets `{name}`, which this component does not declare"
+                    ),
+                    src,
+                )
+                .at(*span, "no such option")
+                .help("a variant may only set options declared in the same manifest"),
+            );
+            continue;
+        };
+        let values = match filled(values, image_id) {
+            Ok(values) => values,
+            Err(reference) => {
+                issues.push(
+                    Issue::new(
+                        format!("variant `{want}` sets `{name}` to a value that reads `{{{reference}}}`. A variant cannot read that value"),
+                        src,
+                    )
+                    .at(*span, "an unknown reference")
+                    .help("a variant may read `{image-id}`; an image passes any other value as the option"),
+                );
+                continue;
+            }
+        };
+        if !check_values(name, opt.ty, &values, src, *span, issues) {
+            continue;
+        }
+        if let Some(slot) = resolved.iter_mut().find(|(n, _)| n == name) {
+            slot.1 = values.clone();
+        }
+        changes.push(Change {
+            option: name.clone(),
+            by: want.to_string(),
+            verb: Verb::Sets,
+            values: values.iter().map(Value::kdl).collect(),
+        });
+    }
+    changes
 }
 
 pub(crate) const BUILD_VALUES: [&str; 2] = ["image-id", "base-url"];
@@ -113,6 +176,8 @@ fn layered(
     options: &[Opt],
     entry: &Entry,
     image: &Image,
+    variant: Option<Picked<'_>>,
+    src: &Source,
     resolved: &mut [(String, Vec<Value>)],
     issues: &mut Issues,
 ) -> Vec<Change> {
@@ -125,7 +190,20 @@ fn layered(
     let find = |name: &str| options.iter().find(|o| o.name == name);
     let mut changes = Vec::new();
     let mut replaced: Vec<&str> = Vec::new();
-    for layer in &entry.options {
+    for (index, layer) in entry.options.iter().enumerate() {
+        if let Some(picked) = variant {
+            if index == picked.at {
+                changes.extend(apply_variant(
+                    &picked.variant.name,
+                    picked.variant,
+                    options,
+                    resolved,
+                    picked.image_id,
+                    src,
+                    issues,
+                ));
+            }
+        }
         let by = layer.by.as_deref().unwrap_or(&image.id);
         let mut seen: Vec<&str> = Vec::new();
         for setting in &layer.settings {
@@ -236,6 +314,19 @@ fn layered(
         }
     }
 
+    if let Some(picked) = variant {
+        if picked.at >= entry.options.len() {
+            changes.extend(apply_variant(
+                &picked.variant.name,
+                picked.variant,
+                options,
+                resolved,
+                picked.image_id,
+                src,
+                issues,
+            ));
+        }
+    }
     changes
 }
 
@@ -344,7 +435,6 @@ pub fn apply(component: &mut Component, entry: &Entry, image: &Image, issues: &m
         batch.packages = kept;
     }
     for import in &mut component.imports {
-        import.path = interpolate(&import.path, value);
         for setting in &mut import.options {
             for held in setting.values.iter_mut().chain(&mut setting.removes) {
                 if let Value::String(text) = held {

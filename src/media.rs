@@ -202,8 +202,8 @@ mod tests {
         for file in [
             "repo.kdl",
             "components/deb.kdl",
-            "components/core/luks/manifest.kdl",
-            "components/base-image/debian-forky/manifest.kdl",
+            "components/core/luks/component.kdl",
+            "components/base-image/debian-forky/component.kdl",
         ] {
             let body = std::fs::read_to_string(fixture.join(file)).expect("the fixture file reads");
             crate::init::put(&root.join(file), &body).expect("the fixture file writes");

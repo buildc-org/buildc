@@ -10,7 +10,7 @@ source: tests/golden/harness.rs
 
   x `core/third` overrides `/usr/lib/nothing.conf`, which no earlier component
   | ships
-   ,-[tests/repos/broken-overlay/components/core/third/manifest.kdl:7:1]
+   ,-[tests/repos/broken-overlay/components/core/third/component.kdl:7:1]
  6 | 
  7 | overrides "/usr/lib/nothing.conf"
    : ^^^^|^^^^
@@ -21,7 +21,7 @@ source: tests/golden/harness.rs
         actually ships
 
   x mode for `/etc/duplicate.conf` is declared twice
-    ,-[tests/repos/broken-overlay/components/core/bad-modes/manifest.kdl:12:1]
+    ,-[tests/repos/broken-overlay/components/core/bad-modes/component.kdl:12:1]
  11 | mode "/etc/duplicate.conf" "0440"
  12 | mode "/etc/duplicate.conf" "0600"
     : ^^|^
@@ -30,7 +30,7 @@ source: tests/golden/harness.rs
     `----
 
   x `etc/relative.conf` is not a normal absolute overlay path
-   ,-[tests/repos/broken-overlay/components/core/bad-modes/manifest.kdl:7:6]
+   ,-[tests/repos/broken-overlay/components/core/bad-modes/component.kdl:7:6]
  6 | 
  7 | mode "etc/relative.conf" "0440"
    :      ^^^^^^^^^|^^^^^^^^^
@@ -41,7 +41,7 @@ source: tests/golden/harness.rs
         example.conf`
 
   x `0880` is not an octal file mode
-   ,-[tests/repos/broken-overlay/components/core/bad-modes/manifest.kdl:8:28]
+   ,-[tests/repos/broken-overlay/components/core/bad-modes/component.kdl:8:28]
  7 | mode "etc/relative.conf" "0440"
  8 | mode "/etc/non-octal.conf" "0880"
    :                            ^^^|^^
@@ -51,7 +51,7 @@ source: tests/golden/harness.rs
   help: a chmod file mode such as `0440`
 
   x file mode `10000` is out of range
-    ,-[tests/repos/broken-overlay/components/core/bad-modes/manifest.kdl:9:31]
+    ,-[tests/repos/broken-overlay/components/core/bad-modes/component.kdl:9:31]
   8 | mode "/etc/non-octal.conf" "0880"
   9 | mode "/etc/out-of-range.conf" "10000"
     :                               ^^^|^^^
@@ -60,7 +60,7 @@ source: tests/golden/harness.rs
     `----
 
   x `` is not an octal file mode
-    ,-[tests/repos/broken-overlay/components/core/bad-modes/manifest.kdl:10:24]
+    ,-[tests/repos/broken-overlay/components/core/bad-modes/component.kdl:10:24]
   9 | mode "/etc/out-of-range.conf" "10000"
  10 | mode "/etc/empty.conf" ""
     :                        ^|
@@ -70,7 +70,7 @@ source: tests/golden/harness.rs
   help: a chmod file mode such as `0440`
 
   x `core/bad-modes` declares a mode for a file it does not ship
-    ,-[tests/repos/broken-overlay/components/core/bad-modes/manifest.kdl:13:6]
+    ,-[tests/repos/broken-overlay/components/core/bad-modes/component.kdl:13:6]
  12 | mode "/etc/duplicate.conf" "0600"
  13 | mode "/etc/missing.conf" "0440"
     :      ^^^^^^^^^|^^^^^^^^^

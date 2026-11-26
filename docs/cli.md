@@ -40,17 +40,17 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in a component's body | [`manifest.kdl`](schema/component.md) |
-| [`buildc add package [name]...`](#buildc-add-package) | add package names to a component, or write a new package group | [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
-| [`buildc add component [path]...`](#buildc-add-component) | add a reference to a library component to local components | [`manifest.kdl`](schema/component.md) |
+| [`buildc create component [name]`](#buildc-create-component) | write a new component in components/ or inline in a component's body | [`component.kdl`](schema/component.md) |
+| [`buildc add package [name]...`](#buildc-add-package) | add package names to a component, or write a new package group | [`component.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages) |
+| [`buildc add component [path]...`](#buildc-add-component) | add a reference to a library component to local components | [`component.kdl`](schema/component.md) |
 | [`buildc copy component [path]...`](#buildc-copy-component) | copy library components into a local library and point the references at the copies | [`origins.kdl`](schema/origins.md) |
 
 ### Keys
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc create key [kind]`](#buildc-create-key) | generate a key that a component declares | [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
-| [`buildc set key [kind]`](#buildc-set-key) | record an existing key instead of generating one | [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
+| [`buildc create key [kind]`](#buildc-create-key) | generate a key that a component declares | [`component.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
+| [`buildc set key [kind]`](#buildc-set-key) | record an existing key instead of generating one | [`component.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key) |
 
 ### Check and generate
 
@@ -98,7 +98,7 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 | Command | Description | Schema |
 | --- | --- | --- |
 | [`buildc set conforms [image]`](#buildc-set-conforms) | choose the benchmark profile an image is measured against | [`<name>.kdl`&nbsp;›&nbsp;`conforms`](schema/component.md#conforms) |
-| [`buildc set claims [component]`](#buildc-set-claims) | choose the benchmark rules that a component claims | [`manifest.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies) |
+| [`buildc set claims [component]`](#buildc-set-claims) | choose the benchmark rules that a component claims | [`component.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies) |
 | [`buildc coverage [image]`](#buildc-coverage) | print which component claims each rule of the image's profile | [`<name>.kdl`&nbsp;›&nbsp;`conforms`](schema/component.md#conforms) |
 | [`buildc scap content`](#buildc-scap-content) | print the datastream that the target is measured with |  |
 | [`buildc scap tailoring`](#buildc-scap-tailoring) | print the XCCDF tailoring that a scan runs |  |
@@ -109,9 +109,9 @@ Every command takes these options, before or after its own words. [`buildc`](#bu
 
 | Command | Description | Schema |
 | --- | --- | --- |
-| [`buildc fetch <what> <url> <sha256> [target] [extra]...`](#buildc-fetch) | download one payload, verify it and place it | [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset) |
+| [`buildc fetch <what> <url> <sha256> [target] [extra]...`](#buildc-fetch) | download one payload, verify it and place it | [`component.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset) |
 | [`buildc build-record`](#buildc-build-record) | write the build record that an image carries |  |
-| [`buildc validate-image`](#buildc-validate-image) | run every check that a built image must pass | [`manifest.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify) |
+| [`buildc validate-image`](#buildc-validate-image) | run every check that a built image must pass | [`component.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify) |
 
 ### CLI tool
 
@@ -319,7 +319,7 @@ example/
 ## `buildc create component`
 
 Writes a new component. A directory component is a manifest at
-`<name>/manifest.kdl` in the folder of the library that `libraries default=`
+`<name>/component.kdl` in the folder of the library that `libraries default=`
 names. In a new repository that library is `local-library` and its folder is
 `components/`. The command offers to list it in builds.
 `--build` names a build, and it is repeatable. The command lists the component
@@ -336,7 +336,7 @@ picker of the local components, with the builds' components first. A component
 in a remote library is refused.
 
 The name can be a path. As a directory component, `apps/firefox` writes
-`components/apps/firefox/manifest.kdl`. As an inline component, it writes a
+`components/apps/firefox/component.kdl`. As an inline component, it writes a
 `firefox` block inside an `apps` block.
 
 The command asks for the component name. For an inline component it then asks
@@ -359,7 +359,7 @@ path the repository does not hold writes a new package group.
 | `--with <verb=value>` | one more manifest line, such as `provides=browser`; repeatable |
 | `--inline` | write the component as a block inside another component's body |
 
-**Schema:** [`manifest.kdl`](schema/component.md)
+**Schema:** [`component.kdl`](schema/component.md)
 
 **What it writes:**
 
@@ -367,7 +367,7 @@ path the repository does not hold writes a new package group.
 example/
 ├── components/
 │   └── my-editor/
-│       └── + manifest.kdl
+│       └── + component.kdl
 └── ~ example.kdl  my-editor added to components
 ```
 
@@ -447,7 +447,7 @@ It asks for the kind.
 | `--component <name>` | the component that declares the key |
 | `--cn <name>` | the common name of a generated certificate |
 
-**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key)
+**Schema:** [`component.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key)
 
 > [!WARNING]
 > It never replaces an existing key, because a private half cannot be
@@ -518,7 +518,7 @@ names a group that the build's component lists bare. An existing inline group
 with several copies is targeted with `select component` or one `--build`.
 
 A component with no `packages` node gains one. A component directory that
-holds only scripts gains a `manifest.kdl`. An inline definition gains the node
+holds only scripts gains a `component.kdl`. An inline definition gains the node
 inside its own block. Otherwise the names join the first top-level `packages`
 node in the shape it already uses. If the node lists its names on one line,
 then the new names go after its last name. If the node holds its names in a
@@ -536,7 +536,7 @@ writes only the names the component does not list yet.
 | `--component <path>` | the group path that receives the names; a new path writes a group |
 | `--build <name>` | a build whose component gets an inline copy; repeatable |
 
-**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages)
+**Schema:** [`component.kdl`&nbsp;›&nbsp;`packages`](schema/component.md#packages)
 
 **What it writes:**
 
@@ -609,7 +609,7 @@ a tag or a commit instead.
 | `--pin <pin>` | a tag or commit that fixes the component; one path only |
 | `--dependencies <provider>` | add the providers that the components require, preferring the named one; repeatable |
 
-**Schema:** [`manifest.kdl`](schema/component.md)
+**Schema:** [`component.kdl`](schema/component.md)
 
 **What it writes:**
 
@@ -860,7 +860,7 @@ It asks for the profile and the rules.
 | --- | --- |
 | `--datastream <file>` | SCAP content to read the rules from; the installed copy for the component's first declared family by default, and required when the component declares no family restriction |
 
-**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies)
+**Schema:** [`component.kdl`&nbsp;›&nbsp;`satisfies`](schema/component.md#satisfies)
 
 **What it writes:**
 
@@ -868,7 +868,7 @@ It asks for the profile and the rules.
 example/
 └── components/
     └── sshd/
-        └── ~ manifest.kdl  claiming one rule of `standard`
+        └── ~ component.kdl  claiming one rule of `standard`
 ```
 
 > [!NOTE]
@@ -910,7 +910,7 @@ It asks for the kind and the file to read.
 | `--component <name>` | the component that declares the key |
 | `--from <path>` | the file that holds the public half |
 
-**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key)
+**Schema:** [`component.kdl`&nbsp;›&nbsp;`key`](schema/component.md#key)
 
 > [!WARNING]
 > It never replaces an existing key.
@@ -1008,7 +1008,9 @@ against the snapshot `buildc generate` wrote, then builds from that tree alone.
 Every build argument that the repository declares comes from
 `generated/plan.json`, so a source edit reaches the build only through the next
 `buildc generate`. The build resolves the version, the registry, the source
-commit, the backend and the base digest when it runs.
+commit, the backend and the base digest when it runs. It then fetches the
+base's SPDX attestation, checks that its subject names the digest, and
+verifies the signature when the base names a verifier.
 
 **Usage:** `buildc build [OPTIONS] [target]`
 
@@ -1031,10 +1033,16 @@ commit, the backend and the base digest when it runs.
 > It writes no build file. Run `buildc generate` first, or `buildc vm run
 > --rebuild` to run both.
 >
-> It reaches a remote for two answers. It resolves the base digest, and it asks
-> each cloned asset's remote which commit the tag names. If a tag names another
-> commit than the one `buildc generate` recorded, then it refuses the build. If
-> a remote does not answer, then it warns, and an enforced audit refuses.
+> It reaches a remote for three answers. It resolves the base digest. It
+> fetches the base's SPDX attestation. It asks each cloned asset's remote
+> which commit the tag names. If a tag names another commit than the one
+> `buildc generate` recorded, then it refuses the build. If a remote does not
+> answer, then it warns and an enforced audit refuses.
+>
+> A base with no attestation leaves a gap in the build record. The build
+> continues and `audit { enforce #true }` refuses. A base that names a verifier
+> is different. A failed check, or a machine without `cosign`, refuses the
+> build.
 >
 > It resolves the base tag to a digest once, and passes it as the `BASE` build
 > argument. If `$BASE` is set, then it uses that value as already resolved.
@@ -1486,7 +1494,7 @@ It runs inside a build:
 | `<target>` | the destination that the payload kind writes to |
 | `<extra>` | extra arguments for the payload kind |
 
-**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset)
+**Schema:** [`component.kdl`&nbsp;›&nbsp;`asset`](schema/component.md#asset)
 
 ## `buildc registry namespace`
 
@@ -1541,11 +1549,18 @@ user, so the recipe holds none of them.
 
 Writes `/usr/share/buildc/build.json`, the record of what the build resolved.
 The baked `manifest.json` beside it holds what the repository declared. The
-record holds the digest of the base, the version the build measured for each
-capability from its package, the commit of each cloned asset, the source
-commit, the `buildc` release, the target, the content hash of each component,
-and whether enforcement was on. The versions sit in `base.versions`. That
-key is absent when the build measured none.
+record holds the digest of the base, the base's SPDX attestation (its
+predicate, subject, envelope hash and decoded payload hash), the SBOM package
+count, whether the base declares a signature, whether a verifier checked the
+signature and that the checked attestation carries the recorded payload, the
+version the build measured for each capability from its package, the commit of
+each cloned asset, the source commit, the `buildc` release, the target, the
+content hash of each component, and whether enforcement was on. The versions
+sit in `base.versions`. That key is absent when the build measured none. A base
+that published no attestation records null there, and `verified` says whether a
+verifier checked it. A verifier that checked a different payload refuses the
+build, so `verified.base_attestation` is true only for the payload in the
+record.
 
 No file under `generated/` holds the record, so `buildc verify` never compares
 it. The record changes with each build.
@@ -1559,4 +1574,4 @@ presets. The command fails for each preset that the image lacks.
 
 **Usage:** `buildc validate-image`
 
-**Schema:** [`manifest.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify)
+**Schema:** [`component.kdl`&nbsp;›&nbsp;`allow-verify`](schema/component.md#allow-verify)

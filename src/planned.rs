@@ -12,6 +12,7 @@ pub(crate) struct Planned {
 
 pub(crate) struct Target<'a> {
     pub name: String,
+    json: &'a Json,
     target: &'a Json,
     build: &'a Json,
 }
@@ -77,6 +78,7 @@ impl Planned {
         })?;
         Ok(Target {
             name,
+            json: &self.json,
             target,
             build,
         })
@@ -119,6 +121,27 @@ impl Target<'_> {
 
     pub(crate) fn base(&self) -> Option<String> {
         json::text(self.build, "base")
+    }
+
+    pub(crate) fn base_signed(&self) -> bool {
+        crate::emit::why::image_of(self.json, self.target)
+            .and_then(|image| json::field(image, "base"))
+            .is_some_and(|base| flag(base, "signed"))
+    }
+
+    pub(crate) fn verify(&self) -> Option<crate::model::component::TrustRoot> {
+        let image = crate::emit::why::image_of(self.json, self.target)?;
+        let verify = json::field(json::field(image, "base")?, "verify")?;
+        let key = json::text(verify, "key");
+        let key_sha256 = json::text(verify, "key_sha256");
+        let identity = json::text(verify, "identity");
+        let issuer = json::text(verify, "issuer");
+        (key.is_some() || identity.is_some()).then_some(crate::model::component::TrustRoot {
+            key,
+            key_sha256,
+            identity,
+            issuer,
+        })
     }
 
     pub(crate) fn args(&self) -> Vec<String> {
@@ -220,8 +243,8 @@ mod tests {
         "backend": "buildx",
         "manifest_label": true,
         "audit": {"enforce": true},
-        "images": [{"targets": [
-            {"name": "box", "published": "box",
+        "images": [{"id": "box", "base": {"signed": true, "verify": {"key": "keys/base.pub", "key_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}, "targets": [
+            {"name": "box", "image": "box", "published": "box",
              "datastream": "generated/box/scap/ssg-fedora-ds.xml",
              "components": [{"path": "core/one", "witnessed": ["/usr/bin/one"]}],
              "overlay_files": {"/etc/one": "core/one"},
@@ -271,6 +294,16 @@ mod tests {
             target.base().as_deref(),
             Some("quay.io/fedora/fedora-bootc:44")
         );
+        assert!(target.base_signed());
+        let verify = target.verify().expect("the base names a verifier");
+        assert_eq!(verify.key.as_deref(), Some("keys/base.pub"));
+        assert_eq!(
+            verify.key_sha256.as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        let without = plan.target(Some("box/dev")).expect("box/dev is planned");
+        assert!(!without.base_signed());
+        assert!(without.verify().is_none());
         assert_eq!(
             target.args(),
             vec!["TARGET=box", "ASSET_RESOLUTIONS=core/one|src|v1|abc"]

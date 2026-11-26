@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "runner",
       "file": "./components/runner.kdl",
+      "component": "runner",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -58,12 +61,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -73,7 +78,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "content": "52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42",
                 "resolved": "747536ce6bd76b4c378eac22a391059879eaf1b7954cea454c3aa53a2a3f2a62",
                 "repo": false,
                 "imported": null
@@ -87,10 +92,12 @@ source: tests/golden/harness.rs
             {
               "path": "tool/hello",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -108,7 +115,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "431d1b225de63c462498bffd1bb79bba514c7b7abd7ebcfa2be553c70b70691b",
+                "content": "1f394e65aa954faffeed944f76dbb0cd07da94a7356da4a2284a65c58d3a54f9",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -122,10 +129,12 @@ source: tests/golden/harness.rs
             {
               "path": "runner",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -165,7 +174,7 @@ source: tests/golden/harness.rs
             "base": "registry.fedoraproject.org/fedora:44",
             "args": [
               "TARGET=runner",
-              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb tool/hello|431d1b225de63c462498bffd1bb79bba514c7b7abd7ebcfa2be553c70b70691b",
+              "COMPONENT_HASHES=fedora-family|52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42 tool/hello|1f394e65aa954faffeed944f76dbb0cd07da94a7356da4a2284a65c58d3a54f9",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=registry.fedoraproject.org/fedora:44"
             ],

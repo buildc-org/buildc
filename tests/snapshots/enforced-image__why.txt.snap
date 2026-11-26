@@ -1,0 +1,149 @@
+---
+source: tests/golden/harness.rs
+---
+==== markdown
+# enforced
+
+## Where it is built
+
+enforced
+
+## The image it builds
+
+| Field | Set by | Value |
+| --- | --- | --- |
+| `description` | no component | not set |
+| `oci-labels { keywords }` | no component | not set |
+| `oci-labels { logo-url }` | no component | not set |
+| `conforms` | `enforced` | standard |
+
+## What it exchanges
+
+Nothing: it neither provides nor requires.
+
+## What it claims
+
+Nothing. It declares no `satisfies`.
+
+## Where it came from
+
+Nothing hashed it.
+
+It was written in this repository, so no library holds a version to compare it against.
+
+## What it pulls in
+
+Nothing. It declares no `asset`.
+
+## Third-party repositories
+
+None. It declares no `copr` and ships no `repo.sh` file.
+
+==== json
+{
+  "component": "enforced",
+  "description": "",
+  "images": [
+    "enforced"
+  ],
+  "suppressed": [],
+  "imported_by": [],
+  "provides": [],
+  "requires": [],
+  "prefers": [],
+  "packages": [],
+  "groups": [],
+  "coprs": [],
+  "satisfies": [],
+  "content": null,
+  "built": null,
+  "library": null,
+  "variants": [],
+  "image_fields": [
+    {
+      "image": "enforced",
+      "fields": [
+        {
+          "field": "description",
+          "component": null,
+          "value": null
+        },
+        {
+          "field": "keywords",
+          "component": null,
+          "value": null
+        },
+        {
+          "field": "logo-url",
+          "component": null,
+          "value": null
+        },
+        {
+          "field": "conforms",
+          "component": "enforced",
+          "value": "standard"
+        }
+      ]
+    }
+  ],
+  "settings": [],
+  "imported": null,
+  "modified": false,
+  "fetches": [],
+  "repo": null
+}
+==== unknown
+  x `nosuch` is not a component this repository lists
+  help: components: consumer, enforced, hello
+
+==== from the baked manifest, with no repository
+# enforced
+
+## Where it is built
+
+enforced
+
+## The image it builds
+
+| Field | Set by | Value |
+| --- | --- | --- |
+| `description` | no component | not set |
+| `oci-labels { keywords }` | no component | not set |
+| `oci-labels { logo-url }` | no component | not set |
+| `conforms` | `enforced` | standard |
+
+## What it exchanges
+
+Nothing: it neither provides nor requires.
+
+## What it claims
+
+Nothing. It declares no `satisfies`.
+
+## Where it came from
+
+Nothing hashed it.
+
+It was written in this repository, so no library holds a version to compare it against.
+
+## What it pulls in
+
+Nothing. It declares no `asset`.
+
+## Third-party repositories
+
+None. It declares no `copr` and ships no `repo.sh` file.
+
+==== the names it knows
+consumer, enforced, hello
+==== against a build record that disagrees
+
+
+| Content | Hash |
+| --- | --- |
+| declared | nothing |
+| observed by the build | `not what was declared` |
+
+**The two documents disagree**, which they cannot if both came from this build.
+
+It was written in this repository, so no library holds a version to compare it against.

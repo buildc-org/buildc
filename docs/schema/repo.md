@@ -175,7 +175,7 @@ Accepts: {&nbsp;[fields](#builds-fields)&nbsp;}
 
 ### `<name>` (optional, repeatable)
 
-The node name is the target, cache and published name, and an option value reads it as `{image-id}`. The argument names the component that the build builds. A path that starts with `./` reads `<path>.kdl` or `<path>/manifest.kdl` from the repository root, and any other path names a component in the components folder. With no argument, the build uses the component of its own name in the components folder.
+The node name is the target, cache and published name, and an option value reads it as `{image-id}`. The argument names the component that the build builds. A path that starts with `./` reads `<path>.kdl` or `<path>/component.kdl` from the repository root, and any other path names a component in the components folder. With no argument, the build uses the component of its own name in the components folder.
 
 ```kdl
 builds default="workstation" {

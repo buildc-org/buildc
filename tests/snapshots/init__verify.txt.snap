@@ -31,9 +31,9 @@ source: tests/golden/harness.rs
   x `generated/snapshot.json` is not what this repository generates
    ,-[generated/snapshot.json:2:1]
  1 | {
- 2 |   "root": "6248b8f9147e861dc7e540cd4dd37c3cc44c24bd1cc7944d49bf9cddcd62eb5e",
+ 2 |   "root": "85969c4cf2a8b30154c9db6058a4aac1525c70beb2fb6c51e16c4b6374c44ec0",
    : ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   :                                       `-- generated:   "root": "163249c55563a0180bdf08cf320d017453c007d5e2ce909c6911ab79d1fcffca",
+   :                                       `-- generated:   "root": "7efd698dcd84311702fbb9d045b9c8d641827ad42b444d3456ee4a3ba1e87ff5",
  3 |   "files": 25
    `----
   help: run `buildc generate` and commit what it writes

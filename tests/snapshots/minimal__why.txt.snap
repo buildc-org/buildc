@@ -33,7 +33,7 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a` |
+| declared | `9a5f227a9e4fb1b6048873b6251a73f843cf9f383d694f3e0e620c21f45db618` |
 
 It was written in this repository, so no library holds a version to compare it against.
 
@@ -66,6 +66,7 @@ It enables one, in `components/core/hello/repo.sh`. There is no grammar for that
   "imported_by": [],
   "provides": [],
   "requires": [],
+  "prefers": [],
   "packages": [
     {
       "family": "fedora",
@@ -98,9 +99,11 @@ It enables one, in `components/core/hello/repo.sh`. There is no grammar for that
     }
   ],
   "satisfies": [],
-  "content": "5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a",
+  "content": "9a5f227a9e4fb1b6048873b6251a73f843cf9f383d694f3e0e620c21f45db618",
   "built": null,
   "library": null,
+  "variants": [],
+  "image_fields": [],
   "settings": [],
   "imported": null,
   "modified": false,
@@ -145,7 +148,7 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a` |
+| declared | `9a5f227a9e4fb1b6048873b6251a73f843cf9f383d694f3e0e620c21f45db618` |
 
 It was written in this repository, so no library holds a version to compare it against.
 
@@ -172,7 +175,7 @@ hello, fedora-family, minimal
 
 | Content | Hash |
 | --- | --- |
-| declared | `5397e8faff956d7988d4c15ce672506ecc23d667ed77f91fd83601df5b64db9a` |
+| declared | `9a5f227a9e4fb1b6048873b6251a73f843cf9f383d694f3e0e620c21f45db618` |
 | observed by the build | `not what was declared` |
 
 **The two documents disagree**, which they cannot if both came from this build.

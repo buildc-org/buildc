@@ -207,6 +207,12 @@ const MIN: Prop = Prop { name: "min", kind: Kind::Str,
     missing: Say::NONE };
 
 #[rustfmt::skip]
+const PREFER: Prop = Prop { name: "prefer", kind: Kind::Str,
+    desc: "The component that should provide this capability.",
+    say: Say::new("`prefer` must be a component path, such as \"containers/podman\"", "not a component path", ""),
+    missing: Say::NONE };
+
+#[rustfmt::skip]
 const CAPABILITY: Node = Node::new("",
     "One capability in the block, which the node name names.").example("\"kernel-devel\"")
     .arg(Arg::None, Say::new("`{}` is a second name on one line of the block", "one name per line",
@@ -220,16 +226,16 @@ const REQUIRED: Node = Node::new("",
     "One capability in a `requires` block, which the node name names.").example("\"libostree\" min=\"2025.3\"")
     .arg(Arg::None, Say::new("`{}` is a second name on one line of the block", "one name per line",
         "give each name its own line"))
-    .props(&[MIN], Say::new("`{}` is not a `requires` property", "not part of the schema",
-        "a required capability accepts `min`"))
+    .props(&[MIN, PREFER], Say::new("`{}` is not a `requires` property", "not part of the schema",
+        "a required capability accepts `min` and `prefer`"))
     .children(&[], Say::new("a capability name holds no `{}`", "not part of the schema", ""));
 
 #[rustfmt::skip]
 const REQUIRES: Node = Node::new("requires",
     "The node names a capability that a component of the image must provide. It also orders the build.").about("A name is one or more lower-case segments joined by `/`. Each segment starts with a lowercase letter. `buildc check` fails when nothing in the image provides the name.").example("\"libostree\" min=\"2025.3\"")
     .arg(Arg::Names, Say::new("`{}` needs a capability name", "nothing named", ""))
-    .props(&[MIN], Say::new("`{}` is not a `requires` property", "not part of the schema",
-        "`requires` accepts `min`; a component that chooses its provider \
+    .props(&[MIN, PREFER], Say::new("`{}` is not a `requires` property", "not part of the schema",
+        "`requires` accepts `min` and `prefer`; a component that chooses its provider \
          lists it in its body"))
     .children(&[REQUIRED], Say::NONE)
     .notes(&[
@@ -386,10 +392,10 @@ const BASE_SCAP_CONTENT: Node = Node::new("scap-content",
 
 #[rustfmt::skip]
 pub const COMPONENT: Node = Node::new("component",
-    "One component, which declares what it builds on, what it needs and what it installs.").about("A component's name is its path. A directory that holds `manifest.kdl` is named by the directory, and a `<name>.kdl` file is named by the file without `.kdl`. The directory `<name>/` holds the component's content wherever the manifest lives. A component that another component defines inline is named by the path that lists it. An image is a component that a build in `repo.kdl` names.").scaffolds(&["schema-version", "description", "targets"])
+    "One component, which declares what it builds on, what it needs and what it installs.").about("A component's name is its path. A directory that holds `component.kdl` is named by the directory, and a `<name>.kdl` file is named by the file without `.kdl`. The directory `<name>/` holds the component's content wherever the manifest lives. A component that another component defines inline is named by the path that lists it. An image is a component that a build in `repo.kdl` names.").scaffolds(&["schema-version", "description", "targets"])
     .children(&[
         FILE_SCHEMA_VERSION,
-        Node::new("description", "One line that names the component in the resolved build summary. On the component a build names, it is also the OCI label `org.opencontainers.image.description`.").example("\"Traditional CLI utilities\"")
+        Node::new("description", "One line that names the component in the resolved build summary. On a component that a build's tree reaches, it is also the OCI label `org.opencontainers.image.description`.").example("\"Traditional CLI utilities\"")
             .arg(Arg::Str, Say::new("`description` needs a string", "no description given", ""))
             .once(""),
         crate::parse::image::OCI_LABELS,
@@ -559,6 +565,7 @@ pub const COMPONENT: Node = Node::new("component",
 
         options::OPTION,
         options::VARIANT,
+        options::DEFAULT_VARIANT,
         asset::ASSET,
         Node::new("permissions", "What the build steps of this component ask of the build.")
             .about("Each child is one build step, and its block holds what that step needs. \
@@ -596,21 +603,22 @@ pub const COMPONENT: Node = Node::new("component",
 
         ON,
 
-        Node::new("base", "The image reference that an image on this base builds from. It makes the component a base.").about("The reference may carry a `{option}` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused.").example("\"quay.io/fedora/fedora-bootc:{version}\"")
+        Node::new("base", "The image reference that an image on this base builds from. It makes the component a base.").about("The reference may carry a `{option}` placeholder, and only a string option may fill it. A component with this node provides `base-image`, so a second base in one image is refused. A component that derives from a published image records the image's `digest=`, `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=` on this node.").example("\"quay.io/fedora/fedora-bootc:{version}\"")
             .arg(Arg::Str, Say::new("`base` needs an image reference", "no image given",
                 "`base \"quay.io/fedora/fedora-bootc:{version}\"`, the reference a build on this base starts from"))
             .once("")
-            .props(&[], Say::new("`{}` is not a `base` property", "not part of the schema",
-                "`base` takes its reference, and its block holds `family`, `bootloader` and `scap-content`"))
+            .props(crate::parse::tree::BASE_PROPS, Say::new("`{}` is not a `base` property", "not part of the schema",
+                "`base` takes its reference, the base facts `digest=`, `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=`, and a block that holds `family`, `bootloader` and `scap-content`"))
             .children(&[BASE_FAMILY, BASE_BOOTLOADER, BASE_SCAP_CONTENT], Say::new("`base` holds no `{}`", "not allowed in `base`",
-                "a base's block holds `family`, `bootloader` and `scap-content`; an image sets \
-                 `digest=` and `signed=` on the base's segment")),
+                "a base's block holds `family`, `bootloader` and `scap-content`; the base facts are \
+                 properties of the `base` node")),
 
         crate::parse::tree::CONTEXT,
         crate::parse::tree::SEGMENT,
     ], Say::NONE)
     .notes(&[
-        "Only the component a build names takes `oci-labels` and `conforms`.",
+        "A component that a build's tree reaches on the way to the base may set `oci-labels` \
+         and `conforms`. The nearest setting reaches the image.",
         "A build whose component builds `os-release` takes the build name as its default \
          hostname. The component can set the `default-hostname` option of `os-release` to \
          another value.",
@@ -619,6 +627,24 @@ pub const COMPONENT: Node = Node::new("component",
         "If nothing provides a `requires`, then `buildc check` fails and names every component that \
          would satisfy it.",
     ]);
+
+fn image_chain(image: &crate::model::image::Image, path: &str) -> bool {
+    let mut by = image
+        .base_entry
+        .as_ref()
+        .and_then(|held| held.entry.imported_by.clone());
+    while let Some(current) = by {
+        if current == path {
+            return true;
+        }
+        by = image
+            .entries
+            .iter()
+            .find(|entry| entry.path == current)
+            .and_then(|entry| entry.imported_by.clone());
+    }
+    false
+}
 
 fn copr_parts(value: &str) -> Option<(&str, &str)> {
     let (owner, project) = value.split_once('/')?;
@@ -735,7 +761,7 @@ fn spread(
 
 fn base_facts(nodes: &[KdlNode], src: &Source, issues: &mut Issues) -> Option<BaseFacts> {
     let reference = nodes.iter().find(|node| node.name().value() == "base")?;
-    let mut facts = base_block(reference);
+    let mut facts = base_block(reference, src, issues);
     facts.scap_pin = child(reference, "scap-content")
         .and_then(|content| child(content, "pin"))
         .map(|pin| crate::provenance::evidence::read(pin, src, issues));
@@ -761,7 +787,14 @@ fn base_facts(nodes: &[KdlNode], src: &Source, issues: &mut Issues) -> Option<Ba
     Some(facts)
 }
 
-fn base_block(reference: &KdlNode) -> BaseFacts {
+fn base_block(reference: &KdlNode, src: &Source, issues: &mut Issues) -> BaseFacts {
+    let trust = crate::parse::tree::Props::read(
+        reference,
+        "base",
+        &crate::parse::tree::Props::default(),
+        src,
+        issues,
+    );
     let image = string_arg(reference).unwrap_or_default().to_string();
     BaseFacts {
         template: image.clone(),
@@ -772,11 +805,19 @@ fn base_block(reference: &KdlNode) -> BaseFacts {
             .unwrap_or_default(),
         scap_content: text(reference, "scap-content"),
         scap_pin: None,
+        digest: trust.digest.map(|(digest, _)| digest),
+        signed: trust.signed.is_some_and(|(signed, _)| signed),
+        verify: crate::model::component::TrustRoot::of(
+            trust.key.as_ref(),
+            trust.key_sha256.as_ref(),
+            trust.identity.as_ref(),
+            trust.issuer.as_ref(),
+        ),
     }
 }
 
 fn is_tree_path(path: &str) -> bool {
-    path.contains('{') || crate::model::image::is_local_path(path)
+    crate::model::image::is_local_path(path)
 }
 
 fn is_tree_node(node: &KdlNode) -> bool {
@@ -798,12 +839,18 @@ fn tree_texts<'a>(node: &'a KdlNode, out: &mut Vec<(&'a str, Span)>) {
 fn tree_paths<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>, at: &str) -> Vec<String> {
     fn walk(node: &KdlNode, parent: &str, out: &mut Vec<String>) {
         if is_context(node) {
-            let Some(context) =
-                string_arg(node).and_then(|arg| crate::parse::tree::context(parent, arg).ok())
-            else {
+            let Some(arg) = string_arg(node) else {
                 return;
             };
-            for kid in kids(node) {
+            let Some(context) = crate::parse::tree::context(parent, arg).ok() else {
+                return;
+            };
+            let last = arg.rsplit('/').next().unwrap_or_default();
+            if !matches!(last, "" | "." | "..") {
+                out.push(context.clone());
+            }
+            let body = crate::parse::tree::body(node);
+            for kid in body.nested {
                 walk(kid, &context, out);
             }
             return;
@@ -946,6 +993,49 @@ struct Place<'a> {
     origins: Option<&'a Path>,
 }
 
+/// The root files that the file at `name` names with a `component` node.
+/// A root file is outside every library. One root file can therefore bring another.
+/// `None` means the file could not be read or parsed, so the reach is unknown.
+pub(crate) fn root_imports(
+    root: &Path,
+    name: &str,
+    version: Option<u32>,
+    repo_src: &Source,
+) -> Option<Vec<String>> {
+    let home = root.join(name);
+    let Ok(text) = std::fs::read_to_string(layout::manifest_at(&home)) else {
+        return None;
+    };
+    let place = Place {
+        path: name,
+        home: &home,
+        root,
+        library: None,
+        outside: true,
+        origins: None,
+    };
+    // This reach parse discards its issues because the load parses the file again for real.
+    let mut ignored = Issues::default();
+    let component = Component::parse_against(
+        place,
+        text,
+        None,
+        RepoSchema {
+            version,
+            src: repo_src,
+        },
+        &mut ignored,
+    )?;
+    Some(
+        component
+            .imports
+            .into_iter()
+            .filter(|import| import.root_file && import.inline.is_none())
+            .map(|import| import.path)
+            .collect(),
+    )
+}
+
 struct Gated {
     coprs: usize,
     requires: usize,
@@ -1069,7 +1159,7 @@ impl Component {
                 Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
                     issues.push(
                         Issue::new(format!("{file} cannot be read: {err}"), &image.src)
-                            .at(entry.span, "manifest.kdl unreadable"),
+                            .at(entry.span, "component.kdl unreadable"),
                     );
                     return None;
                 }
@@ -1081,7 +1171,7 @@ impl Component {
                         Issue::new(format!("`{}` is not a component", entry.path), &image.src)
                             .at(entry.span, "nothing to build")
                             .help(format!(
-                                "give components/{dir_rel} a manifest.kdl, a component.sh, a \
+                                "give components/{dir_rel} a component.kdl, a component.sh, a \
                                  repo.sh, a packages.sh, a finalize.sh, a files/ directory, a \
                                  Containerfile.inc or a file that another component collects, \
                                  or define it inline with a manifest node such as `packages`"
@@ -1091,20 +1181,23 @@ impl Component {
                 }
             },
         };
-        // An image file that no build names yet reads as a component.
-        // Only a component that a tree reaches is refused for the facts of an image.
-        if entry.path != image.component {
-            component.refuse_image_facts(issues);
-        }
-        (component.resolved, component.changes) = resolve_options::resolve(
+        let resolved = resolve_options::resolve(
             &component.options,
             &component.variants,
+            component.default_variant.as_deref(),
             &component.src,
             entry,
             image,
             issues,
         );
+        component.resolved = resolved.env;
+        component.changes = resolved.changes;
+        component.variant = resolved.variant;
+        component.variant_default = resolved.variant_default;
         resolve_options::apply(&mut component, entry, image, issues);
+        if !component.variant_content(&home, entry, issues) {
+            return None;
+        }
         // The library walk above skips an overlay.
         // A helper path can run through one and gets its own check here.
         let through = component
@@ -1118,24 +1211,153 @@ impl Component {
         Some(component)
     }
 
-    fn refuse_image_facts(&self, issues: &mut Issues) {
-        for (name, span) in &self.fields {
+    fn variant_content(&mut self, home: &Path, entry: &Entry, issues: &mut Issues) -> bool {
+        if let Ok(entries) = std::fs::read_dir(home.join(layout::VARIANTS)) {
+            for held in entries.flatten() {
+                if !held.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    continue;
+                }
+                let name = held.file_name().to_string_lossy().to_string();
+                if !self.variants.iter().any(|variant| variant.name == name) {
+                    issues.push(
+                        Issue::new(
+                            format!(
+                                "`{}` holds `variants/{name}`, which is not a declared variant",
+                                self.path
+                            ),
+                            &self.src,
+                        )
+                        .help("declare it with `variant \"<name>\"`, or remove the directory"),
+                    );
+                }
+            }
+        }
+        // An unselected variant is checked too because selecting it later must not meet a manifest or a component.
+        for variant in &self.variants {
+            let dir = layout::variant_dir(home, &variant.name);
+            if !dir.is_dir() {
+                continue;
+            }
+            if layout::manifest_at(&dir).is_file() {
+                issues.push(
+                    Issue::new(
+                        format!(
+                            "variant `{}` of `{}` holds a manifest",
+                            variant.name, self.path
+                        ),
+                        &self.src,
+                    )
+                    .at(entry.span, "a variant is content")
+                    .help(
+                        "a variant declares nothing; keep its declaration in the component's manifest",
+                    ),
+                );
+                return false;
+            }
+            if let Some(nested) = layout::held_components(&dir).first() {
+                issues.push(
+                    Issue::new(
+                        format!(
+                            "variant `{}` of `{}` holds a component at `{}`",
+                            variant.name,
+                            self.path,
+                            nested.display()
+                        ),
+                        &self.src,
+                    )
+                    .at(entry.span, "a variant is content")
+                    .help(
+                        "a variant holds files and scripts; move the nested component out of its directory",
+                    ),
+                );
+                return false;
+            }
+        }
+        if let Some(variant) = self.variant.clone() {
+            let dir = layout::variant_dir(home, &variant);
+            let fragment = dir.join(layout::FRAGMENT);
+            if fragment.is_file() {
+                if self.fragment.is_none() && !self.fragment_declared {
+                    issues.push(
+                        Issue::new(
+                            format!(
+                                "variant `{variant}` of `{}` ships a Containerfile.inc, and the component declares no `fragment`",
+                                self.path
+                            ),
+                            &self.src,
+                        )
+                        .at(entry.span, "no fragment declared")
+                        .help(
+                            "add `fragment` to the component, or remove the variant's Containerfile.inc",
+                        ),
+                    );
+                } else {
+                    self.fragment = std::fs::read_to_string(&fragment).ok();
+                }
+            }
+        }
+        if self.fragment_declared && self.fragment.is_none() {
             issues.push(
                 Issue::new(
-                    format!("`{}` sets `{name}`, which only an image takes", self.path),
+                    format!(
+                        "`{}` declares `fragment` but ships no Containerfile.inc",
+                        self.path
+                    ),
                     &self.src,
                 )
-                .at(*span, "not the component a build names")
-                .help(format!(
-                    "move `{name}` to the component that `builds` in repo.kdl names"
-                )),
+                .at(entry.span, "nothing to place")
+                .help("ship the file at the component root or in the selected variant's directory"),
             );
         }
+        true
+    }
+
+    pub(crate) fn refuse_image_facts(
+        &self,
+        image: &crate::model::image::Image,
+        issues: &mut Issues,
+    ) {
+        // The calling command skips the build's own component. That component may set every image field.
+        let image_component = image_chain(image, &self.path);
+        if !image_component {
+            for (name, span) in &self.fields {
+                issues.push(
+                    Issue::new(
+                        format!(
+                            "`{}` sets `{name}`. Only the image or its base chain takes that field",
+                            self.path
+                        ),
+                        &self.src,
+                    )
+                    .at(*span, "not the component a build names")
+                    .help(format!(
+                        "move `{name}` to the component that `builds` in repo.kdl names"
+                    )),
+                );
+            }
+        }
         for import in &self.imports {
+            if image_component
+                && image
+                    .base_entry
+                    .as_ref()
+                    .is_some_and(|held| held.entry.path == import.path)
+            {
+                continue;
+            }
             crate::parse::tree::refuse_base_facts(
                 &import.path,
-                import.digest.as_ref().map(|(_, span)| *span),
-                import.signed.map(|(_, span)| span),
+                &[
+                    ("digest", import.digest.as_ref().map(|(_, span)| *span)),
+                    ("signed", import.signed.map(|(_, span)| span)),
+                    ("key", import.key.as_ref().map(|(_, span)| *span)),
+                    (
+                        "key-sha256",
+                        import.key_sha256.as_ref().map(|(_, span)| *span),
+                    ),
+                    ("identity", import.identity.as_ref().map(|(_, span)| *span)),
+                    ("issuer", import.issuer.as_ref().map(|(_, span)| *span)),
+                ],
                 &self.src,
                 issues,
             );
@@ -1190,6 +1412,9 @@ impl Component {
             args: Vec::new(),
             options: Vec::new(),
             variants: Vec::new(),
+            default_variant: None,
+            variant: None,
+            variant_default: false,
             assets: Vec::new(),
             packages: Vec::new(),
             groups: Vec::new(),
@@ -1199,6 +1424,7 @@ impl Component {
             resolved: Vec::new(),
             changes: Vec::new(),
             fragment: std::fs::read_to_string(place.home.join("Containerfile.inc")).ok(),
+            fragment_declared: false,
             fragment_position: Position::default(),
             standard_layer: true,
             content: crate::provenance::origins::hash(place.home),
@@ -1322,6 +1548,7 @@ impl Component {
         }
 
         check_references(nodes, &component.options, src, issues);
+        component.check_variants(src, issues);
         component.base = base_facts(nodes, src, issues);
         if component.base.is_some() {
             component.provides.push(Capability {
@@ -1431,19 +1658,7 @@ impl Component {
                         return;
                     }
                     *fragment_seen = true;
-                    if component.fragment.is_none() {
-                        issues.push(
-                            Issue::new(
-                                format!(
-                                    "`{}` declares `fragment` but ships no Containerfile.inc",
-                                    component.path
-                                ),
-                                src,
-                            )
-                            .at(node.name().span(), "nothing to place")
-                            .help("shipping the file is what adds a fragment; this node only says where it goes"),
-                        );
-                    }
+                    component.fragment_declared = true;
                     component.parse_fragment(node, src, issues);
                 }
                 "option" => {
@@ -1468,10 +1683,23 @@ impl Component {
                 }
                 "variant" => {
                     if let Some(variant) = options::parse_variant(node) {
+                        if !crate::model::image::is_segment(&variant.name) {
+                            issues.push(
+                                Issue::new(
+                                    format!("variant `{}` is not a usable name", variant.name),
+                                    src,
+                                )
+                                .at(node.name().span(), "not a variant name")
+                                .help("a variant name is a path segment, so lowercase letters, digits, dashes and dots, starting with a letter"),
+                            );
+                        }
                         if !component.variants.iter().any(|v| v.name == variant.name) {
                             component.variants.push(variant);
                         }
                     }
+                }
+                "default-variant" => {
+                    component.default_variant = string_arg(node).map(str::to_string);
                 }
                 "key" => match parse_key(node, src, issues) {
                     Some(key) => {
@@ -1503,6 +1731,44 @@ impl Component {
                     component.parse_tree(node, &at, &top, src, issues);
                 }
             }
+        }
+    }
+
+    fn check_variants(&self, src: &Source, issues: &mut Issues) {
+        let declared: Vec<&str> = self.variants.iter().map(|v| v.name.as_str()).collect();
+        match (&self.default_variant, self.variants.is_empty()) {
+            (Some(name), true) => issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` names `{name}` as its default variant, and it declares no variants",
+                        self.path
+                    ),
+                    src,
+                )
+                .help("a default variant needs a `variant` node of the same name"),
+            ),
+            (Some(name), false) if !declared.contains(&name.as_str()) => issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` names `{name}` as its default variant, which it does not declare",
+                        self.path
+                    ),
+                    src,
+                )
+                .help(format!("declared variants: {}", declared.join(", "))),
+            ),
+            (None, false) => issues.push(
+                Issue::new(
+                    format!("`{}` declares variants but no `default-variant`", self.path),
+                    src,
+                )
+                .help(format!(
+                    "`default-variant \"<name>\"` names the variant an entry takes when it selects \
+                     none; declared variants: {}",
+                    declared.join(", ")
+                )),
+            ),
+            _ => {}
         }
     }
 
@@ -1824,10 +2090,24 @@ impl Component {
                 }
                 "requires" => {
                     let min = version_prop(named.node, "min", src, issues);
+                    let prefer = prop(named.node, "prefer").map(str::to_string);
+                    if let Some(path) = &prefer {
+                        if !crate::model::image::is_local_path(path) {
+                            issues.push(
+                                Issue::new(
+                                    format!("`{path}` is not a component path for `prefer`"),
+                                    src,
+                                )
+                                .at(named.span, "not a component path")
+                                .help("`prefer` names a component path, lowercase letters, digits, dashes and dots, optionally prefixed by a library"),
+                            );
+                        }
+                    }
                     self.requires.push(Requirement {
                         name,
                         span: decl.span,
                         min,
+                        prefer,
                     });
                 }
                 "removes" => self.removes.push(decl),
@@ -1883,14 +2163,23 @@ impl Component {
             issues.push(
                 Issue::new(format!("`{path}` is not a component path"), src)
                     .at(span, "not a path in a library")
-                    .help(
-                        "a segment is lowercase letters, digits, dashes and dots, or a quoted \
-                         `{option}`",
-                    ),
+                    .help("a segment is lowercase letters, digits, dashes and dots"),
             );
             return;
         }
         let props = Props::read(node, &path, above, src, issues);
+        self.parse_instance(node, path, props, span, src, issues);
+    }
+
+    fn parse_instance(
+        &mut self,
+        node: &KdlNode,
+        path: String,
+        props: Props,
+        span: Span,
+        src: &Source,
+        issues: &mut Issues,
+    ) {
         let body = crate::parse::tree::body(node);
         let organises = crate::parse::tree::organises(node, &body);
         let crate::parse::tree::Body {
@@ -1903,8 +2192,13 @@ impl Component {
             organises,
             inline,
             rooted: props.rooted,
+            root_file: props.root_file,
             digest: props.digest.clone(),
             signed: props.signed,
+            key: props.key.clone(),
+            key_sha256: props.key_sha256.clone(),
+            identity: props.identity.clone(),
+            issuer: props.issuer.clone(),
             variant: props.variant.clone(),
             library: props.library.clone(),
             pin: props.pin.clone(),
@@ -1915,7 +2209,10 @@ impl Component {
             span,
         });
         for kid in nested {
-            self.parse_tree(kid, &path, &props, src, issues);
+            match is_context(kid) {
+                true => self.parse_context(kid, &path, &props, src, issues),
+                false => self.parse_tree(kid, &path, &props, src, issues),
+            }
         }
     }
 
@@ -1938,8 +2235,8 @@ impl Component {
                     Issue::new(problem, src)
                         .at(span, "not a path in the library")
                         .help(
-                            "`/` reads from the library root, and each `..` goes up one segment \
-                             of the current context",
+                            "`/` reads from the library root, `.` is the current context, and \
+                             each `..` goes up one segment",
                         ),
                 );
                 return;
@@ -1947,12 +2244,56 @@ impl Component {
         };
         let mut props = Props::read(node, "component", above, src, issues);
         props.rooted |= arg.starts_with('/');
-        for kid in kids(node) {
-            match is_context(kid) {
-                true => self.parse_context(kid, &context, &props, src, issues),
-                false => self.parse_tree(kid, &context, &props, src, issues),
+        // A path whose last segment is empty, `.` or `..` only moves the context. It takes no component facts.
+        let last = arg.rsplit('/').next().unwrap_or_default();
+        if matches!(last, "" | "." | "..") {
+            let facts: Vec<&str> = [
+                ("variant", props.variant.is_some()),
+                ("digest", props.digest.is_some()),
+                ("signed", props.signed.is_some()),
+                ("key", props.key.is_some()),
+                ("key-sha256", props.key_sha256.is_some()),
+                ("identity", props.identity.is_some()),
+                ("issuer", props.issuer.is_some()),
+            ]
+            .into_iter()
+            .filter_map(|(name, given)| given.then_some(name))
+            .collect();
+            if !facts.is_empty() {
+                issues.push(
+                    Issue::new(
+                        format!(
+                            "`component \"{arg}\"` sets {} on a context",
+                            facts.join(", ")
+                        ),
+                        src,
+                    )
+                    .at(span, "a context takes no component facts")
+                    .help(
+                        "a context takes `library=` and `pin=` alone; name the component to set \
+                         `variant=` or its base facts",
+                    ),
+                );
             }
+            for kid in kids(node) {
+                match is_context(kid) {
+                    true => self.parse_context(kid, &context, &props, src, issues),
+                    false => self.parse_tree(kid, &context, &props, src, issues),
+                }
+            }
+            return;
         }
+        if !is_tree_path(&context) {
+            issues.push(
+                Issue::new(format!("`{context}` is not a component path"), src)
+                    .at(span, "not a path in a library")
+                    .help("a segment is lowercase letters, digits, dashes and dots"),
+            );
+            return;
+        }
+        // A component path in a file outside every library reads the repository root.
+        props.root_file = self.outside;
+        self.parse_instance(node, context, props, span, src, issues);
     }
 
     fn locate(
@@ -2513,6 +2854,7 @@ pub struct Summary {
     pub exclusive: Vec<String>,
     pub targets: Vec<String>,
     pub requires: Vec<String>,
+    pub prefers: std::collections::BTreeMap<String, String>,
     pub imports: Vec<String>,
     pub keys: Vec<String>,
     pub args: Vec<String>,
@@ -2578,6 +2920,17 @@ pub fn summary(file: &Path, at: &str) -> Summary {
             .flat_map(|node| names(node))
             .map(|named| named.name.to_string())
             .collect(),
+        prefers: nodes
+            .iter()
+            .filter(|node| node.name().value() == "requires")
+            .flat_map(|node| names(node))
+            .filter_map(|named| {
+                Some((
+                    named.name.to_string(),
+                    prop(named.node, "prefer")?.to_string(),
+                ))
+            })
+            .collect(),
         imports: tree_paths(nodes.iter().copied(), at)
             .iter()
             .map(|path| resolve_options::interpolate(path, |name| default(&doc, name)))
@@ -2613,7 +2966,11 @@ pub fn offered_base(
             .unwrap_or_default()
             .to_string()
     };
-    let base = base_block(nodes.iter().find(|node| node.name().value() == "base")?);
+    let base = base_block(
+        nodes.iter().find(|node| node.name().value() == "base")?,
+        &Source::new("base", String::new()),
+        &mut Issues::default(),
+    );
     let listed = |want: &str| listed(nodes, want);
     let version = nodes
         .iter()
@@ -2724,7 +3081,7 @@ mod tests {
     fn messages(text: &str) -> Vec<String> {
         let text = format!("schema-version 1\n{text}");
         let doc: KdlDocument = text.parse().expect("valid KDL");
-        let src = Source::new("manifest.kdl", text);
+        let src = Source::new("component.kdl", text);
         let mut issues = Issues::default();
         check_doc(&doc, &COMPONENT, &src, &mut issues);
         issues.findings()
@@ -2749,7 +3106,7 @@ mod tests {
     #[test]
     fn a_manifest_declares_its_schema_version() {
         let doc: KdlDocument = "packages \"nano\"\n".parse().expect("valid KDL");
-        let src = Source::new("manifest.kdl", "packages \"nano\"\n");
+        let src = Source::new("component.kdl", "packages \"nano\"\n");
         let mut issues = Issues::default();
         check_doc(&doc, &COMPONENT, &src, &mut issues);
         assert_eq!(
@@ -3150,7 +3507,7 @@ on "fedora" {
     #[test]
     fn a_bare_child_is_below_the_component_and_a_component_node_sets_the_context() {
         let mut issues = Issues::default();
-        let text = "schema-version 1\ncommon\ncomponent \"..\" library=\"upstream\" { shared }\ncomponent \"/fedora\" { build-environment }\n";
+        let text = "schema-version 1\ncommon\ncomponent \"..\" library=\"upstream\" { shared }\ncomponent \"/fedora/build-environment\"\n";
         let component = Component::parse(
             "hardware/nvidia",
             "hardware/nvidia",
@@ -3177,15 +3534,129 @@ on "fedora" {
     }
 
     #[test]
-    fn a_component_node_that_climbs_above_the_root_or_includes_nothing_is_refused() {
+    fn a_component_block_lists_the_component_it_names_and_its_children_below_it() {
         let mut issues = Issues::default();
-        let text = "schema-version 1\ncomponent \"../../..\" { one }\ncomponent \"/\"\ncomponent \"/Bad_Name\" { two }\n";
+        let text = "schema-version 1\ncomponent \"/hardware\" {\n    version \"\"\n    nvidia\n}\n";
+        let component = Component::parse(
+            "desktop/workstation",
+            "desktop/workstation",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        assert!(issues.findings().is_empty(), "{:?}", issues.findings());
+        let read: Vec<_> = component
+            .imports
+            .iter()
+            .map(|import| (import.path.as_str(), import.organises))
+            .collect();
+        assert_eq!(read, [("hardware", false), ("hardware/nvidia", false)]);
+        assert_eq!(
+            component.imports[0]
+                .options
+                .iter()
+                .map(|option| option.name.as_str())
+                .collect::<Vec<_>>(),
+            ["version"]
+        );
+    }
+
+    #[test]
+    fn a_default_variant_with_no_variants_is_refused() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ndefault-variant \"lean\"\n";
+        let component = Component::parse(
+            "desktop/workstation",
+            "desktop/workstation",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        let _ = component;
+        let found = issues.findings();
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("as its default variant")),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_component_block_selects_a_variant() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ncomponent \"/hardware\" variant=\"fast\"\n";
+        let component = Component::parse(
+            "desktop/workstation",
+            "desktop/workstation",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        assert!(issues.findings().is_empty(), "{:?}", issues.findings());
+        assert_eq!(component.imports[0].variant.as_deref(), Some("fast"));
+    }
+
+    #[test]
+    fn a_context_takes_no_variant_or_base_facts() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ncomponent \"/\" variant=\"fast\" signed=#true\n";
+        Component::parse(
+            "desktop/workstation",
+            "desktop/workstation",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        let found = issues.findings();
+        assert!(
+            found
+                .iter()
+                .any(|message| message.contains("sets variant, signed on a context")),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_component_path_of_dots_sets_the_context_alone() {
+        let mut issues = Issues::default();
+        let text = "schema-version 1\ncomponent \".\" { cuda }\ncomponent \"..\" { gnome }\ncomponent \"/\"\ncomponent \"/\" { }\n";
+        let component = Component::parse(
+            "desktop/kde",
+            "desktop/kde",
+            Path::new("."),
+            text.into(),
+            None,
+            &mut issues,
+        )
+        .expect("the manifest parses");
+        assert!(issues.findings().is_empty(), "{:?}", issues.findings());
+        let read: Vec<_> = component
+            .imports
+            .iter()
+            .map(|import| import.path.as_str())
+            .collect();
+        assert_eq!(read, ["desktop/kde/cuda", "desktop/gnome"]);
+    }
+
+    #[test]
+    fn a_component_node_that_climbs_above_the_root_or_is_not_a_path_is_refused() {
+        let mut issues = Issues::default();
+        let text =
+            "schema-version 1\ncomponent \"../../..\" { one }\ncomponent \"/Bad_Name\" { two }\n";
         Component::parse("a/b", "a/b", Path::new("."), text.into(), None, &mut issues)
             .expect("the manifest parses");
         let found = issues.findings();
         for wanted in [
             "climbs above the library root",
-            "`component` includes nothing",
             "`/Bad_Name` is not a component path",
         ] {
             assert!(
@@ -3297,6 +3768,22 @@ on "fedora" {
         .expect("a component");
         assert!(hidden.hidden);
         assert!(issues.plain().is_empty(), "{:?}", issues.plain());
+    }
+
+    #[test]
+    fn a_summary_reads_a_component_block_as_its_instance_and_children() {
+        let file = std::env::temp_dir().join(format!(
+            "buildc-summary-component-{}.kdl",
+            std::process::id()
+        ));
+        std::fs::write(
+            &file,
+            "schema-version 1\ncomponent \"/hardware\" {\n    version \"\"\n    nvidia\n}\n",
+        )
+        .unwrap();
+        let summary = summary(&file, "");
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(summary.imports, ["hardware", "hardware/nvidia"]);
     }
 
     #[test]

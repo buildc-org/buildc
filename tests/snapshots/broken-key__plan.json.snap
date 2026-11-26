@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-key",
       "file": "./components/broken-key.kdl",
+      "component": "broken-key",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -62,12 +65,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/keys",
               "variant": null,
+              "variant-default": false,
               "description": "Every way a key declaration can be wrong",
               "options": {},
               "provides": [
                 "secureboot-key"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [
                 "/usr/share/secureboot/sb_cert.der"
@@ -81,7 +86,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "89992c3b4b68be2b7e2e6bebdd9362f520dd55722785435cbbc5ba6a0d3a6629",
+                "content": "36ff261a1929234d738e820917bc89da8851c0d1e8196d711344f87deb7c79b2",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -95,12 +100,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/signer",
               "variant": null,
+              "variant-default": false,
               "description": "Requires a key whose declaration is refused",
               "options": {},
               "provides": [],
               "requires": [
                 "cosign-key"
               ],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -110,7 +117,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "f4ec478fe7587b5b940d0c91dd7afe02eecc4804439d074e34f711f12534c8f5",
+                "content": "216e99cc760c8c98f71e159c549dc6e9cfd68eb5b9b7e16265ea6ffd9ed9b616",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -124,10 +131,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-key",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -171,7 +180,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-key",
-              "COMPONENT_HASHES=core/keys|89992c3b4b68be2b7e2e6bebdd9362f520dd55722785435cbbc5ba6a0d3a6629 core/signer|f4ec478fe7587b5b940d0c91dd7afe02eecc4804439d074e34f711f12534c8f5",
+              "COMPONENT_HASHES=core/keys|36ff261a1929234d738e820917bc89da8851c0d1e8196d711344f87deb7c79b2 core/signer|216e99cc760c8c98f71e159c549dc6e9cfd68eb5b9b7e16265ea6ffd9ed9b616",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

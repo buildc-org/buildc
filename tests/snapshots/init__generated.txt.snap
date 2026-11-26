@@ -933,6 +933,14 @@ COPY --from=ctx /generated/plan.json /usr/share/buildc/manifest.json
 
 ARG BASE
 ARG BASE_DECLARED=""
+ARG BASE_SIGNED=""
+ARG BASE_ATTESTATION_PREDICATE=""
+ARG BASE_ATTESTATION_SUBJECT=""
+ARG BASE_ATTESTATION_SHA256=""
+ARG BASE_ATTESTATION_PAYLOAD_SHA256=""
+ARG BASE_SBOM_PACKAGES=""
+ARG BASE_VERIFIED_SIGNATURE=""
+ARG BASE_VERIFIED_ATTESTATION=""
 ARG TARGET=""
 ARG SOURCE_COMMIT=""
 ARG BUILD_BACKEND=""
@@ -941,6 +949,14 @@ ARG ASSET_RESOLUTIONS=""
 ARG BUILDC_VERSION=""
 RUN --mount=type=bind,from=ctx,source=/generated/lib,target=/ctx/lib \
     BASE="${BASE}" BASE_DECLARED="${BASE_DECLARED}" TARGET="${TARGET}" \
+    BASE_SIGNED="${BASE_SIGNED}" \
+    BASE_ATTESTATION_PREDICATE="${BASE_ATTESTATION_PREDICATE}" \
+    BASE_ATTESTATION_SUBJECT="${BASE_ATTESTATION_SUBJECT}" \
+    BASE_ATTESTATION_SHA256="${BASE_ATTESTATION_SHA256}" \
+    BASE_ATTESTATION_PAYLOAD_SHA256="${BASE_ATTESTATION_PAYLOAD_SHA256}" \
+    BASE_SBOM_PACKAGES="${BASE_SBOM_PACKAGES}" \
+    BASE_VERIFIED_SIGNATURE="${BASE_VERIFIED_SIGNATURE}" \
+    BASE_VERIFIED_ATTESTATION="${BASE_VERIFIED_ATTESTATION}" \
     SOURCE_COMMIT="${SOURCE_COMMIT}" BUILD_BACKEND="${BUILD_BACKEND}" \
     COMPONENT_HASHES="${COMPONENT_HASHES}" \
     ASSET_RESOLUTIONS="${ASSET_RESOLUTIONS}" BUILDC_VERSION="${BUILDC_VERSION}" \
@@ -1289,7 +1305,7 @@ graph LR
       // excludes an underscore-prefixed component directory.
       "description": "Version-tagged pins",
       "managerFilePatterns": [
-        "/^components/([a-z][^/]*/)?[a-z][^/]*/manifest\\.kdl$/",
+        "/^components/([a-z][^/]*/)?[a-z][^/]*/component\\.kdl$/",
       ],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*version \"(?<currentValue>[^\"]+)\"",
@@ -1297,8 +1313,8 @@ graph LR
     },
     {
       "customType": "regex",
-      "description": "Commit-pinned asset pins in manifest.kdl",
-      "managerFilePatterns": ["/^components/([a-z][^/]*/)?[a-z][^/]*/manifest\\.kdl$/"],
+      "description": "Commit-pinned asset pins in component.kdl",
+      "managerFilePatterns": ["/^components/([a-z][^/]*/)?[a-z][^/]*/component\\.kdl$/"],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>git-refs)\" depName=\"(?<depName>[^\"]+)\"\\s*\\n\\s*version \"(?<currentDigest>[^\"]+)\"",
       ],
@@ -1328,7 +1344,7 @@ graph LR
 ==== .github/workflows/update-components.yml
 ==== generated/snapshot.json
 {
-  "root": "6248b8f9147e861dc7e540cd4dd37c3cc44c24bd1cc7944d49bf9cddcd62eb5e",
+  "root": "85969c4cf2a8b30154c9db6058a4aac1525c70beb2fb6c51e16c4b6374c44ec0",
   "files": 25
 }
 ==== generated/example/components/fedora-family/lib/family.sh

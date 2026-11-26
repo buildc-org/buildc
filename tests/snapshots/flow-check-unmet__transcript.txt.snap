@@ -4,15 +4,13 @@ source: tests/golden/harness.rs
 Buildc v{version}
 
   × `browser` requires `flatpak`, which nothing enabled provides
-   ╭─[./libraries/community/browser/manifest.kdl:9:10]
+   ╭─[./libraries/community/browser/component.kdl:9:10]
  8 │ 
  9 │ requires "flatpak"
    ·          ────┬────
    ·              ╰── unsatisfied
    ╰────
-  help: no component in the repository declares `provides "flatpak"`, and
-        neither does the base `base-image/fedora`. `buildc add component`
-        lists what the declared libraries provide
+  help: `upstream/flatpak` would satisfy it; add it to this image
 
-buildc: 1 problem in ./libraries/community/browser/manifest.kdl; none in ./repo.kdl, ./example.kdl
+buildc: 1 problem in ./libraries/community/browser/component.kdl; none in ./repo.kdl, ./example.kdl
 ==== exit 2

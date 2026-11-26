@@ -2018,6 +2018,22 @@ fn a_build_value_in_a_component_path_is_refused() {
 }
 
 #[test]
+fn a_declared_build_value_name_in_a_component_path_resolves() {
+    let root = with_parts(
+        "path-declared-image-id",
+        "parts",
+        "option \"image-id\" type=\"string\" { default \"alpha\"; }\ncomponent \"/parts/{image-id}\"",
+    );
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(plan.contains("\"path\": \"parts/alpha\""), "{plan}");
+    assert!(
+        squashed(&plan).contains(r#""OPT_IMAGE_ID":"alpha""#),
+        "{plan}"
+    );
+}
+
+#[test]
 fn two_option_segments_in_one_component_path_are_refused() {
     let issues = checked(
         "path-two-options",

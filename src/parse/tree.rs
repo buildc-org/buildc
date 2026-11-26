@@ -129,10 +129,11 @@ pub(crate) const CONTEXT: Node = Node::new("component", "An instance of the comp
         "In a file outside every library, `component \"./<name>\"` and `component \"/<name>\"` \
          both read the component file at the repository root.",
         "A bare child of a file outside every library reads from the library root.",
-        "A path segment that is one `{option}` reads a string option that the component \
-         declares, after the merged values. The reference belongs in a `component` path, \
-         and a bare child whose name is a reference is refused. A component in a library \
-         can use it; a root file reads the repository root and takes none.",
+        "A path takes one `{option}` segment, which reads a string option that the \
+         component declares, after the merged values. The reference belongs in a \
+         `component` path, and a bare child whose name is a reference is refused. A \
+         component in a library can use it; a root file reads the repository root and \
+         takes none.",
     ]);
 
 pub(crate) fn option_segments(path: &str) -> usize {

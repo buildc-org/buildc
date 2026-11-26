@@ -925,12 +925,7 @@ fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut
         }
     }
     for (text, span) in texts {
-        let mut names: Vec<String> = Vec::new();
-        resolve_options::interpolate(text, |name| {
-            names.push(name.to_string());
-            String::new()
-        });
-        for name in names {
+        for name in reference_names(text) {
             let problem = match options
                 .iter()
                 .find(|opt| opt.name == name)
@@ -1567,6 +1562,29 @@ impl Component {
         }
 
         check_references(nodes, &component.options, src, issues);
+        for import in &component.imports {
+            for name in reference_names(&import.path) {
+                let declared = component
+                    .options
+                    .iter()
+                    .any(|option| option.name == name && option.ty == OptType::String);
+                if !declared && resolve_options::BUILD_VALUES.contains(&name.as_str()) {
+                    issues.push(
+                        Issue::new(
+                            format!(
+                                "`{}` reads `{{{name}}}`, which is no option of this component",
+                                import.path
+                            ),
+                            src,
+                        )
+                        .at(import.span, "a component path reads a string option")
+                        .help(
+                            "a build value does not fill a path segment; declare a string option",
+                        ),
+                    );
+                }
+            }
+        }
         component.check_variants(src, issues);
         component.base = base_facts(nodes, src, issues);
         if component.base.is_some() {
@@ -2275,20 +2293,6 @@ impl Component {
                     "a `{option}` segment belongs in a component inside a library; a root \
                      file reads the repository root",
                 ),
-            );
-            return;
-        }
-        if let Some(name) = reference_names(arg)
-            .into_iter()
-            .find(|name| resolve_options::BUILD_VALUES.contains(&name.as_str()))
-        {
-            issues.push(
-                Issue::new(
-                    format!("`{arg}` reads `{{{name}}}`, which is no option of this component"),
-                    src,
-                )
-                .at(span, "a component path reads a string option")
-                .help("a build value does not fill a path segment; declare a string option"),
             );
             return;
         }

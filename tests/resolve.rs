@@ -1910,16 +1910,220 @@ fn two_importers_passing_one_value_agree() {
     assert!(!issues.contains("set different values"), "{issues}");
 }
 
-fn with_parts(name: &str, components: &str, parts: &str) -> PathBuf {
-    let root = written(
-        name,
-        components,
-        &[("nvidia/open", ""), ("nvidia/proprietary", "")],
+#[test]
+fn a_component_path_reads_an_option_segment() {
+    let parts =
+        "option \"module\" type=\"string\" { default \"alpha\"; }\ncomponent \"/parts/{module}\"";
+    let plan = |name: &str, components: &str| {
+        let root = with_parts(name, components, parts);
+        let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+        let _ = std::fs::remove_dir_all(root);
+        plan
+    };
+    let default = plan("part-default", "parts");
+    let chosen = plan("part-chosen", "parts { module \"beta\"; }");
+    assert!(
+        default.contains("\"path\": \"parts/alpha\"") && !default.contains("parts/beta"),
+        "{default}"
     );
-    std::fs::create_dir_all(root.join("components/nvidia"))
+    assert!(
+        chosen.contains("\"path\": \"parts/beta\"") && !chosen.contains("parts/alpha"),
+        "{chosen}"
+    );
+}
+
+#[test]
+fn a_component_path_whose_option_leaves_a_segment_empty_is_refused() {
+    let issues = checked(
+        "part-empty",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            ("parts/beta", ""),
+            (
+                "parts",
+                "option \"module\" type=\"string\" { default \"\"; }\ncomponent \"/parts/{module}\"",
+            ),
+        ],
+    );
+    assert!(
+        issues.contains("leaves with an empty segment") && issues.contains("parts/"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_bool_option_in_a_component_path_is_refused() {
+    let issues = checked(
+        "part-bool",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            ("parts/beta", ""),
+            (
+                "parts",
+                "option \"module\" type=\"bool\" { default #true; }\ncomponent \"/parts/{module}\"",
+            ),
+        ],
+    );
+    assert!(
+        issues.contains("`{module}` reads a bool option"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_component_path_option_in_a_root_file_is_refused() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("root-option-path");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("components/alpha"))
         .expect("the test repository is writable");
     std::fs::write(
-        root.join("components/nvidia/component.kdl"),
+        root.join("repo.kdl"),
+        "schema-version 1\nname \"Root\"\nbuilds { root \"./root\" }\n",
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("root.kdl"),
+        "schema-version 1\noption \"module\" type=\"string\" { default \"alpha\"; }\ncomponent \"/{module}\"\n",
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/alpha/component.kdl"),
+        "schema-version 1\n",
+    )
+    .expect("the test repository is writable");
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        issues.contains("reads an option in a file outside every library"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_build_value_in_a_component_path_is_refused() {
+    let issues = checked(
+        "path-build-value",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            ("parts", "component \"/parts/{image-id}\""),
+        ],
+    );
+    assert!(issues.contains("which is no option"), "{issues}");
+}
+
+#[test]
+fn two_option_segments_in_one_component_path_are_refused() {
+    let issues = checked(
+        "path-two-options",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            ("parts/beta", ""),
+            (
+                "parts",
+                "option \"first\" type=\"string\" { default \"alpha\"; }\noption \"second\" type=\"string\" { default \"beta\"; }\ncomponent \"/parts/{first}/{second}\"",
+            ),
+        ],
+    );
+    assert!(
+        issues.contains("reads more than one `{option}` segment"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_partial_brace_segment_is_not_a_component_path() {
+    let issues = checked(
+        "path-partial-brace",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            ("parts", "component \"/parts/{module}x\""),
+        ],
+    );
+    assert!(issues.contains("is not a component path"), "{issues}");
+}
+
+#[test]
+fn an_option_value_that_climbs_is_not_a_component_path() {
+    let issues = checked(
+        "path-climb",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            (
+                "parts",
+                "option \"module\" type=\"string\" { default \"..\"; }\ncomponent \"/parts/{module}\"",
+            ),
+        ],
+    );
+    assert!(issues.contains("no library holds"), "{issues}");
+}
+
+#[test]
+fn a_missing_option_in_a_component_path_is_refused() {
+    let issues = checked(
+        "path-missing-option",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            ("parts", "component \"/parts/{missing}\""),
+        ],
+    );
+    assert!(
+        issues.contains("`{missing}` names no option of this component"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_list_option_in_a_component_path_is_refused() {
+    let issues = checked(
+        "path-list-option",
+        "        parts",
+        &[
+            ("parts/alpha", ""),
+            (
+                "parts",
+                "option \"modules\" type=\"list\" { default \"alpha\"; }\ncomponent \"/parts/{modules}\"",
+            ),
+        ],
+    );
+    assert!(issues.contains("reads a list option"), "{issues}");
+}
+
+#[test]
+fn a_nested_block_under_an_option_path_sets_an_option() {
+    let root = written(
+        "path-nested-option",
+        "        parts",
+        &[
+            ("parts/alpha", "option \"size\" type=\"string\" { default \"small\"; }"),
+            ("parts/beta", ""),
+            (
+                "parts",
+                "option \"module\" type=\"string\" { default \"alpha\"; }\ncomponent \"/parts/{module}\" { size \"large\"; }",
+            ),
+        ],
+    );
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(plan.contains("\"path\": \"parts/alpha\""), "{plan}");
+    assert!(squashed(&plan).contains(r#""OPT_SIZE":"large""#), "{plan}");
+}
+
+fn with_parts(name: &str, components: &str, parts: &str) -> PathBuf {
+    let root = written(name, components, &[("parts/alpha", ""), ("parts/beta", "")]);
+    std::fs::create_dir_all(root.join("components/parts"))
+        .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/parts/component.kdl"),
         format!("schema-version 1\n\ntargets \"fedora\"\n{parts}\n"),
     )
     .expect("the test repository is writable");
@@ -1928,7 +2132,7 @@ fn with_parts(name: &str, components: &str, parts: &str) -> PathBuf {
 
 #[test]
 fn a_part_is_no_cycle_with_the_component_that_lists_it() {
-    let root = with_parts("part-order", "        nvidia", "open");
+    let root = with_parts("part-order", "        parts", "alpha");
     let issues = buildc::run(Command::Check, None, &root)
         .problems
         .issues

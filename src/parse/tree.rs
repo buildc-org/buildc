@@ -129,7 +129,17 @@ pub(crate) const CONTEXT: Node = Node::new("component", "An instance of the comp
         "In a file outside every library, `component \"./<name>\"` and `component \"/<name>\"` \
          both read the component file at the repository root.",
         "A bare child of a file outside every library reads from the library root.",
+        "A path segment that is one `{option}` reads a string option that the component \
+         declares, after the merged values. The reference belongs in a `component` path, \
+         and a bare child whose name is a reference is refused. A component in a library \
+         can use it; a root file reads the repository root and takes none.",
     ]);
+
+pub(crate) fn option_segments(path: &str) -> usize {
+    path.split('/')
+        .filter(|part| is_option_segment(part))
+        .count()
+}
 
 pub(crate) fn join(parent: &str, name: &str) -> String {
     match parent.is_empty() {
@@ -153,11 +163,21 @@ pub(crate) fn context(at: &str, path: &str) -> Result<String, String> {
                 return Err(format!("`{path}` climbs above the library root"));
             }
             ".." => {}
-            _ if crate::model::image::is_local_path(part) => held.push(part),
+            _ if crate::model::image::is_local_path(part) || is_option_segment(part) => {
+                held.push(part)
+            }
             _ => return Err(format!("`{path}` is not a component path")),
         }
     }
     Ok(held.join("/"))
+}
+
+/// The merged option values fill the segment before the tree resolves.
+pub(crate) fn is_option_segment(segment: &str) -> bool {
+    segment
+        .strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'))
+        .is_some_and(is_name)
 }
 
 #[derive(Clone, Default)]

@@ -563,6 +563,20 @@ fn bring(
             );
             continue;
         }
+        if want.path.split('/').any(str::is_empty) {
+            found.push(
+                Issue::new(
+                    format!(
+                        "`{by}` lists `{}`, which an option leaves with an empty segment",
+                        want.path
+                    ),
+                    &src,
+                )
+                .at(want.span, "an empty path segment")
+                .help("set the option on the image entry, or give it a default"),
+            );
+            continue;
+        }
         if let (Some(_), Some(pin)) = (&want.inline, &want.pin) {
             found.push(
                 Issue::new(

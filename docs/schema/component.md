@@ -1208,6 +1208,8 @@ Accepts: *string*, then optionally {&nbsp;[fields](#component-fields)&nbsp;}
 > In a file outside every library, `component "./<name>"` and `component "/<name>"` both read the component file at the repository root.
 >
 > A bare child of a file outside every library reads from the library root.
+>
+> A path segment that is one `{option}` reads a string option that the component declares, after the merged values. The reference belongs in a `component` path, and a bare child whose name is a reference is refused. A component in a library can use it; a root file reads the repository root and takes none.
 
 <a id="name"></a>
 

@@ -435,6 +435,7 @@ pub fn apply(component: &mut Component, entry: &Entry, image: &Image, issues: &m
         batch.packages = kept;
     }
     for import in &mut component.imports {
+        import.path = interpolate(&import.path, value);
         for setting in &mut import.options {
             for held in setting.values.iter_mut().chain(&mut setting.removes) {
                 if let Value::String(text) = held {

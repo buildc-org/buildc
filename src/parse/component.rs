@@ -817,7 +817,14 @@ fn base_block(reference: &KdlNode, src: &Source, issues: &mut Issues) -> BaseFac
 }
 
 fn is_tree_path(path: &str) -> bool {
-    crate::model::image::is_local_path(path)
+    let literal: Vec<&str> = path
+        .split('/')
+        .map(|part| match crate::parse::tree::is_option_segment(part) {
+            true => "option",
+            false => part,
+        })
+        .collect();
+    crate::model::image::is_local_path(&literal.join("/"))
 }
 
 fn is_tree_node(node: &KdlNode) -> bool {
@@ -826,6 +833,9 @@ fn is_tree_node(node: &KdlNode) -> bool {
 
 fn tree_texts<'a>(node: &'a KdlNode, out: &mut Vec<(&'a str, Span)>) {
     out.push((node.name().value(), node.name().span().into()));
+    if let Some(path) = crate::parse::string_arg(node) {
+        out.push((path, node.name().span().into()));
+    }
     let body = crate::parse::tree::body(node);
     for kid in body.settings {
         let span: Span = kid.name().span().into();
@@ -884,6 +894,15 @@ fn listed<'a>(nodes: impl IntoIterator<Item = &'a KdlNode>, want: &str) -> Vec<S
         .collect()
 }
 
+fn reference_names(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    resolve_options::interpolate(text, |name| {
+        names.push(name.to_string());
+        String::new()
+    });
+    names
+}
+
 fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut Issues) {
     let mut nodes: Vec<&KdlNode> = Vec::new();
     for node in top {
@@ -906,12 +925,7 @@ fn check_references(top: &[KdlNode], options: &[Opt], src: &Source, issues: &mut
         }
     }
     for (text, span) in texts {
-        let mut names: Vec<String> = Vec::new();
-        resolve_options::interpolate(text, |name| {
-            names.push(name.to_string());
-            String::new()
-        });
-        for name in names {
+        for name in reference_names(text) {
             let problem = match options
                 .iter()
                 .find(|opt| opt.name == name)
@@ -1548,6 +1562,29 @@ impl Component {
         }
 
         check_references(nodes, &component.options, src, issues);
+        for import in &component.imports {
+            for name in reference_names(&import.path) {
+                let declared = component
+                    .options
+                    .iter()
+                    .any(|option| option.name == name && option.ty == OptType::String);
+                if !declared && resolve_options::BUILD_VALUES.contains(&name.as_str()) {
+                    issues.push(
+                        Issue::new(
+                            format!(
+                                "`{}` reads `{{{name}}}`, which is no option of this component",
+                                import.path
+                            ),
+                            src,
+                        )
+                        .at(import.span, "a component path reads a string option")
+                        .help(
+                            "a build value does not fill a path segment; declare a string option",
+                        ),
+                    );
+                }
+            }
+        }
         component.check_variants(src, issues);
         component.base = base_facts(nodes, src, issues);
         if component.base.is_some() {
@@ -2126,6 +2163,23 @@ impl Component {
     ) {
         let name = node.name().value();
         let span: Span = node.name().span().into();
+        if crate::parse::tree::is_option_segment(name) {
+            issues.push(
+                Issue::new(
+                    format!(
+                        "`{}` is not a component path",
+                        crate::parse::tree::join(parent, name)
+                    ),
+                    src,
+                )
+                .at(span, "not a path in a library")
+                .help(
+                    "a segment is lowercase letters, digits, dashes and dots; a \
+                     `{option}` segment belongs in a `component` path",
+                ),
+            );
+            return;
+        }
         if node.entries().iter().any(|entry| entry.name().is_none()) {
             let help = match name {
                 _ if [BASE_FAMILY, BASE_BOOTLOADER, BASE_SCAP_CONTENT]
@@ -2228,6 +2282,20 @@ impl Component {
         let Some(arg) = string_arg(node) else {
             return;
         };
+        if self.outside && crate::parse::tree::option_segments(arg) > 0 {
+            issues.push(
+                Issue::new(
+                    format!("`{arg}` reads an option in a file outside every library"),
+                    src,
+                )
+                .at(span, "an option in a component path")
+                .help(
+                    "a `{option}` segment belongs in a component inside a library; a root \
+                     file reads the repository root",
+                ),
+            );
+            return;
+        }
         let context = match crate::parse::tree::context(at, arg) {
             Ok(context) => context,
             Err(problem) => {
@@ -2281,6 +2349,17 @@ impl Component {
                     false => self.parse_tree(kid, &context, &props, src, issues),
                 }
             }
+            return;
+        }
+        if crate::parse::tree::option_segments(&context) > 1 {
+            issues.push(
+                Issue::new(
+                    format!("`{context}` reads more than one `{{option}}` segment"),
+                    src,
+                )
+                .at(span, "more than one reference")
+                .help("a component path reads one string option"),
+            );
             return;
         }
         if !is_tree_path(&context) {

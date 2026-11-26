@@ -35,9 +35,14 @@ impl Provider {
 
 pub struct Index {
     held: Vec<Provider>,
-    unread: Vec<String>,
+    unread: Vec<Unread>,
     sourced: bool,
     unreached: Option<String>,
+}
+
+pub struct Unread {
+    pub name: String,
+    pub remote: bool,
 }
 
 impl Index {
@@ -70,14 +75,17 @@ impl Index {
                         !crate::collection::cached(root, collection)
                             .is_some_and(|dir| crate::layout::library_components(&dir).is_dir())
                     })
-                    .map(|collection| collection.name.clone())
+                    .map(|collection| Unread {
+                        name: collection.name.clone(),
+                        remote: matches!(collection.at, crate::model::remote::At::Git(_)),
+                    })
                     .collect(),
             },
             sourced: !sources.is_empty(),
         }
     }
 
-    pub fn unread(&self) -> &[String] {
+    pub fn unread(&self) -> &[Unread] {
         &self.unread
     }
 
@@ -89,20 +97,58 @@ impl Index {
         self.sourced
     }
 
+    pub fn matching(&self, path: &str) -> Vec<&Provider> {
+        let matching: Vec<&Provider> = self
+            .held
+            .iter()
+            .filter(|provider| provider.qualified() == path || provider.name == path)
+            .collect();
+        // A component this repository holds wins, as `add component` chooses it.
+        let local: Vec<&Provider> = matching
+            .iter()
+            .copied()
+            .filter(|provider| provider.here)
+            .collect();
+        match local.is_empty() {
+            true => matching,
+            false => local,
+        }
+    }
+
     pub fn unsearched(&self) -> String {
         if let Some(why) = &self.unreached {
-            return format!("A declared library could not be read, so nothing searched it: {why}");
+            return format!("A declared library could not be read. Nothing searched it: {why}");
         }
-        let named: Vec<String> = self.unread.iter().map(|name| format!("`{name}`")).collect();
+        let named: Vec<String> = self
+            .unread
+            .iter()
+            .map(|held| format!("`{}`", held.name))
+            .collect();
+        let remote = self.unread.iter().any(|held| held.remote);
+        let local = self.unread.iter().any(|held| !held.remote);
+        let fetch = |plural: bool| match (remote, local) {
+            (true, false) if plural => ": `buildc generate` fetches them",
+            (true, false) => ": `buildc generate` fetches it",
+            (false, true) => {
+                ": a local library is a folder of this repository. Check its `source` path"
+            }
+            (true, true) => {
+                ": `buildc generate` fetches the remote libraries; a local library is a folder of \
+                 this repository"
+            }
+            (false, false) => "",
+        };
         match named.len() {
             0 => String::new(),
             1 => format!(
-                "The {} library is declared but not on this machine, so nothing read it: `buildc generate` fetches it",
-                named.join(", ")
+                "The {} library is declared and nothing read it{}",
+                named.join(", "),
+                fetch(false)
             ),
             _ => format!(
-                "The {} libraries are declared but not on this machine, so nothing read them: `buildc generate` fetches them",
-                named.join(", ")
+                "The {} libraries are declared and nothing read them{}",
+                named.join(", "),
+                fetch(true)
             ),
         }
     }
@@ -218,23 +264,35 @@ pub(crate) mod tests {
     use super::*;
 
     #[test]
-    fn the_unsearched_note_names_each_library_not_on_this_machine() {
-        let index = |unread: &[&str], unreached: Option<&str>| Index {
+    fn the_unsearched_note_names_each_library_and_its_fix() {
+        let index = |unread: &[(&str, bool)], unreached: Option<&str>| Index {
             held: Vec::new(),
-            unread: unread.iter().map(|name| name.to_string()).collect(),
+            unread: unread
+                .iter()
+                .map(|(name, remote)| Unread {
+                    name: name.to_string(),
+                    remote: *remote,
+                })
+                .collect(),
             sourced: true,
             unreached: unreached.map(str::to_string),
         };
         assert_eq!(index(&[], None).unsearched(), "");
-        assert!(index(&["one"], None)
+        assert!(index(&[("one", true)], None)
             .unsearched()
             .starts_with("The `one` library is declared"));
-        assert!(index(&["one", "two"], None)
+        assert!(index(&[("one", true), ("two", true)], None)
             .unsearched()
             .starts_with("The `one`, `two` libraries are declared"));
-        assert!(index(&["one"], Some("offline"))
+        assert!(index(&[("one", true), ("two", true)], None)
             .unsearched()
-            .ends_with("nothing searched it: offline"));
+            .contains("fetches them"));
+        assert!(index(&[("one", true)], Some("offline"))
+            .unsearched()
+            .ends_with("Nothing searched it: offline"));
+        assert!(index(&[("mine", false)], None)
+            .unsearched()
+            .contains("a local library is a folder of this repository"));
     }
 
     pub(crate) fn two_providers(name: &str) -> std::path::PathBuf {
@@ -242,12 +300,12 @@ pub(crate) mod tests {
             std::env::temp_dir().join(format!("buildc-providers-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::init::put(
-            &root.join("components/both/manifest.kdl"),
+            &root.join("components/both/component.kdl"),
             "schema-version 1\n\ntargets \"fedora\"\n\nprovides \"x\" \"y\"\n",
         )
         .unwrap();
         crate::init::put(
-            &root.join("components/other/manifest.kdl"),
+            &root.join("components/other/component.kdl"),
             "schema-version 1\n\ntargets \"fedora\"\n\nprovides \"y\"\n",
         )
         .unwrap();

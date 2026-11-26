@@ -34,7 +34,7 @@ A claim the tool records rather than certifies. The scan is what confirms it.
 
 | Content | Hash |
 | --- | --- |
-| declared | `88c547072a77b325e12905325aece95dea820caba0f53d6ab858f2a9cca0f204` |
+| declared | `9e56d97f0dfcb562688123d30e588de8e86ca7e2c21b1a0a179f11968799046b` |
 
 It was written in this repository, so no library holds a version to compare it against.
 
@@ -54,6 +54,16 @@ Installs flatpak and enables the remotes an image asks for
 ## Where it is built
 
 also. suppressed lists it and builds no layer for it: everything it provides, that base already ships.
+
+## Which variant it builds
+
+`also` builds variant `beta`, the default.
+
+## How its options are set
+
+| Build | Option | Set by | Value |
+| --- | --- | --- | --- |
+| `also` | `remotes` | `beta` | sets "flathub", "flathub-beta" |
 
 ==== and one whose manifest never loaded
 `apps/flatpak` is listed but was not read

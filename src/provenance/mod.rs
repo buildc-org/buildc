@@ -1,3 +1,4 @@
+pub mod base;
 pub mod build;
 pub mod evidence;
 pub mod origins;
@@ -386,29 +387,38 @@ pub fn enforce_build(
     resolved_base: Option<&str>,
     source_commit: Option<&str>,
     unresolved: &[String],
+    provenance: &[String],
 ) -> Result<(), String> {
     if !enforce {
         return Ok(());
     }
     if !unresolved.is_empty() {
         return Err(format!(
-            "{}, so the build record would not name what the layer clones; \
-             `audit {{ enforce #true }}` makes that an error",
+            "{}. The build record would not name what the layer clones; \
+             remove `audit {{ enforce #true }}` to build with that gap",
             unresolved.join("; ")
         ));
     }
     if resolved_base.is_none() {
         return Err(
-            "the base did not resolve to a manifest digest, so the build record would \
-                    not name what it built on; `audit { enforce #true }` makes that an error"
+            "the base did not resolve to a manifest digest. The build record would \
+                    not name what it built on; remove `audit { enforce #true }` to build with \
+                    that gap"
                 .into(),
         );
     }
+    if !provenance.is_empty() {
+        return Err(format!(
+            "the base's provenance is incomplete: {}; remove `audit {{ enforce #true }}` to \
+             build with that gap",
+            provenance.join("; ")
+        ));
+    }
     if source_commit.is_none() {
         return Err(
-            "the repository is at no commit, so the build record would not bind this \
-                    image to a tree anyone can read; `audit { enforce #true }` makes that an \
-                    error"
+            "the repository is at no commit. The build record would not bind this \
+                    image to a tree anyone can read; remove `audit { enforce #true }` to build \
+                    with that gap"
                 .into(),
         );
     }
@@ -456,15 +466,28 @@ mod tests {
     #[test]
     fn enforcement_is_a_lever_over_a_record_that_always_exists() {
         let lost = ["`apps/xone` asset `xone` names no `version` to resolve".to_string()];
-        assert!(enforce_build(false, None, None, &lost).is_ok());
-        assert!(enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef"), &[]).is_ok());
+        assert!(enforce_build(false, None, None, &lost, &[]).is_ok());
+        assert!(enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef"), &[], &[]).is_ok());
 
-        let no_base = enforce_build(true, None, Some("deadbeef"), &[]).unwrap_err();
+        let no_base = enforce_build(true, None, Some("deadbeef"), &[], &[]).unwrap_err();
         assert!(no_base.contains("did not resolve"), "{no_base}");
-        let no_commit = enforce_build(true, Some("repo@sha256:abc"), None, &[]).unwrap_err();
+        let no_commit = enforce_build(true, Some("repo@sha256:abc"), None, &[], &[]).unwrap_err();
         assert!(no_commit.contains("no commit"), "{no_commit}");
+        let evidence = ["`repo` publishes no attestation".to_string()];
+        let no_evidence = enforce_build(
+            true,
+            Some("repo@sha256:abc"),
+            Some("deadbeef"),
+            &[],
+            &evidence,
+        )
+        .unwrap_err();
+        assert!(
+            no_evidence.contains("publishes no attestation"),
+            "{no_evidence}"
+        );
         let no_asset =
-            enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef"), &lost).unwrap_err();
+            enforce_build(true, Some("repo@sha256:abc"), Some("deadbeef"), &lost, &[]).unwrap_err();
         assert!(no_asset.contains("`apps/xone` asset `xone`"), "{no_asset}");
     }
 }

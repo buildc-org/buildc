@@ -318,6 +318,7 @@ jobs:
               '.description | if . == "" then $t else "\(.) (\($t))" end' "$IMAGE_PLAN")"
             echo "IMAGE_KEYWORDS=$(jq -r '.keywords | join(",")' "$IMAGE_PLAN")"
             echo "IMAGE_LOGO_URL=$(jq -r '.logo_url' "$IMAGE_PLAN")"
+            echo "BASE_VERIFY=$(jq -r '.base.verify | if . == null then "" else "true" end' "$IMAGE_PLAN")"
           } >> "${GITHUB_ENV}"
           if [ -z "$reference" ]; then
             echo "::notice::${TARGET} publishes nowhere, because repo.kdl names no registry"
@@ -388,6 +389,12 @@ jobs:
           esac
           echo "name=${name}" >> "$GITHUB_OUTPUT"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign for the base verifier
+        if: env.BASE_VERIFY == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v2.6.3'
 
       - name: Image Metadata
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302

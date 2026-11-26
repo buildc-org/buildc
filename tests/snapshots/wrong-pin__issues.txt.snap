@@ -9,7 +9,7 @@ source: tests/golden/harness.rs
     :           `-- nothing to build
  10 |     }
     `----
-  help: give components/core/hello a manifest.kdl, a component.sh, a repo.sh,
+  help: give components/core/hello a component.kdl, a component.sh, a repo.sh,
         a packages.sh, a finalize.sh, a files/ directory, a Containerfile.inc
         or a file that another component collects, or define it inline with a
         manifest node such as `packages`

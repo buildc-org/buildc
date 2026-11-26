@@ -483,7 +483,7 @@ mod tests {
         crate::init::put(&dir.join("cuda/component.sh"), "true\n").unwrap();
         assert_eq!(hash(&dir).unwrap(), before);
 
-        // A `manifest.kdl` inside the overlay is an image file and marks no nested component.
+        // A `component.kdl` inside the overlay is an image file and marks no nested component.
         let overlay = dir
             .join(layout::OVERLAY)
             .join("usr/share/x")
@@ -540,7 +540,7 @@ mod tests {
     fn a_local_library_pins_its_clean_head_and_names_its_base_url() {
         let root = temp("local");
         let tree = root.join("library");
-        crate::init::put(&tree.join("browser/manifest.kdl"), "").unwrap();
+        crate::init::put(&tree.join("browser/component.kdl"), "").unwrap();
         let library = Collection {
             name: "mine".into(),
             at: At::Dir("library".into()),
@@ -563,7 +563,7 @@ mod tests {
             "{pin:?}"
         );
 
-        crate::init::put(&tree.join("browser/manifest.kdl"), "description \"x\"\n").unwrap();
+        crate::init::put(&tree.join("browser/component.kdl"), "description \"x\"\n").unwrap();
         assert_eq!(source(&root, &library).1, None);
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -572,7 +572,7 @@ mod tests {
     fn a_checkout_that_holds_a_submodule_records_no_pin() {
         let root = temp("submodule");
         let tree = root.join("library");
-        crate::init::put(&tree.join("browser/manifest.kdl"), "").unwrap();
+        crate::init::put(&tree.join("browser/component.kdl"), "").unwrap();
         // A gitlink entry stands in for a submodule without a second repository.
         git(&tree, &["init", "--quiet"]);
         git(&tree, &["add", "."]);
@@ -618,7 +618,7 @@ mod tests {
     fn planted_filter(case: &str, how: &str) {
         let root = temp(case);
         let tree = root.join("library");
-        crate::init::put(&tree.join("browser/manifest.kdl"), "").unwrap();
+        crate::init::put(&tree.join("browser/component.kdl"), "").unwrap();
         crate::init::put(&tree.join(".gitattributes"), "* filter=planted\n").unwrap();
         git(&tree, &["init", "--quiet"]);
         git(&tree, &["add", "."]);
@@ -659,7 +659,7 @@ mod tests {
         // The rewrite gets a later mtime than the index entry.
         // `git status` then runs the clean filter to compare the file.
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        crate::init::put(&tree.join("browser/manifest.kdl"), "").unwrap();
+        crate::init::put(&tree.join("browser/component.kdl"), "").unwrap();
         let library = Collection {
             name: "mine".into(),
             at: At::Dir("library".into()),

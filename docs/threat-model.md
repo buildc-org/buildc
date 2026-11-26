@@ -112,7 +112,7 @@ and `buildc` edits it in place. A `remote` library is a Git repository that
 
 ### Assets a component downloads
 
-An `asset` in `manifest.kdl` pins a download that the component's own script
+An `asset` in `component.kdl` pins a download that the component's own script
 fetches while its layer builds.
 
 - An asset whose URL ends in `.git` is cloned, and its commit is the
@@ -195,6 +195,22 @@ to the published tags (`assets/.github/workflows/build.yml`). If the
 verification fails, then no published tag moves. The verification passes
 `--insecure-ignore-tlog=true`, so a signature does not need a transparency log
 entry.
+
+### The base image
+
+`buildc build` fetches the base's SPDX attestation from the registry and checks
+that its in-toto subject names the digest it resolved. A mismatch refuses the
+build. When the base names `key=` or `identity=`, `cosign` must verify the
+signature. When the build fetched an attestation, `cosign` must verify that
+too. A failure refuses the build. The attestation that cosign verifies must
+carry the payload that the build records. A build refuses when a registry
+serves one payload to the copy that buildc reads and another to cosign. A base
+with no attestation leaves a gap that the build record names. `audit { enforce
+#true }` refuses the gap. buildc chooses no trust root; the repository names one
+on the base. A `key=` is a repository path, not a URL. `key-sha256=`
+optionally pins the key file's content. A pinned key fails when the key file
+changes, until the repository updates `key-sha256=` to match. An unpinned local
+key is already a reviewed repository file.
 
 ### Installer media and the installer
 

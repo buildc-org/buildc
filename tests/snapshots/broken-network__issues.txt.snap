@@ -8,7 +8,7 @@ source: tests/golden/harness.rs
 
   x `core/fetcher` declares that its scripts reach the network, and repo.kdl
   | denies it
-    ,-[tests/repos/broken-network/components/core/fetcher/manifest.kdl:9:9]
+    ,-[tests/repos/broken-network/components/core/fetcher/component.kdl:9:9]
   8 |     scripts {
   9 |         network #true
     :         ^^^|^^^
@@ -19,7 +19,7 @@ source: tests/golden/harness.rs
         honour this declaration, or leave this component out of the image
 
   x `core/asset-only` declares an asset its script step cannot fetch
-   ,-[tests/repos/broken-network/components/core/asset-only/manifest.kdl:7:1]
+   ,-[tests/repos/broken-network/components/core/asset-only/component.kdl:7:1]
  6 | 
  7 | asset "tool" {
    : ^^|^^
@@ -31,7 +31,7 @@ source: tests/golden/harness.rs
         component out of the image
 
   x `core/fragment-only` declares a script step it has not got
-    ,-[tests/repos/broken-network/components/core/fragment-only/manifest.kdl:9:9]
+    ,-[tests/repos/broken-network/components/core/fragment-only/component.kdl:9:9]
   8 |     scripts {
   9 |         network #true
     :         ^^^|^^^
@@ -43,7 +43,7 @@ source: tests/golden/harness.rs
 
   x `core/installer` installs packages in component.sh, and its script step
   | has no network
-   ,-[tests/repos/broken-network/components/core/installer/manifest.kdl:1:1]
+   ,-[tests/repos/broken-network/components/core/installer/component.kdl:1:1]
  1 | schema-version 1
    : ^
    : `-- `dnf5` needs the network

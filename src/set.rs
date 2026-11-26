@@ -982,8 +982,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("buildc-set-kind-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::init::put(&root.join(layout::REPO_FILE), "schema-version 1\n").unwrap();
-        crate::init::put(&root.join("shared/a/manifest.kdl"), "").unwrap();
-        crate::init::put(&root.join("loose/a/manifest.kdl"), "").unwrap();
+        crate::init::put(&root.join("shared/a/component.kdl"), "").unwrap();
+        crate::init::put(&root.join("loose/a/component.kdl"), "").unwrap();
         crate::init::put(&root.join("named/repo.kdl"), "name \"Team Library\"\n").unwrap();
         std::fs::create_dir_all(root.join("components")).unwrap();
         git(&root, &["init", "--quiet"]);
@@ -1230,7 +1230,7 @@ mod tests {
 
     fn claims(profile: &str, numbers: &[&str]) -> Claims {
         Claims {
-            file: PathBuf::from("components/one/manifest.kdl"),
+            file: PathBuf::from("components/one/component.kdl"),
             profile: profile.to_string(),
             numbers: numbers.iter().map(|n| n.to_string()).collect(),
             claimed: numbers.len(),

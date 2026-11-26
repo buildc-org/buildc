@@ -66,10 +66,12 @@ source: tests/golden/harness.rs
     {
       "id": "example",
       "file": "./example.kdl",
+      "component": "example",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -93,6 +95,7 @@ source: tests/golden/harness.rs
           "resolved": "https://github.com/ComplianceAsCode/content/releases/download/v0.1.82/scap-security-guide-0.1.82.zip"
         },
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "luks-initramfs",
@@ -144,12 +147,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -159,7 +164,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+                "content": "16bb2a2c4e5e88c3ba3f17c0c6bf24dcb1e17a97a2a136881465489f13bd1e61",
                 "resolved": "5667fbcb4d6d83bfb0d2e15d84b1091e491a61163ae9763a8d8a5609de1227fd",
                 "repo": false,
                 "imported": null
@@ -174,10 +179,12 @@ source: tests/golden/harness.rs
             {
               "path": "example",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -225,7 +232,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=example",
-              "COMPONENT_HASHES=fedora-family|e27861923999a6d6f7a6ffe4768f8536333d26b1ed7bf71236911a6a64180fcd",
+              "COMPONENT_HASHES=fedora-family|16bb2a2c4e5e88c3ba3f17c0c6bf24dcb1e17a97a2a136881465489f13bd1e61",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

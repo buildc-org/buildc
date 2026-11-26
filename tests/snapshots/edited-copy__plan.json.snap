@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "edited-copy",
       "file": "./components/edited-copy.kdl",
+      "component": "edited-copy",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -55,12 +58,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -70,7 +75,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "content": "52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42",
                 "resolved": "abebbac6f8b1b6cc827459790cc376bfbae27e6990e901149b9ca8314b2f74be",
                 "repo": false,
                 "imported": null
@@ -84,10 +89,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/edited",
               "variant": null,
+              "variant-default": false,
               "description": "A copy that origins.kdl records",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -105,7 +112,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+                "content": "e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41",
                 "resolved": null,
                 "repo": false,
                 "imported": {
@@ -124,10 +131,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/owned",
               "variant": null,
+              "variant-default": false,
               "description": "A copy that origins.kdl records",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -145,13 +154,13 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+                "content": "e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41",
                 "resolved": null,
                 "repo": false,
                 "imported": {
                   "origin": "https://github.com/owner/upstream",
                   "path": "owned",
-                  "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+                  "content": "e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41",
                   "pin": "0123456789abcdef0123456789abcdef01234567"
                 }
               },
@@ -164,10 +173,12 @@ source: tests/golden/harness.rs
             {
               "path": "edited-copy",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -207,7 +218,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=edited-copy",
-              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb core/edited|af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1 core/owned|af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+              "COMPONENT_HASHES=fedora-family|52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42 core/edited|e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41 core/owned|e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

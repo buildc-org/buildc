@@ -56,7 +56,7 @@ fn every_schema_has_a_page() {
 fn the_page_opens_on_the_file_and_its_scaffold() {
     let out = page(Area::Component);
     assert!(
-        out.starts_with("<a id=\"manifest.kdl\"></a>\n\n# `manifest.kdl`\n"),
+        out.starts_with("<a id=\"component.kdl\"></a>\n\n# `component.kdl`\n"),
         "{out}"
     );
     let start = out.find("```kdl\n").expect("the page has an example");

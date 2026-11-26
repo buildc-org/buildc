@@ -16,5 +16,5 @@ rules `sshd` claims [1-3, several, 0 for none]: 1 3
 example/
 └── components/
     └── sshd/
-        └── ~ manifest.kdl  claiming 2 rules of `standard`
+        └── ~ component.kdl  claiming 2 rules of `standard`
 ==== exit 0

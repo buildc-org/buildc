@@ -37,18 +37,18 @@ fn generate_leaves_the_image_file_byte_identical() {
         ),
         (
             "components/checked.kdl",
-            "schema-version 1\n\ncomponent \"/\" {\n    base-image {\n        example\n    }\n    consumer { runtime \"two\"; }\n}\n",
+            "schema-version 1\n\ncomponent \"/\" {\n    base-image {\n        example\n    }\n    consumer\n}\n",
         ),
         (
-            "components/consumer/manifest.kdl",
-            "schema-version 1\nrequires \"tool\"\ncomponent \"/\" { \"{runtime}\"; }\noption \"runtime\" type=\"string\" { default \"one\"; }\n",
+            "components/consumer/component.kdl",
+            "schema-version 1\nrequires \"tool\"\ncomponent \"/\" { one; }\n",
         ),
         (
-            "components/base-image/example/manifest.kdl",
+            "components/base-image/example/component.kdl",
             "schema-version 1\nbase \"example\" { family \"fedora\"; }\n",
         ),
-        ("components/one/manifest.kdl", "schema-version 1\nprovides \"tool\"\n"),
-        ("components/two/manifest.kdl", "schema-version 1\nprovides \"tool\"\n"),
+        ("components/one/component.kdl", "schema-version 1\nprovides \"tool\"\n"),
+        ("components/two/component.kdl", "schema-version 1\nprovides \"tool\"\n"),
     ];
     for (path, text) in files {
         let at = root.join(path);
@@ -68,7 +68,7 @@ fn generate_leaves_the_image_file_byte_identical() {
     let image = std::fs::read_to_string(root.join("components/checked.kdl")).unwrap_or_default();
     let imported = std::fs::read_to_string(root.join("generated/plan.json"))
         .unwrap_or_default()
-        .contains("\"path\": \"two\"");
+        .contains("\"path\": \"one\"");
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         out.status.success(),

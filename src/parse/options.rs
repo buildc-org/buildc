@@ -93,6 +93,20 @@ pub const VARIANT: Node = Node::new("variant",
          the image sets wins.",
     ]);
 
+#[rustfmt::skip]
+pub const DEFAULT_VARIANT: Node = Node::new("default-variant",
+    "The variant that an entry takes when it selects none.")
+    .about("A component that declares variants names exactly one default. An entry that writes \
+        no `variant=` takes it, and the name must be a declared variant.")
+    .example("\"lean\"")
+    .arg(Arg::Str, Say::new("`default-variant` needs a variant name", "no name given",
+        "`default-variant \"lean\"`"))
+    .once("")
+    .props(&[], Say::new("unknown `default-variant` property `{}`", "not part of the schema",
+        "`default-variant` takes its name and nothing else"))
+    .children(&[], Say::new("`default-variant` holds no `{}`", "not part of the schema",
+        "a default variant is a component field, so it holds no child nodes"));
+
 impl From<&KdlValue> for Value {
     fn from(value: &KdlValue) -> Self {
         match value {
@@ -254,7 +268,7 @@ mod tests {
         let mut issues = Issues::default();
         let opt = super::parse_option(
             &doc.nodes()[0],
-            &Source::new("manifest.kdl", text),
+            &Source::new("component.kdl", text),
             &mut issues,
         );
         (opt, issues.plain())

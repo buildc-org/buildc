@@ -29,14 +29,14 @@ plain
     )
     .expect("the test target directory is writable");
     std::fs::write(
-        root.join("components/signed/manifest.kdl"),
+        root.join("components/signed/component.kdl"),
         format!(
             "schema-version 1\n\ndescription \"Signs when a key exists\"\ntargets \"fedora\"\n{line} \"secureboot-key\"\n"
         ),
     )
     .expect("the test target directory is writable");
     std::fs::write(
-        root.join("components/plain/manifest.kdl"),
+        root.join("components/plain/component.kdl"),
         "schema-version 1\n\ndescription \"Orders nothing\"\ntargets \"fedora\"\n",
     )
     .expect("the test target directory is writable");
@@ -122,12 +122,12 @@ apparmor
     )
     .unwrap();
     std::fs::write(
-        root.join("components/apparmor/manifest.kdl"),
+        root.join("components/apparmor/component.kdl"),
         "schema-version 1\n\ndescription \"The MAC\"\ntargets \"debian\"\nprovides \"apparmor-policy\"\n",
     )
     .unwrap();
     std::fs::write(
-        root.join("components/yubikey/manifest.kdl"),
+        root.join("components/yubikey/component.kdl"),
         "schema-version 1\n\ndescription \"Ships a profile and requires nothing\"\ntargets \"debian\"\n",
     )
     .unwrap();
@@ -181,7 +181,7 @@ fn a_capability_conflicts_only_where_a_provider_declares_it_exclusive() {
     );
     let provider = |name: &str, provides: &str| {
         std::fs::write(
-            root.join("components").join(name).join("manifest.kdl"),
+            root.join("components").join(name).join("component.kdl"),
             format!(
                 "schema-version 1\n\ndescription \"Provides\"\ntargets \"fedora\"\n{provides}\n"
             ),
@@ -271,7 +271,9 @@ fn written_on(name: &str, base: &str, components: &str, manifests: &[(&str, &str
         std::fs::create_dir_all(root.join("components").join(component))
             .expect("the test repository is writable");
         std::fs::write(
-            root.join("components").join(component).join("manifest.kdl"),
+            root.join("components")
+                .join(component)
+                .join("component.kdl"),
             rooted(&format!(
                 "schema-version 1\n\ndescription \"Checked\"\ntargets \"fedora\"\n{manifest}\n"
             )),
@@ -478,7 +480,7 @@ fn a_base_with_no_family_imports_a_component_that_names_one() {
             ("provider", "provides \"tool\" witness=\"/usr/share/tool\""),
         ],
     );
-    let base = root.join("components/base-image/example/manifest.kdl");
+    let base = root.join("components/base-image/example/component.kdl");
     let text = std::fs::read_to_string(&base).expect("the test repository is readable");
     assert!(text.contains(" { family \"fedora\"; }"), "{text}");
     std::fs::write(&base, text.replace(" { family \"fedora\"; }", ""))
@@ -763,7 +765,7 @@ fn the_image_variant_replaces_the_variant_of_a_component_it_lists() {
             (
                 "runtime",
                 &format!(
-                    "{RUNTIME}\nvariant \"small\" {{ set \"driver\" \"vfs\"; }}\nvariant \"large\" {{ set \"driver\" \"btrfs\"; }}"
+                    "{RUNTIME}\nvariant \"small\" {{ set \"driver\" \"vfs\"; }}\nvariant \"large\" {{ set \"driver\" \"btrfs\"; }}\ndefault-variant \"small\""
                 ),
             ),
         ],
@@ -772,6 +774,902 @@ fn the_image_variant_replaces_the_variant_of_a_component_it_lists() {
         squashed(&plan).contains(r#""options":{"OPT_DRIVER":"btrfs"}"#),
         "{plan}"
     );
+}
+
+#[test]
+fn the_default_variant_sets_its_options_when_the_entry_selects_none() {
+    let plan = planned(
+        "variant-default",
+        "",
+        "        runtime",
+        &[(
+            "runtime",
+            "option \"driver\" type=\"string\" { default \"overlay\"; }\nvariant \"small\" { set \"driver\" \"vfs\"; }\nvariant \"large\" { set \"driver\" \"btrfs\"; }\ndefault-variant \"small\"",
+        )],
+    );
+    let plan = squashed(&plan);
+    assert!(plan.contains(r#""variant":"small""#), "{plan}");
+    assert!(plan.contains(r#""variant-default":true"#), "{plan}");
+    assert!(plan.contains(r#""OPT_DRIVER":"vfs""#), "{plan}");
+}
+
+#[test]
+fn a_nearer_variant_beats_a_farther_explicit_value() {
+    let plan = planned(
+        "variant-near",
+        "",
+        "        one\n        runtime variant=\"near\"",
+        &[
+            ("one", "runtime { driver \"far\"; }"),
+            (
+                "runtime",
+                "option \"driver\" type=\"string\" { default \"overlay\"; }\nvariant \"near\" { set \"driver\" \"near\"; }\nvariant \"far\" { set \"driver\" \"far\"; }\ndefault-variant \"far\"",
+            ),
+        ],
+    );
+    let plan = squashed(&plan);
+    assert!(plan.contains(r#""OPT_DRIVER":"near""#), "{plan}");
+}
+
+#[test]
+fn a_same_entry_value_beats_the_variant_it_selects() {
+    let plan = planned(
+        "variant-same",
+        "",
+        "        runtime variant=\"near\" { driver \"explicit\"; }",
+        &[(
+            "runtime",
+            "option \"driver\" type=\"string\" { default \"overlay\"; }\nvariant \"near\" { set \"driver\" \"near\"; }\ndefault-variant \"near\"",
+        )],
+    );
+    let plan = squashed(&plan);
+    assert!(plan.contains(r#""OPT_DRIVER":"explicit""#), "{plan}");
+}
+
+#[test]
+fn a_component_with_variants_needs_a_default() {
+    let issues = checked(
+        "variant-no-default",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }")],
+    );
+    assert!(
+        issues.contains("declares variants but no `default-variant`"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_default_variant_names_a_declared_variant() {
+    let issues = checked(
+        "variant-bad-default",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"other\"")],
+    );
+    assert!(
+        issues.contains("names `other` as its default variant, which it does not declare"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_quoted_option_valued_child_is_refused() {
+    let issues = checked(
+        "option-child-refused",
+        "        consumer",
+        &[(
+            "consumer",
+            "option \"repo\" type=\"string\" { default \"fast\"; }\nrepos { \"{repo}\" }",
+        )],
+    );
+    assert!(issues.contains("is not a component path"), "{issues}");
+    assert!(!issues.contains("quoted `{option}`"), "{issues}");
+}
+
+#[test]
+fn a_variant_directory_that_no_variant_declares_is_refused() {
+    let root = written(
+        "variant-orphan",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    std::fs::create_dir_all(root.join("components/runtime/variants/ghost"))
+        .expect("the test repository is writable");
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        issues.contains("holds `variants/ghost`, which is not a declared variant"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_non_directory_under_variants_is_ignored() {
+    let root = written(
+        "variant-gitkeep",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let at = root.join("components/runtime/variants");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join(".gitkeep"), "").expect("the test repository is writable");
+    let issues = problems(&root);
+    let _ = std::fs::remove_dir_all(root);
+    assert!(!issues.contains(".gitkeep"), "{issues}");
+}
+
+#[test]
+fn a_variant_that_holds_a_manifest_is_refused() {
+    let root = written(
+        "variant-manifest",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let dir = root.join("components/runtime/variants/lean");
+    std::fs::create_dir_all(&dir).expect("the test repository is writable");
+    std::fs::write(dir.join("component.kdl"), "schema-version 1\n")
+        .expect("the test repository is writable");
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.contains("holds a manifest"), "{issues}");
+}
+
+#[test]
+fn an_unselected_variant_still_must_hold_content_only() {
+    let root = written(
+        "variant-unselected-manifest",
+        "        runtime",
+        &[(
+            "runtime",
+            "variant \"lean\" { }\nvariant \"fat\" { }\ndefault-variant \"lean\"",
+        )],
+    );
+    let dir = root.join("components/runtime/variants/fat");
+    std::fs::create_dir_all(&dir).expect("the test repository is writable");
+    std::fs::write(dir.join("component.kdl"), "schema-version 1\n")
+        .expect("the test repository is writable");
+    let issues = problems(&root);
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        issues.contains("variant `fat`") && issues.contains("holds a manifest"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_variant_directory_replaces_the_component_file_it_names() {
+    let root = written(
+        "variant-content",
+        "        runtime variant=\"lean\"",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    for (dir, text) in [
+        ("components/runtime/files/etc", "component"),
+        ("components/runtime/variants/lean/files/etc", "variant"),
+    ] {
+        let at = root.join(dir);
+        std::fs::create_dir_all(&at).expect("the test repository is writable");
+        std::fs::write(at.join("example.conf"), text).expect("the test repository is writable");
+    }
+    let run = buildc::run(Command::Plan, None, &root);
+    let copy = run
+        .copies
+        .iter()
+        .find(|copy| {
+            copy.path
+                .ends_with("components/runtime/files/etc/example.conf")
+        })
+        .expect("the component's overlay is copied");
+    let written = String::from_utf8(copy.bytes.clone()).expect("the overlay is text");
+    let plan = run.report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert_eq!(written, "variant");
+    assert!(plan.contains("\"overlay_overridden\": []"), "{plan}");
+}
+
+#[test]
+fn a_variant_overlay_is_indexed_and_may_override_an_earlier_component() {
+    let root = written(
+        "variant-overlay-index",
+        "        earlier\n        runtime",
+        &[
+            ("earlier", ""),
+            (
+                "runtime",
+                "overrides \"/etc/example.conf\"\nvariant \"lean\" { }\ndefault-variant \"lean\"",
+            ),
+        ],
+    );
+    for (dir, text) in [
+        ("components/earlier/files/etc", "earlier"),
+        ("components/runtime/variants/lean/files/etc", "variant"),
+    ] {
+        let at = root.join(dir);
+        std::fs::create_dir_all(&at).expect("the test repository is writable");
+        std::fs::write(at.join("example.conf"), text).expect("the test repository is writable");
+    }
+    let issues = problems(&root);
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        !issues.contains("overrides `/etc/example.conf`, which no earlier component ships"),
+        "{issues}"
+    );
+    assert!(
+        plan.contains("\"/etc/example.conf\": \"runtime\""),
+        "{plan}"
+    );
+}
+
+#[test]
+fn a_variant_that_adds_files_reaches_the_image() {
+    let root = written(
+        "variant-adds-files",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let at = root.join("components/runtime/variants/lean/files/etc");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join("example.conf"), "variant").expect("the test repository is writable");
+    let run = buildc::run(Command::Generate, None, &root);
+    let containerfile = files_named(&run, "Containerfile");
+    let copy = run
+        .copies
+        .iter()
+        .find(|copy| {
+            copy.path
+                .ends_with("components/runtime/files/etc/example.conf")
+        })
+        .expect("the variant's file is copied");
+    let written = String::from_utf8(copy.bytes.clone()).expect("the overlay is text");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        containerfile.contains("COPY --from=ctx /generated/checked/components/runtime/files/ /"),
+        "{containerfile}"
+    );
+    assert_eq!(written, "variant");
+}
+
+#[test]
+fn a_family_content_beats_a_broader_root_content_across_a_variant() {
+    let root = written(
+        "variant-family-order",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    for (dir, file, text) in [
+        ("components/runtime/rpm/files/etc", "example.conf", "broad"),
+        ("components/runtime/rpm", "component.sh", "echo broad\n"),
+        (
+            "components/runtime/variants/lean/fedora/files/etc",
+            "example.conf",
+            "specific",
+        ),
+        (
+            "components/runtime/variants/lean/fedora",
+            "component.sh",
+            "echo specific\n",
+        ),
+        (
+            "components/runtime/variants/lean/rpm",
+            "repo.sh",
+            "echo variant broad\n",
+        ),
+        (
+            "components/runtime/fedora",
+            "repo.sh",
+            "echo root specific\n",
+        ),
+    ] {
+        let at = root.join(dir);
+        std::fs::create_dir_all(&at).expect("the test repository is writable");
+        std::fs::write(at.join(file), text).expect("the test repository is writable");
+    }
+    let run = buildc::run(Command::Generate, None, &root);
+    let containerfile = files_named(&run, "Containerfile");
+    let script = files_named(&run, "components/runtime.sh");
+    let _ = std::fs::remove_dir_all(root);
+    let broad = containerfile
+        .find("COPY --from=ctx /generated/checked/components/runtime/rpm/files/ /")
+        .expect("the broad overlay is copied");
+    let specific = containerfile
+        .find("COPY --from=ctx /generated/checked/components/runtime/fedora/files/ /")
+        .expect("the specific overlay is copied");
+    assert!(broad < specific, "{containerfile}");
+    let broad = script
+        .find("source /ctx/components/runtime/rpm/component.sh")
+        .expect("the broad script is sourced");
+    let specific = script
+        .find("source /ctx/components/runtime/fedora/component.sh")
+        .expect("the specific script is sourced");
+    assert!(broad < specific, "{script}");
+    assert!(
+        script.contains("source /ctx/components/runtime/fedora/repo.sh"),
+        "{script}"
+    );
+    assert!(
+        !script.contains("source /ctx/components/runtime/rpm/repo.sh"),
+        "{script}"
+    );
+}
+
+#[test]
+fn a_variant_that_adds_a_component_script_runs_it() {
+    let root = written(
+        "variant-adds-script",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let at = root.join("components/runtime/variants/lean");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join("component.sh"), "echo variant\n")
+        .expect("the test repository is writable");
+    let run = buildc::run(Command::Generate, None, &root);
+    let script = files_named(&run, "components/runtime.sh");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        script.contains("source /ctx/components/runtime/component.sh"),
+        "{script}"
+    );
+}
+
+#[test]
+fn a_variant_that_adds_a_package_script_runs_it() {
+    let root = written(
+        "variant-adds-packages",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let at = root.join("components/runtime/variants/lean");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join("packages.sh"), "echo variant\n")
+        .expect("the test repository is writable");
+    std::fs::write(at.join("repo.sh"), "echo repo\n").expect("the test repository is writable");
+    let run = buildc::run(Command::Generate, None, &root);
+    let script = files_named(&run, "components/runtime.sh");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        script.contains("source /ctx/components/runtime/packages.sh"),
+        "{script}"
+    );
+    assert!(
+        script.contains("source /ctx/components/runtime/repo.sh"),
+        "{script}"
+    );
+}
+
+#[test]
+fn a_variant_that_adds_a_policy_file_installs_it() {
+    let root = written(
+        "variant-adds-policy",
+        "        runtime",
+        &[(
+            "runtime",
+            "provides \"selinux-policy\"\nvariant \"lean\" { }\ndefault-variant \"lean\"",
+        )],
+    );
+    let at = root.join("components/runtime/variants/lean/selinux");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join("policy.te"), "policy\n").expect("the test repository is writable");
+    let run = buildc::run(Command::Generate, None, &root);
+    let script = files_named(&run, "components/runtime.sh");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        script.contains("cp /ctx/components/runtime/selinux/policy.te"),
+        "{script}"
+    );
+}
+
+#[test]
+fn a_variant_that_adds_a_collected_file_collects_it() {
+    let root = written(
+        "variant-adds-collected",
+        "        runtime",
+        &[(
+            "runtime",
+            "collects \"justfile.inc\" into=\"/usr/share/justfile\" priority=500\nvariant \"lean\" { }\ndefault-variant \"lean\"",
+        )],
+    );
+    let at = root.join("components/runtime/variants/lean");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join("justfile.inc"), "variant\n").expect("the test repository is writable");
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let run = buildc::run(Command::Generate, None, &root);
+    let copy = run
+        .copies
+        .iter()
+        .find(|copy| copy.path.ends_with("components/runtime/justfile.inc"))
+        .is_some();
+    let finalize = files_named(&run, "finalize.sh");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(plan.contains("\"file\": \"justfile.inc\""), "{plan}");
+    assert!(copy, "the variant's collected file is copied");
+    assert!(finalize.contains("/usr/share/justfile"), "{finalize}");
+}
+
+#[test]
+fn a_specific_collected_file_beats_a_variant_s_broad_one() {
+    let root = written(
+        "variant-collected-family",
+        "        runtime",
+        &[(
+            "runtime",
+            "collects \"justfile.inc\" into=\"/usr/share/justfile\" priority=500\nvariant \"lean\" { }\ndefault-variant \"lean\"",
+        )],
+    );
+    for (dir, text) in [
+        ("components/runtime/fedora", "specific"),
+        ("components/runtime/variants/lean/rpm", "broad"),
+    ] {
+        let at = root.join(dir);
+        std::fs::create_dir_all(&at).expect("the test repository is writable");
+        std::fs::write(at.join("justfile.inc"), text).expect("the test repository is writable");
+    }
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(plan.contains("\"file\": \"fedora/justfile.inc\""), "{plan}");
+    assert!(!plan.contains("\"file\": \"rpm/justfile.inc\""), "{plan}");
+}
+
+#[test]
+fn a_variant_that_adds_a_finalize_script_runs_it() {
+    let root = written(
+        "variant-adds-finalize",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let at = root.join("components/runtime/variants/lean");
+    std::fs::create_dir_all(&at).expect("the test repository is writable");
+    std::fs::write(at.join("finalize.sh"), "echo variant\n")
+        .expect("the test repository is writable");
+    let run = buildc::run(Command::Generate, None, &root);
+    let finalize = files_named(&run, "finalize.sh");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        finalize.contains("source /ctx/components/runtime/finalize.sh"),
+        "{finalize}"
+    );
+}
+
+#[test]
+fn why_reports_the_variant_and_whether_it_is_the_default() {
+    let root = written(
+        "variant-why",
+        "        runtime",
+        &[("runtime", "variant \"lean\" { }\ndefault-variant \"lean\"")],
+    );
+    let why = buildc::run(Command::Why, Some("runtime"), &root)
+        .report
+        .stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(why.contains("builds variant `lean`, the default."), "{why}");
+}
+
+#[test]
+fn a_requirement_preference_names_a_held_provider() {
+    let plan = planned(
+        "prefer-good",
+        "",
+        "        consumer\n        one\n        two",
+        &[
+            ("consumer", "requires \"tool\" prefer=\"one\""),
+            ("one", "provides \"tool\" witness=\"/usr/share/tool\""),
+            ("two", "provides \"tool\" witness=\"/usr/share/tool\""),
+        ],
+    );
+    let plan = squashed(&plan);
+    assert!(plan.contains(r#""prefers":{"tool":"one"}"#), "{plan}");
+    assert!(
+        plan.contains(r#""met_by":{"tool":{"how":"listed","provider":"one"}}"#),
+        "{plan}"
+    );
+}
+
+#[test]
+fn a_preference_names_a_component_in_a_declared_local_library() {
+    let root = with_libraries(
+        "prefer-library",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\nlibraries default=\"checked-library\" {\n    local {\n        checked-library { source \".\" }\n        tools { source \"components/tools\" }\n    }\n}\n",
+        "component \"/\" {\n    base-image { example }\n    tools {\n        apps { store }\n        flat { b }\n    }\n}\n",
+        &[
+            ("tools/apps/store", "requires \"flatpak\" prefer=\"flat/b\""),
+            (
+                "tools/flat/b",
+                "provides \"flatpak\" witness=\"/usr/share/flatpak\"",
+            ),
+        ],
+    );
+    let issues = problems(&root);
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+}
+
+#[test]
+fn a_preference_that_no_library_holds_is_refused() {
+    let issues = checked(
+        "prefer-missing",
+        "        consumer",
+        &[("consumer", "requires \"tool\" prefer=\"absent\"")],
+    );
+    assert!(
+        issues.contains("prefers `absent` for `tool`, which no declared library"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_preference_that_does_not_provide_the_capability_is_refused() {
+    let issues = checked(
+        "prefer-other",
+        "        consumer\n        one\n        two",
+        &[
+            ("consumer", "requires \"tool\" prefer=\"two\""),
+            ("one", "provides \"tool\" witness=\"/usr/share/tool\""),
+            ("two", "provides \"other\""),
+        ],
+    );
+    assert!(
+        issues.contains("prefers `two` for `tool`, and `two` does not provide it"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_preference_path_that_is_not_a_component_path_is_refused() {
+    let issues = checked(
+        "prefer-path",
+        "        consumer",
+        &[("consumer", "requires \"tool\" prefer=\"Not/A/Path\"")],
+    );
+    assert!(
+        issues.contains("is not a component path for `prefer`"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_segment_that_declares_no_signature_wins_over_the_base_node() {
+    let root = with_libraries(
+        "signed-segment-wins",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "component \"/\" { base-image { example signed=#false } }\n",
+        &[],
+    );
+    std::fs::write(
+        root.join("components/base-image/example/component.kdl"),
+        "schema-version 1\nbase \"example.invalid/base:1\" signed=#true key=\"keys/base.pub\" { family \"fedora\"; }\n",
+    )
+    .expect("the test repository is writable");
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let issues = problems(&root);
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"signed\": false"), "{plan}");
+    assert!(plan.contains("\"verify\": null"), "{plan}");
+}
+
+#[test]
+fn a_base_segment_records_a_key_hash() {
+    let root = with_libraries(
+        "base-segment-key-hash",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "component \"/\" {\n    base-image {\n        example signed=#true key=\"keys/base.pub\" key-sha256=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n}\n",
+        &[],
+    );
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let issues = problems(&root);
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(
+        plan.contains(
+            "\"key_sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+        ),
+        "{plan}"
+    );
+}
+
+#[test]
+fn a_source_composed_base_records_the_trust_root_on_its_base_node() {
+    let root = with_libraries(
+        "base-node-trust",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "component \"/\" { base-image { example } }\n",
+        &[],
+    );
+    std::fs::write(
+        root.join("components/base-image/example/component.kdl"),
+        "schema-version 1\nbase \"example.invalid/base:1\" signed=#true key=\"keys/base.pub\" { family \"fedora\"; }\n",
+    )
+    .expect("the test repository is writable");
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let issues = problems(&root);
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"signed\": true"), "{plan}");
+    assert!(plan.contains("\"key\": \"keys/base.pub\""), "{plan}");
+}
+
+#[test]
+fn a_base_reached_through_a_pinned_intermediate_reads_the_pinned_revision() {
+    let low = "a".repeat(40);
+    let high = "b".repeat(40);
+    let repo = format!(
+        "schema-version 1\nname \"Checked\"\nbuilds {{ checked }}\nlibraries {{\n    remote {{\n        stable {{ source \"{REMOTE}\"; version \"v1\" }}\n    }}\n}}\n"
+    );
+    let root = with_libraries(
+        "base-pinned-intermediate",
+        &repo,
+        &format!("component \"/\" {{\n    minimal pin=\"{high}\"\n}}\n"),
+        &[],
+    );
+    let publish = |selector: &str, commit: &str, _base: &str, image: &str| {
+        let tree = buildc::collection::seed(&root, REMOTE, selector, commit)
+            .expect("the test cache is writable");
+        std::fs::write(
+            tree.join("repo.kdl"),
+            "schema-version 1\nname \"Upstream\"\n",
+        )
+        .expect("the test cache is writable");
+        let dir = tree.join("components/minimal");
+        std::fs::create_dir_all(&dir).expect("the test cache is writable");
+        std::fs::write(
+            dir.join("component.kdl"),
+            format!(
+                "schema-version 1\nbase \"example.invalid/{image}:1\" {{ family \"fedora\"; }}\n"
+            ),
+        )
+        .expect("the test cache is writable");
+    };
+    publish("v1", &low, "old", "old");
+    publish(&high, &high, "new", "new");
+    let issues = problems(&root);
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("example.invalid/new:1"), "{plan}");
+    assert!(!plan.contains("example.invalid/old:1"), "{plan}");
+}
+
+#[test]
+fn a_base_derived_component_records_its_trust_root() {
+    let root = with_libraries(
+        "base-derived-trust",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "base \"example.invalid/base:1\" signed=#true key=\"keys/base.pub\" key-sha256=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" { family \"fedora\"; }\noci-labels { keywords \"owned\" }\n",
+        &[],
+    );
+    let issues = problems(&root);
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"path\": \"checked\""), "{plan}");
+    assert!(plan.contains("\"signed\": true"), "{plan}");
+    assert!(plan.contains("\"key\": \"keys/base.pub\""), "{plan}");
+    assert!(
+        plan.contains(
+            "\"key_sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+        ),
+        "{plan}"
+    );
+    assert!(
+        plan.contains("\"field\": \"keywords\"") && plan.contains("\"component\": \"checked\""),
+        "{plan}"
+    );
+}
+
+#[test]
+fn a_component_that_lists_an_image_component_reaches_its_base() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("source-composed");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("components")).expect("the test repository is writable");
+    std::fs::write(
+        root.join("repo.kdl"),
+        "schema-version 1\nname \"Checked\"\nbuilds { dev }\n",
+    )
+    .expect("the test repository is writable");
+    write_base(&root, "fedora", "");
+    std::fs::write(
+        root.join("components/dev.kdl"),
+        rooted("schema-version 1\n\nminimal\n"),
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/minimal.kdl"),
+        rooted("schema-version 1\n\ndescription \"Main image\"\noci-labels { keywords \"one\" \"two\"; logo-url \"https://example.org/logo.svg\"; }\nbase-image { example }\nhello\n"),
+    )
+    .expect("the test repository is writable");
+    std::fs::create_dir_all(root.join("components/hello"))
+        .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/hello/component.kdl"),
+        "schema-version 1\n",
+    )
+    .expect("the test repository is writable");
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let why = buildc::run(Command::Why, Some("dev"), &root).report.stdout;
+    let why_json = buildc::run(Command::WhyJson, Some("dev"), &root)
+        .report
+        .stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"path\": \"base-image/example\""), "{plan}");
+    assert!(plan.contains("\"path\": \"minimal\""), "{plan}");
+    assert!(plan.contains("\"path\": \"hello\""), "{plan}");
+    assert!(plan.contains("\"description\": \"Main image\""), "{plan}");
+    assert!(
+        plan.contains("\"keywords\": [\n        \"one\",\n        \"two\""),
+        "{plan}"
+    );
+    assert!(
+        plan.contains("\"field\": \"description\"") && plan.contains("\"component\": \"minimal\""),
+        "{plan}"
+    );
+    assert!(why.contains("## The image it builds"), "{why}");
+    assert!(
+        why.contains("| `description` | `minimal` | Main image |"),
+        "{why}"
+    );
+    assert!(
+        why.contains("| `oci-labels { keywords }` | `minimal` | one, two |"),
+        "{why}"
+    );
+    assert!(
+        why_json.contains("\"component\": \"minimal\""),
+        "{why_json}"
+    );
+}
+
+#[test]
+fn a_winning_conforms_lends_its_allowances() {
+    let root = with_libraries(
+        "allows-winning-conforms",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "component \"/\" { mid }\n",
+        &[
+            (
+                "mid",
+                "conforms \"stig\" { allow-remediation \"x\" because=\"y\" }\ncomponent \"/\" { minimal }",
+            ),
+            ("minimal", "component \"/\" { base-image { example } }"),
+        ],
+    );
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(plan.contains("\"conforms\": \"stig\""), "{plan}");
+    assert!(plan.contains("\"rule\": \"x\""), "{plan}");
+}
+
+#[test]
+fn a_losing_conforms_does_not_lend_its_allowances() {
+    let root = with_libraries(
+        "allows-losing-conforms",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "conforms \"standard\"\ncomponent \"/\" { mid }\n",
+        &[
+            (
+                "mid",
+                "conforms \"stig\" { allow-remediation \"x\" because=\"y\" }\ncomponent \"/\" { minimal }",
+            ),
+            ("minimal", "component \"/\" { base-image { example } }"),
+        ],
+    );
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(plan.contains("\"conforms\": \"standard\""), "{plan}");
+    assert!(!plan.contains("\"rule\": \"x\""), "{plan}");
+}
+
+#[test]
+fn an_image_field_on_an_intermediate_component_reaches_the_image() {
+    let root = with_libraries(
+        "image-fields-intermediate",
+        "schema-version 1\nname \"Checked\"\nbuilds { checked }\n",
+        "component \"/\" {\n    mid\n}\n",
+        &[
+            (
+                "mid",
+                "oci-labels { keywords \"near\" }\ncomponent \"/\" { minimal }",
+            ),
+            ("minimal", "component \"/\" { base-image { example } }"),
+        ],
+    );
+    let issues = problems(&root);
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let why = why_of(&root, "checked");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(
+        plan.contains("\"field\": \"keywords\"") && plan.contains("\"component\": \"mid\""),
+        "{plan}"
+    );
+    assert!(
+        why.contains("| `oci-labels { keywords }` | `mid` | near |"),
+        "{why}"
+    );
+}
+
+#[test]
+fn a_component_block_brings_the_component_it_names_and_its_children() {
+    let root = written(
+        "component-block",
+        "        component \"/hardware\" {\n            nvidia\n        }",
+        &[
+            ("hardware", "provides \"gpu\""),
+            ("hardware/nvidia", "provides \"cuda\""),
+        ],
+    );
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"path\": \"hardware\""), "{plan}");
+    assert!(plan.contains("\"path\": \"hardware/nvidia\""), "{plan}");
+}
+
+#[test]
+fn a_component_with_its_own_base_builds_in_it() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("base-derived");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("components/derived"))
+        .expect("the test repository is writable");
+    std::fs::write(
+        root.join("repo.kdl"),
+        "schema-version 1\nname \"Checked\"\nbuilds { derived }\n",
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/derived/component.kdl"),
+        rooted("schema-version 1\n\nbase \"example\" { family \"fedora\"; }\nhello\n"),
+    )
+    .expect("the test repository is writable");
+    std::fs::create_dir_all(root.join("components/hello"))
+        .expect("the test repository is writable");
+    std::fs::write(
+        root.join("components/hello/component.kdl"),
+        "schema-version 1\n",
+    )
+    .expect("the test repository is writable");
+    let issues = buildc::run(Command::Check, None, &root)
+        .problems
+        .issues
+        .plain();
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"path\": \"derived\""), "{plan}");
+    assert!(plan.contains("\"path\": \"hello\""), "{plan}");
+}
+
+#[test]
+fn why_reports_a_requirement_preference() {
+    let root = written(
+        "prefer-why",
+        "        consumer\n        one\n        two",
+        &[
+            ("consumer", "requires \"tool\" prefer=\"two\""),
+            ("one", "provides \"tool\" witness=\"/usr/share/tool\""),
+            ("two", "provides \"tool\" witness=\"/usr/share/tool\""),
+        ],
+    );
+    let why = buildc::run(Command::Why, Some("consumer"), &root)
+        .report
+        .stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(why.contains("What it prefers"), "{why}");
+    assert!(why.contains("| `tool` | `two` |"), "{why}");
 }
 
 #[test]
@@ -815,26 +1713,21 @@ fn why_reports_a_nearer_value_that_restates_a_farther_one() {
 
 #[test]
 fn a_merged_value_selects_the_part_that_builds() {
-    let parts = "option \"modules\" type=\"string\" { default \"open\"; }\n\"{modules}\"";
-    let root = with_parts("merge-part", "        inner\n        outer", parts);
-    for (component, manifest) in [
-        ("inner", "nvidia { modules \"open\"; }"),
-        ("outer", "inner\nnvidia { modules \"proprietary\"; }"),
-    ] {
-        std::fs::create_dir_all(root.join("components").join(component))
-            .expect("the test repository is writable");
-        std::fs::write(
-            root.join("components").join(component).join("manifest.kdl"),
-            rooted(&format!(
-                "schema-version 1\n\ntargets \"fedora\"\n{manifest}\n"
-            )),
-        )
-        .expect("the test repository is writable");
-    }
+    let root = written(
+        "merge-part",
+        "        one\n        nvidia variant=\"proprietary\"",
+        &[
+            ("one", "nvidia { modules \"open\"; }"),
+            (
+                "nvidia",
+                "option \"modules\" type=\"string\" { default \"open\"; }\nvariant \"open\" { set \"modules\" \"open\"; }\nvariant \"proprietary\" { set \"modules\" \"proprietary\"; }\ndefault-variant \"open\"",
+            ),
+        ],
+    );
     let plan = buildc::run(Command::Plan, None, &root).report.stdout;
     let _ = std::fs::remove_dir_all(root);
     assert!(
-        plan.contains("\"path\": \"nvidia/proprietary\"") && !plan.contains("nvidia/open"),
+        squashed(&plan).contains(r#""OPT_MODULES":"proprietary""#),
         "{plan}"
     );
 }
@@ -944,22 +1837,6 @@ fn a_base_import_builds_before_the_listed_components() {
 }
 
 #[test]
-fn an_option_import_left_empty_is_refused() {
-    let issues = checked(
-        "imports-empty",
-        "        consumer",
-        &[(
-            "consumer",
-            "\"{runtime}\"\noption \"runtime\" type=\"string\"",
-        )],
-    );
-    assert!(
-        issues.contains("`consumer` imports a path that its option leaves empty"),
-        "{issues}"
-    );
-}
-
-#[test]
 fn the_graph_draws_every_importer_and_met_by_names_one() {
     let root = written(
         "imports-graph",
@@ -1042,32 +1919,11 @@ fn with_parts(name: &str, components: &str, parts: &str) -> PathBuf {
     std::fs::create_dir_all(root.join("components/nvidia"))
         .expect("the test repository is writable");
     std::fs::write(
-        root.join("components/nvidia/manifest.kdl"),
+        root.join("components/nvidia/component.kdl"),
         format!("schema-version 1\n\ntargets \"fedora\"\n{parts}\n"),
     )
     .expect("the test repository is writable");
     root
-}
-
-#[test]
-fn a_part_builds_from_the_option_that_selects_it() {
-    let parts = "option \"modules\" type=\"string\" { default \"open\"; }\n\"{modules}\"";
-    let plan = |name: &str, components: &str| {
-        let root = with_parts(name, components, parts);
-        let plan = buildc::run(Command::Plan, None, &root).report.stdout;
-        let _ = std::fs::remove_dir_all(root);
-        plan
-    };
-    let default = plan("part-default", "nvidia");
-    let chosen = plan("part-chosen", "nvidia { modules \"proprietary\"; }");
-    assert!(
-        default.contains("\"path\": \"nvidia/open\"") && !default.contains("nvidia/proprietary"),
-        "{default}"
-    );
-    assert!(
-        chosen.contains("\"path\": \"nvidia/proprietary\"") && !chosen.contains("nvidia/open"),
-        "{chosen}"
-    );
 }
 
 #[test]
@@ -1093,7 +1949,7 @@ fn a_standalone_file_is_a_component_and_a_second_manifest_is_refused() {
     std::fs::create_dir_all(root.join("components/tools"))
         .expect("the test repository is writable");
     std::fs::write(
-        root.join("components/tools/manifest.kdl"),
+        root.join("components/tools/component.kdl"),
         "schema-version 1\n",
     )
     .expect("the test repository is writable");
@@ -1108,15 +1964,58 @@ fn a_standalone_file_is_a_component_and_a_second_manifest_is_refused() {
 }
 
 #[test]
-fn an_image_field_below_a_build_is_refused() {
+fn an_image_field_below_a_dependency_is_refused() {
     let issues = checked(
         "field-below-build",
         "        tools",
         &[("tools", "conforms \"standard\"")],
     );
     assert!(
-        issues.contains("`tools` sets `conforms`, which only an image takes"),
+        issues
+            .contains("`tools` sets `conforms`. Only the image or its base chain takes that field"),
         "{issues}"
+    );
+}
+
+#[test]
+fn the_component_nearest_the_build_sets_each_image_field() {
+    let root = with_libraries(
+        "field-nearest",
+        &tools_repo(),
+        "component \"/\" {\n    mid\n}\n",
+        &[
+            (
+                "mid",
+                "description \"Nearer\"\ncomponent \"/\" {\n    minimal\n}\n",
+            ),
+            (
+                "minimal",
+                "description \"Farther\"\noci-labels { logo-url \"https://example.org/farther.svg\"; }\ncomponent \"/\" {\n    base-image { example }\n}\n",
+            ),
+        ],
+    );
+    let issues = problems(&root);
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let why = why_of(&root, "checked");
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"description\": \"Nearer\""), "{plan}");
+    assert!(
+        plan.contains("\"logo_url\": \"https://example.org/farther.svg\""),
+        "{plan}"
+    );
+    assert!(
+        plan.contains("\"field\": \"description\"") && plan.contains("\"component\": \"mid\""),
+        "{plan}"
+    );
+    assert!(
+        plan.contains("\"field\": \"logo-url\"") && plan.contains("\"component\": \"minimal\""),
+        "{plan}"
+    );
+    assert!(why.contains("| `description` | `mid` | Nearer |"), "{why}");
+    assert!(
+        why.contains("| `oci-labels { logo-url }` | `minimal` | https://example.org/farther.svg |"),
+        "{why}"
     );
 }
 
@@ -1154,29 +2053,6 @@ fn the_image_files_own_content_builds_as_its_component() {
 }
 
 #[test]
-fn an_option_valued_child_resolves_under_its_organising_segment() {
-    let root = written(
-        "option-child",
-        "        consumer",
-        &[
-            (
-                "consumer",
-                "option \"repo\" type=\"string\" { default \"fast\"; }\nrepos { \"{repo}\" }",
-            ),
-            ("repos/fast", ""),
-        ],
-    );
-    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
-    let issues = buildc::run(Command::Check, None, &root)
-        .problems
-        .issues
-        .plain();
-    let _ = std::fs::remove_dir_all(root);
-    assert!(issues.is_empty(), "{issues}");
-    assert!(plan.contains("\"path\": \"repos/fast\""), "{plan}");
-}
-
-#[test]
 fn a_gated_child_builds_only_on_its_family() {
     let root = written(
         "gated-child",
@@ -1194,7 +2070,7 @@ fn a_gated_child_builds_only_on_its_family() {
         ("consumer", "\"fedora\" \"debian\""),
         ("deb-only", "\"debian\""),
     ] {
-        let manifest = root.join(format!("components/{component}/manifest.kdl"));
+        let manifest = root.join(format!("components/{component}/component.kdl"));
         let text = std::fs::read_to_string(&manifest).expect("the test repository is readable");
         std::fs::write(
             &manifest,
@@ -1230,7 +2106,7 @@ fn an_imported_component_off_the_family_names_its_importer() {
         "        consumer",
         &[("consumer", "deb-only"), ("deb-only", "")],
     );
-    let manifest = root.join("components/deb-only/manifest.kdl");
+    let manifest = root.join("components/deb-only/component.kdl");
     let text = std::fs::read_to_string(&manifest).expect("the test repository is readable");
     std::fs::write(
         &manifest,
@@ -1257,7 +2133,10 @@ fn two_importers_listing_different_variants_fail_naming_both() {
         &[
             ("one", "runtime variant=\"small\""),
             ("two", "runtime variant=\"large\""),
-            ("runtime", "variant \"small\"\nvariant \"large\""),
+            (
+                "runtime",
+                "variant \"small\"\nvariant \"large\"\ndefault-variant \"small\"",
+            ),
         ],
     );
     assert!(
@@ -1316,53 +2195,6 @@ fn a_requirement_cycle_is_refused() {
 
 fn squashed(json: &str) -> String {
     json.split_whitespace().collect()
-}
-
-const CHOOSER: &str =
-    "requires \"tool\"\n\"{runtime}\"\noption \"runtime\" type=\"string\" { default \"one\"; }";
-
-#[test]
-fn an_option_import_takes_the_path_the_image_sets() {
-    let provider = "provides \"tool\" witness=\"/usr/share/tool\"";
-    let plan = planned(
-        "imports-chosen",
-        "",
-        "        consumer { runtime \"two\"; }",
-        &[("consumer", CHOOSER), ("one", provider), ("two", provider)],
-    );
-    assert!(!plan.contains("\"path\": \"one\""), "{plan}");
-    assert!(
-        squashed(&plan)
-            .contains(r#""met_by":{"tool":{"how":"imported","provider":"two","by":"consumer"}}"#),
-        "{plan}"
-    );
-}
-
-#[test]
-fn an_option_import_takes_its_default_where_the_image_sets_none() {
-    let provider = "provides \"tool\" witness=\"/usr/share/tool\"";
-    let plan = planned(
-        "imports-chosen-default",
-        "",
-        "        consumer",
-        &[("consumer", CHOOSER), ("one", provider), ("two", provider)],
-    );
-    assert!(plan.contains("\"path\": \"one\""), "{plan}");
-    assert!(!plan.contains("\"path\": \"two\""), "{plan}");
-}
-
-#[test]
-fn an_option_import_that_names_no_component_fails_naming_the_path() {
-    let provider = "provides \"tool\" witness=\"/usr/share/tool\"";
-    let issues = checked(
-        "imports-chosen-missing",
-        "        consumer { runtime \"three\"; }",
-        &[("consumer", CHOOSER), ("one", provider), ("two", provider)],
-    );
-    assert!(
-        issues.contains("`consumer` lists `three`, which no library holds"),
-        "{issues}"
-    );
 }
 
 #[test]
@@ -1510,7 +2342,7 @@ fn write_base(root: &std::path::Path, family: &str, extra: &str) {
     let dir = root.join("components/base-image/example");
     std::fs::create_dir_all(&dir).expect("the test repository is writable");
     std::fs::write(
-        dir.join("manifest.kdl"),
+        dir.join("component.kdl"),
         rooted(&format!(
             "schema-version 1\n\nbase \"example\" {{ family \"{family}\"; }}\n{extra}\n"
         )),
@@ -1888,7 +2720,7 @@ fn a_fragment_component_carries_only_its_family() {
         &[("inc", "fragment standard-layer=#false")],
     );
     std::fs::write(
-        root.join("components/inc/manifest.kdl"),
+        root.join("components/inc/component.kdl"),
         "schema-version 1\n\ntargets \"fedora\" \"debian\"\nfragment standard-layer=#false\n",
     )
     .unwrap();
@@ -1999,7 +2831,7 @@ fn packages_sh_runs_after_the_declared_packages_from_broad_to_specific() {
         ],
     );
     std::fs::write(
-        root.join("components/bare/manifest.kdl"),
+        root.join("components/bare/component.kdl"),
         "schema-version 1
 
 packages \"tool\"\n",
@@ -2071,7 +2903,7 @@ fn listing_a_child_includes_the_component_that_holds_it() {
 fn a_base_component_resolves_its_reference_from_the_entry() {
     let root = written("base-component", "", &[]);
     std::fs::write(
-        root.join("components/base-image/example/manifest.kdl"),
+        root.join("components/base-image/example/component.kdl"),
         "schema-version 1\n\nprovides \"bootc\"\nbase \"quay.io/fedora/fedora-bootc:{version}\" { family \"fedora\"; }\noption \"version\" type=\"string\" { default \"44\"; }\n",
     )
     .expect("the test repository is writable");
@@ -2267,7 +3099,7 @@ fn a_variant_that_reads_the_repository_url_is_refused() {
         "references-variant-url",
         "base-url \"https://example.org/checked\"\n",
         "        stamp variant=\"remote\"",
-        "option \"home\" type=\"string\" {\n    default \"\"\n}\nvariant \"remote\" {\n    set \"home\" \"{base-url}\"\n}",
+        "option \"home\" type=\"string\" {\n    default \"\"\n}\nvariant \"remote\" {\n    set \"home\" \"{base-url}\"\n}\ndefault-variant \"remote\"",
     );
     let issues = buildc::run(Command::Check, None, &root)
         .problems
@@ -2289,7 +3121,7 @@ fn a_base_entry_option_reads_the_repository_url() {
     )
     .expect("the test repository is writable");
     std::fs::write(
-        root.join("components/base-image/example/manifest.kdl"),
+        root.join("components/base-image/example/component.kdl"),
         "schema-version 1\n\nbase \"example\" {\n    family \"fedora\"\n}\noption \"tag\" type=\"string\" {\n    default \"latest\"\n}\n",
     )
     .expect("the test repository is writable");
@@ -2581,7 +3413,7 @@ fn a_base_that_ships_files_or_packages_is_refused() {
 fn a_base_version_tracker_of_its_own_reaches_renovate() {
     let root = written("base-own-tracker", "", &[]);
     std::fs::write(
-        root.join("components/base-image/example/manifest.kdl"),
+        root.join("components/base-image/example/component.kdl"),
         "schema-version 1\n\nbase \"example.invalid/base:{version}\" { family \"fedora\"; }\n\
          option \"arch\" type=\"string\" { default \"x\"; }\n\
          option \"version\" type=\"string\" { default \"1\"; renovate datasource=\"github-releases\" depName=\"owner/base\"; }\n",
@@ -2672,8 +3504,8 @@ fn based_as(name: &str, listing: &str) -> PathBuf {
     )
     .expect("the test repository is writable");
     std::fs::write(
-        root.join("components/base-image/example/manifest.kdl"),
-        "schema-version 1\noption \"tag\" type=\"string\" { default \"a\"; }\nvariant \"x\" { set \"tag\" \"b\"; }\nbase \"example:{tag}\" { family \"fedora\"; }\n",
+        root.join("components/base-image/example/component.kdl"),
+        "schema-version 1\noption \"tag\" type=\"string\" { default \"a\"; }\nvariant \"x\" { set \"tag\" \"b\"; }\ndefault-variant \"x\"\nbase \"example:{tag}\" { family \"fedora\"; }\n",
     )
     .expect("the test repository is writable");
     root
@@ -2723,7 +3555,7 @@ fn a_value_a_component_sets_reads_the_image_id() {
     std::fs::create_dir_all(root.join("components/relay"))
         .expect("the test repository is writable");
     std::fs::write(
-        root.join("components/relay/manifest.kdl"),
+        root.join("components/relay/component.kdl"),
         "schema-version 1\ndescription \"Relay\"\ntargets \"fedora\"\ncomponent \"/\" {\n    stamp {\n        home \"{image-id}-host\"\n    }\n}\n",
     )
     .expect("the test repository is writable");
@@ -2763,7 +3595,7 @@ fn an_inline_definition_in_a_component_builds_and_records_its_manifest() {
     let _ = std::fs::remove_dir_all(root);
     assert!(out.contains("vim"), "{out}");
     assert!(
-        out.contains(r#""defined": "./components/desktop/manifest.kdl""#),
+        out.contains(r#""defined": "./components/desktop/component.kdl""#),
         "{out}"
     );
     assert!(why.contains("`desktop` imports it"), "{why}");
@@ -2839,7 +3671,7 @@ fn an_inline_provider_answers_only_its_own_image() {
     assert_eq!(issues.matches("provides \"tool\"").count(), 1, "{issues}");
 }
 
-const PINNED_BASE: &str = "components/base-image/fedora-bootc-44/manifest.kdl";
+const PINNED_BASE: &str = "components/base-image/fedora-bootc-44/component.kdl";
 
 fn conforming(name: &str) -> PathBuf {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -2991,7 +3823,7 @@ fn a_cloned_asset_resolves_into_the_plan_of_the_target_that_lists_it() {
         "    shared\n",
         "    shared\n    dev-tools\n",
     );
-    let manifest = root.join("components/core/dev-tools/manifest.kdl");
+    let manifest = root.join("components/core/dev-tools/component.kdl");
     let text = std::fs::read_to_string(&manifest).expect("the fixture file reads");
     std::fs::write(
         &manifest,
@@ -3053,7 +3885,7 @@ fn an_enforced_audit_refuses_a_clone_that_names_no_commit_at_generate() {
     let text = std::fs::read_to_string(&repo).expect("repo.kdl reads");
     std::fs::write(&repo, format!("{text}\naudit {{\n    enforce #true\n}}\n"))
         .expect("repo.kdl writes");
-    let manifest = root.join("components/core/shared/manifest.kdl");
+    let manifest = root.join("components/core/shared/component.kdl");
     let text = std::fs::read_to_string(&manifest).expect("the fixture file reads");
     std::fs::write(
         &manifest,
@@ -3124,7 +3956,7 @@ fn with_libraries(name: &str, repo: &str, image: &str, files: &[(&str, &str)]) -
         let dir = root.join("components").join(path);
         std::fs::create_dir_all(&dir).expect("the test repository is writable");
         std::fs::write(
-            dir.join("manifest.kdl"),
+            dir.join("component.kdl"),
             format!("schema-version 1\n{manifest}"),
         )
         .expect("the test repository is writable");
@@ -3711,7 +4543,7 @@ fn a_local_component_that_only_ships_a_library_collected_file_is_read() {
     let menu = root.join("upstream/menu");
     std::fs::create_dir_all(&menu).expect("the test repository is writable");
     std::fs::write(
-        menu.join("manifest.kdl"),
+        menu.join("component.kdl"),
         "schema-version 1\ndescription \"Menu\"\ntargets \"fedora\"\ncollects \"justfile.inc\" into=\"/usr/share/menu/justfile.apps\" priority=500\n",
     )
     .expect("the test repository is writable");
@@ -3829,7 +4661,7 @@ fn a_remote_library_component_loads_from_its_cache() {
     )
     .expect("the test repository is writable");
     std::fs::write(
-        cache.join("components/podman/manifest.kdl"),
+        cache.join("components/podman/component.kdl"),
         "schema-version 1\ndescription \"Podman from cache\"\ntargets \"fedora\"\n",
     )
     .expect("the test repository is writable");
@@ -3864,7 +4696,7 @@ fn remote_at(root: &std::path::Path, selector: &str, mark: char) -> String {
     std::fs::create_dir_all(cache.join("components/podman"))
         .expect("the test repository is writable");
     std::fs::write(
-        cache.join("components/podman/manifest.kdl"),
+        cache.join("components/podman/component.kdl"),
         // Each commit gives podman its own description. `why` shows which commit the build read.
         format!("schema-version 1\ndescription \"Podman {mark}\"\ntargets \"fedora\"\n"),
     )
@@ -3899,7 +4731,7 @@ fn with_no_local_block_the_repository_is_the_default_for_a_remote_referrer() {
         std::fs::create_dir_all(cache.join("components").join(path))
             .expect("the test repository is writable");
         std::fs::write(
-            cache.join("components").join(path).join("manifest.kdl"),
+            cache.join("components").join(path).join("component.kdl"),
             format!("schema-version 1\n{manifest}"),
         )
         .expect("the test repository is writable");
@@ -4050,7 +4882,7 @@ fn git(dir: &std::path::Path, args: &[&str]) {
 
 fn podman_commit(upstream: &std::path::Path, mark: &str) {
     std::fs::write(
-        upstream.join("components/podman/manifest.kdl"),
+        upstream.join("components/podman/component.kdl"),
         format!("schema-version 1\ndescription \"Podman {mark}\"\ntargets \"fedora\"\n"),
     )
     .expect("the test repository is writable");
@@ -4186,7 +5018,7 @@ fn the_pin_nearer_the_build_wins_and_sibling_pins_are_refused() {
     );
     std::fs::create_dir_all(root.join("components/tools"))
         .expect("the test repository is writable");
-    std::fs::write(root.join("components/tools/manifest.kdl"), tools)
+    std::fs::write(root.join("components/tools/component.kdl"), tools)
         .expect("the test repository is writable");
     let siblings = problems(&root);
     let _ = std::fs::remove_dir_all(root);
@@ -4376,6 +5208,28 @@ fn a_root_image_file_reads_its_bare_children_from_the_library_root() {
 }
 
 #[test]
+fn a_root_image_file_reads_a_dot_slash_path_from_the_repository_root() {
+    let repo = "schema-version 1\nname \"Checked\"\nbuilds {\n    checked \"./checked\"\n    shared \"./shared\"\n}\n";
+    let root = with_libraries("root-dot-slash", repo, "component \"./shared\"\n", &[]);
+    std::fs::rename(
+        root.join("components/checked.kdl"),
+        root.join("checked.kdl"),
+    )
+    .expect("the test repository is writable");
+    std::fs::write(
+        root.join("shared.kdl"),
+        "schema-version 1\n\ncomponent \"/\" {\n    base-image { example }\n}\n",
+    )
+    .expect("the test repository is writable");
+    let issues = problems(&root);
+    let plan = buildc::run(Command::Plan, None, &root).report.stdout;
+    let _ = std::fs::remove_dir_all(root);
+    assert!(issues.is_empty(), "{issues}");
+    assert!(plan.contains("\"component\": \"checked\""), "{plan}");
+    assert!(plan.contains("\"path\": \"shared\""), "{plan}");
+}
+
+#[test]
 fn a_root_image_file_that_git_ignores_is_refused() {
     let repo = tools_repo().replace("builds { checked }", "builds { checked \"./checked\" }");
     let root = with_libraries("root-image-ignored", &repo, BASE, &[]);
@@ -4398,6 +5252,7 @@ fn a_root_image_file_that_git_ignores_is_refused() {
         found.contains("names `./checked`, which git ignores"),
         "{found}"
     );
+    assert!(!found.contains("nothing reads `checked.kdl`"), "{found}");
 }
 
 fn copied(root: &std::path::Path, paths: &[&str], from: Option<&str>) -> Result<String, String> {
@@ -4493,7 +5348,7 @@ fn a_copy_through_a_linked_components_folder_is_refused() {
     let cache = buildc::collection::cache_path(&root, REMOTE, &commit).expect("the key hashes");
     let host = root.join("host");
     std::fs::create_dir_all(host.join("podman")).expect("the test repository is writable");
-    std::fs::write(host.join("podman/manifest.kdl"), "schema-version 1\n")
+    std::fs::write(host.join("podman/component.kdl"), "schema-version 1\n")
         .expect("the test repository is writable");
     std::fs::remove_dir_all(cache.join("components")).expect("the cache is writable");
     std::os::unix::fs::symlink(&host, cache.join("components")).expect("the cache is writable");
@@ -4553,13 +5408,13 @@ fn a_copy_brings_its_nested_components_and_refuses_an_inline_one_alone() {
     let commit = remote_at(&root, "v1", 'a');
     let cache = buildc::collection::seed(&root, REMOTE, "v1", &commit).unwrap();
     std::fs::write(
-        cache.join("components/podman/manifest.kdl"),
+        cache.join("components/podman/component.kdl"),
         "schema-version 1\ndescription \"Podman a\"\ntargets \"fedora\"\ntools { description \"Tools\" }\n",
     )
     .unwrap();
     std::fs::create_dir_all(cache.join("components/podman/extra")).unwrap();
     std::fs::write(
-        cache.join("components/podman/extra/manifest.kdl"),
+        cache.join("components/podman/extra/component.kdl"),
         "schema-version 1\ndescription \"Extra\"\ntargets \"fedora\"\n",
     )
     .unwrap();
@@ -4590,7 +5445,7 @@ fn a_path_that_a_remote_component_also_lists_is_refused() {
     let cache = buildc::collection::seed(&root, REMOTE, "v1", &commit).unwrap();
     std::fs::create_dir_all(cache.join("components/runner")).unwrap();
     std::fs::write(
-        cache.join("components/runner/manifest.kdl"),
+        cache.join("components/runner/component.kdl"),
         "schema-version 1\ndescription \"Runner\"\ntargets \"fedora\"\ncomponent \"/\" { podman }\n",
     )
     .unwrap();
@@ -4617,7 +5472,7 @@ fn a_build_copies_every_remote_component_it_reads_and_no_path_needs_a_choice() {
     let commit = remote_at(&root, "v1", 'a');
     let cache = buildc::collection::seed(&root, REMOTE, "v1", &commit).unwrap();
     std::fs::write(
-        cache.join("components/podman/manifest.kdl"),
+        cache.join("components/podman/component.kdl"),
         "schema-version 1\ndescription \"Podman a\"\ntargets \"fedora\"\ntools { description \"Tools\" }\n",
     )
     .unwrap();
@@ -4687,7 +5542,7 @@ fn a_copy_that_leaves_a_build_unloadable_is_undone() {
     ] {
         std::fs::create_dir_all(cache.join("components").join(path)).unwrap();
         std::fs::write(
-            cache.join("components").join(path).join("manifest.kdl"),
+            cache.join("components").join(path).join("component.kdl"),
             format!("schema-version 1\n{manifest}"),
         )
         .unwrap();
@@ -4712,7 +5567,7 @@ fn a_component_that_links_outside_its_library_is_not_copied() {
     let outside = root.join("outside");
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(
-        outside.join("manifest.kdl"),
+        outside.join("component.kdl"),
         "schema-version 1\ndescription \"Host\"\n",
     )
     .unwrap();
@@ -4804,7 +5659,7 @@ fn podman_declares(name: &str, line: &str, link: Option<&str>) -> String {
         .expect("the source key is computed");
     let podman = cache.join("components/podman");
     std::fs::write(
-        podman.join("manifest.kdl"),
+        podman.join("component.kdl"),
         format!("schema-version 1\ndescription \"Podman\"\ntargets \"fedora\"\n{line}\n"),
     )
     .expect("the test repository is writable");
@@ -4864,7 +5719,7 @@ fn a_file_component_that_links_outside_its_library_is_refused() {
     let outside = root.join("outside");
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::rename(
-        cache.join("components/podman/manifest.kdl"),
+        cache.join("components/podman/component.kdl"),
         outside.join("podman.kdl"),
     )
     .unwrap();
@@ -4892,7 +5747,7 @@ fn a_link_to_a_shared_folder_of_its_library_is_refused() {
     std::fs::create_dir_all(cache.join("shared")).unwrap();
     std::fs::write(cache.join("shared/x.sh"), "true\n").unwrap();
     std::fs::write(
-        cache.join("components/podman/manifest.kdl"),
+        cache.join("components/podman/component.kdl"),
         "schema-version 1\ndescription \"Podman\"\ntargets \"fedora\"\nhelpers \"lib/x.sh\"\n",
     )
     .unwrap();
@@ -4925,7 +5780,7 @@ fn a_link_inside_its_own_component_is_followed_and_unrefused() {
     std::fs::create_dir_all(podman.join("lib")).unwrap();
     std::fs::write(podman.join("lib/x.sh"), "true\n").unwrap();
     std::fs::write(
-        podman.join("manifest.kdl"),
+        podman.join("component.kdl"),
         "schema-version 1\ndescription \"Podman\"\ntargets \"fedora\"\nhelpers \"tools/x.sh\"\n",
     )
     .unwrap();
@@ -4943,7 +5798,7 @@ fn a_link_into_a_component_it_holds_is_refused() {
     let podman = cache.join("components/podman");
     std::fs::create_dir_all(podman.join("compose")).unwrap();
     std::fs::write(
-        podman.join("compose/manifest.kdl"),
+        podman.join("compose/component.kdl"),
         "schema-version 1\ndescription \"Compose\"\n",
     )
     .unwrap();

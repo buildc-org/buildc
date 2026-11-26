@@ -18,3 +18,5 @@ variant "lean" {
     description "Skip the prompt"
     set "prompt" #false
 }
+
+default-variant "lean"

@@ -53,9 +53,13 @@ pub fn resolve_collects(
 
     let family = image.family();
     for component in image.components() {
-        let dir = &component.home;
+        let mut dirs = Vec::new();
+        if let Some(variant) = layout::variant_home(&component.home, component.variant.as_deref()) {
+            dirs.push(variant);
+        }
+        dirs.push(component.home.clone());
         for (file, collector) in collectors {
-            let Some(shipped) = layout::shipped(dir, family, file) else {
+            let Some((_, shipped)) = layout::shipped_across(&dirs, family, file) else {
                 continue;
             };
             match by_file.get(file.as_str()) {

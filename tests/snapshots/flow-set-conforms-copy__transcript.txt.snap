@@ -21,7 +21,7 @@ Confirm
 example/
 ├── components/
 │   ├── sshd/
-│   │   └── + manifest.kdl
+│   │   └── + component.kdl
 │   └── + origins.kdl
 └── ~ example.kdl  measured against `standard`, and sshd listed
 ==== exit 0

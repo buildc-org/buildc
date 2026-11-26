@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "versioned",
       "file": "./components/versioned.kdl",
+      "component": "versioned",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "libostree"
         ],
@@ -59,12 +62,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/needs",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [
                 "libostree"
               ],
+              "prefers": {},
               "met_by": {
                 "libostree": {
                   "how": "base"
@@ -78,7 +83,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "4c84b11f9b62ff58547efe8c4aacb73ea643fbde33d7e0afceb3dbde382ff9b9",
+                "content": "7caa4b04098df27cc658982a08b49e9a7c8d5ffa85cf4b10411907213bdaeac9",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -92,6 +97,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/tools",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [
@@ -99,6 +105,7 @@ source: tests/golden/harness.rs
                 "build-tool"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [
                 "/usr/bin/dnf5"
@@ -113,7 +120,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "content": "6862c7da8c21478b620f64d4fa0e5f19d7f4a27a282bad3f8582b7bbda5d2bf3",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -127,12 +134,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/needs-build-tool",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [
                 "build-tool"
               ],
+              "prefers": {},
               "met_by": {
                 "build-tool": {
                   "how": "listed",
@@ -147,7 +156,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "bf6700e2f59762eab1687f2df25644ce8a0118794544bc125ea59e502c809ebc",
+                "content": "2150cb78cacc6efebdfcf83a2774b72bf940ac8f7b7c23462aafe494865ebb76",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -161,12 +170,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/needs-dnf5",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [
                 "package-manager/dnf5"
               ],
+              "prefers": {},
               "met_by": {
                 "package-manager/dnf5": {
                   "how": "listed",
@@ -181,7 +192,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "4c061af88ecb533dfdea117ce9fc150dac0e9a589aebb047892f744b09b2c94f",
+                "content": "84e8f1c91118436b8f30be5cddf05b41be6d02c12effaef388f92d45c927b148",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -195,10 +206,12 @@ source: tests/golden/harness.rs
             {
               "path": "versioned",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -240,7 +253,7 @@ source: tests/golden/harness.rs
             "base": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
             "args": [
               "TARGET=versioned",
-              "COMPONENT_HASHES=core/needs|4c84b11f9b62ff58547efe8c4aacb73ea643fbde33d7e0afceb3dbde382ff9b9 core/tools|79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2 core/needs-build-tool|bf6700e2f59762eab1687f2df25644ce8a0118794544bc125ea59e502c809ebc core/needs-dnf5|4c061af88ecb533dfdea117ce9fc150dac0e9a589aebb047892f744b09b2c94f",
+              "COMPONENT_HASHES=core/needs|7caa4b04098df27cc658982a08b49e9a7c8d5ffa85cf4b10411907213bdaeac9 core/tools|6862c7da8c21478b620f64d4fa0e5f19d7f4a27a282bad3f8582b7bbda5d2bf3 core/needs-build-tool|2150cb78cacc6efebdfcf83a2774b72bf940ac8f7b7c23462aafe494865ebb76 core/needs-dnf5|84e8f1c91118436b8f30be5cddf05b41be6d02c12effaef388f92d45c927b148",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
             ],
@@ -258,10 +271,12 @@ source: tests/golden/harness.rs
     {
       "id": "measured",
       "file": "./components/measured.kdl",
+      "component": "measured",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -273,6 +288,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "libostree"
         ],
@@ -296,6 +312,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/tools",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [
@@ -303,6 +320,7 @@ source: tests/golden/harness.rs
                 "build-tool"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [
                 "/usr/bin/dnf5"
@@ -317,7 +335,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "content": "6862c7da8c21478b620f64d4fa0e5f19d7f4a27a282bad3f8582b7bbda5d2bf3",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -331,10 +349,12 @@ source: tests/golden/harness.rs
             {
               "path": "measured",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -376,7 +396,7 @@ source: tests/golden/harness.rs
             "base": "example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000",
             "args": [
               "TARGET=measured",
-              "COMPONENT_HASHES=core/tools|79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+              "COMPONENT_HASHES=core/tools|6862c7da8c21478b620f64d4fa0e5f19d7f4a27a282bad3f8582b7bbda5d2bf3",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=example.invalid/versioned:1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
             ],
@@ -394,10 +414,12 @@ source: tests/golden/harness.rs
     {
       "id": "recordonly",
       "file": "./components/recordonly.kdl",
+      "component": "recordonly",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -409,6 +431,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [
@@ -430,6 +453,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/tools",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [
@@ -437,6 +461,7 @@ source: tests/golden/harness.rs
                 "build-tool"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [
                 "/usr/bin/dnf5"
@@ -451,7 +476,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+                "content": "6862c7da8c21478b620f64d4fa0e5f19d7f4a27a282bad3f8582b7bbda5d2bf3",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -465,10 +490,12 @@ source: tests/golden/harness.rs
             {
               "path": "recordonly",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -510,7 +537,7 @@ source: tests/golden/harness.rs
             "base": "example.invalid/plain:1",
             "args": [
               "TARGET=recordonly",
-              "COMPONENT_HASHES=core/tools|79d437fb6db901d3d9a45c2af9673319997b7110e6861b1b00eee8272b2aaeb2",
+              "COMPONENT_HASHES=core/tools|6862c7da8c21478b620f64d4fa0e5f19d7f4a27a282bad3f8582b7bbda5d2bf3",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=example.invalid/plain:1"
             ],

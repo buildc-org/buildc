@@ -271,6 +271,8 @@ option "version" type="string" {
 
 `base` makes it a base, and its block states the family, the bootloader and the benchmark content. `provides` lists capabilities that the base image already ships, one per line, so components that need them are satisfied. A short list can go on one line, such as `provides "rechunking" "luks-initramfs"`. A `witness` names a path that proves the capability is there. The build checks the finished image for it. The `component "/"` block lists components from the library root that every image on this base builds. Here the base brings `fedora/build-environment`, so `workstation-2.kdl` does not need to list it itself. `scap-content` names the benchmark content that remediates the image and that a compliance scan reads. Its `pin` says where `buildc generate` fetches the file and the hash it must match.
 
+`base` also carries the trust you place in the published image. `signed=#true` records that the image publishes a cosign signature. A `key=` names the public key at a repository path and `key-sha256=` optionally pins that file's content. `identity=` verifies a keyless signature and `issuer=` names the OIDC issuer of that identity. `buildc build` fetches the image's SPDX attestation, checks its subject against the resolved digest, and refuses a base whose recorded key or identity does not verify. A base with no attestation leaves a gap unless `audit { enforce #true }` is set.
+
 Run the check again:
 
 ```sh
@@ -298,7 +300,7 @@ buildc create component browser --build workstation-2
 
 `--build workstation-2` lists the new component in that build's image file. Without arguments, `buildc create component` asks for the name, an optional description, optional base families and the builds that list it.
 
-The component gets a `manifest.kdl` with no packages. `buildc create component` asks nothing about packages itself.
+The component gets a `component.kdl` with no packages. `buildc create component` asks nothing about packages itself.
 
 Add the package:
 
@@ -306,9 +308,9 @@ Add the package:
 buildc add package firefox --component browser
 ```
 
-`components/browser/manifest.kdl` now reads:
+`components/browser/component.kdl` now reads:
 
-<!-- kdl-file: components/browser/manifest.kdl -->
+<!-- kdl-file: components/browser/component.kdl -->
 ```kdl
 schema-version 1
 
@@ -325,7 +327,7 @@ A missing dependency is expensive to find during the image build or at runtime. 
 
 Firefox is a graphical app, so add `requires "graphical-session"` to the browser's manifest:
 
-<!-- kdl-file: components/browser/manifest.kdl -->
+<!-- kdl-file: components/browser/component.kdl -->
 ```kdl
 schema-version 1
 
@@ -338,7 +340,7 @@ Run `buildc check` again:
 
 ```text
   × `browser` requires `graphical-session`, which nothing enabled provides
-   ╭─[./components/browser/manifest.kdl:5:10]
+   ╭─[./components/browser/component.kdl:5:10]
  4 │ 
  5 │ requires "graphical-session"
    ·          ─────────┬─────────
@@ -348,7 +350,7 @@ Run `buildc check` again:
         session"`, and neither does the base `base-image/fedora-bootc`.
         `buildc add component` lists what the declared libraries provide
 
-buildc: 1 problem in ./components/browser/manifest.kdl; none in ./repo.kdl, ./workstation-1.kdl, ./workstation-2.kdl
+buildc: 1 problem in ./components/browser/component.kdl; none in ./repo.kdl, ./workstation-1.kdl, ./workstation-2.kdl
 buildc: `workstation-2` reads `base-image/fedora-bootc` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
 buildc: `workstation-2` reads `fedora/build-environment` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it
 buildc: `workstation-2` reads `os-release` from `buildc` at e0fc5a08b980, which repo.lock.kdl does not record; `buildc generate` records it

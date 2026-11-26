@@ -684,7 +684,7 @@ mod tests {
             Candidate {
                 path: "base".into(),
                 place: Place::Directory {
-                    file: root.join("components/base/manifest.kdl"),
+                    file: root.join("components/base/component.kdl"),
                 },
                 build: None,
                 bare: None,
@@ -696,7 +696,7 @@ mod tests {
             Candidate {
                 path: "apps".into(),
                 place: Place::Directory {
-                    file: root.join("components/apps/manifest.kdl"),
+                    file: root.join("components/apps/component.kdl"),
                 },
                 build: None,
                 bare: None,
@@ -776,7 +776,7 @@ mod tests {
         crate::testing::images(&root, &[("one", "")]);
         run_images(&root, &["htop"], Some("tools"), &["one"], &Prompt::silent()).unwrap();
         run_images(&root, &["vim"], Some("tools"), &[], &Prompt::silent()).unwrap();
-        let group = std::fs::read_to_string(root.join("components/tools/manifest.kdl"));
+        let group = std::fs::read_to_string(root.join("components/tools/component.kdl"));
         let image = crate::testing::image_text(&root, "one");
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(group.unwrap(), "schema-version 1\n\npackages \"vim\"\n");
@@ -881,7 +881,7 @@ mod tests {
         let root = repository("directory-create");
         manifest(&root, "tool", "schema-version 1\n\ndescription \"Tool\"\n");
         add(&root, &["htop"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,
@@ -898,7 +898,7 @@ mod tests {
             "schema-version 1\n\npackages \"htop\" enablerepo=\"tools\"\n",
         );
         add(&root, &["vim"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,
@@ -915,7 +915,7 @@ mod tests {
             "schema-version 1\n\npackages {\n    \"bash-completion\"\n    \"htop\"\n}\n",
         );
         add(&root, &["tmux"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,
@@ -932,7 +932,7 @@ mod tests {
             "schema-version 1\n\npackages {\n    \"htop\"\n} // closes }\n",
         );
         add(&root, &["tmux"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,
@@ -946,7 +946,7 @@ mod tests {
         let before = "schema-version 1\n\npackages \"qemu-user-binfmt\"\n\non \"fedora\" {\n    packages {\n        \"libvirt\"\n    }\n}\n";
         manifest(&root, "tool", before);
         let wrote = add(&root, &["libvirt"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(wrote.is_empty());
         assert_eq!(text, before);
@@ -957,7 +957,7 @@ mod tests {
         let root = repository("bare");
         crate::init::put(&root.join("components/tool/component.sh"), "true\n").unwrap();
         add(&root, &["htop"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,
@@ -974,7 +974,7 @@ mod tests {
         let before = "schema-version 1\n\non \"fedora\" {\n    packages \"nano\"\n}\n";
         manifest(&root, "tool", before);
         let wrote = add(&root, &["nano"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(wrote.is_empty());
         assert_eq!(text, before);
@@ -1046,7 +1046,7 @@ mod tests {
             "schema-version 1\n\ntools {\n    packages \"htop\"\n}\n",
         );
         add(&root, &["curl"], "desktop/tools").unwrap();
-        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         let directory = root.join("components/desktop/tools").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
@@ -1065,7 +1065,7 @@ mod tests {
             "schema-version 1\n\ntools {\n    description \"Tools\"\n}\n",
         );
         add(&root, &["curl"], "desktop/tools").unwrap();
-        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
             text.ends_with("tools {\n    description \"Tools\"\n    packages \"curl\"\n}\n"),
@@ -1082,7 +1082,7 @@ mod tests {
             "schema-version 1\n\ntools {\n    editor {\n        description \"Editor\"\n    }\n}\n",
         );
         add(&root, &["vim"], "desktop/tools/editor").unwrap();
-        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
             text.contains(
@@ -1184,7 +1184,7 @@ mod tests {
     fn a_new_group_with_no_image_writes_a_directory_component() {
         let root = repository("new-group");
         let wrote = add(&root, &["htop"], "nope").unwrap();
-        let text = std::fs::read_to_string(root.join("components/nope/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/nope/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(text, "schema-version 1\n\npackages \"htop\"\n");
         assert!(!wrote.is_empty());
@@ -1198,7 +1198,7 @@ mod tests {
         crate::init::put(&root.join("repo.kdl"), SHELF_DEFAULT).unwrap();
         std::fs::create_dir_all(root.join("shelf")).unwrap();
         add(&root, &["htop"], "tools").unwrap();
-        let text = std::fs::read_to_string(root.join("shelf/tools/manifest.kdl"));
+        let text = std::fs::read_to_string(root.join("shelf/tools/component.kdl"));
         let stray = root.join("components/tools").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(text.unwrap(), "schema-version 1\n\npackages \"htop\"\n");
@@ -1230,7 +1230,7 @@ mod tests {
         .unwrap();
         manifest(&root, "tools", "schema-version 1\n");
         let wrote = add(&root, &["htop"], "tools");
-        let text = std::fs::read_to_string(root.join("components/tools/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tools/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(wrote.is_ok());
         assert!(text.ends_with("packages \"htop\"\n"), "{text}");
@@ -1257,11 +1257,15 @@ mod tests {
     fn a_group_in_two_folders_takes_the_packages_in_the_default_library() {
         let root = repository("two-folders");
         crate::init::put(&root.join("repo.kdl"), SHELF_DEFAULT).unwrap();
-        crate::init::put(&root.join("shelf/tools/manifest.kdl"), "schema-version 1\n").unwrap();
+        crate::init::put(
+            &root.join("shelf/tools/component.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
         manifest(&root, "tools", "schema-version 1\n");
         let wrote = add(&root, &["htop"], "tools");
-        let shelf = std::fs::read_to_string(root.join("shelf/tools/manifest.kdl")).unwrap();
-        let own = std::fs::read_to_string(root.join("components/tools/manifest.kdl")).unwrap();
+        let shelf = std::fs::read_to_string(root.join("shelf/tools/component.kdl")).unwrap();
+        let own = std::fs::read_to_string(root.join("components/tools/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(wrote.is_ok());
         assert!(shelf.ends_with("packages \"htop\"\n"), "{shelf}");
@@ -1278,7 +1282,7 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(root.join("shelf")).unwrap();
         let wrote = add(&root, &["htop"], "tools");
-        let written = root.join("components/tools/manifest.kdl").is_file();
+        let written = root.join("components/tools/component.kdl").is_file();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(wrote.is_ok());
         assert!(written);
@@ -1355,7 +1359,7 @@ mod tests {
         let root = repository("bad-name");
         manifest(&root, "tool", "schema-version 1\n");
         let refused = refused(add(&root, &["bad name"], "tool"));
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.contains("is not a package name"), "{refused}");
         assert_eq!(text, "schema-version 1\n");
@@ -1367,7 +1371,7 @@ mod tests {
         manifest(&root, "tool", "schema-version 1\n");
         let prompt = Prompt::scripted(["nano curl"].map(str::to_string).to_vec());
         run(&root, &[], Some("tool"), None, &prompt).unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(text.ends_with("packages \"nano\" \"curl\"\n"), "{text}");
     }
@@ -1377,7 +1381,7 @@ mod tests {
         let root = repository("default-group");
         let prompt = Prompt::scripted(vec![String::new()]);
         run(&root, &["htop"], None, None, &prompt).unwrap();
-        let text = std::fs::read_to_string(root.join("components/apps/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/apps/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(text, "schema-version 1\n\npackages \"htop\"\n");
     }
@@ -1402,7 +1406,7 @@ mod tests {
         manifest(&root, "alpha", "schema-version 1\n");
         let prompt = Prompt::scripted(["alpha"].map(str::to_string).to_vec());
         run(&root, &["htop"], None, None, &prompt).unwrap();
-        let alpha = std::fs::read_to_string(root.join("components/alpha/manifest.kdl")).unwrap();
+        let alpha = std::fs::read_to_string(root.join("components/alpha/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(alpha.ends_with("packages \"htop\"\n"), "{alpha}");
     }
@@ -1422,7 +1426,7 @@ mod tests {
         let root = repository("silent-one");
         manifest(&root, "alpha", "schema-version 1\n");
         let refused = refused(run(&root, &["htop"], None, None, &Prompt::silent()));
-        let text = std::fs::read_to_string(root.join("components/alpha/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/alpha/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused.contains("give `--component`"), "{refused}");
         assert_eq!(text, "schema-version 1\n");
@@ -1433,7 +1437,7 @@ mod tests {
         let root = repository("reference");
         manifest(&root, "tool", "schema-version 1\n");
         add(&root, &["firefox={version}"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(text.ends_with("packages \"firefox={version}\"\n"), "{text}");
     }
@@ -1470,7 +1474,7 @@ mod tests {
             "schema-version 1\n\npackages {\n    \"htop\"\n}\n",
         );
         add(&root, &["tmux", "vim"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,
@@ -1483,7 +1487,7 @@ mod tests {
         let root = repository("block-two-one-line");
         manifest(&root, "tool", "schema-version 1\n\npackages { \"htop\" }\n");
         add(&root, &["tmux", "vim"], "tool").unwrap();
-        let text = std::fs::read_to_string(root.join("components/tool/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/tool/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             text,

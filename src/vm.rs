@@ -287,13 +287,13 @@ mod tests {
             ("fedora", "quay.io/fedora/fedora-bootc:44", "fedora"),
         ] {
             crate::init::put(
-                &root.join(format!("components/base-image/{path}/manifest.kdl")),
+                &root.join(format!("components/base-image/{path}/component.kdl")),
                 &format!("schema-version 1\n\nbase \"{image}\" {{ family \"{family}\"; }}\n"),
             )
             .unwrap();
         }
         crate::init::put(
-            &root.join("components/login/manifest.kdl"),
+            &root.join("components/login/component.kdl"),
             "schema-version 1\n\ndescription \"login\"\ntargets \"debian\"\nkey \"ssh\" {\n    generator \"ssh-keygen\"\n    public \"/usr/lib/buildc/authorized_keys\"\n    private \"id_ed25519\"\n}\n",
         )
         .unwrap();

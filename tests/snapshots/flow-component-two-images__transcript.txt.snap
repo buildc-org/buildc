@@ -17,7 +17,7 @@ builds that list it [1-2, several, 0 for none]: 1 2
 example/
 ├── components/
 │   └── my-editor/
-│       └── + manifest.kdl
+│       └── + component.kdl
 ├── ~ example.kdl  my-editor added to components
 └── ~ server.kdl  my-editor added to components
 ==== exit 0

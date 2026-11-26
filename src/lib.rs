@@ -242,7 +242,7 @@ fn load_with(root: &Path, follow: bool) -> Loaded {
         &crate::layout::components(root),
         &libraries.collector_names(),
     );
-    let index = provider::Index::local(root, &list.libraries, &disk);
+    let index = provider::Index::scan(root, &list.libraries, &disk, false);
     provenance::origins::check(root, &list.libraries, &mut issues);
     provenance::repo_lock::check(root, &mut issues);
 
@@ -258,6 +258,12 @@ fn load_with(root: &Path, follow: bool) -> Loaded {
             Some(component)
         };
         issues.extend(resolve::imports::expand(image, libraries, load));
+        resolve::imports::inherit(image);
+        for component in image.components() {
+            if component.path != image.component {
+                component.refuse_image_facts(image, &mut issues);
+            }
+        }
 
         if list.backend == model::image::Backend::Buildx && image.seals_uki() {
             issues.push(

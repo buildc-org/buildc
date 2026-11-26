@@ -20,7 +20,7 @@ source: tests/golden/harness.rs
     {
       "component": "core/fetcher",
       "name": "tool",
-      "manifest": "components/core/fetcher/manifest.kdl",
+      "manifest": "components/core/fetcher/component.kdl",
       "pin": {
         "locator": "https://github.com/owner/tool/releases/download/v{version}/tool.tar.gz",
         "selector": "1.0.0",
@@ -37,10 +37,12 @@ source: tests/golden/harness.rs
     {
       "id": "network",
       "file": "./components/network.kdl",
+      "component": "network",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -55,6 +57,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "bootc",
           "rechunking",
@@ -82,12 +85,14 @@ source: tests/golden/harness.rs
             {
               "path": "fedora-family",
               "variant": null,
+              "variant-default": false,
               "description": "dnf5 and its plugins, which every fedora build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -97,7 +102,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb",
+                "content": "52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42",
                 "resolved": "837217d3000a42239e41e1e1529dc6d26a0e5308a084ef7e0e9ffe960b20ddff",
                 "repo": false,
                 "imported": null
@@ -111,10 +116,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/tools",
               "variant": null,
+              "variant-default": false,
               "description": "Installs a package, then configures it with no network",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -137,7 +144,7 @@ source: tests/golden/harness.rs
               ],
               "provenance": {
                 "defined": null,
-                "content": "8a04d030b3b1888d0885e7514a9ab62c4957020611ce7e04e4990b7e61b15c78",
+                "content": "883238829eb826e4993f0da44de121d75961adc3258048d10dd4e105071086c4",
                 "resolved": "8942346efed1266375a52a888898175031a3587fe2be7f555ed05b6459e19088",
                 "repo": false,
                 "imported": null
@@ -151,10 +158,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/fetcher",
               "variant": null,
+              "variant-default": false,
               "description": "Fetches a pinned release in its own script",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -164,7 +173,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "ab449aa82a661c050ac3bb3a1fedb5e2c22821c0136f2c7ea2a7429900b60490",
+                "content": "ff322850663b3dc2882b1539444add7240efd09c0c88f49fef12efff8b910d96",
                 "resolved": "b713cd5ad0e2b1fc420d7921d8fe8920f320e3310b774c1cc1e96a9941950370",
                 "repo": false,
                 "imported": null
@@ -178,10 +187,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/quiet",
               "variant": null,
+              "variant-default": false,
               "description": "Ships files and nothing else",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -191,7 +202,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "06b4d60de1838eefebab71568a09e074e542d3682bb8d12045276ad817a3751f",
+                "content": "0d147a588580cae1ef7027cb79d0e3e7fbc838b96237ffe8aeea7148a23fbb1f",
                 "resolved": "3debd0c7b3d2ddf42028d4b8d2c26ade9600bfbfb59aea738048648b727064d5",
                 "repo": false,
                 "imported": null
@@ -205,10 +216,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/spliced",
               "variant": null,
+              "variant-default": false,
               "description": "Ships a fragment beside its standard layer",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -218,7 +231,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "18ff391778e6a6d32ffefdbf63898ceac28f58a8a3ef3b8ba016d44ac18d336e",
+                "content": "e508b1d4729f66d3d6f5c8ab94bf9c6321826c03a390f4556cd7fba6ad981917",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -232,10 +245,12 @@ source: tests/golden/harness.rs
             {
               "path": "network",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -267,7 +282,7 @@ source: tests/golden/harness.rs
             {
               "component": "core/fetcher",
               "name": "tool",
-              "manifest": "components/core/fetcher/manifest.kdl",
+              "manifest": "components/core/fetcher/component.kdl",
               "pin": {
                 "locator": "https://github.com/owner/tool/releases/download/v{version}/tool.tar.gz",
                 "selector": "1.0.0",
@@ -295,7 +310,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=network",
-              "COMPONENT_HASHES=fedora-family|0a7af47a348136af76dc13d87d32756cfc79f0c8e18ace182912e250b32f84cb core/tools|8a04d030b3b1888d0885e7514a9ab62c4957020611ce7e04e4990b7e61b15c78 core/fetcher|ab449aa82a661c050ac3bb3a1fedb5e2c22821c0136f2c7ea2a7429900b60490 core/quiet|06b4d60de1838eefebab71568a09e074e542d3682bb8d12045276ad817a3751f core/spliced|18ff391778e6a6d32ffefdbf63898ceac28f58a8a3ef3b8ba016d44ac18d336e",
+              "COMPONENT_HASHES=fedora-family|52c3d62486fb694cc19c9b6589372f11b09a76f904fc223bd95ab33c37034e42 core/tools|883238829eb826e4993f0da44de121d75961adc3258048d10dd4e105071086c4 core/fetcher|ff322850663b3dc2882b1539444add7240efd09c0c88f49fef12efff8b910d96 core/quiet|0d147a588580cae1ef7027cb79d0e3e7fbc838b96237ffe8aeea7148a23fbb1f core/spliced|e508b1d4729f66d3d6f5c8ab94bf9c6321826c03a390f4556cd7fba6ad981917",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

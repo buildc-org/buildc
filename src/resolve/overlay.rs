@@ -10,11 +10,24 @@ pub fn index(image: &Image) -> Index {
         let Some(component) = &entry.component else {
             continue;
         };
+        let mut claim = |path: &str| {
+            let owners = shipped.entry(path.to_string()).or_default();
+            if owners.last() != Some(&index) {
+                owners.push(index);
+            }
+        };
         for path in &crate::parse::disk::shipped(&component.home) {
-            shipped.entry(path.clone()).or_default().push(index);
+            claim(path);
+        }
+        if let Some(variant) =
+            crate::layout::variant_home(&component.home, component.variant.as_deref())
+        {
+            for path in &crate::parse::disk::shipped(&variant) {
+                claim(path);
+            }
         }
         for key in &component.keys {
-            shipped.entry(key.public.clone()).or_default().push(index);
+            claim(&key.public);
         }
     }
     shipped

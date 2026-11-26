@@ -20,7 +20,7 @@ source: tests/golden/harness.rs
     {
       "component": "one/hello",
       "name": "hello",
-      "manifest": "components/one/hello/manifest.kdl",
+      "manifest": "components/one/hello/component.kdl",
       "pin": {
         "locator": "https://github.com/owner/hello/releases/download/v{version}/hello.tar.gz",
         "selector": "1.4.0",
@@ -37,10 +37,17 @@ source: tests/golden/harness.rs
     {
       "id": "enforced",
       "file": "./components/enforced.kdl",
+      "component": "enforced",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "standard",
+      "fields": [
+        {
+          "field": "conforms",
+          "component": "enforced"
+        }
+      ],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -61,6 +68,7 @@ source: tests/golden/harness.rs
           "resolved": "components/base-image/fedora-bootc-44/ssg-fedora-ds.xml"
         },
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -83,12 +91,14 @@ source: tests/golden/harness.rs
             {
               "path": "one/hello",
               "variant": null,
+              "variant-default": false,
               "description": "An imported component edited since it was imported",
               "options": {},
               "provides": [
                 "hello"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -98,7 +108,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca",
+                "content": "76260ae5f256c602879d00d8ce3dc5b16df07b05824851462dec2d140c4a1017",
                 "resolved": "332df36f257264c8fe08c55158401ee1af6630a93efd379f149e648808edc197",
                 "repo": true,
                 "imported": {
@@ -132,12 +142,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/consumer",
               "variant": null,
+              "variant-default": false,
               "description": "Requires what the imported component provides",
               "options": {},
               "provides": [],
               "requires": [
                 "hello"
               ],
+              "prefers": {},
               "met_by": {
                 "hello": {
                   "how": "listed",
@@ -152,7 +164,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "86d957ad1d583f68d0267d961c5017cf3464b86e1b65420590171d56f2cc7cef",
+                "content": "538d7cc0d0c5dc12b6b1d07a412675a333e940b89af8c8a50ae8e9752b271739",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -166,10 +178,12 @@ source: tests/golden/harness.rs
             {
               "path": "enforced",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -199,7 +213,7 @@ source: tests/golden/harness.rs
             {
               "component": "one/hello",
               "name": "hello",
-              "manifest": "components/one/hello/manifest.kdl",
+              "manifest": "components/one/hello/component.kdl",
               "pin": {
                 "locator": "https://github.com/owner/hello/releases/download/v{version}/hello.tar.gz",
                 "selector": "1.4.0",
@@ -225,7 +239,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=enforced",
-              "COMPONENT_HASHES=one/hello|ef8159ad4e8ea55c4252eb435ee5c40b6963e7ad9800bac563a63bfac2a89eca core/consumer|86d957ad1d583f68d0267d961c5017cf3464b86e1b65420590171d56f2cc7cef",
+              "COMPONENT_HASHES=one/hello|76260ae5f256c602879d00d8ce3dc5b16df07b05824851462dec2d140c4a1017 core/consumer|538d7cc0d0c5dc12b6b1d07a412675a333e940b89af8c8a50ae8e9752b271739",
               "ASSET_RESOLUTIONS=",
               "AUDIT_ENFORCE=true",
               "CONFORMS=standard",

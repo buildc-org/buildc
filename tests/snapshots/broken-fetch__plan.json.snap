@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-fetch",
       "file": "./components/broken-fetch.kdl",
+      "component": "broken-fetch",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,10 +61,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/grabber",
               "variant": null,
+              "variant-default": false,
               "description": "Reaches the network with nothing declaring what it pulls",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -71,7 +76,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "6ea9f364c1768888865953188a5b15dd4f4e9f725303b3d30c2ca2c5752dc60b",
+                "content": "1d949b7bc967f21741ed3e7fa692c9d03aa2fdb3c74b56fbd06f1e44d10f30a4",
                 "resolved": "0ff8e60727baa9e3cf7f0e0cf282506b245211267c11a1a47bb5907cd79656e6",
                 "repo": false,
                 "imported": null
@@ -85,10 +90,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-fetch",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -128,7 +135,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-fetch",
-              "COMPONENT_HASHES=core/grabber|6ea9f364c1768888865953188a5b15dd4f4e9f725303b3d30c2ca2c5752dc60b",
+              "COMPONENT_HASHES=core/grabber|1d949b7bc967f21741ed3e7fa692c9d03aa2fdb3c74b56fbd06f1e44d10f30a4",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],

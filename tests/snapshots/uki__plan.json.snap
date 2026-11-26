@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "shim",
       "file": "./components/shim.kdl",
+      "component": "shim",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": true,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "bootupctl",
           "luks-initramfs",
@@ -59,6 +62,7 @@ source: tests/golden/harness.rs
             {
               "path": "uki",
               "variant": null,
+              "variant-default": false,
               "description": "UKI provider fixture",
               "options": {
                 "OPT_TRUST": "shim"
@@ -67,6 +71,7 @@ source: tests/golden/harness.rs
                 "boot-chain-uki"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -76,7 +81,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
+                "content": "f22e3cc452040ec0b58e5030bcf7faef80f0ff076dc91c272897382e7cdd1c3f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -90,10 +95,12 @@ source: tests/golden/harness.rs
             {
               "path": "shim",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -133,7 +140,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=shim",
-              "COMPONENT_HASHES=uki|7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
+              "COMPONENT_HASHES=uki|f22e3cc452040ec0b58e5030bcf7faef80f0ff076dc91c272897382e7cdd1c3f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
@@ -148,10 +155,12 @@ source: tests/golden/harness.rs
     {
       "id": "db",
       "file": "./components/db.kdl",
+      "component": "db",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": true,
       "allows": [],
       "layout": null,
@@ -163,6 +172,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "bootupctl",
           "luks-initramfs",
@@ -186,6 +196,7 @@ source: tests/golden/harness.rs
             {
               "path": "uki",
               "variant": null,
+              "variant-default": false,
               "description": "UKI provider fixture",
               "options": {
                 "OPT_TRUST": "db"
@@ -194,6 +205,7 @@ source: tests/golden/harness.rs
                 "boot-chain-uki"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -203,7 +215,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
+                "content": "f22e3cc452040ec0b58e5030bcf7faef80f0ff076dc91c272897382e7cdd1c3f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -217,10 +229,12 @@ source: tests/golden/harness.rs
             {
               "path": "db",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -260,7 +274,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=db",
-              "COMPONENT_HASHES=uki|7e86b61137d7141a6d5547f6968e13c4f48c71f16dfe8584725e14337104599a",
+              "COMPONENT_HASHES=uki|f22e3cc452040ec0b58e5030bcf7faef80f0ff076dc91c272897382e7cdd1c3f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=quay.io/fedora/fedora-bootc:44"
             ],
@@ -275,10 +289,12 @@ source: tests/golden/harness.rs
     {
       "id": "plain",
       "file": "./components/plain.kdl",
+      "component": "plain",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -290,6 +306,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "bootupctl",
           "luks-initramfs",
@@ -313,10 +330,12 @@ source: tests/golden/harness.rs
             {
               "path": "plain",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],

@@ -51,6 +51,7 @@ struct Owed {
     target: usize,
     by: usize,
     want: String,
+    prefer: Option<String>,
     candidates: Vec<usize>,
 }
 
@@ -821,6 +822,7 @@ fn owed(list: &List, targets: &[Target], offers: &[Offer], placed: &[(usize, usi
                     target: into,
                     by,
                     want: want.clone(),
+                    prefer: offers[by].declares.prefers.get(want).cloned(),
                     candidates,
                 });
             }
@@ -838,25 +840,39 @@ fn settle(
     say: crate::report::Say<'_>,
 ) -> Result<Vec<(usize, usize)>, Error> {
     let mut used = vec![false; preferred.len()];
-    let mut chosen: Vec<Option<usize>> = owed
-        .iter()
-        .map(|owed| {
-            let named = preferred.iter().enumerate().find_map(|(at, name)| {
-                let found = owed.candidates.iter().copied().find(|candidate| {
-                    offers[*candidate].shown() == *name || offers[*candidate].path == *name
-                })?;
-                Some((at, found))
-            });
-            match (named, owed.candidates.as_slice()) {
-                (Some((at, found)), _) => {
-                    used[at] = true;
-                    Some(found)
-                }
-                (None, [only]) => Some(*only),
-                (None, _) => None,
+    let named = |owed: &Owed, name: &str| {
+        owed.candidates
+            .iter()
+            .copied()
+            .find(|candidate| offers[*candidate].shown() == name)
+            .or_else(|| {
+                owed.candidates
+                    .iter()
+                    .copied()
+                    .find(|candidate| offers[*candidate].path == name)
+            })
+    };
+    let mut chosen: Vec<Option<usize>> = Vec::with_capacity(owed.len());
+    let mut start: Vec<Option<usize>> = Vec::with_capacity(owed.len());
+    for owed in owed {
+        let explicit = preferred.iter().enumerate().find_map(|(at, name)| {
+            let found = named(owed, name)?;
+            Some((at, found))
+        });
+        let manifest = owed.prefer.as_deref().and_then(|name| named(owed, name));
+        // A manifest preference settles a run with no prompt and only positions the picker when a prompt asks.
+        let choice = match (explicit, manifest, owed.candidates.as_slice()) {
+            (Some((at, found)), _, _) => {
+                used[at] = true;
+                Some(found)
             }
-        })
-        .collect();
+            (None, Some(found), _) if !prompt.asks() => Some(found),
+            (None, _, [only]) => Some(*only),
+            _ => None,
+        };
+        chosen.push(choice);
+        start.push(manifest);
+    }
     if let Some(at) = used.iter().position(|used| !used) {
         return Err(Error::Operation(format!(
             "`{}` provides no requirement of the chosen components that a build lacks",
@@ -868,9 +884,9 @@ fn settle(
     }
     if !dependencies {
         say(&format!("{}\n", crate::copy::REQUIRED));
-        for (owed, chosen) in owed.iter().zip(&chosen) {
-            let provider = match chosen {
-                Some(at) => offers[*at].shown(),
+        for ((owed, chosen), start) in owed.iter().zip(&chosen).zip(&start) {
+            let provider = match chosen.or(*start) {
+                Some(at) => offers[at].shown(),
                 None => {
                     let many: Vec<String> = owed
                         .candidates
@@ -896,8 +912,8 @@ fn settle(
             return Ok(Vec::new());
         }
     }
-    for (owed, chosen) in owed.iter().zip(chosen.iter_mut()) {
-        if chosen.is_some() {
+    for (at, owed) in owed.iter().enumerate() {
+        if chosen[at].is_some() {
             continue;
         }
         let names: Vec<String> = owed
@@ -927,12 +943,13 @@ fn settle(
                 }
             })
             .collect();
-        *chosen = prompt
-            .choose(
-                &crate::copy::which_provider(&offers[owed.by].shown(), &owed.want),
-                &options,
-            )?
-            .map(|at| owed.candidates[at]);
+        let question = crate::copy::which_provider(&offers[owed.by].shown(), &owed.want);
+        let picked =
+            match start[at].and_then(|found| owed.candidates.iter().position(|at| *at == found)) {
+                Some(current) => prompt.choose_current(&question, &options, current)?,
+                None => prompt.choose(&question, &options)?,
+            };
+        chosen[at] = picked.map(|at| owed.candidates[at]);
     }
     Ok(owed
         .iter()
@@ -1033,16 +1050,16 @@ mod tests {
                 "components/ws.kdl",
                 "schema-version 1\nbase \"quay.io/fedora/fedora-bootc:44\"\n\ncomponent \"/\" {\n    desktop\n}\n",
             ),
-            ("components/desktop/manifest.kdl", "schema-version 1\n"),
-            ("shelf/desktop/extras/manifest.kdl", "schema-version 1\n"),
-            ("shelf/hardware/nvidia/manifest.kdl", "schema-version 1\n"),
-            ("shelf/hardware/nvidia/cuda/manifest.kdl", "schema-version 1\n"),
+            ("components/desktop/component.kdl", "schema-version 1\n"),
+            ("shelf/desktop/extras/component.kdl", "schema-version 1\n"),
+            ("shelf/hardware/nvidia/component.kdl", "schema-version 1\n"),
+            ("shelf/hardware/nvidia/cuda/component.kdl", "schema-version 1\n"),
             (
-                "shelf/apps/store/manifest.kdl",
+                "shelf/apps/store/component.kdl",
                 "schema-version 1\nrequires \"flatpak\"\n",
             ),
-            ("shelf/flat/a/manifest.kdl", "schema-version 1\nprovides \"flatpak\"\n"),
-            ("shelf/flat/b/manifest.kdl", "schema-version 1\nprovides \"flatpak\"\n"),
+            ("shelf/flat/a/component.kdl", "schema-version 1\nprovides \"flatpak\"\n"),
+            ("shelf/flat/b/component.kdl", "schema-version 1\nprovides \"flatpak\"\n"),
         ];
         for (path, text) in files {
             crate::init::put(&root.join(path), text).unwrap();
@@ -1100,10 +1117,10 @@ mod tests {
                 "schema-version 1\n\nlibraries default=\"me\" {\n    local {\n        me { source \".\" }\n        shelf { source \"shelf\" }\n        up { source \"up\" }\n    }\n}\n\nbuilds default=\"ws\" {\n    ws\n}\n",
             ),
             ("components/ws.kdl", ws),
-            ("shelf/tools/manifest.kdl", "schema-version 1\n"),
-            ("shelf/tools/podman/manifest.kdl", "schema-version 1\n"),
-            ("up/tools/manifest.kdl", "schema-version 1\n"),
-            ("up/tools/podman/manifest.kdl", "schema-version 1\n"),
+            ("shelf/tools/component.kdl", "schema-version 1\n"),
+            ("shelf/tools/podman/component.kdl", "schema-version 1\n"),
+            ("up/tools/component.kdl", "schema-version 1\n"),
+            ("up/tools/podman/component.kdl", "schema-version 1\n"),
         ];
         for (path, text) in files {
             crate::init::put(&root.join(path), text).unwrap();
@@ -1177,7 +1194,7 @@ mod tests {
         // The folder name holds KDL property syntax.
         // A path made from it would write `library="y"` into the target file.
         crate::init::put(
-            &root.join("shelf/x library=\"y\"/manifest.kdl"),
+            &root.join("shelf/x library=\"y\"/component.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -1203,7 +1220,7 @@ mod tests {
     fn a_path_below_the_target_is_a_bare_child_that_names_its_library() {
         let root = repo("below");
         add(&root, "desktop/extras", &["desktop"], None).unwrap();
-        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(text, "schema-version 1\nextras library=\"shelf\"\n");
     }
@@ -1238,6 +1255,60 @@ mod tests {
         let text = std::fs::read_to_string(root.join("components/ws.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused);
+        assert!(text.contains("    flat {\n        b\n    }\n"), "{text}");
+        assert!(!text.contains("        a\n"), "{text}");
+    }
+
+    #[test]
+    fn a_manifest_preference_settles_two_candidates_without_a_terminal() {
+        let root = repo("prefer-manifest");
+        crate::init::put(
+            &root.join("shelf/apps/store/component.kdl"),
+            "schema-version 1\nrequires \"flatpak\" prefer=\"flat/b\"\n",
+        )
+        .unwrap();
+        let request = Request {
+            paths: vec!["apps/store".to_string()],
+            inside: Vec::new(),
+            library: None,
+            pin: None,
+            dependencies: true,
+            providers: Vec::new(),
+        };
+        Add::collect(request, &root, &Prompt::silent(), &mut |_| {})
+            .unwrap()
+            .apply(&root)
+            .unwrap();
+        let text = std::fs::read_to_string(root.join("components/ws.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(text.contains("    flat {\n        b\n    }\n"), "{text}");
+        assert!(!text.contains("        a\n"), "{text}");
+    }
+
+    #[test]
+    fn the_picker_starts_on_the_manifest_preference() {
+        let root = repo("prefer-start");
+        crate::init::put(
+            &root.join("shelf/apps/store/component.kdl"),
+            "schema-version 1\nrequires \"flatpak\" prefer=\"flat/b\"\n",
+        )
+        .unwrap();
+        let request = Request {
+            paths: vec!["apps/store".to_string()],
+            inside: Vec::new(),
+            library: None,
+            pin: None,
+            dependencies: true,
+            providers: Vec::new(),
+        };
+        // An empty answer accepts the row the picker starts on. That row is the preference.
+        let prompt = Prompt::scripted(vec![String::new()]);
+        Add::collect(request, &root, &prompt, &mut |_| {})
+            .unwrap()
+            .apply(&root)
+            .unwrap();
+        let text = std::fs::read_to_string(root.join("components/ws.kdl")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
         assert!(text.contains("    flat {\n        b\n    }\n"), "{text}");
         assert!(!text.contains("        a\n"), "{text}");
     }

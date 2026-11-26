@@ -676,7 +676,7 @@ key "keylime-ca" {
     fn repo(name: &str, manifest: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("{name}.{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        crate::init::put(&root.join("components/keyholder/manifest.kdl"), manifest).unwrap();
+        crate::init::put(&root.join("components/keyholder/component.kdl"), manifest).unwrap();
         root
     }
 
@@ -834,7 +834,7 @@ key "keylime-ca" {
                 "schema-version 1\nbase \"quay.io/fedora/fedora-bootc:44\"\n\ncomponent \"/\" {\n    signing\n}\n",
             ),
             (
-                "shelf/signing/manifest.kdl",
+                "shelf/signing/component.kdl",
                 "schema-version 1\n\nkey \"cosign\" {\n    generator \"cosign\"\n    public \"/etc/pki/containers/cosign.pub\"\n    private \"cosign.key\"\n}\n",
             ),
         ];
@@ -861,9 +861,9 @@ key "keylime-ca" {
     fn the_named_component_of_two_declares_the_key() {
         let root = std::env::temp_dir().join(format!("buildc-key-named-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        crate::init::put(&root.join("components/one/manifest.kdl"), SECUREBOOT).unwrap();
+        crate::init::put(&root.join("components/one/component.kdl"), SECUREBOOT).unwrap();
         crate::init::put(
-            &root.join("components/two/manifest.kdl"),
+            &root.join("components/two/component.kdl"),
             &SECUREBOOT.replace("sb_cert.der", "other.der"),
         )
         .unwrap();

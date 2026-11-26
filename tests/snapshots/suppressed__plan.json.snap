@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "suppressed",
       "file": "./components/suppressed.kdl",
+      "component": "suppressed",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "bootc",
           "rechunking",
@@ -71,12 +74,14 @@ source: tests/golden/harness.rs
             {
               "path": "apps/browser",
               "variant": null,
+              "variant-default": false,
               "description": "A flatpak application, which the base satisfies the runtime for",
               "options": {},
               "provides": [],
               "requires": [
                 "flatpak"
               ],
+              "prefers": {},
               "met_by": {
                 "flatpak": {
                   "how": "base"
@@ -90,7 +95,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "8d9af146c45c5b56c3747cb099403acc5316cdf44f59b0a84f4399a7655ccdae",
+                "content": "71f059db043bdb303ee757c28772d4ccb7cadf126ba55915de2ce70607ef9366",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -104,10 +109,12 @@ source: tests/golden/harness.rs
             {
               "path": "suppressed",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -133,6 +140,7 @@ source: tests/golden/harness.rs
             {
               "path": "apps/flatpak",
               "variant": "beta",
+              "variant-default": false,
               "description": "Installs flatpak and enables the remotes an image asks for",
               "options": {
                 "OPT_REMOTES": "flathub flathub-beta",
@@ -142,6 +150,7 @@ source: tests/golden/harness.rs
                 "flatpak"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [
                 "/usr/bin/flatpak"
@@ -163,7 +172,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "88c547072a77b325e12905325aece95dea820caba0f53d6ab858f2a9cca0f204",
+                "content": "9e56d97f0dfcb562688123d30e588de8e86ca7e2c21b1a0a179f11968799046b",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -201,7 +210,7 @@ source: tests/golden/harness.rs
             "base": "ghcr.io/ublue-os/bazzite:stable",
             "args": [
               "TARGET=suppressed",
-              "COMPONENT_HASHES=apps/browser|8d9af146c45c5b56c3747cb099403acc5316cdf44f59b0a84f4399a7655ccdae",
+              "COMPONENT_HASHES=apps/browser|71f059db043bdb303ee757c28772d4ccb7cadf126ba55915de2ce70607ef9366",
               "ASSET_RESOLUTIONS=",
               "SCAP_CLAIMED=",
               "SCAP_REFUSED=",

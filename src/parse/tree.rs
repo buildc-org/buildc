@@ -15,18 +15,61 @@ const PIN: Prop = Prop { name: "pin", kind: Kind::Str,
     say: Say::NONE, missing: Say::NONE };
 
 #[rustfmt::skip]
-const PROPS: &[Prop] = &[
-    Prop { name: "variant", kind: Kind::Str,
-        desc: "The variant of the component that this path builds.",
-        say: Say::NONE, missing: Say::NONE },
+const VARIANT: Prop = Prop { name: "variant", kind: Kind::Str,
+    desc: "The variant of the component that this path builds.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const DIGEST: Prop = Prop { name: "digest", kind: Kind::Str,
+    desc: "The digest of the base image reference.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const SIGNED: Prop = Prop { name: "signed", kind: Kind::Bool,
+    desc: "Whether the base image publishes a cosign signature.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const KEY: Prop = Prop { name: "key", kind: Kind::Str,
+    desc: "The repository path of the cosign public key that verifies the base.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const KEY_SHA256: Prop = Prop { name: "key-sha256", kind: Kind::Str,
+    desc: "The sha256 that pins a local cosign public key's content.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const IDENTITY: Prop = Prop { name: "identity", kind: Kind::Str,
+    desc: "The certificate identity that verifies a keyless signature of the base.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const ISSUER: Prop = Prop { name: "issuer", kind: Kind::Str,
+    desc: "The OIDC issuer of the certificate identity; it defaults to GitHub's.",
+    say: Say::NONE, missing: Say::NONE };
+
+#[rustfmt::skip]
+pub(crate) const BASE_PROPS: &[Prop] = &[
+    DIGEST,
+    SIGNED,
+    KEY,
+    KEY_SHA256,
+    IDENTITY,
+    ISSUER,
+];
+
+#[rustfmt::skip]
+pub(crate) const PROPS: &[Prop] = &[
+    VARIANT,
     LIBRARY,
     PIN,
-    Prop { name: "digest", kind: Kind::Str,
-        desc: "The digest of the base image reference.",
-        say: Say::NONE, missing: Say::NONE },
-    Prop { name: "signed", kind: Kind::Bool,
-        desc: "Whether the base image publishes a cosign signature.",
-        say: Say::NONE, missing: Say::NONE },
+    DIGEST,
+    SIGNED,
+    KEY,
+    KEY_SHA256,
+    IDENTITY,
+    ISSUER,
 ];
 
 #[rustfmt::skip]
@@ -38,8 +81,6 @@ pub(crate) const SEGMENT: Node = Node::new("", "One part of a component path, wh
     .example("desktop-environment")
     .props(PROPS, Say::NONE)
     .notes(&[
-        "In a manifest, a quoted segment may read a string option of the component, as in \
-         `repos { \"{repo}\" }`. The path resolves after the option values.",
         "In a manifest, a segment inside an `on` block builds only on the families that the \
          gate names.",
         "A segment is read below the current context. At the top of a manifest the context is \
@@ -59,26 +100,36 @@ pub(crate) const SEGMENT: Node = Node::new("", "One part of a component path, wh
          the list does not hold.",
         "`buildc check` refuses two components that set different values if neither component \
          lists the other. `buildc why` reports each value that each component applies.",
-        "The base is the listed component that declares `base`. Only its segment takes \
-         `digest=` and `signed=`.",
+        "The base is the component that declares `base`. A source-composed image lists it as a \
+         segment, and a base-derived component is the build's own component. Only a base entry \
+         takes `digest=`, `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=`.",
+        "`key=` names a cosign public key at a repository path. `identity=` names a keyless \
+         certificate identity, and `issuer=` defaults to GitHub's OIDC issuer. Either one \
+         verifies the base's signature, and each needs `signed=#true`.",
         "`buildc add component` adds a reference to a library component. `buildc copy \
          component` copies one into a local library and records where it came from in that \
          library's `origins.kdl`.",
     ]);
 
 #[rustfmt::skip]
-pub(crate) const CONTEXT: Node = Node::new("component", "A path that the segments in the block are read below. The node lists no component at its own path.")
-    .about("A path that starts with `/` is read from the library root. Any other path is read \
-        from the current context, and `..` goes up one segment. At the top of a manifest the \
-        context is the component's own path.")
-    .example("\"/\"")
+pub(crate) const CONTEXT: Node = Node::new("component", "An instance of the component at a path, or a context that the segments in the block are read below.")
+    .about("A path that names a component lists it, and the block holds that component's option \
+        values and nested components. A path of `/`, `.` or `..` sets the context alone and takes \
+        no `variant=` or base facts. A path that starts with `/` is read from the library root. \
+        Any other path is read from the current context, and `..` goes up one segment. At the top \
+        of a manifest the context is the component's own path. A file outside every library reads \
+        the repository root in place of a library root.")
+    .example("\"/hardware\"")
     .arg(Arg::Str, Say::new("`component` needs a path", "no path given",
-        "`component \"/\" { … }` reads the block from the library root, and `component \"..\" { … }` from the parent"))
-    .props(&[LIBRARY, PIN], Say::new("`{}` is not a `component` property", "not part of the schema",
-        "`component` takes `library=` and `pin=`"))
-    .empty(Say::new("`component` includes nothing", "empty block",
-        "list the components to include inside the block"))
-    .children(&[SEGMENT], Say::NONE);
+        "`component \"/hardware\"` lists `hardware`, and `component \"/\" { … }` reads the block from the library root"))
+    .props(PROPS, Say::new("`{}` is not a `component` property", "not part of the schema",
+        "`component` takes the same properties as a segment"))
+    .children(&[SEGMENT], Say::NONE)
+    .notes(&[
+        "In a file outside every library, `component \"./<name>\"` and `component \"/<name>\"` \
+         both read the component file at the repository root.",
+        "A bare child of a file outside every library reads from the library root.",
+    ]);
 
 pub(crate) fn join(parent: &str, name: &str) -> String {
     match parent.is_empty() {
@@ -97,11 +148,12 @@ pub(crate) fn context(at: &str, path: &str) -> Result<String, String> {
     };
     for part in rest.split('/').filter(|part| !part.is_empty()) {
         match part {
+            "." => {}
             ".." if held.pop().is_none() => {
                 return Err(format!("`{path}` climbs above the library root"));
             }
             ".." => {}
-            _ if part.contains('{') || crate::model::image::is_local_path(part) => held.push(part),
+            _ if crate::model::image::is_local_path(part) => held.push(part),
             _ => return Err(format!("`{path}` is not a component path")),
         }
     }
@@ -115,7 +167,12 @@ pub(crate) struct Props {
     pub pin: Option<String>,
     pub digest: Option<(String, Span)>,
     pub signed: Option<(bool, Span)>,
+    pub key: Option<(String, Span)>,
+    pub key_sha256: Option<(String, Span)>,
+    pub identity: Option<(String, Span)>,
+    pub issuer: Option<(String, Span)>,
     pub rooted: bool,
+    pub root_file: bool,
 }
 
 impl Props {
@@ -190,13 +247,48 @@ impl Props {
                     }
                     None => "`signed=#false` records that the base publishes no cosign signature",
                 },
+                "key" => match text.filter(|text| key_path(text)) {
+                    Some(text) => {
+                        out.key = Some((text, span));
+                        continue;
+                    }
+                    None => {
+                        "`key=\"<path>\"` names a cosign public key at a repository path, as \
+                         `key=\"keys/public/etc/pki/containers/cosign.pub\"`"
+                    }
+                },
+                "key-sha256" => match text.filter(|text| is_sha256(text)) {
+                    Some(text) => {
+                        out.key_sha256 = Some((text, span));
+                        continue;
+                    }
+                    None => {
+                        "`key-sha256=\"<64 hex>\"` pins a local public key, lowercase as \
+                         sha256sum writes it"
+                    }
+                },
+                "identity" => match text.filter(|text| !text.is_empty()) {
+                    Some(text) => {
+                        out.identity = Some((text, span));
+                        continue;
+                    }
+                    None => "`identity=\"<identity>\"` names the certificate identity of a keyless signature",
+                },
+                "issuer" => match text.filter(|text| !text.is_empty()) {
+                    Some(text) => {
+                        out.issuer = Some((text, span));
+                        continue;
+                    }
+                    None => "`issuer=\"<url>\"` names the OIDC issuer of the certificate identity",
+                },
                 _ => {
                     issues.push(
                         Issue::new(format!("`{key}` is not a property of `{path}`"), src)
                             .at(span, "not part of the schema")
                             .help(
-                                "a segment accepts `variant=`, `library=`, `pin=`, `digest=` and \
-                                 `signed=`; options are set as child nodes",
+                                "a segment accepts `variant=`, `library=`, `pin=`, `digest=`, \
+                                 `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=`; \
+                                 options are set as child nodes",
                             ),
                     );
                     continue;
@@ -208,26 +300,94 @@ impl Props {
                     .help(help),
             );
         }
+        check_trust(&out, src, issues);
         out
+    }
+}
+
+fn key_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains("://")
+        && path.split('/').all(|part| !part.is_empty() && part != "..")
+}
+
+fn is_sha256(text: &str) -> bool {
+    text.len() == 64
+        && text
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
+fn check_trust(props: &Props, src: &Source, issues: &mut Issues) {
+    if props.key_sha256.is_some() && props.key.is_none() {
+        let span = props
+            .key_sha256
+            .as_ref()
+            .map(|(_, span)| *span)
+            .unwrap_or_default();
+        issues.push(
+            Issue::new("`key-sha256=` pins a key with no `key=`", src)
+                .at(span, "no key to hash")
+                .help("add `key=\"<repository path>\"`, or drop `key-sha256=`"),
+        );
+    }
+    if let (Some((_, key)), Some((_, identity))) = (&props.key, &props.identity) {
+        issues.push(
+            Issue::new("the base names a `key=` and an `identity=`", src)
+                .at(*key, "one verifier")
+                .at(*identity, "and another")
+                .help("a key verifies a key signature, and an identity verifies a keyless one; name one"),
+        );
+    }
+    if props.identity.is_none() && props.issuer.is_some() {
+        let span = props
+            .issuer
+            .as_ref()
+            .map(|(_, span)| *span)
+            .unwrap_or_default();
+        issues.push(
+            Issue::new("`issuer=` names an issuer with no `identity=`", src)
+                .at(span, "no identity to issue")
+                .help("add `identity=\"<certificate identity>\"`, or drop `issuer=`"),
+        );
+    }
+    if !matches!(props.signed, Some((true, _))) && (props.key.is_some() || props.identity.is_some())
+    {
+        let span = props
+            .key
+            .as_ref()
+            .or(props.identity.as_ref())
+            .map(|(_, span)| *span)
+            .unwrap_or_default();
+        issues.push(
+            Issue::new("a verifier names a base that is not declared signed", src)
+                .at(span, "nothing to verify")
+                .help("`signed=#true` records that the base publishes a cosign signature"),
+        );
     }
 }
 
 pub(crate) fn refuse_base_facts(
     path: &str,
-    digest: Option<Span>,
-    signed: Option<Span>,
+    facts: &[(&str, Option<Span>)],
     src: &Source,
     issues: &mut Issues,
 ) {
-    let spans = digest.map(|span| (span, "digest"));
-    for (span, key) in spans.into_iter().chain(signed.map(|span| (span, "signed"))) {
+    for (key, span) in facts
+        .iter()
+        .filter_map(|(key, span)| span.map(|span| (*key, span)))
+    {
         issues.push(
             Issue::new(
                 format!("`{path}` is not the base, so it takes no `{key}=`"),
                 src,
             )
             .at(span, "only the base takes it")
-            .help("`digest=` and `signed=` record the base image that the image lists"),
+            .help(
+                "`digest=`, `signed=`, `key=`, `key-sha256=`, `identity=` and `issuer=` record the \
+                 base image on a `base` node or the base segment",
+            ),
         );
     }
 }
@@ -265,7 +425,7 @@ pub(crate) fn organises(node: &KdlNode, body: &Body) -> bool {
         && !node.entries().iter().any(|entry| {
             matches!(
                 entry.name().map(|name| name.value()),
-                Some("variant" | "digest" | "signed")
+                Some("variant" | "digest" | "signed" | "key" | "identity" | "issuer")
             )
         })
 }

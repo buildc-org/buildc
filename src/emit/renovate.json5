@@ -34,7 +34,7 @@
       // excludes an underscore-prefixed component directory.
       "description": "Version-tagged pins",
       "managerFilePatterns": [
-        "/^components/([a-z][^/]*/)?[a-z][^/]*/manifest\\.kdl$/",
+        "/^components/([a-z][^/]*/)?[a-z][^/]*/component\\.kdl$/",
       ],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>github-releases|github-tags)\" depName=\"(?<depName>[^\"]+)\"(?: extractVersion=\"(?<extractVersion>[^\"]+)\")?\\s*\\n\\s*version \"(?<currentValue>[^\"]+)\"",
@@ -42,8 +42,8 @@
     },
     {
       "customType": "regex",
-      "description": "Commit-pinned asset pins in manifest.kdl",
-      "managerFilePatterns": ["/^components/([a-z][^/]*/)?[a-z][^/]*/manifest\\.kdl$/"],
+      "description": "Commit-pinned asset pins in component.kdl",
+      "managerFilePatterns": ["/^components/([a-z][^/]*/)?[a-z][^/]*/component\\.kdl$/"],
       "matchStrings": [
         "renovate datasource=\"(?<datasource>git-refs)\" depName=\"(?<depName>[^\"]+)\"\\s*\\n\\s*version \"(?<currentDigest>[^\"]+)\"",
       ],

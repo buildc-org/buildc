@@ -31,14 +31,14 @@ library `upstream` holds no component `nosuch`
 `components/flatpak` already exists, so `flatpak` is not copied
 ==== the tree
 components/.gitkeep
-components/browser/manifest.kdl
+components/browser/component.kdl
+components/flatpak/component.kdl
 components/flatpak/files/usr/share/example/remotes.list
-components/flatpak/manifest.kdl
 components/origins.kdl
 ==== the origins
 origin "libraries/upstream" {
-    component "browser" hash="9cd0b8e41aae776f69cb633ba00970d49cf4b37f3e1dd94af1dc210649515a41"
-    component "flatpak" hash="3661e826e22fa5fc15a5bea24a0f191ad712f7b003c830670b7d94ee83b1c796"
+    component "browser" hash="e824bdaf81553690e947468c09563229d69598b9bc3f51ff6fc9827d1d8a869e"
+    component "flatpak" hash="558008a69346e24a29257e99ceb66f8edb2d195091ad97792c90f859eb9f5612"
 }
 ==== check
 ==== check after an edit

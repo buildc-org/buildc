@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "broken-component",
       "file": "./components/broken-component.kdl",
+      "component": "broken-component",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": null,
@@ -36,6 +38,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [
           "rechunking",
           "bootc"
@@ -58,12 +61,14 @@ source: tests/golden/harness.rs
             {
               "path": "core/nameless",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [
                 "shell-tools"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -73,7 +78,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "157c6f4c6dec62ae03abecfa1c7802cfafa3b08651d214dec028d3daac444206",
+                "content": "e0a03f769140d54eabaaa304ba5d0b0dc503781ecba9e71332d5e204002284d7",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -104,10 +109,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/missing",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -131,10 +138,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/latin",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -158,10 +167,12 @@ source: tests/golden/harness.rs
             {
               "path": "broken-component",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -201,7 +212,7 @@ source: tests/golden/harness.rs
             "base": "quay.io/fedora/fedora-bootc:44",
             "args": [
               "TARGET=broken-component",
-              "COMPONENT_HASHES=core/nameless|157c6f4c6dec62ae03abecfa1c7802cfafa3b08651d214dec028d3daac444206",
+              "COMPONENT_HASHES=core/nameless|e0a03f769140d54eabaaa304ba5d0b0dc503781ecba9e71332d5e204002284d7",
               "ASSET_RESOLUTIONS=",
               "SCAP_CLAIMED=",
               "SCAP_REFUSED=",

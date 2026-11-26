@@ -28,7 +28,7 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1` |
+| declared | `e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41` |
 
 It is the repository's own copy of `edited` from `https://github.com/owner/upstream` at `0123456789abcdef0123456789abcdef01234567`.
 
@@ -53,6 +53,7 @@ None. It declares no `copr` and ships no `repo.sh` file.
   "imported_by": [],
   "provides": [],
   "requires": [],
+  "prefers": [],
   "packages": [
     {
       "family": "fedora",
@@ -65,9 +66,11 @@ None. It declares no `copr` and ships no `repo.sh` file.
   "groups": [],
   "coprs": [],
   "satisfies": [],
-  "content": "af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1",
+  "content": "e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41",
   "built": null,
   "library": null,
+  "variants": [],
+  "image_fields": [],
   "settings": [],
   "imported": {
     "origin": "https://github.com/owner/upstream",
@@ -109,7 +112,7 @@ Nothing. It declares no `satisfies`.
 
 | Content | Hash |
 | --- | --- |
-| declared | `af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1` |
+| declared | `e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41` |
 
 It is the repository's own copy of `edited` from `https://github.com/owner/upstream` at `0123456789abcdef0123456789abcdef01234567`.
 
@@ -130,7 +133,7 @@ edited, owned, edited-copy, fedora-family
 
 | Content | Hash |
 | --- | --- |
-| declared | `af3ed54b02ca6dd0175a9fc7d84dcd2ff32e985e7911408f099020f4a3397df1` |
+| declared | `e8f71115d9603fd86269a03b3fcc25e0e5d1ca249c9f841553a70e06daacba41` |
 | observed by the build | `not what was declared` |
 
 **The two documents disagree**, which they cannot if both came from this build.

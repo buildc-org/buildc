@@ -25,7 +25,7 @@ impl Library {
             false => self.root.join("components"),
         };
         std::fs::create_dir_all(tree.join(path)).unwrap();
-        std::fs::write(tree.join(path).join("manifest.kdl"), text).unwrap();
+        std::fs::write(tree.join(path).join("component.kdl"), text).unwrap();
     }
 
     fn source(&self) -> Collection {

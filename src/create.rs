@@ -773,6 +773,7 @@ impl Image {
             sources,
             root_library.as_deref(),
             default_library.as_deref(),
+            Vec::new(),
         );
         let path = |provider: &crate::provider::Provider| {
             let owner = match holds(provider) {
@@ -1875,7 +1876,7 @@ mod tests {
             "one/own",
             "components/own",
         ] {
-            crate::init::put(&root.join(path).join("manifest.kdl"), "schema-version 1\n").unwrap();
+            crate::init::put(&root.join(path).join("component.kdl"), "schema-version 1\n").unwrap();
         }
         let sources: Vec<crate::model::remote::Collection> = ["one", "two"]
             .into_iter()
@@ -1887,7 +1888,8 @@ mod tests {
             .collect();
         let own = Some(layout::ROOT_LIBRARY);
         let written = |default: Option<&str>, name: &str, owner: Option<&str>| {
-            let resolver = crate::resolve::library::Libraries::read(&root, &sources, own, default);
+            let resolver =
+                crate::resolve::library::Libraries::read(&root, &sources, own, default, Vec::new());
             listed(&resolver, own, name, owner)
         };
         let lines = [
@@ -1922,7 +1924,7 @@ mod tests {
             ("identity", "os-release"),
         ] {
             crate::init::put(
-                &root.join("components").join(path).join("manifest.kdl"),
+                &root.join("components").join(path).join("component.kdl"),
                 &format!("schema-version 1\n\nprovides \"{provides}\"\n"),
             )
             .unwrap();
@@ -1959,7 +1961,7 @@ mod tests {
             )],
         );
         crate::init::put(
-            &root.join("components/os-release/manifest.kdl"),
+            &root.join("components/os-release/component.kdl"),
             "schema-version 1\n\nprovides \"os-release\"\n\noption \"name\" type=\"string\" {\n    default \"\"\n}\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
         )
         .unwrap();
@@ -1991,12 +1993,12 @@ mod tests {
             )],
         );
         crate::init::put(
-            &root.join("components/browser/manifest.kdl"),
+            &root.join("components/browser/component.kdl"),
             "schema-version 1\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
         )
         .unwrap();
         crate::init::put(
-            &root.join("components/os-release/manifest.kdl"),
+            &root.join("components/os-release/component.kdl"),
             "schema-version 1\n\nprovides \"os-release\"\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n",
         )
         .unwrap();
@@ -2040,12 +2042,12 @@ mod tests {
         )
         .unwrap();
         crate::init::put(
-            &root.join("components/base-image/own/manifest.kdl"),
+            &root.join("components/base-image/own/component.kdl"),
             "schema-version 1\n\ndescription \"A base\"\n\nbase \"example.invalid/base:1\" {\n    family \"fedora\"\n}\n",
         )
         .unwrap();
         crate::init::put(
-            &root.join("components/os-release/manifest.kdl"),
+            &root.join("components/os-release/component.kdl"),
             "schema-version 1\n\ndescription \"Image name and URLs\"\n\nprovides \"os-release\" exclusive=#true\n\noption \"name\" type=\"string\" {\n    default \"\"\n}\n\noption \"home-url\" type=\"string\" {\n    default \"\"\n}\n\noption \"bug-report-url\" type=\"string\" {\n    default \"\"\n}\n",
         )
         .unwrap();
@@ -2362,7 +2364,7 @@ mod tests {
         let file = root.join("components/one.kdl");
         let text = format!("component \"/\" {{\n{text}}}\n");
         crate::init::put(&file, &text).unwrap();
-        crate::init::put(&root.join("components/hardware/nvidia/manifest.kdl"), "").unwrap();
+        crate::init::put(&root.join("components/hardware/nvidia/component.kdl"), "").unwrap();
         let out = unlisting(&root, &file, &text, name, false);
         std::fs::remove_dir_all(root).unwrap();
         out.map(|out| {
@@ -2431,7 +2433,7 @@ mod tests {
     fn a_cancelled_listing_does_not_create_a_component() {
         let root =
             std::env::temp_dir().join(format!("buildc-cancel-component-{}", std::process::id()));
-        let file = root.join("components/hello/manifest.kdl");
+        let file = root.join("components/hello/component.kdl");
         let component = Component {
             path: "hello".into(),
             written: Written::Directory {
@@ -2517,7 +2519,7 @@ mod tests {
     fn an_inline_component_that_meets_a_directory_component_is_refused_naming_both() {
         let root = inline_repo("clash");
         crate::init::put(
-            &root.join("components/one/apps/manifest.kdl"),
+            &root.join("components/one/apps/component.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -2609,7 +2611,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let written = root.join("shelf/tools/manifest.kdl").is_file();
+        let written = root.join("shelf/tools/component.kdl").is_file();
         let stray = root.join("components/tools").exists();
         let list = crate::model::image::List::editable(&root)
             .map_err(|issues| issues.plain())
@@ -2657,9 +2659,13 @@ mod tests {
             "schema-version 1\n\nlibraries default=\"shelf\" {\n    local {\n        local-library { source \".\" }\n        shelf { source \"shelf\" }\n    }\n}\n",
         )
         .unwrap();
-        crate::init::put(&root.join("shelf/tools/manifest.kdl"), "schema-version 1\n").unwrap();
         crate::init::put(
-            &root.join("components/tools/manifest.kdl"),
+            &root.join("shelf/tools/component.kdl"),
+            "schema-version 1\n",
+        )
+        .unwrap();
+        crate::init::put(
+            &root.join("components/tools/component.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -2675,8 +2681,8 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let shelf = std::fs::read_to_string(root.join("shelf/tools/manifest.kdl")).unwrap();
-        let own = std::fs::read_to_string(root.join("components/tools/manifest.kdl")).unwrap();
+        let shelf = std::fs::read_to_string(root.join("shelf/tools/component.kdl")).unwrap();
+        let own = std::fs::read_to_string(root.join("components/tools/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(shelf.contains("editors {"), "{shelf}");
         assert_eq!(own, "schema-version 1\n");
@@ -2706,7 +2712,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let written = root.join("components/one/tools/manifest.kdl").is_file();
+        let written = root.join("components/one/tools/component.kdl").is_file();
         let stray = root.join("shelf/tools").exists() || root.join("shelf/one").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(written);
@@ -2717,7 +2723,7 @@ mod tests {
     fn an_inline_path_inside_a_component_holding_a_manifest_node_name_is_refused() {
         let root = inline_repo("in-manifest-segment");
         crate::init::put(
-            &root.join("components/desktop/manifest.kdl"),
+            &root.join("components/desktop/component.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -2731,7 +2737,7 @@ mod tests {
             &Prompt::silent(),
         );
         let manifest =
-            std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+            std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(refused
             .err()
@@ -2764,7 +2770,7 @@ mod tests {
     fn the_in_flag_writes_inside_the_named_component() {
         let root = inline_repo("in-directory");
         crate::init::put(
-            &root.join("components/desktop/manifest.kdl"),
+            &root.join("components/desktop/component.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -2780,7 +2786,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         let directory = root.join("components/desktop/tools").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
@@ -2794,7 +2800,7 @@ mod tests {
     fn the_in_flag_writes_inside_an_inline_definition() {
         let root = inline_repo("in-inline");
         crate::init::put(
-            &root.join("components/desktop/manifest.kdl"),
+            &root.join("components/desktop/component.kdl"),
             "schema-version 1\n\napps {\n    description \"Apps\"\n}\n",
         )
         .unwrap();
@@ -2810,7 +2816,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let text = std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
+        let text = std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
             text.ends_with(
@@ -2828,7 +2834,7 @@ mod tests {
         crate::init::put(&root.join("repo.kdl"), "schema-version 1\n").unwrap();
         for component in ["desktop", "tools"] {
             crate::init::put(
-                &root.join(format!("components/{component}/manifest.kdl")),
+                &root.join(format!("components/{component}/component.kdl")),
                 "schema-version 1\n",
             )
             .unwrap();
@@ -2846,8 +2852,8 @@ mod tests {
         .apply(&root)
         .unwrap();
         let desktop =
-            std::fs::read_to_string(root.join("components/desktop/manifest.kdl")).unwrap();
-        let top = std::fs::read_to_string(root.join("components/tools/manifest.kdl")).unwrap();
+            std::fs::read_to_string(root.join("components/desktop/component.kdl")).unwrap();
+        let top = std::fs::read_to_string(root.join("components/tools/component.kdl")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(
             desktop.ends_with("tools {\n    description \"Tools\"\n}\n"),
@@ -2916,7 +2922,7 @@ mod tests {
     fn the_in_flag_refuses_a_path_that_is_already_defined() {
         let root = inline_repo("in-taken");
         crate::init::put(
-            &root.join("components/desktop/manifest.kdl"),
+            &root.join("components/desktop/component.kdl"),
             "schema-version 1\n\napps {\n    description \"Apps\"\n}\n",
         )
         .unwrap();
@@ -2977,7 +2983,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let written = root.join("components/one/tools/manifest.kdl").exists();
+        let written = root.join("components/one/tools/component.kdl").exists();
         let image = crate::testing::image_text(&root, "one");
         std::fs::remove_dir_all(&root).unwrap();
         assert!(written);
@@ -2991,7 +2997,7 @@ mod tests {
     fn a_library_root_namesake_does_not_refuse_a_component_for_an_in_library_build() {
         let root = inline_repo("namesake");
         crate::init::put(
-            &root.join("components/tools/manifest.kdl"),
+            &root.join("components/tools/component.kdl"),
             "schema-version 1\n",
         )
         .unwrap();
@@ -3009,7 +3015,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let written = root.join("components/one/tools/manifest.kdl").exists();
+        let written = root.join("components/one/tools/component.kdl").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(written);
     }
@@ -3137,7 +3143,7 @@ mod tests {
         .unwrap()
         .apply(&root)
         .unwrap();
-        let written = root.join("components/apps/manifest.kdl").exists();
+        let written = root.join("components/apps/component.kdl").exists();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(written);
     }

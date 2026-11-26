@@ -178,8 +178,8 @@ fn create_into(name: &str, root: &Path) {
 
     let mut out = String::new();
     for file in [
-        "components/my-editor/manifest.kdl",
-        "components/plain/manifest.kdl",
+        "components/my-editor/component.kdl",
+        "components/plain/component.kdl",
         "example.kdl",
         "server.kdl",
     ] {
@@ -344,6 +344,10 @@ fn edited_component(root: &Path) {
 }
 
 fn why(name: &str, root: &Path, component: &str) {
+    why_as(name, root, component);
+}
+
+fn why_as(snapshot: &str, root: &Path, component: &str) {
     let here = given(root);
     let mut out = String::new();
 
@@ -394,7 +398,7 @@ fn why(name: &str, root: &Path, component: &str) {
             .unwrap_or_default(),
     );
 
-    assert_golden(name, "why.txt", &out);
+    assert_golden(snapshot, "why.txt", &out);
 }
 
 fn summary_on_host(root: &Path) {
@@ -537,6 +541,20 @@ fn assert_no_default(root: &Path) {
     }
 }
 
+#[test]
+fn the_renovate_fixture_selects_component_manifests() {
+    let root = given(&crate_dir().join("tests/repos/renovate"));
+    let run = buildc::run(Command::Generate, None, &root);
+    let text = run
+        .files
+        .iter()
+        .find(|(path, _)| path == Path::new(".github/renovate.json5"))
+        .map(|(_, text)| text.as_str())
+        .expect("the fixture generates its Renovate config");
+    assert!(text.contains("component\\\\.kdl"), "{text}");
+    assert!(!text.contains("manifest\\\\.kdl"), "{text}");
+}
+
 fn repo_case(name: &str) {
     let dir = crate_dir().join("tests/repos");
     let root = dir.join(name);
@@ -546,6 +564,7 @@ fn repo_case(name: &str) {
         "enforced" => {
             unenforced(&root);
             why(name, &root, "one/hello");
+            why_as("enforced-image", &root, "enforced");
         }
         "minimal" => {
             why(name, &root, "core/hello");

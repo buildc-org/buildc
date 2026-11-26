@@ -273,7 +273,7 @@ mod tests {
     fn a_pin_with_no_url_asks_for_the_url_alone() {
         let text = "pin { manual \"vendored by hand\" }";
         let doc: KdlDocument = text.parse().expect("valid KDL");
-        let src = Source::new("manifest.kdl", text);
+        let src = Source::new("component.kdl", text);
         let mut issues = Issues::default();
         read(&doc.nodes()[0], &src, &mut issues);
         let found = issues.findings();

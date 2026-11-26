@@ -15,6 +15,7 @@ pub const FINALIZE_SCRIPT: &str = "finalize.sh";
 pub const FRAGMENT: &str = "Containerfile.inc";
 
 pub const OVERLAY: &str = "files";
+pub const VARIANTS: &str = "variants";
 
 pub struct Policy {
     pub dir: &'static str,
@@ -79,6 +80,30 @@ pub fn shipped(component_dir: &Path, family: &str, file: &str) -> Option<String>
         .find(|at| component_dir.join(at).is_file())
 }
 
+/// The exact base family wins over a broader family directory.
+/// Within one family directory, the selected variant wins over the component.
+pub fn shipped_across(dirs: &[PathBuf], family: &str, file: &str) -> Option<(PathBuf, String)> {
+    let gated: Vec<&str> = FAMILY_DIRS
+        .iter()
+        .filter(|(_, taken_on)| taken_on.contains(&family))
+        .map(|(name, _)| *name)
+        .collect();
+    for name in gated.iter().rev() {
+        let at = format!("{name}/{file}");
+        for dir in dirs {
+            if dir.join(&at).is_file() {
+                return Some((dir.clone(), at));
+            }
+        }
+    }
+    for dir in dirs {
+        if dir.join(file).is_file() {
+            return Some((dir.clone(), file.to_string()));
+        }
+    }
+    None
+}
+
 pub fn family_dirs(component_dir: &Path, family: &str) -> Vec<&'static str> {
     FAMILY_DIRS
         .iter()
@@ -102,6 +127,7 @@ pub fn layered(on_disk: &Path, family: &str, file: &str) -> Vec<String> {
 
 pub fn component_owned(name: &str) -> bool {
     name == OVERLAY
+        || name == VARIANTS
         || name == SELINUX.dir
         || name == APPARMOR.dir
         || FAMILY_DIRS.iter().any(|(dir, _)| *dir == name)
@@ -364,7 +390,7 @@ pub fn has_content(dir: &Path) -> bool {
 pub const WORKFLOW_DIR: &str = ".github/workflows";
 
 pub const REPO_FILE: &str = "repo.kdl";
-pub const MANIFEST_FILE: &str = "manifest.kdl";
+pub const MANIFEST_FILE: &str = "component.kdl";
 pub const ORIGINS_FILE: &str = crate::provenance::origins::FILE;
 
 pub const MOUNTED: &str = "out/buildc";
@@ -390,6 +416,15 @@ pub fn origins(root: &Path) -> PathBuf {
 
 pub fn component(root: &Path, dir: impl AsRef<Path>) -> PathBuf {
     components(root).join(dir)
+}
+
+pub fn variant_dir(home: &Path, name: &str) -> PathBuf {
+    home.join(VARIANTS).join(name)
+}
+
+pub fn variant_home(home: &Path, variant: Option<&str>) -> Option<PathBuf> {
+    let at = variant_dir(home, variant?);
+    at.is_dir().then_some(at)
 }
 
 pub fn public_key(root: &Path, path: &str) -> PathBuf {
@@ -484,8 +519,10 @@ pub const REPOSITORY: Tree = Tree {
                 beside where its directory would be, or an inline definition in another component. \
                 See [Components](components.md)." },
         Place { path: &["<name>.kdl"], writer: "`buildc create image`, then the user", tracked: true,
-            what: "An image file at the repository root. `builds` in `repo.kdl` names it as \
-                `./<name>`, and a bare child in it reads from the library root." },
+            what: "A `.kdl` file at the repository root is an image or a component. `builds` in \
+                `repo.kdl` names an image as `./<name>`. Another root file reaches a component \
+                with `component \"./<name>\"`. A bare child of a root file reads from the library \
+                root." },
         Place { path: &[COMPONENTS, "/", ORIGINS_FILE], writer: "`buildc copy component`", tracked: true,
             what: "Where each copied component came from, and what its content hashed to. See \
                 [`origins.kdl`](origins.md)." },
@@ -527,7 +564,7 @@ pub const COMPONENT_DIR: Tree = Tree {
         and its path names the component. A component can also be a `<name>.kdl` file or an inline \
         definition in another component, as [the component schema](component.md) describes. The build \
         reads the files below by convention, so a component can be as small as one `component.sh`. Any \
-        one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, \
+        one of `component.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, \
         `Containerfile.inc` and `files/` marks a directory as a component. A component can also hold \
         other components. A tree that lists a nested component under its bare parent segments, as \
         `hardware { nvidia }`, also lists each parent segment that is a component. A tree that lists \
@@ -537,7 +574,7 @@ pub const COMPONENT_DIR: Tree = Tree {
         Place { path: &[MANIFEST_FILE], writer: "", tracked: true,
             what: "What the component declares about itself. A component with only a script and \
                 `files/` can leave it out. A component fetched from another repository needs one. \
-                See [`manifest.kdl`](component.md)." },
+                See [`component.kdl`](component.md)." },
         Place { path: &[SCRIPT], writer: "", tracked: true,
             what: "The install logic. The build sources it in the layer of the component, after the \
                 keys and before the policies and `files/`." },
@@ -554,7 +591,7 @@ pub const COMPONENT_DIR: Tree = Tree {
                 `REPO_ID` of `repo.sh` is already configured, then the build skips it." },
         Place { path: &[FRAGMENT], writer: "", tracked: true,
             what: "Containerfile lines that the build adds verbatim, for a need that the \
-                fields cannot express. `fragment` in `manifest.kdl` places them." },
+                fields cannot express. `fragment` in `component.kdl` places them." },
         Place { path: &[SELINUX.dir, "/*.te"], writer: "", tracked: true,
             what: "SELinux policy. If the image provides `selinux-policy`, then the build \
                 compiles and installs it." },
@@ -664,7 +701,7 @@ mod tests {
         for file in [
             "a.kdl",
             "b.kdl",
-            "c/manifest.kdl",
+            "c/component.kdl",
             "_template.kdl",
             ORIGINS_FILE,
         ] {

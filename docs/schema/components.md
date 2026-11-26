@@ -1,6 +1,6 @@
 # Components
 
-A directory component is a directory under `components/`, at whatever depth groups it, and its path names the component. A component can also be a `<name>.kdl` file or an inline definition in another component, as [the component schema](component.md) describes. The build reads the files below by convention, so a component can be as small as one `component.sh`. Any one of `manifest.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component can also hold other components. A tree that lists a nested component under its bare parent segments, as `hardware { nvidia }`, also lists each parent segment that is a component. A tree that lists the outer component gets none of the components inside it. The walk that finds components passes over the directories that the build of a component reads.
+A directory component is a directory under `components/`, at whatever depth groups it, and its path names the component. A component can also be a `<name>.kdl` file or an inline definition in another component, as [the component schema](component.md) describes. The build reads the files below by convention, so a component can be as small as one `component.sh`. Any one of `component.kdl`, `component.sh`, `repo.sh`, `packages.sh`, `finalize.sh`, `Containerfile.inc` and `files/` marks a directory as a component. A component can also hold other components. A tree that lists a nested component under its bare parent segments, as `hardware { nvidia }`, also lists each parent segment that is a component. A tree that lists the outer component gets none of the components inside it. The walk that finds components passes over the directories that the build of a component reads.
 
 ```text
 components/<component-name>/
@@ -11,22 +11,22 @@ components/<component-name>/
            │   └── *.te
            ├── <collected file>
            ├── Containerfile.inc
+           ├── component.kdl
            ├── component.sh
            ├── finalize.sh
-           ├── manifest.kdl
            ├── packages.sh
            └── repo.sh
 ```
 
 | Path | Description |
 | --- | --- |
-| `manifest.kdl` | What the component declares about itself. A component with only a script and `files/` can leave it out. A component fetched from another repository needs one. See [`manifest.kdl`](component.md). |
+| `component.kdl` | What the component declares about itself. A component with only a script and `files/` can leave it out. A component fetched from another repository needs one. See [`component.kdl`](component.md). |
 | `component.sh` | The install logic. The build sources it in the layer of the component, after the keys and before the policies and `files/`. |
 | `packages.sh` | Package work that the declarations cannot express. The package step sources it after the declared packages, with the network that `packages` in `repo.kdl` allows. It can call the family's `install_packages`. |
 | `finalize.sh` | The finalize phase sources it, in resolved order. |
 | `files/` | An overlay that the build copies over `/`. |
 | `repo.sh` | A package repository file. The build sources it first. On Fedora, if the `REPO_ID` of `repo.sh` is already configured, then the build skips it. |
-| `Containerfile.inc` | Containerfile lines that the build adds verbatim, for a need that the fields cannot express. `fragment` in `manifest.kdl` places them. |
+| `Containerfile.inc` | Containerfile lines that the build adds verbatim, for a need that the fields cannot express. `fragment` in `component.kdl` places them. |
 | `selinux/*.te` | SELinux policy. If the image provides `selinux-policy`, then the build compiles and installs it. |
 | `apparmor/` | AppArmor profiles. If the image provides `apparmor-policy`, then the build validates them and places them in `/etc/apparmor.d`. |
 | `<family>/` | The files of the component that apply to one base family. |

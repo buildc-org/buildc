@@ -29,7 +29,7 @@ A repository is a git repository with `repo.kdl` at its root, which is how `buil
 | `repo.kdl` | `buildc create repo`, then the user | yes | The settings of the whole repository. See [`repo.kdl`](repo.md). |
 | `repo.lock.kdl` | `buildc generate` | yes | The commit and content hash of each remote component that each build reads. See [`repo.lock.kdl`](repo-lock.md). |
 | `components/` | the user, `buildc create component` or `buildc copy component` | yes | The components of the repository. A component is a directory, a `<name>.kdl` file beside where its directory would be, or an inline definition in another component. See [Components](components.md). |
-| `<name>.kdl` | `buildc create image`, then the user | yes | An image file at the repository root. `builds` in `repo.kdl` names it as `./<name>`, and a bare child in it reads from the library root. |
+| `<name>.kdl` | `buildc create image`, then the user | yes | A `.kdl` file at the repository root is an image or a component. `builds` in `repo.kdl` names an image as `./<name>`. Another root file reaches a component with `component "./<name>"`. A bare child of a root file reads from the library root. |
 | `components/origins.kdl` | `buildc copy component` | yes | Where each copied component came from, and what its content hashed to. See [`origins.kdl`](origins.md). |
 | `keys/public/` | `buildc create key` or `buildc set key` | yes | The public half of each key, at the path it has in the image. |
 | `keys/private/` | `buildc create key` | no | The private half of each key. The build never copies it into the image. |

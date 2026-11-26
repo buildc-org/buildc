@@ -30,7 +30,7 @@ fn write(path: &Path, text: &str) {
 const REPO: &str = "schema-version 1\nname \"Fuzz\"\nbuilds { fuzz \"./image\"; }\n";
 const IMAGE: &str =
     "schema-version 1\ncomponent \"/\" {\n    base-image {\n        fuzz\n    }\n    fuzz\n}\n";
-const BASE: &str = "components/base-image/fuzz/manifest.kdl";
+const BASE: &str = "components/base-image/fuzz/component.kdl";
 const BASE_MANIFEST: &str =
     "schema-version 1\nbase \"example.invalid/fuzz:1\" { family \"fedora\"; }\n";
 
@@ -50,7 +50,7 @@ pub fn repository_kdl(kind: u8, text: &str) {
             write(&root.path().join("repo.kdl"), REPO);
             write(&root.path().join("image.kdl"), IMAGE);
             write(&root.path().join(BASE), BASE_MANIFEST);
-            write(&root.path().join("components/fuzz/manifest.kdl"), text);
+            write(&root.path().join("components/fuzz/component.kdl"), text);
             let _ = crate::load(root.path());
         }
         _ => {
@@ -102,7 +102,10 @@ pub fn component_scripts(text: &str) {
     write(&root.path().join("repo.kdl"), repo);
     write(&root.path().join("image.kdl"), IMAGE);
     write(&root.path().join(BASE), BASE_MANIFEST);
-    write(&root.path().join("components/fuzz/manifest.kdl"), component);
+    write(
+        &root.path().join("components/fuzz/component.kdl"),
+        component,
+    );
     write(&root.path().join("components/fuzz/component.sh"), text);
     let _ = crate::load(root.path());
 }

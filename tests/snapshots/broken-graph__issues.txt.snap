@@ -2,7 +2,7 @@
 source: tests/golden/harness.rs
 ---
   x invalid capability name `boot policy`
-   ,-[tests/repos/broken-graph/components/base-image/fedora-bootc-44/manifest.kdl:6:31]
+   ,-[tests/repos/broken-graph/components/base-image/fedora-bootc-44/component.kdl:6:31]
  5 | }
  6 | provides "rechunking" "bootc" "boot policy" "selinux-policy"
    :                               ^^^^^^|^^^^^^
@@ -13,7 +13,7 @@ source: tests/golden/harness.rs
         each segment starts with a lowercase letter
 
   x unknown base family `arch`
-   ,-[tests/repos/broken-graph/components/core/three/manifest.kdl:5:1]
+   ,-[tests/repos/broken-graph/components/core/three/component.kdl:5:1]
  4 | 
  5 | targets "arch"
    : ^^^|^^^
@@ -23,7 +23,7 @@ source: tests/golden/harness.rs
   help: known families: fedora, rhel, debian, ubuntu
 
   x two enabled components declare helper `shared.sh`
-   ,-[tests/repos/broken-graph/components/core/two/manifest.kdl:7:1]
+   ,-[tests/repos/broken-graph/components/core/two/component.kdl:7:1]
  6 | 
  7 | helpers "lib/two/shared.sh"
    : ^^^|^^^
@@ -34,7 +34,7 @@ source: tests/golden/harness.rs
         image
 
   x `core/two` provides `rechunking`, which the base image already provides
-    ,-[tests/repos/broken-graph/components/core/two/manifest.kdl:9:5]
+    ,-[tests/repos/broken-graph/components/core/two/component.kdl:9:5]
   8 | provides {
   9 |     "rechunking"
     :     ^^^^^^|^^^^^
@@ -59,7 +59,7 @@ source: tests/golden/harness.rs
   help: it declares support for: arch
 
   x `shell-tools` is provided by more than one enabled component
-    ,-[tests/repos/broken-graph/components/core/two/manifest.kdl:10:5]
+    ,-[tests/repos/broken-graph/components/core/two/component.kdl:10:5]
   9 |     "rechunking"
  10 |     "shell-tools" exclusive=#true
     :     ^^^^^^|^^^^^^
@@ -83,7 +83,7 @@ source: tests/golden/harness.rs
         no `libraries`, so there is no library to add one from
 
   x `core/one` requires `package-manager`, which nothing enabled provides
-    ,-[tests/repos/broken-graph/components/core/one/manifest.kdl:10:10]
+    ,-[tests/repos/broken-graph/components/core/one/component.kdl:10:10]
   9 | helpers "lib/one/shared.sh"
  10 | requires "package-manager"
     :          ^^^^^^^^|^^^^^^^^
@@ -95,7 +95,7 @@ source: tests/golden/harness.rs
         declares no `libraries`, so there is no library to add one from
 
   x `core/one` requires `apparmor-policy`, which nothing enabled provides
-    ,-[tests/repos/broken-graph/components/core/one/manifest.kdl:11:10]
+    ,-[tests/repos/broken-graph/components/core/one/component.kdl:11:10]
  10 | requires "package-manager"
  11 | requires "apparmor-policy"
     :          ^^^^^^^^|^^^^^^^^
@@ -107,7 +107,7 @@ source: tests/golden/harness.rs
         declares no `libraries`, so there is no library to add one from
 
   x `core/one` requires `nothing`, which nothing enabled provides
-    ,-[tests/repos/broken-graph/components/core/one/manifest.kdl:12:10]
+    ,-[tests/repos/broken-graph/components/core/one/component.kdl:12:10]
  11 | requires "apparmor-policy"
  12 | requires "nothing"
     :          ^^^^|^^^^

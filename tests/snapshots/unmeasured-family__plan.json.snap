@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "arch",
       "file": "./components/arch.kdl",
+      "component": "arch",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -58,10 +61,12 @@ source: tests/golden/harness.rs
             {
               "path": "arch",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],

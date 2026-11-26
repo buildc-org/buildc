@@ -21,10 +21,12 @@ source: tests/golden/harness.rs
     {
       "id": "debian",
       "file": "./components/debian.kdl",
+      "component": "debian",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -39,6 +41,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -58,12 +61,14 @@ source: tests/golden/harness.rs
             {
               "path": "debian-family",
               "variant": null,
+              "variant-default": false,
               "description": "apt, which every Debian-family build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -73,7 +78,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0d248eb51f9ddb23bad27bc7f21853c8ef5fd3c7a79b2ae87915d0dc44ae7799",
+                "content": "c09dd35431647a8a67f634236632a14c9b635d4fdac916aa4dff7639a2028aeb",
                 "resolved": "9310c185468c7b2ac98f3fbb405f5bdad37fcf8216d7590dcf60bff01cc0dbcf",
                 "repo": false,
                 "imported": null
@@ -87,10 +92,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/menu",
               "variant": null,
+              "variant-default": false,
               "description": "Collects the justfile fragments the rest of the image contributes",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -100,7 +107,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "dc8648b6cdc964c4d135eaf663639d39050d02c31c27a833d8e1bd22cdae62c6",
+                "content": "a457611be1d8cb73d32415e9e0c715920c77ceeca0e57ad2444a84f1e7bb756f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -114,10 +121,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/shared",
               "variant": null,
+              "variant-default": false,
               "description": "A component both the Debian and Ubuntu images enable",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -142,7 +151,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "aa570fb7b0256b0ef20cd58192afc91d62777c2dca49cb87c3b71703154de00a",
+                "content": "bd9bc46d5204478174a2de4a07b36b4d1df887104ca3386006c40853ada0aa7f",
                 "resolved": "71f125920968beaca31d2d2aae179e5a0a85e6b2446566c7bfc2e7f635bb47f3",
                 "repo": true,
                 "imported": null
@@ -156,10 +165,12 @@ source: tests/golden/harness.rs
             {
               "path": "debian",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -211,7 +222,7 @@ source: tests/golden/harness.rs
             "base": "docker.io/library/debian:forky",
             "args": [
               "TARGET=debian",
-              "COMPONENT_HASHES=debian-family|0d248eb51f9ddb23bad27bc7f21853c8ef5fd3c7a79b2ae87915d0dc44ae7799 core/menu|dc8648b6cdc964c4d135eaf663639d39050d02c31c27a833d8e1bd22cdae62c6 core/shared|aa570fb7b0256b0ef20cd58192afc91d62777c2dca49cb87c3b71703154de00a",
+              "COMPONENT_HASHES=debian-family|c09dd35431647a8a67f634236632a14c9b635d4fdac916aa4dff7639a2028aeb core/menu|a457611be1d8cb73d32415e9e0c715920c77ceeca0e57ad2444a84f1e7bb756f core/shared|bd9bc46d5204478174a2de4a07b36b4d1df887104ca3386006c40853ada0aa7f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=docker.io/library/debian:forky"
             ],
@@ -226,10 +237,12 @@ source: tests/golden/harness.rs
     {
       "id": "forky",
       "file": "./components/forky.kdl",
+      "component": "forky",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -244,6 +257,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [
@@ -265,12 +279,14 @@ source: tests/golden/harness.rs
             {
               "path": "debian-family",
               "variant": null,
+              "variant-default": false,
               "description": "apt, which every Debian-family build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -280,7 +296,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0d248eb51f9ddb23bad27bc7f21853c8ef5fd3c7a79b2ae87915d0dc44ae7799",
+                "content": "c09dd35431647a8a67f634236632a14c9b635d4fdac916aa4dff7639a2028aeb",
                 "resolved": "e2dc2880415dd1c8a143589747829b6916f79dd67fd88cc05f00126bd2e3072f",
                 "repo": false,
                 "imported": null
@@ -294,6 +310,7 @@ source: tests/golden/harness.rs
             {
               "path": "core/bootc-base",
               "variant": null,
+              "variant-default": false,
               "description": "What a container base needs before it is a bootc image at all",
               "options": {},
               "provides": [
@@ -301,6 +318,7 @@ source: tests/golden/harness.rs
                 "apparmor-policy"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -310,7 +328,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "d73f36c38d0d87b01511745f4351e5b7f3b1cca1e06fba3002d1d65d77d01a02",
+                "content": "cc9344f78373042f0c4aff2a40e6ffc0d0fb54d914acf524da2da735fe4ccbce",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -324,10 +342,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/confined",
               "variant": null,
+              "variant-default": false,
               "description": "Ships one AppArmor profile, which the parser has to accept",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -337,7 +357,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "3bacd7c62fb5119f92fc4735d4cc8798e43285fc35a4051e9b937920872969ee",
+                "content": "8a47f15435f62f2841830c5f234436a1f3a7b86ac150aaf425b25b9836af1695",
                 "resolved": "a34f87df0062d137282481f6e14baaad81e0b39ffc20d4c871f64f5b724e01ec",
                 "repo": false,
                 "imported": null
@@ -351,10 +371,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/menu",
               "variant": null,
+              "variant-default": false,
               "description": "Collects the justfile fragments the rest of the image contributes",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -364,7 +386,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "dc8648b6cdc964c4d135eaf663639d39050d02c31c27a833d8e1bd22cdae62c6",
+                "content": "a457611be1d8cb73d32415e9e0c715920c77ceeca0e57ad2444a84f1e7bb756f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -378,10 +400,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/shared",
               "variant": null,
+              "variant-default": false,
               "description": "A component both the Debian and Ubuntu images enable",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -406,7 +430,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "aa570fb7b0256b0ef20cd58192afc91d62777c2dca49cb87c3b71703154de00a",
+                "content": "bd9bc46d5204478174a2de4a07b36b4d1df887104ca3386006c40853ada0aa7f",
                 "resolved": "b81b46fb29620f408ef0e19fe8e67079a34a5d7ccb49e6cec84d8e61fd950c26",
                 "repo": true,
                 "imported": null
@@ -420,10 +444,12 @@ source: tests/golden/harness.rs
             {
               "path": "forky",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -475,7 +501,7 @@ source: tests/golden/harness.rs
             "base": "docker.io/library/debian:forky",
             "args": [
               "TARGET=forky",
-              "COMPONENT_HASHES=debian-family|0d248eb51f9ddb23bad27bc7f21853c8ef5fd3c7a79b2ae87915d0dc44ae7799 core/bootc-base|d73f36c38d0d87b01511745f4351e5b7f3b1cca1e06fba3002d1d65d77d01a02 core/confined|3bacd7c62fb5119f92fc4735d4cc8798e43285fc35a4051e9b937920872969ee core/menu|dc8648b6cdc964c4d135eaf663639d39050d02c31c27a833d8e1bd22cdae62c6 core/shared|aa570fb7b0256b0ef20cd58192afc91d62777c2dca49cb87c3b71703154de00a",
+              "COMPONENT_HASHES=debian-family|c09dd35431647a8a67f634236632a14c9b635d4fdac916aa4dff7639a2028aeb core/bootc-base|cc9344f78373042f0c4aff2a40e6ffc0d0fb54d914acf524da2da735fe4ccbce core/confined|8a47f15435f62f2841830c5f234436a1f3a7b86ac150aaf425b25b9836af1695 core/menu|a457611be1d8cb73d32415e9e0c715920c77ceeca0e57ad2444a84f1e7bb756f core/shared|bd9bc46d5204478174a2de4a07b36b4d1df887104ca3386006c40853ada0aa7f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=docker.io/library/debian:forky"
             ],
@@ -490,10 +516,12 @@ source: tests/golden/harness.rs
     {
       "id": "ubuntu",
       "file": "./components/ubuntu.kdl",
+      "component": "ubuntu",
       "description": "",
       "keywords": [],
       "logo_url": "",
       "conforms": "",
+      "fields": [],
       "uki": false,
       "allows": [],
       "layout": {
@@ -508,6 +536,7 @@ source: tests/golden/harness.rs
         "scap_content": "",
         "scap_pin": null,
         "signed": false,
+        "verify": null,
         "provides": [],
         "witnesses": {},
         "requires": [],
@@ -527,12 +556,14 @@ source: tests/golden/harness.rs
             {
               "path": "debian-family",
               "variant": null,
+              "variant-default": false,
               "description": "apt, which every Debian-family build layer reaches for",
               "options": {},
               "provides": [
                 "build-environment"
               ],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -542,7 +573,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "0d248eb51f9ddb23bad27bc7f21853c8ef5fd3c7a79b2ae87915d0dc44ae7799",
+                "content": "c09dd35431647a8a67f634236632a14c9b635d4fdac916aa4dff7639a2028aeb",
                 "resolved": "02ea258a9ae085b0380b90d906edb02a5d0d97cd23913b5e3e6a822ae364104c",
                 "repo": false,
                 "imported": null
@@ -556,10 +587,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/menu",
               "variant": null,
+              "variant-default": false,
               "description": "Collects the justfile fragments the rest of the image contributes",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -569,7 +602,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "dc8648b6cdc964c4d135eaf663639d39050d02c31c27a833d8e1bd22cdae62c6",
+                "content": "a457611be1d8cb73d32415e9e0c715920c77ceeca0e57ad2444a84f1e7bb756f",
                 "resolved": null,
                 "repo": false,
                 "imported": null
@@ -583,10 +616,12 @@ source: tests/golden/harness.rs
             {
               "path": "core/shared",
               "variant": null,
+              "variant-default": false,
               "description": "A component both the Debian and Ubuntu images enable",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -611,7 +646,7 @@ source: tests/golden/harness.rs
               "coprs": [],
               "provenance": {
                 "defined": null,
-                "content": "aa570fb7b0256b0ef20cd58192afc91d62777c2dca49cb87c3b71703154de00a",
+                "content": "bd9bc46d5204478174a2de4a07b36b4d1df887104ca3386006c40853ada0aa7f",
                 "resolved": "02ce1c943f9d7f4e2911ff3374a183b3c5eb52155c6416815f0759581b36dbab",
                 "repo": true,
                 "imported": null
@@ -625,10 +660,12 @@ source: tests/golden/harness.rs
             {
               "path": "ubuntu",
               "variant": null,
+              "variant-default": false,
               "description": "",
               "options": {},
               "provides": [],
               "requires": [],
+              "prefers": {},
               "met_by": {},
               "witnessed": [],
               "removes": [],
@@ -680,7 +717,7 @@ source: tests/golden/harness.rs
             "base": "docker.io/library/ubuntu:26.04",
             "args": [
               "TARGET=ubuntu",
-              "COMPONENT_HASHES=debian-family|0d248eb51f9ddb23bad27bc7f21853c8ef5fd3c7a79b2ae87915d0dc44ae7799 core/menu|dc8648b6cdc964c4d135eaf663639d39050d02c31c27a833d8e1bd22cdae62c6 core/shared|aa570fb7b0256b0ef20cd58192afc91d62777c2dca49cb87c3b71703154de00a",
+              "COMPONENT_HASHES=debian-family|c09dd35431647a8a67f634236632a14c9b635d4fdac916aa4dff7639a2028aeb core/menu|a457611be1d8cb73d32415e9e0c715920c77ceeca0e57ad2444a84f1e7bb756f core/shared|bd9bc46d5204478174a2de4a07b36b4d1df887104ca3386006c40853ada0aa7f",
               "ASSET_RESOLUTIONS=",
               "BASE_DECLARED=docker.io/library/ubuntu:26.04"
             ],

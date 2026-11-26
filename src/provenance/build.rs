@@ -141,9 +141,32 @@ fn versions(raw: &str) -> Vec<Json> {
 fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
     let declared = env("BASE_DECLARED");
     let resolved = env("BASE");
+    let signed = env("BASE_SIGNED").as_deref() == Some("true");
+    let attestation = match env("BASE_ATTESTATION_SHA256") {
+        Some(sha256) => Json::object([
+            (
+                "predicate",
+                Json::optional(env("BASE_ATTESTATION_PREDICATE")),
+            ),
+            ("subject", Json::optional(env("BASE_ATTESTATION_SUBJECT"))),
+            ("sha256", Json::string(sha256)),
+            (
+                "payload_sha256",
+                Json::optional(env("BASE_ATTESTATION_PAYLOAD_SHA256")),
+            ),
+        ]),
+        None => Json::Null,
+    };
+    let sbom = env("BASE_SBOM_PACKAGES")
+        .and_then(|packages| packages.parse::<u32>().ok())
+        .map(|packages| Json::object([("packages", Json::number(packages))]))
+        .unwrap_or(Json::Null);
     let mut base = vec![
         ("declared", Json::optional(declared)),
         ("resolved", Json::optional(resolved)),
+        ("signed", Json::Bool(signed)),
+        ("attestation", attestation),
+        ("sbom", sbom),
     ];
     let measured = env("VERSIONS")
         .or_else(|| env("VERSIONS_FILE").and_then(|path| std::fs::read_to_string(path).ok()))
@@ -153,6 +176,8 @@ fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
     if !measured.is_empty() {
         base.push(("versions", Json::array(measured)));
     }
+    let signature = env("BASE_VERIFIED_SIGNATURE").as_deref() == Some("true");
+    let attestation_checked = env("BASE_VERIFIED_ATTESTATION").as_deref() == Some("true");
     Json::object([
         ("schema_version", Json::number(SCHEMA_VERSION)),
         ("target", Json::optional(env("TARGET"))),
@@ -199,7 +224,13 @@ fn record(env: &dyn Fn(&str) -> Option<String>) -> Json {
                 Json::Bool(env("AUDIT_ENFORCE").as_deref() == Some("true")),
             )]),
         ),
-        ("verified", Json::Null),
+        (
+            "verified",
+            Json::object([
+                ("base_signature", Json::Bool(signature)),
+                ("base_attestation", Json::Bool(attestation_checked)),
+            ]),
+        ),
     ])
 }
 
@@ -287,6 +318,9 @@ mod tests {
             Some(str::to_string(match name {
                 "BASE" => "quay.io/fedora/fedora-bootc:44@sha256:abc",
                 "BASE_DECLARED" => "quay.io/fedora/fedora-bootc:44",
+                "BASE_SIGNED" => "false",
+                "BASE_VERIFIED_SIGNATURE" => "false",
+                "BASE_VERIFIED_ATTESTATION" => "false",
                 "TARGET" => "example-desktop",
                 "IMAGE_ID" => "example",
                 "SOURCE_COMMIT" => "deadbeef",
@@ -301,6 +335,9 @@ mod tests {
 
         assert!(out.contains("\"resolved\": \"quay.io/fedora/fedora-bootc:44@sha256:abc\""));
         assert!(out.contains("\"declared\": \"quay.io/fedora/fedora-bootc:44\""));
+        assert!(out.contains("\"signed\": false"));
+        assert!(out.contains("\"attestation\": null"));
+        assert!(out.contains("\"sbom\": null"));
         assert!(out.contains("\"target\": \"example-desktop\""));
         assert!(out.contains("\"backend\": \"buildah\""));
         assert!(out.contains("\"path\": \"apps/browser\""));
@@ -308,7 +345,39 @@ mod tests {
         assert!(out.contains("\"provider\": \"base\""));
         assert!(out.contains("\"version\": \"2025.2\""));
         assert!(out.contains("\"enforce\": false"));
-        assert!(out.contains("\"verified\": null"));
+        assert!(out.contains("\"base_signature\": false"));
+        assert!(out.contains("\"base_attestation\": false"));
+    }
+
+    #[test]
+    fn the_record_names_the_base_attestation_and_its_sbom_count() {
+        let given = |name: &str| {
+            Some(str::to_string(match name {
+                "BASE" => "example@sha256:abc",
+                "BASE_SIGNED" => "true",
+                "BASE_ATTESTATION_PREDICATE" => "https://spdx.dev/Document",
+                "BASE_ATTESTATION_SUBJECT" => "sha256:abc",
+                "BASE_ATTESTATION_SHA256" => "sha256:def",
+                "BASE_ATTESTATION_PAYLOAD_SHA256" => "sha256:ghi",
+                "BASE_SBOM_PACKAGES" => "545",
+                "BASE_VERIFIED_SIGNATURE" => "true",
+                "BASE_VERIFIED_ATTESTATION" => "true",
+                _ => return None,
+            }))
+        };
+        let out = record(&given).render();
+        for wanted in [
+            "\"predicate\": \"https://spdx.dev/Document\"",
+            "\"subject\": \"sha256:abc\"",
+            "\"sha256\": \"sha256:def\"",
+            "\"payload_sha256\": \"sha256:ghi\"",
+            "\"packages\": 545",
+            "\"signed\": true",
+            "\"base_signature\": true",
+            "\"base_attestation\": true",
+        ] {
+            assert!(out.contains(wanted), "{wanted}: {out}");
+        }
     }
 
     #[test]
@@ -320,6 +389,14 @@ mod tests {
             Some(str::to_string(match name {
                 "BASE" => "quay.io/fedora/fedora-bootc:44@sha256:abc",
                 "BASE_DECLARED" => "quay.io/fedora/fedora-bootc:44",
+                "BASE_SIGNED" => "true",
+                "BASE_ATTESTATION_PREDICATE" => "https://spdx.dev/Document",
+                "BASE_ATTESTATION_SUBJECT" => "sha256:abc",
+                "BASE_ATTESTATION_SHA256" => "sha256:def",
+                "BASE_ATTESTATION_PAYLOAD_SHA256" => "sha256:ghi",
+                "BASE_SBOM_PACKAGES" => "545",
+                "BASE_VERIFIED_SIGNATURE" => "true",
+                "BASE_VERIFIED_ATTESTATION" => "true",
                 "TARGET" => "example-desktop",
                 "IMAGE_ID" => "example",
                 "SOURCE_COMMIT" => "deadbeef",
@@ -343,6 +420,14 @@ mod tests {
         for name in [
             "BASE",
             "BASE_DECLARED",
+            "BASE_SIGNED",
+            "BASE_ATTESTATION_PREDICATE",
+            "BASE_ATTESTATION_SUBJECT",
+            "BASE_ATTESTATION_SHA256",
+            "BASE_ATTESTATION_PAYLOAD_SHA256",
+            "BASE_SBOM_PACKAGES",
+            "BASE_VERIFIED_SIGNATURE",
+            "BASE_VERIFIED_ATTESTATION",
             "TARGET",
             "IMAGE_ID",
             "SOURCE_COMMIT",

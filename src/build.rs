@@ -183,6 +183,15 @@ fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
         (None, Some(declared)) => record::base(declared),
         (None, None) => None,
     };
+    let provenance = match &resolved_base {
+        Some(resolved) => crate::provenance::base::fetch(root, resolved, target.verify().as_ref())?,
+        None => crate::provenance::base::Recorded::absent(
+            "the base did not resolve to a digest, so its provenance is not fetched".to_string(),
+        ),
+    };
+    for gap in &provenance.gaps {
+        eprintln!("buildc: base provenance: {gap}");
+    }
     let source_commit = record::source_commit(root);
     confirm_clones(&target.cloned()?, plan.audit_enforce())?;
     let unresolved = target.unresolved();
@@ -191,6 +200,7 @@ fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
         resolved_base.as_deref(),
         source_commit.as_deref(),
         &unresolved,
+        &provenance.gaps,
     )?;
     for why in &unresolved {
         eprintln!("buildc: {why}, so the build record leaves it out");
@@ -233,6 +243,24 @@ fn prepare(root: &Path, opts: &Options) -> Result<Option<Prepared>, String> {
             resolved_base.as_deref().unwrap_or(declared)
         ));
     }
+    build_args.push(format!("BASE_SIGNED={}", target.base_signed()));
+    if let Some(attestation) = &provenance.attestation {
+        build_args.extend([
+            format!("BASE_ATTESTATION_PREDICATE={}", attestation.predicate),
+            format!("BASE_ATTESTATION_SUBJECT={}", attestation.subject),
+            format!("BASE_ATTESTATION_SHA256={}", attestation.sha256),
+            format!(
+                "BASE_ATTESTATION_PAYLOAD_SHA256={}",
+                attestation.payload_sha256
+            ),
+            format!("BASE_SBOM_PACKAGES={}", attestation.packages),
+        ]);
+    }
+    build_args.push(format!("BASE_VERIFIED_SIGNATURE={}", provenance.signature));
+    build_args.push(format!(
+        "BASE_VERIFIED_ATTESTATION={}",
+        provenance.attestation_checked
+    ));
     if let Some(kernel) = &opts.kernel {
         build_args.push(format!("KERNEL={kernel}"));
     }

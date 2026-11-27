@@ -2,7 +2,7 @@
 
 # `origins.kdl`
 
-Location: The root of the components folder of each local library. In this repository that is `components/` unless `library { components }` in `repo.kdl` moves it.
+Location: The root of the components folder of each local library. In this repository that is `components/` unless the `library` block in `repo.kdl` names another folder.
 
 `buildc copy component` writes this file in the folder of components that holds the copy. The copy is the repository's own, and the user may edit it. The entry keeps where it came from and what its content hashed to, so `buildc why` can tell whether the copy was edited since.
 

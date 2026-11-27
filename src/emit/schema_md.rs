@@ -53,7 +53,7 @@ const SECTIONS: &[Section] = &[
     Section { name: "component.kdl", node: &component::COMPONENT, declared: false, area: Area::Component,
         at: "`components/<name>.kdl`, or `components/<name>/component.kdl` in the directory of the component. A `<name>.kdl` file at the repository root is a component when `builds` names it as `./<name>` or another root file reaches it with `component \"./<name>\"`." },
     Section { name: "origins.kdl", node: &origins::ORIGINS_FILE, declared: false, area: Area::Origins,
-        at: "The root of the components folder of each local library. In this repository that is `components/` unless `library { components }` in `repo.kdl` moves it." },
+        at: "The root of the components folder of each local library. In this repository that is `components/` unless the `library` block in `repo.kdl` names another folder." },
     Section { name: "repo.lock.kdl", node: &repo_lock::LOCK_FILE, declared: false, area: Area::RepoLock,
         at: "The root of the repository." },
 ];

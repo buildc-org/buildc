@@ -402,10 +402,11 @@ pub const REPO: Node = Node::new("repo",
                 "omit the block entirely; the components then live in `components/`"))
             .children(&[
                 Node::new("components", "The folder that holds the components, relative to the repository root.")
-                    .about("If `components` is absent, then the components live in `components/`.")
+                    .about("If `components` is absent, then the components live in `components/`. \
+                        With no argument, the block names `components/` too.")
                     .example("\"src/components\"")
-                    .arg(Arg::Str, Say::new("`components` needs a folder", "not a string",
-                        "`components \"src/components\"`"))
+                    .arg(Arg::MaybeStr, Say::new("`components` needs a folder", "not a string",
+                        "`components \"src/components\"` names a folder, or `components` alone keeps the components in `components/`"))
                     .once(""),
             ], Say::new("unknown node `{}` in `library`", "not part of the schema",
                 "a library block holds `components`")),
@@ -633,7 +634,7 @@ fn valid_folder(path: &str) -> bool {
 pub fn components_folder(text: &str) -> Option<String> {
     let doc: KdlDocument = text.parse().ok()?;
     let library = doc.nodes().iter().find(|n| n.name().value() == "library")?;
-    let folder = string_arg(child(library, "components")?)?;
+    let folder = string_arg(child(library, "components")?).unwrap_or(layout::COMPONENTS);
     valid_folder(folder).then(|| folder.to_string())
 }
 
@@ -1000,7 +1001,7 @@ impl List {
                 }
                 "library" => {
                     if let Some(kid) = child(node, "components") {
-                        let folder = string_arg(kid).unwrap_or_default();
+                        let folder = string_arg(kid).unwrap_or(layout::COMPONENTS);
                         if !valid_folder(folder) {
                             issues.push(
                                 Issue::new(format!("`{folder}` is not a components folder"), src)
@@ -2849,6 +2850,11 @@ library { path "src" }
             components_folder("library { components \"src/components\" }\n").as_deref(),
             Some("src/components")
         );
+        assert_eq!(
+            components_folder("library { components }\n").as_deref(),
+            Some("components")
+        );
+        assert_eq!(components_folder("library { components \".\" }\n"), None);
         assert_eq!(components_folder("library { components \"/abs\" }\n"), None);
         assert_eq!(components_folder("name \"x\"\n"), None);
     }

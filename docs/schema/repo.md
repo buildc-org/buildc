@@ -823,13 +823,13 @@ Accepts: {&nbsp;[fields](#library-fields)&nbsp;}
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`components`](#library-components) (optional) | *string* | The folder that holds the components, relative to the repository root. |
+| [`components`](#library-components) (optional) | optionally a *string* | The folder that holds the components, relative to the repository root. |
 
 <a id="library-components"></a>
 
 ### `components` (optional)
 
-If `components` is absent, then the components live in `components/`.
+If `components` is absent, then the components live in `components/`. With no argument, the block names `components/` too.
 
 ```kdl
 library {
@@ -837,7 +837,7 @@ library {
 }
 ```
 
-Accepts: *string*
+Accepts: optionally a *string*
 
 <a id="manifest"></a>
 

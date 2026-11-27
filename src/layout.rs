@@ -666,11 +666,20 @@ mod tests {
         .unwrap();
         let declared = library_components(&root);
         let own = components(&root);
+        std::fs::write(
+            root.join(REPO_FILE),
+            "schema-version 1\nlibrary { components }\n",
+        )
+        .unwrap();
+        let bare = library_components(&root);
+        let own_bare = components(&root);
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(folder, root);
         assert_eq!(inferred, root.join(COMPONENTS));
         assert_eq!(declared, root.join("src/parts"));
         assert_eq!(own, root.join("src/parts"));
+        assert_eq!(bare, root.join(COMPONENTS));
+        assert_eq!(own_bare, root.join(COMPONENTS));
     }
 
     #[test]

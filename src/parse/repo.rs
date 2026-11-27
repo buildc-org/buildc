@@ -403,10 +403,11 @@ pub const REPO: Node = Node::new("repo",
             .children(&[
                 Node::new("components", "The folder that holds the components, relative to the repository root.")
                     .about("If `components` is absent, then the components live in `components/`. \
-                        With no argument, the block names `components/` too.")
-                    .example("\"src/components\"")
-                    .arg(Arg::MaybeStr, Say::new("`components` needs a folder", "not a string",
-                        "`components \"src/components\"` names a folder, or `components` alone keeps the components in `components/`"))
+                        With no argument, or with a path that resolves to `.`, the block names the repository root, so every component directory sits at the top level. \
+                        The path is relative to the repository root; `.` and `..` segments are resolved, and a path that leaves the repository is refused.")
+                    .example("")
+                    .arg(Arg::MaybeStr, Say::new("`components` needs a folder name", "not a string",
+                        "`components \"src/components\"` names a folder, and `components` alone names the repository root"))
                     .once(""),
             ], Say::new("unknown node `{}` in `library`", "not part of the schema",
                 "a library block holds `components`")),
@@ -624,18 +625,52 @@ pub fn default_library_in(text: &str) -> Option<String> {
     prop(doc.get("libraries")?, "default").map(str::to_string)
 }
 
-fn valid_folder(path: &str) -> bool {
-    !path.starts_with('/')
-        && path
-            .split('/')
-            .all(|part| !part.is_empty() && part != "." && part != "..")
+fn resolve_folder(path: &str) -> Option<layout::ComponentsFolder> {
+    if path.is_empty() || Path::new(path).is_absolute() {
+        return None;
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            other => parts.push(other),
+        }
+    }
+    Some(match parts.is_empty() {
+        true => layout::ComponentsFolder::Root,
+        false => layout::ComponentsFolder::Folder(parts.join("/")),
+    })
 }
 
-pub fn components_folder(text: &str) -> Option<String> {
+fn check_components_folder(components: &KdlNode, src: &Source, issues: &mut Issues) {
+    let Some(folder) = string_arg(components).filter(|folder| !folder.is_empty()) else {
+        return;
+    };
+    if resolve_folder(folder).is_none() {
+        issues.push(
+            Issue::new(
+                format!("`{folder}` is not a folder inside the repository"),
+                src,
+            )
+            .at(components.name().span(), "outside the repository")
+            .help("name a relative path that stays inside the repository; `.` and `..` segments are resolved, and `..` never rises above the repository root"),
+        );
+    }
+}
+
+pub fn components_folder(text: &str) -> Option<layout::ComponentsFolder> {
     let doc: KdlDocument = text.parse().ok()?;
     let library = doc.nodes().iter().find(|n| n.name().value() == "library")?;
-    let folder = string_arg(child(library, "components")?).unwrap_or(layout::COMPONENTS);
-    valid_folder(folder).then(|| folder.to_string())
+    let node = child(library, "components")?;
+    let given = node.entries().iter().any(|entry| entry.name().is_none());
+    match (given, string_arg(node)) {
+        (false, _) => Some(layout::ComponentsFolder::Root),
+        (true, Some(folder)) => resolve_folder(folder),
+        (true, None) => None,
+    }
 }
 
 pub fn base_url(text: &str) -> Option<String> {
@@ -1001,14 +1036,7 @@ impl List {
                 }
                 "library" => {
                     if let Some(kid) = child(node, "components") {
-                        let folder = string_arg(kid).unwrap_or(layout::COMPONENTS);
-                        if !valid_folder(folder) {
-                            issues.push(
-                                Issue::new(format!("`{folder}` is not a components folder"), src)
-                                    .at(kid.name().span(), "not a clean relative path")
-                                    .help("name a folder inside the repository without `/` at the start and without `.` or `..` segments"),
-                            );
-                        }
+                        check_components_folder(kid, src, issues);
                     }
                 }
                 "backend" => {
@@ -2845,17 +2873,44 @@ library { path "src" }
     }
 
     #[test]
-    fn the_components_folder_is_read_from_the_library_node() {
+    fn the_components_folder_is_read_and_resolved_from_the_library_node() {
+        let folder =
+            |value: &str| components_folder(&format!("library {{ components \"{value}\" }}\n"));
         assert_eq!(
-            components_folder("library { components \"src/components\" }\n").as_deref(),
-            Some("src/components")
+            components_folder("library { components }\n"),
+            Some(layout::ComponentsFolder::Root)
         );
         assert_eq!(
-            components_folder("library { components }\n").as_deref(),
-            Some("components")
+            folder("src/components"),
+            Some(layout::ComponentsFolder::Folder(
+                "src/components".to_string()
+            ))
         );
-        assert_eq!(components_folder("library { components \".\" }\n"), None);
-        assert_eq!(components_folder("library { components \"/abs\" }\n"), None);
+        assert_eq!(
+            folder("./src"),
+            Some(layout::ComponentsFolder::Folder("src".to_string()))
+        );
+        assert_eq!(
+            folder("src/"),
+            Some(layout::ComponentsFolder::Folder("src".to_string()))
+        );
+        assert_eq!(
+            folder("src//"),
+            Some(layout::ComponentsFolder::Folder("src".to_string()))
+        );
+        assert_eq!(
+            folder("src/."),
+            Some(layout::ComponentsFolder::Folder("src".to_string()))
+        );
+        assert_eq!(
+            folder("foo/../bar"),
+            Some(layout::ComponentsFolder::Folder("bar".to_string()))
+        );
+        assert_eq!(folder("foo/.."), Some(layout::ComponentsFolder::Root));
+        assert_eq!(folder("../src"), None);
+        assert_eq!(folder("../../outside"), None);
+        assert_eq!(folder("/abs"), None);
+        assert_eq!(folder(""), None);
         assert_eq!(components_folder("name \"x\"\n"), None);
     }
 

@@ -256,6 +256,7 @@ fn is_minimal(node: &Node) -> bool {
 
 fn example(node: &Node) -> String {
     match (node.example.is_empty(), node.name.is_empty()) {
+        (true, false) if matches!(node.arg, Arg::MaybeStr) => node.name.to_string(),
         (true, _) => head(node),
         (false, true) => node.example.to_string(),
         (false, false) => format!("{} {}", node.name, node.example),

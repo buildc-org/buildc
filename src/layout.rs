@@ -1,6 +1,16 @@
 use std::path::{Path, PathBuf};
 
 pub const COMPONENTS: &str = "components";
+
+/// Where a library keeps its components when `repo.kdl` names the folder.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ComponentsFolder {
+    /// A bare `components` node names the repository root.
+    Root,
+    /// The node names a folder relative to the repository root.
+    Folder(String),
+}
+
 pub const ROOT_LIBRARY: &str = "local-library";
 pub const GENERATED: &str = "generated";
 pub const OUT: &str = "out";
@@ -179,8 +189,9 @@ fn walk_components(
 }
 
 fn standalone(name: &str) -> Option<&str> {
-    name.strip_suffix(".kdl")
-        .filter(|_| name != MANIFEST_FILE && name != ORIGINS_FILE)
+    name.strip_suffix(".kdl").filter(|_| {
+        name != MANIFEST_FILE && name != ORIGINS_FILE && name != REPO_FILE && name != LOCK_FILE
+    })
 }
 
 pub fn sibling(dir: &Path) -> PathBuf {
@@ -392,6 +403,7 @@ pub const WORKFLOW_DIR: &str = ".github/workflows";
 pub const REPO_FILE: &str = "repo.kdl";
 pub const MANIFEST_FILE: &str = "component.kdl";
 pub const ORIGINS_FILE: &str = crate::provenance::origins::FILE;
+pub const LOCK_FILE: &str = crate::provenance::repo_lock::FILE;
 
 pub const MOUNTED: &str = "out/buildc";
 pub const SOURCES_CACHE: &str = ".cache/sources";
@@ -400,7 +412,11 @@ pub fn components(root: &Path) -> PathBuf {
     let folder = std::fs::read_to_string(root.join(REPO_FILE))
         .ok()
         .and_then(|text| crate::parse::repo::components_folder(&text));
-    root.join(folder.as_deref().unwrap_or(COMPONENTS))
+    match folder {
+        Some(ComponentsFolder::Root) => root.to_path_buf(),
+        Some(ComponentsFolder::Folder(folder)) => root.join(folder),
+        None => root.join(COMPONENTS),
+    }
 }
 
 pub fn library_components(tree: &Path) -> PathBuf {
@@ -661,7 +677,7 @@ mod tests {
         let inferred = library_components(&root);
         std::fs::write(
             root.join(REPO_FILE),
-            "schema-version 1\nlibrary { components \"src/parts\" }\n",
+            "schema-version 1\nlibrary { components \"./src/parts/\" }\n",
         )
         .unwrap();
         let declared = library_components(&root);
@@ -673,13 +689,22 @@ mod tests {
         .unwrap();
         let bare = library_components(&root);
         let own_bare = components(&root);
+        std::fs::write(
+            root.join(REPO_FILE),
+            "schema-version 1\nlibrary { components \".\" }\n",
+        )
+        .unwrap();
+        let dotted = library_components(&root);
+        let own_dotted = components(&root);
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(folder, root);
         assert_eq!(inferred, root.join(COMPONENTS));
         assert_eq!(declared, root.join("src/parts"));
         assert_eq!(own, root.join("src/parts"));
-        assert_eq!(bare, root.join(COMPONENTS));
-        assert_eq!(own_bare, root.join(COMPONENTS));
+        assert_eq!(bare, root);
+        assert_eq!(own_bare, root);
+        assert_eq!(dotted, root);
+        assert_eq!(own_dotted, root);
     }
 
     #[test]
@@ -713,6 +738,8 @@ mod tests {
             "c/component.kdl",
             "_template.kdl",
             ORIGINS_FILE,
+            REPO_FILE,
+            LOCK_FILE,
         ] {
             std::fs::write(root.join(file), "").unwrap();
         }

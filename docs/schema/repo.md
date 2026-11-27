@@ -813,7 +813,7 @@ A repository that another repository declares as a library offers the components
 
 ```kdl
 library {
-    components "src/components"
+    components
 }
 ```
 
@@ -823,21 +823,21 @@ Accepts: {&nbsp;[fields](#library-fields)&nbsp;}
 
 | Field | Accepts | Description |
 | --- | --- | --- |
-| [`components`](#library-components) (optional) | *string* | The folder that holds the components, relative to the repository root. |
+| [`components`](#library-components) (optional) | optionally a *string* | The folder that holds the components, relative to the repository root. |
 
 <a id="library-components"></a>
 
 ### `components` (optional)
 
-If `components` is absent, then the components live in `components/`.
+If `components` is absent, then the components live in `components/`. With no argument, or with a path that resolves to `.`, the block names the repository root, so every component directory sits at the top level. The path is relative to the repository root; `.` and `..` segments are resolved, and a path that leaves the repository is refused.
 
 ```kdl
 library {
-    components "src/components"
+    components
 }
 ```
 
-Accepts: *string*
+Accepts: optionally a *string*
 
 <a id="manifest"></a>
 
